@@ -25,19 +25,11 @@ object ImageUtils {
     /**
      * Combines two images together by using the brightest color at each pixel.
      */
-    operator fun BufferedImage.plus(other: BufferedImage) = BufferedImage(this.width, this.height, this.type)
+    operator fun BufferedImage.plus(other: BufferedImage) = BufferedImage(this.width, this.height, BufferedImage.TYPE_INT_ARGB)
         .also { image ->
-            for (y in 0 until this.height) {
-                for (x in 0 until this.width) {
-                    val hsb1 = Color(this.getRGB(x, y)).toHSB()
-                    val hsb2 = Color(other.getRGB(x, y)).toHSB()
-
-                    // use the brightest colour as the overriding one
-                    val brighterColor = listOf(hsb1, hsb2).sortedWith(HSBComparator()).first()
-                        .let { (r, g, b) -> Color(r, g, b) }
-                    image.setRGB(x, y, brighterColor.rgb)
-                }
-            }
+            val graphics = image.graphics
+            graphics.drawImage(this, 0, 0, null)
+            graphics.drawImage(other, 0, 0, null)
         }
 
     private fun Color.toHSB() = Color.RGBtoHSB(this.red, this.green, this.blue, null)
