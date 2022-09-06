@@ -25,6 +25,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>de.alsclo</groupId>
+            <artifactId>voronoi-java</artifactId>
+            <version>1.0</version>
+        </dependency>
+        <dependency>
             <groupId>com.raylabz</groupId>
             <artifactId>opensimplex</artifactId>
             <version>1.0.3</version>

@@ -1,4 +1,4 @@
-package io.hsar.mapgenerator.noise
+package io.hsar.mapgenerator.randomness
 
 import com.raylabz.opensimplex.OpenSimplexNoise
 import com.raylabz.opensimplex.Range
