@@ -37,9 +37,14 @@ object CellImageRenderer {
             Color.decode("#FFFFFF"),
         )
 
+        private val segments = COLORS.size.toDouble()
+
         val COLOUR_MAP: Map<Double, Color> = COLORS
             .mapIndexed { index, color ->
-                (index / COLORS.size.toDouble()) to color
+                val endOfSegment = (index + 1) / segments
+                val beginningOfSegment = index / segments
+                val midPoint = listOf(beginningOfSegment, endOfSegment).average()
+                midPoint to color
             }.toMap()
     }
 }
