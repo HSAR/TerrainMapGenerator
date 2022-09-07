@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.terrain
 
+import io.hsar.mapgenerator.graph.GraphUtils.relax
 import io.hsar.mapgenerator.graph.toPoint
 import io.hsar.mapgenerator.image.GraphImageBuilder
 import io.hsar.mapgenerator.image.ImageUtils.plus
@@ -25,7 +26,7 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
             .let { points ->
                 Voronoi.findAll(points.toTypedArray(), RectD(0.0, 0.0, width.toDouble(), height.toDouble()))
             }
-//            .relax()
+            .relax()
         val graphImage = GraphImageBuilder(height, width)
 //            .drawLines(graph.delaunayEdges().map { it.toLine() }, Color.BLACK)
             .drawPoints(graph.generatorSites.map { it.toPoint() }, Color.RED)
