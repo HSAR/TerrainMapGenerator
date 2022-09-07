@@ -38,20 +38,26 @@ object GraphImageGenerator {
             g2d.stroke = BasicStroke(3.0f)
             g2d.drawLine(p1x.roundToInt(), p1y.roundToInt(), p2x.roundToInt(), p2y.roundToInt())
 
-            vertices.forEach { (vx, vy) ->
-                g2d.color = Color.BLUE
-                g2d.stroke = BasicStroke(1.0f)
-                g2d.drawOval(vx.roundToInt(), vy.roundToInt(), 3, 3)
+            vertices.forEach { vPoint ->
+                drawDot(g2d = g2d, point = vPoint, diameter = 2, color = Color.BLUE)
             }
         }
     }
 
     private fun drawPoints(g2d: Graphics2D, points: List<Point>) {
-        g2d.color = Color.RED
         g2d.stroke = BasicStroke(3.0f)
 
-        points.forEach { (x, y) ->
-            g2d.drawOval(x.roundToInt(), y.roundToInt(), 5, 5)
+        points.forEach { point ->
+            drawDot(g2d = g2d, point = point, diameter = 6, color = Color.RED)
         }
+    }
+
+    private fun drawDot(g2d: Graphics2D, point: Point, diameter: Int = 6, color: Color = Color.RED) {
+        val radius = diameter / 2.0
+        val startX = (point.x - radius).roundToInt()
+        val startY = (point.y - radius).roundToInt()
+
+        g2d.color = color
+        g2d.drawOval(startX, startY, diameter, diameter)
     }
 }
