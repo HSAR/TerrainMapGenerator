@@ -1,18 +1,18 @@
 package io.hsar.mapgenerator.terrain
 
-import de.alsclo.voronoi.Voronoi
-import io.hsar.mapgenerator.graph.toEdge
 import io.hsar.mapgenerator.graph.toPoint
-import io.hsar.mapgenerator.image.GraphImageGenerator
+import io.hsar.mapgenerator.image.GraphImageBuilder
 import io.hsar.mapgenerator.image.ImageUtils.plus
 import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
 import io.hsar.mapgenerator.randomness.NoiseGenerator
 import io.hsar.mapgenerator.randomness.PointGenerator
-import java.awt.image.BufferedImage
-import java.util.stream.Collectors
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import org.imgscalr.Scalr
+import org.kynosarges.tektosyne.geometry.RectD
+import org.kynosarges.tektosyne.geometry.Voronoi
+import java.awt.Color
+import java.awt.image.BufferedImage
 import kotlin.math.round
 
 
@@ -22,10 +22,16 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
         logger.info("Creating map of ${height}x${width}px at $metresPerPixel metres per pixel.")
 
         val graph = (1..NUM_POINTS).map { PointGenerator.randomDoublePoint(height.toDouble(), width.toDouble()) }
-            .let { points -> Voronoi(points).graph }
-        val sites = graph.sitePoints.map { it.toPoint() }
-        val edges = graph.edgeStream().map { it.toEdge() }.collect(Collectors.toList())
-        val graphImage = GraphImageGenerator.generate(sites, edges, height, width)
+            .let { points ->
+                Voronoi.findAll(points.toTypedArray(), RectD(0.0, 0.0, width.toDouble(), height.toDouble()))
+            }
+//            .relax()
+        val graphImage = GraphImageBuilder(height, width)
+//            .drawLines(graph.delaunayEdges().map { it.toLine() }, Color.BLACK)
+            .drawPoints(graph.generatorSites.map { it.toPoint() }, Color.RED)
+//            .drawPoints(graph.voronoiVertices.map { it.toPoint() }, Color.BLUE)
+            .drawShapes(graph.voronoiRegions().map { it.map { it.toPoint() } })
+            .build()
 
         val sampleHeight = round(metresPerPixel * height * SAMPLE_SIZE).toInt()
         val sampleWidth = round(metresPerPixel * width * SAMPLE_SIZE).toInt()

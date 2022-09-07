@@ -25,9 +25,9 @@
 
     <dependencies>
         <dependency>
-            <groupId>de.alsclo</groupId>
-            <artifactId>voronoi-java</artifactId>
-            <version>1.0</version>
+            <groupId>org.kynosarges</groupId>
+            <artifactId>tektosyne</artifactId>
+            <version>6.2.0</version>
         </dependency>
         <dependency>
             <groupId>com.raylabz</groupId>

@@ -1,7 +1,9 @@
 package io.hsar.mapgenerator.graph
 
-import de.alsclo.voronoi.graph.Point as VoronoiPoint
+import org.kynosarges.tektosyne.geometry.PointD
 
 data class Point(val x: Double, val y: Double)
 
-fun VoronoiPoint.toPoint() = Point(x = this.x, y = this.y)
+fun PointD.toPoint() = Point(x = this.x, y = this.y)
+
+fun Point.toPointD() = PointD(x, y)
