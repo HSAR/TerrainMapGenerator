@@ -3,19 +3,51 @@ package io.hsar.mapgenerator.commandline
 import com.beust.jcommander.JCommander
 import com.beust.jcommander.Parameter
 import com.beust.jcommander.Parameters
+import io.hsar.mapgenerator.gui.ImageFrame
+import io.hsar.mapgenerator.image.ImageWriter
 import io.hsar.mapgenerator.terrain.TerrainMapGenerator
 import java.nio.file.Path
+import org.apache.logging.log4j.LogManager
+import org.apache.logging.log4j.Logger
 import kotlin.system.exitProcess
 
-abstract class Command(val name: String) : Runnable
+@Parameters(commandDescription = "Generates a random terrain map and shows it in a GUI window.")
+object ShowImageCommand : Command("show-map") {
+    override fun run() {
+        generator
+            .generateImage()
+            .let { image ->
+                ImageFrame.showImage(image)
+            }
+    }
+}
 
-@Parameters(commandDescription = "Generates a random terrain map.")
-class TerrainMapGeneratorCommand : Command("generate-map") {
+@Parameters(commandDescription = "Generates a random terrain map and saves it to disk.")
+object SaveImageCommand : Command("save-map") {
 
     @Parameter(
-            names = ["--metresPerPixel"],
-            description = "The scale of the map to generate, in metres per pixel. Defaults to 10, so a 1080x720px image would cover 10.8x7.2km.",
-            required = false
+        names = ["--target"],
+        description = "Path to save the image to.",
+        required = true
+    )
+    private lateinit var path: String
+
+    override fun run() {
+        generator
+            .generateImage()
+            .let { image ->
+                ImageWriter.writeGreyScaleImage(image, Path.of(path))
+                logger.info("Saved image to $path")
+            }
+    }
+}
+
+abstract class Command(val name: String) : Runnable {
+
+    @Parameter(
+        names = ["--metresPerPixel"],
+        description = "The scale of the map to generate, in metres per pixel. Defaults to 10, so a 1080x720px image would cover 10.8x7.2km.",
+        required = false
     )
     private var metresPerPixel = 10.0
 
@@ -40,51 +72,49 @@ class TerrainMapGeneratorCommand : Command("generate-map") {
     )
     private var width = 720
 
-    @Parameter(
-        names = ["--target"],
-        description = "Path to save the image to.",
-        required = true
+    protected val generator = TerrainMapGenerator(
+        metresPerPixel = metresPerPixel,
+        metresPerContour = metresPerContour,
+        height = height,
+        width = width,
     )
-    private lateinit var path: String
 
-    override fun run() {
-        TerrainMapGenerator(
-            metresPerPixel = metresPerPixel,
-            metresPerContour = metresPerContour,
-            height = height,
-            width = width,
-        ).generateImage(path = Path.of(path))
+    companion object {
+        @JvmStatic
+        protected val logger: Logger = LogManager.getLogger(Command::class.java)
     }
+
 }
 
 fun main(args: Array<String>) {
     val commandsByName =
-            listOf(
-                    TerrainMapGeneratorCommand()
-            )
-                    .associateBy { it.name }
+        listOf(
+            ShowImageCommand,
+            SaveImageCommand,
+        )
+            .associateBy { it.name }
 
     JCommander()
-            .also { commander ->
-                commandsByName.forEach { (name, command) ->
-                    commander.addCommand(name, command)
-                }
+        .also { commander ->
+            commandsByName.forEach { (name, command) ->
+                commander.addCommand(name, command)
             }
-            .let { commander ->
-                if (args.isEmpty()) {
-                    commander.usage()
-                    System.err.println("Expected some arguments")
-                    exitProcess(1)
-                }
+        }
+        .let { commander ->
+            if (args.isEmpty()) {
+                commander.usage()
+                System.err.println("Expected some arguments")
+                exitProcess(1)
+            }
 
-                try {
-                    commander.parse(*args)
-                    commandsByName
-                            .getValue(commander.parsedCommand)
-                            .run()
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    exitProcess(1)
-                }
+            try {
+                commander.parse(*args)
+                commandsByName
+                    .getValue(commander.parsedCommand)
+                    .run()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                exitProcess(1)
             }
+        }
 }

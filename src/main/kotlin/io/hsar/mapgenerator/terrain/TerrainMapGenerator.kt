@@ -6,20 +6,19 @@ import io.hsar.mapgenerator.graph.toPoint
 import io.hsar.mapgenerator.image.GraphImageGenerator
 import io.hsar.mapgenerator.image.ImageUtils.plus
 import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
-import io.hsar.mapgenerator.image.ImageWriter
 import io.hsar.mapgenerator.randomness.NoiseGenerator
 import io.hsar.mapgenerator.randomness.PointGenerator
+import java.awt.image.BufferedImage
+import java.util.stream.Collectors
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import org.imgscalr.Scalr
-import java.nio.file.Path
-import java.util.stream.Collectors
 import kotlin.math.round
 
 
 class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Double, val height: Int, val width: Int) {
 
-    fun generateImage(path: Path) {
+    fun generateImage(): BufferedImage {
         logger.info("Creating map of ${height}x${width}px at $metresPerPixel metres per pixel.")
 
         val graph = (1..NUM_POINTS).map { PointGenerator.randomDoublePoint(height.toDouble(), width.toDouble()) }
@@ -34,10 +33,7 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
             .toBufferedImage()
             .let { originalImage -> Scalr.resize(originalImage, height); }
 
-        val finalImage = noiseImage + graphImage
-
-        ImageWriter.writeGreyScaleImage(finalImage, path)
-        logger.info("Saved image to $path")
+        return noiseImage + graphImage
     }
 
     companion object {
