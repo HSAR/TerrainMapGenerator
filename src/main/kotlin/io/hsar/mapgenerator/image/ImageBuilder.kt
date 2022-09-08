@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.image
 
 import io.hsar.mapgenerator.graph.Line
+import io.hsar.mapgenerator.graph.Path
 import io.hsar.mapgenerator.graph.Point
 import java.awt.AlphaComposite
 import java.awt.BasicStroke
@@ -55,6 +56,22 @@ class ImageBuilder(val width: Int, val height: Int) {
         g2d.color = color
         g2d.stroke = BasicStroke(3.0f)
         g2d.drawLine(p1x.roundToInt(), p1y.roundToInt(), p2x.roundToInt(), p2y.roundToInt())
+    }
+
+    fun drawDiagonalPaths(lines: Collection<Line>, color: Color): ImageBuilder = lines
+        .map { line ->
+            drawDiagonalPath(line = line, color = color)
+        }.last()
+
+    fun drawDiagonalPath(line: Line, color: Color) = drawDiagonalPath(line.site1, line.site2, color)
+
+    fun drawDiagonalPath(point1: Point, point2: Point, color: Color): ImageBuilder {
+        val (p1x, p1y) = point1
+        val (p2x, p2y) = point2
+
+        val pathLines = Path.createPath(point1, point2)
+        drawLines(pathLines, color)
+        return this
     }
 
     fun drawPoints(points: Collection<Point>, color: Color = Color.RED): ImageBuilder {

@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.terrain
 
 import io.hsar.mapgenerator.graph.GraphUtils.relax
+import io.hsar.mapgenerator.graph.toLine
 import io.hsar.mapgenerator.graph.toPoint
 import io.hsar.mapgenerator.image.CellImageRenderer
 import io.hsar.mapgenerator.image.ContourRenderer
@@ -14,6 +15,7 @@ import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import org.kynosarges.tektosyne.geometry.RectD
 import org.kynosarges.tektosyne.geometry.Voronoi
+import java.awt.Color
 import java.awt.image.BufferedImage
 
 
@@ -46,9 +48,17 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
                 )
             }
 
+
+        val sites = graph.generatorSites.map { it.toPoint() }
+        val vertices = graph.voronoiVertices.map { it.toPoint() }
+        val siteJoins = graph.voronoiEdges.map { it.toLine(sites, vertices) }
+
         val graphImage: BufferedImage = ImageBuilder(width = width, height = height)
             .fillTransparent()
             .also { imageBuilder ->
+
+                imageBuilder.drawDiagonalPaths(siteJoins, Color.GREEN)
+
                 mapCells.forEach { cell ->
                     CellImageRenderer.drawCell(imageBuilder, cell)
                 }
