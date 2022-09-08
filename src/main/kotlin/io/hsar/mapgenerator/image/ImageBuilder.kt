@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.image
 
 import io.hsar.mapgenerator.graph.Line
 import io.hsar.mapgenerator.graph.Point
+import java.awt.AlphaComposite
 import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.RenderingHints
@@ -14,16 +15,21 @@ class ImageBuilder(val width: Int, val height: Int) {
     val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
     private val g2d = image.createGraphics()
         .also {
-            it.setRenderingHint(
-                RenderingHints.KEY_ANTIALIASING,
-                RenderingHints.VALUE_ANTIALIAS_ON
-            )
+            it.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+            it.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
         }
 
     fun build() = image
         .also {
             g2d.dispose()
         }
+
+    fun fillTransparent(): ImageBuilder {
+        g2d.composite = AlphaComposite.getInstance(AlphaComposite.CLEAR);
+        g2d.fillRect(0, 0, width, height)
+        g2d.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER);
+        return this
+    }
 
     fun fillColour(color: Color): ImageBuilder {
         g2d.color = color

@@ -1,8 +1,11 @@
 package io.hsar.mapgenerator.terrain
 
+import io.hsar.mapgenerator.graph.GraphUtils.relax
 import io.hsar.mapgenerator.graph.toPoint
+import io.hsar.mapgenerator.image.CellImageRenderer
 import io.hsar.mapgenerator.image.ContourRenderer
-import io.hsar.mapgenerator.image.ImageUtils.compose
+import io.hsar.mapgenerator.image.ImageBuilder
+import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
 import io.hsar.mapgenerator.map.Cell
 import io.hsar.mapgenerator.map.TerrainGenerator
 import io.hsar.mapgenerator.randomness.NoiseGenerator
@@ -16,15 +19,21 @@ import java.awt.image.BufferedImage
 
 class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Double, val height: Int, val width: Int) {
 
-    fun generateImage(): BufferedImage {
-        logger.info("Creating map ${width}px wide by ${height}px high at $metresPerPixel metres per pixel.")
+    init {
+        logger.info("Creating map images ${width}px wide by ${height}px high at $metresPerPixel metres per pixel.")
+    }
+
+    val heightData = TerrainGenerator.generateTerrain(width = width, height = height)
+
+    fun generateGraphImage(): BufferedImage {
+        val numPoints = height * width / POINT_RATIO
 
         val clipRect = RectD(0.0, 0.0, width.toDouble(), height.toDouble())
-        val graph = (0 until NUM_POINTS).map { PointGenerator.randomDoublePoint(width.toDouble(), height.toDouble()) }
+        val graph = (0..numPoints).map { PointGenerator.randomDoublePoint(width.toDouble(), height.toDouble()) }
             .let { points ->
                 Voronoi.findAll(points.toTypedArray(), clipRect)
             }
-//            .relax(height, width)
+            .relax(height, width)
 //            .relax(height, width)
 
         val regions = graph.voronoiRegions().map { it.map { it.toPoint() } }
@@ -37,36 +46,35 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
                 )
             }
 
-//        val graphImage: BufferedImage = ImageBuilder(width = width, height = height)
-//            .also { imageBuilder ->
-//                mapCells.forEach { cell ->
-//                    CellImageRenderer.drawCell(imageBuilder, cell)
-//                }
-//            }.build()
+        val graphImage: BufferedImage = ImageBuilder(width = width, height = height)
+            .fillTransparent()
+            .also { imageBuilder ->
+                mapCells.forEach { cell ->
+                    CellImageRenderer.drawCell(imageBuilder, cell)
+                }
+            }.build()
 
-//        val sampleWidth = round(metresPerPixel * width * SAMPLE_SIZE).toInt()
-//        val sampleHeight = round(metresPerPixel * height * SAMPLE_SIZE).toInt()
+        return graphImage
+    }
+
+    fun generateHeightImage(): BufferedImage {
+//        val sampleWidth = (metresPerPixel * width * SAMPLE_SIZE).roundToInt()
+//        val sampleHeight = (metresPerPixel * height * SAMPLE_SIZE).roundToInt()
 //        val heightData = NoiseGenerator().generate2DArray(width = sampleWidth, height = sampleHeight)
 //            .toBufferedImage()
 //            .let { originalImage -> Scalr.resize(originalImage, width); }
 //            .let { resizedImage -> resizedImage.getIntData() }
-        val heightData = TerrainGenerator.generateTerrain(width = width, height = height)
+        return heightData.toBufferedImage()
+    }
 
-//        val heightImage = heightData.toBufferedImage()
-
-        val contourImage = ContourRenderer.createImage(heightData = heightData, contourHeight = 0.025)
-
-        return listOf(
-//            heightImage,
-            contourImage,
-//            graphImage,
-        ).compose()
+    fun generateContourImage(): BufferedImage {
+        return ContourRenderer.createImage(heightData = heightData, contourHeight = 0.025)
     }
 
     companion object {
         private val logger: Logger = LogManager.getLogger(TerrainMapGenerator::class.java)
 
-        val NUM_POINTS = 150
+        val POINT_RATIO = 8000 // Roughly 250 points at 1920x1080
         val SAMPLE_SIZE = 0.02
     }
 }

@@ -19,11 +19,21 @@ object ShowImageCommand : Command("show-map") {
             metresPerContour = metresPerContour,
             width = width,
             height = height,
-        )
-            .generateImage()
-            .let { image ->
-                ImageFrame.showImage(image)
-            }
+        ).also {
+            it.generateGraphImage()
+                .let { image ->
+                    ImageFrame().showImage(image)
+                }
+            it.generateHeightImage()
+                .let { image ->
+                    ImageFrame().showImage(image)
+                }
+            it.generateContourImage()
+                .let { image ->
+                    ImageFrame().showImage(image)
+                }
+        }
+
     }
 }
 
@@ -43,12 +53,26 @@ object SaveImageCommand : Command("save-map") {
             metresPerContour = metresPerContour,
             width = width,
             height = height,
-        )
-            .generateImage()
-            .let { image ->
-                ImageWriter.writeGreyScaleImage(image, Path.of(path))
-                logger.info("Saved image to $path")
-            }
+        ).also {
+            it.generateGraphImage()
+                .let { image ->
+                    val filePath = "graph-$path"
+                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
+                    logger.info("Saved image to $filePath")
+                }
+            it.generateHeightImage()
+                .let { image ->
+                    val filePath = "height-$path"
+                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
+                    logger.info("Saved image to $filePath")
+                }
+            it.generateContourImage()
+                .let { image ->
+                    val filePath = "contour-$path"
+                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
+                    logger.info("Saved image to $filePath")
+                }
+        }
     }
 }
 

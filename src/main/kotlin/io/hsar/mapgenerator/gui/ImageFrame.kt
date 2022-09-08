@@ -7,7 +7,7 @@ import javax.swing.JLabel
 import javax.swing.SwingUtilities
 
 
-object ImageFrame {
+class ImageFrame() {
 
     val frame = JFrame()
         .also {

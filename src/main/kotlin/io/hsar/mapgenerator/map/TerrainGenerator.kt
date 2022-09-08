@@ -287,7 +287,7 @@ object TerrainGenerator {
         0.5434782608613281
     )
 
-    private val REPEAT_PROFILES = arrayOf(0 to 41, 13 to 24, 21 to 21, 22 to 14, 29 to 3)
+    private val REPEAT_PROFILES = arrayOf(0 to 27, 13 to 26, 21 to 21, 22 to 11, 29 to 1)
 
     private val RECIP128 = 1.0 / 128.0
 
