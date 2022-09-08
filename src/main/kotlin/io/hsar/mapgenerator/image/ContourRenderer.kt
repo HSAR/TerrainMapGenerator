@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.image
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.toPoint
 import uk.yetanother.conrec.business.ContourGenerator
+import java.awt.Color
 import java.awt.image.BufferedImage
 
 object ContourRenderer {
@@ -16,14 +17,18 @@ object ContourRenderer {
         heightData: Array<DoubleArray>,
         contourLevels: List<Double> = (0..50).map { v -> v / 255.0 }
     ): BufferedImage {
-        val width = heightData[0].size
-        val height = heightData.size
+        val width = heightData.size
+        val height = heightData[0].size
         val xSteps = (0 until width step X_STEP).map { it.toDouble() }.toDoubleArray()
         val ySteps = (0 until height step Y_STEP).map { it.toDouble() }.toDoubleArray()
 //        val contourPolygons = generatePolygons(heightData, xSteps, ySteps, contourLevels.toDoubleArray())
         val contourPolygons = generateClassic(heightData, xSteps, ySteps, contourLevels.toDoubleArray())
 
-        return ImageBuilder(width = height, height = width).drawPolyLines(contourPolygons).build()
+        return ImageBuilder(width = width, height = height)
+            .fillColour(Color.decode("#403A3A"))
+//            .drawPolyLines(contourPolygons, Color.decode("#FFFFFF"))
+            .drawPolyLines(contourPolygons, Color.decode("#706B6B"))
+            .build()
     }
 
     private fun generatePolygons(

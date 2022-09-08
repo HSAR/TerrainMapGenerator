@@ -14,7 +14,12 @@ import kotlin.system.exitProcess
 @Parameters(commandDescription = "Generates a random terrain map and shows it in a GUI window.")
 object ShowImageCommand : Command("show-map") {
     override fun run() {
-        generator
+        TerrainMapGenerator(
+            metresPerPixel = metresPerPixel,
+            metresPerContour = metresPerContour,
+            width = width,
+            height = height,
+        )
             .generateImage()
             .let { image ->
                 ImageFrame.showImage(image)
@@ -33,7 +38,12 @@ object SaveImageCommand : Command("save-map") {
     private lateinit var path: String
 
     override fun run() {
-        generator
+        TerrainMapGenerator(
+            metresPerPixel = metresPerPixel,
+            metresPerContour = metresPerContour,
+            width = width,
+            height = height,
+        )
             .generateImage()
             .let { image ->
                 ImageWriter.writeGreyScaleImage(image, Path.of(path))
@@ -49,35 +59,28 @@ abstract class Command(val name: String) : Runnable {
         description = "The scale of the map to generate, in metres per pixel. Defaults to 10, so a 1080x720px image would cover 10.8x7.2km.",
         required = false
     )
-    private var metresPerPixel = 10.0
+    protected var metresPerPixel = 10.0
 
     @Parameter(
         names = ["--metresPerContour"],
         description = "The distance represented by each contour line, in metres. Defaults to 10.",
         required = false
     )
-    private var metresPerContour = 10.0
+    protected var metresPerContour = 10.0
 
     @Parameter(
         names = ["--width"],
         description = "The width of the map to generate, in pixels. Defaults to 720.",
         required = false
     )
-    private var width = 1920
+    protected var width = 1920
 
     @Parameter(
         names = ["--height"],
         description = "The height of the map to generate, in pixels. Defaults to 1080.",
         required = false
     )
-    private var height = 1080
-
-    protected val generator = TerrainMapGenerator(
-        metresPerPixel = metresPerPixel,
-        metresPerContour = metresPerContour,
-        width = width,
-        height = height,
-    )
+    protected var height = 1080
 
     companion object {
         @JvmStatic

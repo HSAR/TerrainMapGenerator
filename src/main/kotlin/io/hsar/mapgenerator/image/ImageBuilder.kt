@@ -25,6 +25,12 @@ class ImageBuilder(val width: Int, val height: Int) {
             g2d.dispose()
         }
 
+    fun fillColour(color: Color): ImageBuilder {
+        g2d.color = color
+        g2d.fillRect(0, 0, width, height)
+        return this
+    }
+
     fun drawLines(edges: Collection<Line>, color: Color = Color.BLACK): ImageBuilder {
         edges.forEach { (point1, point2, vertices) ->
             drawLine(point1, point2, color)
