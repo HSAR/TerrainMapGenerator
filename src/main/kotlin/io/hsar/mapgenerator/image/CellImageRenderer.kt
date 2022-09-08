@@ -10,7 +10,7 @@ import kotlin.math.abs
 
 object CellImageRenderer {
     fun drawCell(imageBuilder: ImageBuilder, cell: Cell) = with(imageBuilder) {
-        drawShapeFill(cell.shape, determineCellColor(cell))
+//        drawShapeFill(cell.shape, determineCellColor(cell))
         drawShapeOutline(cell.shape, Color.DARK_GRAY)
         drawPoint(cell.site, color = Color.RED)
     }
