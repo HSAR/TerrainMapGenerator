@@ -13,7 +13,6 @@ import org.apache.logging.log4j.Logger
 import org.kynosarges.tektosyne.geometry.RectD
 import org.kynosarges.tektosyne.geometry.Voronoi
 import java.awt.image.BufferedImage
-import kotlin.math.round
 
 
 class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Double, val height: Int, val width: Int) {
@@ -45,14 +44,17 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
 //                }
 //            }.build()
 
-        val sampleHeight = round(metresPerPixel * height * SAMPLE_SIZE).toInt()
-        val sampleWidth = round(metresPerPixel * width * SAMPLE_SIZE).toInt()
-//        val heightImage = NoiseGenerator().generate2DArray(sampleWidth, sampleHeight)
+//        val sampleWidth = round(metresPerPixel * width * SAMPLE_SIZE).toInt()
+//        val sampleHeight = round(metresPerPixel * height * SAMPLE_SIZE).toInt()
+//        val heightData = NoiseGenerator().generate2DArray(width = sampleWidth, height = sampleHeight)
 //            .toBufferedImage()
-//            .let { originalImage -> Scalr.resize(originalImage, height); }
-        val heightImage = TerrainGenerator.generateTerrain(width = width, height = height).toBufferedImage()
+//            .let { originalImage -> Scalr.resize(originalImage, width); }
+//            .let { resizedImage -> resizedImage.getIntData() }
+        val heightData = TerrainGenerator.generateTerrain(width = width, height = height)
 
-        val contourImage = ContourRenderer.createImage(width = width, height = height)
+        val heightImage = heightData.toBufferedImage()
+
+        val contourImage = ContourRenderer.createImage(heightData = heightData, contourHeight = 0.025)
 
         return listOf(
             heightImage,

@@ -2,20 +2,24 @@ package io.hsar.mapgenerator.image
 
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.toPoint
-import io.hsar.mapgenerator.map.TerrainGenerator
 import uk.yetanother.conrec.business.ContourGenerator
 import java.awt.image.BufferedImage
 
 object ContourRenderer {
 
     fun createImage(
-        width: Int,
-        height: Int,
-        contourLevels: List<Double> = (0..255 step 5).map { v -> v / 255.0 }
+        heightData: Array<DoubleArray>,
+        contourHeight: Double = 0.02
+    ): BufferedImage = createImage(heightData, (0..(1 / contourHeight).toInt()).map { v -> v * contourHeight })
+
+    fun createImage(
+        heightData: Array<DoubleArray>,
+        contourLevels: List<Double> = (0..50).map { v -> v / 255.0 }
     ): BufferedImage {
-        val heightData = TerrainGenerator.generateTerrain(width, height)
-        val xSteps = (0..width step X_STEP).map { it.toDouble() }.toDoubleArray()
-        val ySteps = (0..height step Y_STEP).map { it.toDouble() }.toDoubleArray()
+        val width = heightData.size
+        val height = heightData[0].size
+        val xSteps = (0 until width step X_STEP).map { it.toDouble() }.toDoubleArray()
+        val ySteps = (0 until height step Y_STEP).map { it.toDouble() }.toDoubleArray()
 //        val contourPolygons = generatePolygons(heightData, xSteps, ySteps, contourLevels.toDoubleArray())
         val contourPolygons = generateClassic(heightData, xSteps, ySteps, contourLevels.toDoubleArray())
 
@@ -38,7 +42,7 @@ object ContourRenderer {
     ): List<List<Point>> = ContourGenerator.generateClassic(heightData, xSteps, ySteps, contourLevels)
         .map { contourPolygon -> listOf(contourPolygon.start.toPoint(), contourPolygon.end.toPoint()) }
 
-    const val X_STEP = 3
-    const val Y_STEP = 3
+    const val X_STEP = 1
+    const val Y_STEP = 1
 
 }

@@ -2,8 +2,60 @@ package io.hsar.mapgenerator.image
 
 import java.awt.Color
 import java.awt.image.BufferedImage
+import java.awt.image.DataBufferInt
+
 
 object ImageUtils {
+
+    fun BufferedImage.getIntData(): Array<DoubleArray> {
+        val pixels = (this.raster.dataBuffer as DataBufferInt).data
+        val width: Int = this.width
+        val height: Int = this.height
+        val hasAlphaChannel = this.alphaRaster != null
+
+        val result = Array(height) { DoubleArray(width) }
+        if (hasAlphaChannel) {
+            val pixelLength = 4
+            var pixel = 0
+            var row = 0
+            var col = 0
+            while (pixel + 3 < pixels.size) {
+                var argb = 0
+                argb += pixels[pixel] and 0xff shl 24 // alpha
+                argb += pixels[pixel + 1] and 0xff // blue
+                argb += pixels[pixel + 2] and 0xff shl 8 // green
+                argb += pixels[pixel + 3] and 0xff shl 16 // red
+                result[row][col] = argb / 255.0
+                col++
+                if (col == width) {
+                    col = 0
+                    row++
+                }
+                pixel += pixelLength
+            }
+        } else {
+            val pixelLength = 3
+            var pixel = 0
+            var row = 0
+            var col = 0
+            while (pixel + 2 < pixels.size) {
+                var argb = 0
+                argb += -16777216 // 255 alpha
+                argb += pixels[pixel] and 0xff // blue
+                argb += pixels[pixel + 1] and 0xff shl 8 // green
+                argb += pixels[pixel + 2] and 0xff shl 16 // red
+                result[row][col] = argb / 255.0
+                col++
+                if (col == width) {
+                    col = 0
+                    row++
+                }
+                pixel += pixelLength
+            }
+        }
+
+        return result
+    }
 
     /**
      * Takes an array of doubles between 0.0 and 1.0 and generates a greyscale image from them, then writes it to disk.

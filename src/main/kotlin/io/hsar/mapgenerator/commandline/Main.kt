@@ -59,18 +59,18 @@ abstract class Command(val name: String) : Runnable {
     private var metresPerContour = 10.0
 
     @Parameter(
-        names = ["--height"],
-        description = "The height of the map to generate, in pixels. Defaults to 1080.",
-        required = false
-    )
-    private var height = 720
-
-    @Parameter(
         names = ["--width"],
         description = "The width of the map to generate, in pixels. Defaults to 720.",
         required = false
     )
-    private var width = 1080
+    private var width = 1920
+
+    @Parameter(
+        names = ["--height"],
+        description = "The height of the map to generate, in pixels. Defaults to 1080.",
+        required = false
+    )
+    private var height = 1080
 
     protected val generator = TerrainMapGenerator(
         metresPerPixel = metresPerPixel,
