@@ -76,6 +76,19 @@ object ImageUtils {
 
     fun Array<DoubleArray>.toBufferedImage() = this.map { it.toList() }.toBufferedImage()
 
+    fun Array<DoubleArray>.invert(): Array<DoubleArray> {
+        val rows = this.size
+        val columns = this[0].size
+        return Array(this[0].size) { DoubleArray(this.size) }
+            .also {
+                for (i in 0 until rows) {
+                    for (j in 0 until columns) {
+                        it[j][i] = this[i][j]
+                    }
+                }
+            }
+    }
+
     /**
      * Combines two images together by using the brightest color at each pixel.
      */

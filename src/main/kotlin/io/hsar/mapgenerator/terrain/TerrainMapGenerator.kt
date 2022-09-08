@@ -3,7 +3,6 @@ package io.hsar.mapgenerator.terrain
 import io.hsar.mapgenerator.graph.toPoint
 import io.hsar.mapgenerator.image.ContourRenderer
 import io.hsar.mapgenerator.image.ImageUtils.compose
-import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
 import io.hsar.mapgenerator.map.Cell
 import io.hsar.mapgenerator.map.TerrainGenerator
 import io.hsar.mapgenerator.randomness.NoiseGenerator
@@ -20,9 +19,10 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
     fun generateImage(): BufferedImage {
         logger.info("Creating map ${width}px wide by ${height}px high at $metresPerPixel metres per pixel.")
 
-        val graph = (1..NUM_POINTS).map { PointGenerator.randomDoublePoint(height.toDouble(), width.toDouble()) }
+        val clipRect = RectD(0.0, 0.0, width.toDouble(), height.toDouble())
+        val graph = (0 until NUM_POINTS).map { PointGenerator.randomDoublePoint(width.toDouble(), height.toDouble()) }
             .let { points ->
-                Voronoi.findAll(points.toTypedArray(), RectD(0.0, 0.0, width.toDouble(), height.toDouble()))
+                Voronoi.findAll(points.toTypedArray(), clipRect)
             }
 //            .relax(height, width)
 //            .relax(height, width)
@@ -37,7 +37,7 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
                 )
             }
 
-//        val graphImage: BufferedImage = ImageBuilder(width, height)
+//        val graphImage: BufferedImage = ImageBuilder(width = width, height = height)
 //            .also { imageBuilder ->
 //                mapCells.forEach { cell ->
 //                    CellImageRenderer.drawCell(imageBuilder, cell)
@@ -52,21 +52,21 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
 //            .let { resizedImage -> resizedImage.getIntData() }
         val heightData = TerrainGenerator.generateTerrain(width = width, height = height)
 
-        val heightImage = heightData.toBufferedImage()
+//        val heightImage = heightData.toBufferedImage()
 
         val contourImage = ContourRenderer.createImage(heightData = heightData, contourHeight = 0.025)
 
         return listOf(
-            heightImage,
+//            heightImage,
+            contourImage,
 //            graphImage,
-            contourImage
         ).compose()
     }
 
     companion object {
         private val logger: Logger = LogManager.getLogger(TerrainMapGenerator::class.java)
 
-        val NUM_POINTS = 50
+        val NUM_POINTS = 150
         val SAMPLE_SIZE = 0.02
     }
 }

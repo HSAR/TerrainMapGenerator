@@ -8,8 +8,8 @@ import kotlin.math.truncate
  */
 object TerrainGenerator {
     fun generateTerrain(width: Int, height: Int): Array<DoubleArray> {
-        return (0 until width).map { x ->
-            (0 until height).map { y ->
+        return (0 until height).map { x ->
+            (0 until width).map { y ->
                 calculateHeight(x = x, y = y)
             }.toDoubleArray()
         }.toTypedArray()

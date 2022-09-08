@@ -6,11 +6,12 @@ import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 class ImageBuilder(val width: Int, val height: Int) {
 
-    val image = BufferedImage(height, width, BufferedImage.TYPE_INT_ARGB)
+    val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
     private val g2d = image.createGraphics()
         .also {
             it.setRenderingHint(
@@ -103,8 +104,8 @@ class ImageBuilder(val width: Int, val height: Int) {
     }
 
     private fun createPolyPoints(shape: List<Point>): Pair<IntArray, IntArray> {
-        val xPoints = shape.map { it.x.roundToInt() }.toIntArray()
-        val yPoints = shape.map { it.y.roundToInt() }.toIntArray()
+        val xPoints = shape.map { min(it.x.roundToInt(), width) }.toIntArray()
+        val yPoints = shape.map { min(it.y.roundToInt(), height) }.toIntArray()
         return xPoints to yPoints
     }
 }

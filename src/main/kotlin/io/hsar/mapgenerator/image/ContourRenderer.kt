@@ -16,8 +16,8 @@ object ContourRenderer {
         heightData: Array<DoubleArray>,
         contourLevels: List<Double> = (0..50).map { v -> v / 255.0 }
     ): BufferedImage {
-        val width = heightData.size
-        val height = heightData[0].size
+        val width = heightData[0].size
+        val height = heightData.size
         val xSteps = (0 until width step X_STEP).map { it.toDouble() }.toDoubleArray()
         val ySteps = (0 until height step Y_STEP).map { it.toDouble() }.toDoubleArray()
 //        val contourPolygons = generatePolygons(heightData, xSteps, ySteps, contourLevels.toDoubleArray())
@@ -42,6 +42,8 @@ object ContourRenderer {
     ): List<List<Point>> = ContourGenerator.generateClassic(heightData, xSteps, ySteps, contourLevels)
         .map { contourPolygon -> listOf(contourPolygon.start.toPoint(), contourPolygon.end.toPoint()) }
 
+    const val X_PAD = 4
+    const val Y_PAD = 4
     const val X_STEP = 1
     const val Y_STEP = 1
 
