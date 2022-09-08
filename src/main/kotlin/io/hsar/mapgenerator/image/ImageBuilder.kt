@@ -8,7 +8,7 @@ import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import kotlin.math.roundToInt
 
-class ImageBuilder(val height: Int, val width: Int) {
+class ImageBuilder(val width: Int, val height: Int) {
 
     val image = BufferedImage(height, width, BufferedImage.TYPE_INT_ARGB)
     private val g2d = image.createGraphics()
@@ -59,6 +59,20 @@ class ImageBuilder(val height: Int, val width: Int) {
         g2d.color = color
         g2d.stroke = BasicStroke(1.0f)
         g2d.drawOval(startX, startY, diameter, diameter)
+    }
+
+    fun drawPolyLines(polyLines: Collection<List<Point>>, color: Color = Color.GRAY): ImageBuilder {
+        polyLines.forEach {
+            drawShapeOutline(it, color)
+        }
+        return this
+    }
+
+    fun drawPolyLine(polyLine: List<Point>, color: Color = Color.RED) {
+        g2d.color = color
+        g2d.stroke = BasicStroke(1.0f)
+        val (xPoints, yPoints) = createPolyPoints(polyLine)
+        g2d.drawPolyline(xPoints, yPoints, xPoints.size)
     }
 
     fun drawShapeOutlines(shapes: Collection<List<Point>>, color: Color = Color.GRAY): ImageBuilder {

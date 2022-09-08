@@ -1,41 +1,44 @@
 package io.hsar.mapgenerator.image
 
+import io.hsar.mapgenerator.graph.Point
+import io.hsar.mapgenerator.graph.toPoint
+import io.hsar.mapgenerator.map.TerrainGenerator
+import uk.yetanother.conrec.business.ContourGenerator
 import java.awt.image.BufferedImage
-import java.awt.image.BufferedImageOp
-import java.awt.image.LookupOp
-import java.awt.image.ShortLookupTable
-import kotlin.math.roundToInt
 
+object ContourRenderer {
 
-class ContourRenderer(val image: BufferedImage) {
+    fun createImage(
+        width: Int,
+        height: Int,
+        contourLevels: List<Double> = (0..255 step 5).map { v -> v / 255.0 }
+    ): BufferedImage {
+        val heightData = TerrainGenerator.generateTerrain(width, height)
+        val xSteps = (0..width step X_STEP).map { it.toDouble() }.toDoubleArray()
+        val ySteps = (0..height step Y_STEP).map { it.toDouble() }.toDoubleArray()
+//        val contourPolygons = generatePolygons(heightData, xSteps, ySteps, contourLevels.toDoubleArray())
+        val contourPolygons = generateClassic(heightData, xSteps, ySteps, contourLevels.toDoubleArray())
 
-    /**
-     * Draw contour lines on the image where each contour represents one of the given values.
-     */
-    fun drawContours(values: List<Double>) = values.map { drawContour(it) }.last()
-
-    fun drawContour(value: Double): BufferedImage {
-        val actualThreshold = (value * RGB_MAX).roundToInt()
-        val thresholdTable: ShortArray = (1..RGB_MAX).map { level ->
-            if (level < actualThreshold) 0.toShort() else 255.toShort()
-        }.toShortArray()
-
-        val thresholdOp: BufferedImageOp = LookupOp(ShortLookupTable(0, thresholdTable), null)
-        val thresholdImage = thresholdOp.filter(image, null)
-
-        for (x in 0..image.width step GRID_STEP_X) {
-            for (y in 0..image.height step GRID_STEP_Y) {
-                // seek the value and navigate along it with gaussian sampling
-            }
-        }
-
-        return thresholdImage
+        return ImageBuilder(width = height, height = width).drawPolyLines(contourPolygons).build()
     }
 
-    companion object {
-        const val RGB_MAX = 255
-        const val GRID_STEP_X = 10
-        const val GRID_STEP_Y = 10
-    }
+    private fun generatePolygons(
+        heightData: Array<DoubleArray>,
+        xSteps: DoubleArray,
+        ySteps: DoubleArray,
+        contourLevels: DoubleArray
+    ): List<List<Point>> = ContourGenerator.generatePolygons(heightData, xSteps, ySteps, contourLevels)
+        .map { contourPolygon -> contourPolygon.points.map { it.toPoint() } }
+
+    private fun generateClassic(
+        heightData: Array<DoubleArray>,
+        xSteps: DoubleArray,
+        ySteps: DoubleArray,
+        contourLevels: DoubleArray
+    ): List<List<Point>> = ContourGenerator.generateClassic(heightData, xSteps, ySteps, contourLevels)
+        .map { contourPolygon -> listOf(contourPolygon.start.toPoint(), contourPolygon.end.toPoint()) }
+
+    const val X_STEP = 3
+    const val Y_STEP = 3
 
 }

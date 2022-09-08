@@ -6,9 +6,9 @@ import com.beust.jcommander.Parameters
 import io.hsar.mapgenerator.gui.ImageFrame
 import io.hsar.mapgenerator.image.ImageWriter
 import io.hsar.mapgenerator.terrain.TerrainMapGenerator
-import java.nio.file.Path
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
+import java.nio.file.Path
 import kotlin.system.exitProcess
 
 @Parameters(commandDescription = "Generates a random terrain map and shows it in a GUI window.")
@@ -63,20 +63,20 @@ abstract class Command(val name: String) : Runnable {
         description = "The height of the map to generate, in pixels. Defaults to 1080.",
         required = false
     )
-    private var height = 1080
+    private var height = 720
 
     @Parameter(
         names = ["--width"],
         description = "The width of the map to generate, in pixels. Defaults to 720.",
         required = false
     )
-    private var width = 720
+    private var width = 1080
 
     protected val generator = TerrainMapGenerator(
         metresPerPixel = metresPerPixel,
         metresPerContour = metresPerContour,
-        height = height,
         width = width,
+        height = height,
     )
 
     companion object {

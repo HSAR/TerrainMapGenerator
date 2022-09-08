@@ -10,8 +10,8 @@ object ImageUtils {
      */
     fun List<List<Double>>.toBufferedImage() = BufferedImage(this.size, this[0].size, BufferedImage.TYPE_INT_ARGB)
         .also { image ->
-            for (y in 0 until this[0].size) {
-                for (x in this.indices) {
+            for (x in 0 until this.size) {
+                for (y in 0 until this[0].size) {
                     // Enforce data validity by truncating images at 0 and 1.
                     val color = this[x][y]
                         .let { java.lang.Double.max(it, 0.0) }
@@ -21,6 +21,8 @@ object ImageUtils {
                 }
             }
         }
+
+    fun Array<DoubleArray>.toBufferedImage() = this.map { it.toList() }.toBufferedImage()
 
     /**
      * Combines two images together by using the brightest color at each pixel.
