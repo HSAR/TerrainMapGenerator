@@ -25,12 +25,15 @@ object ImageUtils {
     /**
      * Combines two images together by using the brightest color at each pixel.
      */
-    operator fun BufferedImage.plus(other: BufferedImage) = BufferedImage(this.width, this.height, BufferedImage.TYPE_INT_ARGB)
-        .also { image ->
-            val graphics = image.graphics
-            graphics.drawImage(this, 0, 0, null)
-            graphics.drawImage(other, 0, 0, null)
-        }
+    operator fun BufferedImage.plus(other: BufferedImage) =
+        BufferedImage(this.width, this.height, BufferedImage.TYPE_INT_ARGB)
+            .also { image ->
+                val graphics = image.graphics
+                graphics.drawImage(this, 0, 0, null)
+                graphics.drawImage(other, 0, 0, null)
+            }
+
+    fun List<BufferedImage>.compose() = this.reduce { acc, curr -> acc + curr }
 
     private fun Color.toHSB() = Color.RGBtoHSB(this.red, this.green, this.blue, null)
 

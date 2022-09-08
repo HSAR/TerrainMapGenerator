@@ -3,18 +3,19 @@ package io.hsar.mapgenerator.terrain
 import io.hsar.mapgenerator.graph.GraphUtils.relax
 import io.hsar.mapgenerator.graph.toPoint
 import io.hsar.mapgenerator.image.CellImageRenderer
+import io.hsar.mapgenerator.image.ContourRenderer
 import io.hsar.mapgenerator.image.ImageBuilder
-import io.hsar.mapgenerator.image.ImageUtils.plus
+import io.hsar.mapgenerator.image.ImageUtils.compose
 import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
 import io.hsar.mapgenerator.map.Cell
 import io.hsar.mapgenerator.randomness.NoiseGenerator
 import io.hsar.mapgenerator.randomness.PointGenerator
+import java.awt.image.BufferedImage
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import org.imgscalr.Scalr
 import org.kynosarges.tektosyne.geometry.RectD
 import org.kynosarges.tektosyne.geometry.Voronoi
-import java.awt.image.BufferedImage
 import kotlin.math.round
 
 
@@ -28,7 +29,7 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
                 Voronoi.findAll(points.toTypedArray(), RectD(0.0, 0.0, width.toDouble(), height.toDouble()))
             }
             .relax(height, width)
-            .relax(height, width)
+//            .relax(height, width)
 
         val regions = graph.voronoiRegions().map { it.map { it.toPoint() } }
         val mapCells = graph.generatorSites
@@ -53,7 +54,13 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
             .toBufferedImage()
             .let { originalImage -> Scalr.resize(originalImage, height); }
 
-        return noiseImage + graphImage
+        val contourImage = ContourRenderer(noiseImage).drawContour(0.5)
+
+        return listOf(
+//            noiseImage,
+//            graphImage,
+            contourImage
+        ).compose()
     }
 
     companion object {
