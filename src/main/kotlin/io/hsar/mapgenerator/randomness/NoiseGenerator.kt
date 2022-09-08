@@ -22,7 +22,9 @@ class NoiseGenerator(seed: Long = Random.Default.nextLong()) {
     /**
      * Generate the Simplex noise value for the given co-ordinate. Results are in the range of 0.0 to 1.0.
      */
-    fun generatePoint(x: Double, y: Double) = noise.getNoise2D(x, y).getValue(DEFAULT_RANGE)
+    fun generatePoint(x: Double, y: Double, scaleFactor: Double = 1.0) = noise
+        .getNoise2D(x * scaleFactor, y * scaleFactor)
+        .getValue(DEFAULT_RANGE)
 
     companion object {
         private val DEFAULT_RANGE = Range(0.0, 1.0)

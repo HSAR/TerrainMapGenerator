@@ -1,8 +1,10 @@
 package io.hsar.mapgenerator.image
 
-import io.hsar.mapgenerator.image.CellImageRenderer.Palette.COLOUR_MAP
+import io.hsar.mapgenerator.image.CellImageRenderer.Palette.COLORS
+import io.hsar.mapgenerator.image.CellImageRenderer.Palette.COLOR_MAP
 import io.hsar.mapgenerator.map.Cell
 import io.hsar.mapgenerator.randomness.NoiseGenerator
+import io.hsar.mapgenerator.terrain.TerrainMapGenerator
 import java.awt.Color
 import kotlin.math.abs
 
@@ -13,18 +15,19 @@ object CellImageRenderer {
         drawPoint(cell.site, color = Color.RED)
     }
 
-    private fun determineCellColor(cell: Cell): Color = cell.shape.map { (x, y) -> determineColor(NoiseGenerator.DEFAULT.generatePoint(x, y)) }
-        .groupingBy { it }.eachCount()
-        .maxByOrNull { it.value }!!
-        .key
+    private fun determineCellColor(cell: Cell): Color = cell.shape
+        .map { (x, y) ->
+            determineColor(NoiseGenerator.DEFAULT.generatePoint(x, y, TerrainMapGenerator.SAMPLE_SIZE))
+        }
+        .minByOrNull { COLORS.indexOf(it) }!!
 
     /**
      * Based on a Double value between 0.0 and 1.0, issue a colour based on linearly rationing out the palette colours.
      */
     private fun determineColor(value: Double): Color {
         // Select closest key by smallest difference
-        val key = COLOUR_MAP.keys.minByOrNull { v -> abs(v - value) }!!
-        return COLOUR_MAP.getOrElse(key) { throw IllegalStateException("Failed to find a matching color for value $value.") }
+        val key = COLOR_MAP.keys.minByOrNull { v -> abs(v - value) }!!
+        return COLOR_MAP.getOrElse(key) { throw IllegalStateException("Failed to find a matching color for value $value.") }
     }
 
     object Palette {
@@ -39,11 +42,11 @@ object CellImageRenderer {
 
         private val segments = COLORS.size.toDouble()
 
-        val COLOUR_MAP: Map<Double, Color> = COLORS
+        val COLOR_MAP: Map<Double, Color> = COLORS
             .mapIndexed { index, color ->
                 val endOfSegment = (index + 1) / segments
                 val beginningOfSegment = index / segments
-                val midPoint = listOf(beginningOfSegment, endOfSegment).average()
+                val midPoint = (beginningOfSegment + endOfSegment) / 2
                 midPoint to color
             }.toMap()
     }

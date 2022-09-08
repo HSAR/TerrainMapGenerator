@@ -59,7 +59,7 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
     companion object {
         private val logger: Logger = LogManager.getLogger(TerrainMapGenerator::class.java)
 
-        private val NUM_POINTS = 50
-        private val SAMPLE_SIZE = 0.01
+        val NUM_POINTS = 50
+        val SAMPLE_SIZE = 0.02
     }
 }
