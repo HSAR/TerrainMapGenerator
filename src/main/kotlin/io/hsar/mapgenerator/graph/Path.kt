@@ -92,32 +92,13 @@ object Path {
                     else -> throw IllegalStateException("Comparison of two values somehow was neither >, < or ==")
                 }
             }
-            SW -> {
-                val yIntercept1 = getNegInterceptY(point1)
-                val yIntercept2 = getNegInterceptY(point2)
-                when {
-                    yIntercept1 == yIntercept2 -> return listOf(Line(point1, point2))
-                    yIntercept1 > yIntercept2 -> yIntercept1 to W // 2 is "higher"
-                    yIntercept1 < yIntercept2 -> yIntercept1 to S // 2 is "lower"
-                    else -> throw IllegalStateException("Comparison of two values somehow was neither >, < or ==")
-                }
-            }
-            NW -> {
-                val yIntercept1 = getPosInterceptY(point1)
-                val yIntercept2 = getPosInterceptY(point2)
-                when {
-                    yIntercept1 == yIntercept2 -> return listOf(Line(point1, point2))
-                    yIntercept1 > yIntercept2 -> yIntercept1 to N // 2 is "higher"
-                    yIntercept1 < yIntercept2 -> yIntercept1 to W // 2 is "lower"
-                    else -> throw IllegalStateException("Comparison of two values somehow was neither >, < or ==")
-                }
-            }
+            SW -> return createAnglePath(point2, point1) //creates symmetry of function, so that f(x, y) = f(y, x)
+            NW -> return createAnglePath(point2, point1)
         }
 
         val turnPoint = when (mainDirection to subsequentDirection) {
             (NE to N), (SW to S) -> Point(point2.x, -point2.x + yIntercept)
-            (NE to E) -> Point(point2.y + yIntercept, point2.y)
-            (SW to W) -> Point(-point2.y + yIntercept, point2.y)
+            (NE to E), (SW to W) -> Point(-point2.y + yIntercept, point2.y)
             (SE to S), (NW to N) -> Point(point2.x, point2.x + yIntercept)
             (SE to E), (NW to W) -> Point(point2.y - yIntercept, point2.y)
             else -> throw IllegalStateException("Not possible to reach here")
