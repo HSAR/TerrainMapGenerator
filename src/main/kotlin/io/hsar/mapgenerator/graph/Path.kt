@@ -105,8 +105,8 @@ object Path {
         val turnPoint1 = Point(turnStartPoint.x + deltaX, turnStartPoint.y)
         val turnLine1 = Line(turnStartPoint, turnPoint1)
 
-        val deltaY = getTurningDelta(turnStartPoint.x, turnEndPoint.x)
-        val turnPoint2 = Point(turnEndPoint.x, turnEndPoint.y + deltaY)
+        val deltaY = getTurningDelta(turnStartPoint.y, turnEndPoint.y)
+        val turnPoint2 = Point(turnEndPoint.x, turnEndPoint.y - deltaY)
         val turnLine2 = Line(turnPoint1, turnPoint2)
 
         val turnLine3 = Line(turnPoint2, turnEndPoint)
@@ -117,12 +117,12 @@ object Path {
         turnStartPoint: Point,
         turnEndPoint: Point
     ): List<Line> {
-        val deltaY = getTurningDelta(turnStartPoint.x, turnEndPoint.x)
+        val deltaY = getTurningDelta(turnStartPoint.y, turnEndPoint.y)
         val turnPoint1 = Point(turnStartPoint.x, turnStartPoint.y + deltaY)
         val turnLine1 = Line(turnStartPoint, turnPoint1)
 
         val deltaX = getTurningDelta(turnStartPoint.x, turnEndPoint.x)
-        val turnPoint2 = Point(turnEndPoint.x + deltaX, turnEndPoint.y)
+        val turnPoint2 = Point(turnEndPoint.x - deltaX, turnEndPoint.y)
         val turnLine2 = Line(turnPoint1, turnPoint2)
 
         val turnLine3 = Line(turnPoint2, turnEndPoint)
