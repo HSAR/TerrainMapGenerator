@@ -66,9 +66,6 @@ class ImageBuilder(val width: Int, val height: Int) {
     fun drawDiagonalPath(line: Line, color: Color) = drawDiagonalPath(line.site1, line.site2, color)
 
     fun drawDiagonalPath(point1: Point, point2: Point, color: Color): ImageBuilder {
-        val (p1x, p1y) = point1
-        val (p2x, p2y) = point2
-
         val pathLines = Path.createPath(point1, point2)
         drawLines(pathLines, color)
         return this

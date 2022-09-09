@@ -1,8 +1,10 @@
 package io.hsar.mapgenerator.terrain
 
-import io.hsar.mapgenerator.graph.GraphUtils.relax
+import com.raylabz.opensimplex.Range
+import com.raylabz.opensimplex.RangedValue
 import io.hsar.mapgenerator.graph.toLine
 import io.hsar.mapgenerator.graph.toPoint
+import io.hsar.mapgenerator.graph.toPointD
 import io.hsar.mapgenerator.image.CellImageRenderer
 import io.hsar.mapgenerator.image.ContourRenderer
 import io.hsar.mapgenerator.image.ImageBuilder
@@ -10,7 +12,6 @@ import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
 import io.hsar.mapgenerator.map.Cell
 import io.hsar.mapgenerator.map.TerrainGenerator
 import io.hsar.mapgenerator.randomness.NoiseGenerator
-import io.hsar.mapgenerator.randomness.PointGenerator
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import org.kynosarges.tektosyne.geometry.RectD
@@ -31,11 +32,21 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
         val numPoints = height * width / POINT_RATIO
 
         val clipRect = RectD(0.0, 0.0, width.toDouble(), height.toDouble())
-        val graph = (0..numPoints).map { PointGenerator.randomDoublePoint(width.toDouble(), height.toDouble()) }
-            .let { points ->
-                Voronoi.findAll(points.toTypedArray(), clipRect)
+        val rangeX = Range(0.0, width.toDouble())
+        val rangeY = Range(0.0, height.toDouble())
+//        val points = (0..numPoints).map { PointGenerator.randomDoublePoint(rangeX, rangeY) }
+        val points = listOf(
+            RangedValue(rangeX, width * 0.5) to RangedValue(rangeY, height * 0.7),
+            RangedValue(rangeX, width * 0.3) to RangedValue(rangeY, height * 0.3)
+        )
+        val graph = points
+            .map {
+                it.toPoint(rangeX, rangeY).toPointD()
             }
-            .relax(height, width)
+            .let { adjustedPoints ->
+                Voronoi.findAll(adjustedPoints.toTypedArray(), clipRect)
+            }
+//            .relax(height, width)
 //            .relax(height, width)
 
         val regions = graph.voronoiRegions().map { it.map { it.toPoint() } }

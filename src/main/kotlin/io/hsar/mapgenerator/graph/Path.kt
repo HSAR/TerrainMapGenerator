@@ -1,5 +1,13 @@
 package io.hsar.mapgenerator.graph
 
+import io.hsar.mapgenerator.graph.Path.CompassRose.E
+import io.hsar.mapgenerator.graph.Path.CompassRose.N
+import io.hsar.mapgenerator.graph.Path.CompassRose.NE
+import io.hsar.mapgenerator.graph.Path.CompassRose.NW
+import io.hsar.mapgenerator.graph.Path.CompassRose.S
+import io.hsar.mapgenerator.graph.Path.CompassRose.SE
+import io.hsar.mapgenerator.graph.Path.CompassRose.SW
+import io.hsar.mapgenerator.graph.Path.CompassRose.W
 import kotlin.math.sqrt
 
 object Path {
@@ -10,58 +18,115 @@ object Path {
      * For any arbitrary two points, generates a path that emerges diagonally from point1 towards point2, passes it and comes back around in an octagon.
      */
     fun createPath(point1: Point, point2: Point): List<Line> {
-        val direction = when {
-            (point1.x == point2.x) && (point1.y < point2.y) -> CompassRose.N
-            (point1.x < point2.x) && (point1.y < point2.y) -> CompassRose.NE
-            (point1.x < point2.x) && (point1.y == point2.y) -> CompassRose.E
-            (point1.x < point2.x) && (point1.y > point2.y) -> CompassRose.SE
-            (point1.x == point2.x) && (point1.y > point2.y) -> CompassRose.S
-            (point1.x > point2.x) && (point1.y > point2.y) -> CompassRose.SW
-            (point1.x > point2.x) && (point1.y == point2.y) -> CompassRose.W
-            (point1.x > point2.x) && (point1.y < point2.y) -> CompassRose.NW
-            else -> throw IllegalStateException("Failed to navigate between $point1 and $point2")
+        val mainDirection = determineDirection(point1, point2)
+        val c = when (mainDirection) {
+            N, NE, E, SW -> getPosInterceptY(point1)
+            SE, S, W, NW -> getPosInterceptY(point2)
         }
 
-        val c = when (direction) {
-            CompassRose.N, CompassRose.NE, CompassRose.E, CompassRose.SW -> getPosInterceptY(point1)
-            CompassRose.SE, CompassRose.S, CompassRose.W, CompassRose.NW -> getPosInterceptY(point2)
-        }
-
-        val d = when (direction) {
-            CompassRose.N, CompassRose.NE, CompassRose.E, CompassRose.SW -> getNegInterceptY(point1)
-            CompassRose.SE, CompassRose.S, CompassRose.W, CompassRose.NW -> getNegInterceptY(point2)
+        val d = when (mainDirection) {
+            N, NE, E, SW -> getNegInterceptY(point2)
+            SE, S, W, NW -> getNegInterceptY(point1)
         }
 
         val turningOffX = (d - c) / 2.0
         val turningOffY = (c + d) / 2.0
-        val turningOffPoint = Point(turningOffX, turningOffY)
+        val turnStartPoint = Point(turningOffX, turningOffY)
 
-        val diagonalLine1 = Line(point1, turningOffPoint)
+        val diagonalLineToTurnStart = Line(point1, turnStartPoint)
 
-        val octagonSideLength = getOctagonSideLength(turningOffPoint.x, point2.x)
-        val octagonPoint1 = Point(turningOffX + (octagonSideLength / 2), turningOffY)
-        val turningOffSegment1 = Line(turningOffPoint, octagonPoint1)
+        val afterTurningDirection = determineDirection(turnStartPoint, point2)
+        val segmentWidthX = getTurningDelta(turnStartPoint.x, point2.x)
+        val segmentWidthY = getTurningDelta(point2.y, turnStartPoint.y)
+        val turnLines = when (mainDirection) {
+            N, NE, E -> when (afterTurningDirection) {
+                SE -> turnHorizontalFirst(turnStartPoint, point2)
+                NW -> turnVerticalFirst(turnStartPoint, point2)
+                else -> throw IllegalStateException("Turning point was incorrectly calculated, $turnStartPoint was not 45 degrees to $point2")
+            }
+            SE, S -> when (afterTurningDirection) {
+                NE -> turnHorizontalFirst(turnStartPoint, point2)
+                SW -> turnVerticalFirst(turnStartPoint, point2)
+                else -> throw IllegalStateException("Turning point was incorrectly calculated, $turnStartPoint was not 45 degrees to $point2")
+            }
+            SW, W -> when (afterTurningDirection) {
+                SE -> turnVerticalFirst(turnStartPoint, point2)
+                NW -> turnHorizontalFirst(turnStartPoint, point2)
+                else -> throw IllegalStateException("Turning point was incorrectly calculated, $turnStartPoint was not 45 degrees to $point2")
+            }
+            NW -> when (afterTurningDirection) {
+                SE -> turnHorizontalFirst(turnStartPoint, point2)
+                NW -> turnVerticalFirst(turnStartPoint, point2)
+                else -> throw IllegalStateException("Turning point was incorrectly calculated, $turnStartPoint was not 45 degrees to $point2")
+            }
+        }
 
-        val octagonPoint2 = Point(point2.x, point2.y - (octagonSideLength / 2))
-        val turningOffSegment2 = Line(octagonPoint1, octagonPoint2)
-        val turningOffSegment3 = Line(octagonPoint2, point2)
-
-        return listOf(diagonalLine1, turningOffSegment1, turningOffSegment2, turningOffSegment3)
+        return listOf(diagonalLineToTurnStart) + turnLines
     }
 
     /**
      * For the NE/SW diagonal line, get the Y-intercept that would cause the line to pass through the given point.
      */
-    fun getPosInterceptY(point: Point): Double = point.y - point.x
+    private fun getPosInterceptY(point: Point): Double = point.y - point.x
 
     /**
      * For the NW/SE diagonal line, get the Y-intercept that would cause the line to pass through the given point.
      */
-    fun getNegInterceptY(point: Point): Double = point.y + point.x
+    private fun getNegInterceptY(point: Point): Double = point.y + point.x
 
-    fun getOctagonSideLength(x1: Double, x2: Double): Double {
-        val dx = x1 - x2
-        return (2 * SQRT_2 * dx) / (2 + SQRT_2)
+    /**
+     * For two given points, generate the length that will join the two with a path of 3 segments, turning 45 degrees each time.
+     */
+    private fun getTurningDelta(pos1: Double, pos2: Double): Double {
+        val dx = pos2 - pos1
+        return (SQRT_2 * dx) / (1 + SQRT_2)
+    }
+
+    /**
+     * Returns the direction of point2 from point1.
+     */
+    private fun determineDirection(point1: Point, point2: Point): CompassRose = when {
+        (point1.x == point2.x) && (point1.y < point2.y) -> N
+        (point1.x < point2.x) && (point1.y < point2.y) -> NE
+        (point1.x < point2.x) && (point1.y == point2.y) -> E
+        (point1.x < point2.x) && (point1.y > point2.y) -> SE
+        (point1.x == point2.x) && (point1.y > point2.y) -> S
+        (point1.x > point2.x) && (point1.y > point2.y) -> SW
+        (point1.x > point2.x) && (point1.y == point2.y) -> W
+        (point1.x > point2.x) && (point1.y < point2.y) -> NW
+        else -> throw IllegalStateException("Failed to navigate between $point1 and $point2")
+    }
+
+    private fun turnHorizontalFirst(
+        turnStartPoint: Point,
+        turnEndPoint: Point
+    ): List<Line> {
+        val deltaX = getTurningDelta(turnStartPoint.x, turnEndPoint.x)
+        val turnPoint1 = Point(turnStartPoint.x + deltaX, turnStartPoint.y)
+        val turnLine1 = Line(turnStartPoint, turnPoint1)
+
+        val deltaY = getTurningDelta(turnStartPoint.x, turnEndPoint.x)
+        val turnPoint2 = Point(turnEndPoint.x, turnEndPoint.y + deltaY)
+        val turnLine2 = Line(turnPoint1, turnPoint2)
+
+        val turnLine3 = Line(turnPoint2, turnEndPoint)
+        return listOf(turnLine1, turnLine2, turnLine3)
+    }
+
+    private fun turnVerticalFirst(
+        turnStartPoint: Point,
+        turnEndPoint: Point
+    ): List<Line> {
+        val deltaY = getTurningDelta(turnStartPoint.x, turnEndPoint.x)
+        val turnPoint1 = Point(turnStartPoint.x, turnStartPoint.y + deltaY)
+        val turnLine1 = Line(turnStartPoint, turnPoint1)
+
+        val deltaX = getTurningDelta(turnStartPoint.x, turnEndPoint.x)
+        val turnPoint2 = Point(turnEndPoint.x + deltaX, turnEndPoint.y)
+        val turnLine2 = Line(turnPoint1, turnPoint2)
+
+        val turnLine3 = Line(turnPoint2, turnEndPoint)
+        return listOf(turnLine1, turnLine2, turnLine3)
     }
 
     /**
@@ -71,5 +136,5 @@ object Path {
         return TODO("Actually implement this")
     }
 
-    val SQRT_2 = sqrt(2.0)
+    private val SQRT_2 = sqrt(2.0)
 }
