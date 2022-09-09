@@ -70,15 +70,58 @@ object Path {
      */
     fun createAnglePath(point1: Point, point2: Point): List<Line> {
         val mainDirection = determineDirection(point1, point2)
-        val yIntercept = when (mainDirection) {
+        val (yIntercept, subsequentDirection) = when (mainDirection) {
             N, S, E, W -> return listOf(Line(point1, point2))
-            NE, SW -> getNegInterceptY(point1)
-            SE, NW -> getPosInterceptY(point1)
+            NE -> {
+                val yIntercept1 = getNegInterceptY(point1)
+                val yIntercept2 = getNegInterceptY(point2)
+                when {
+                    yIntercept1 == yIntercept2 -> return listOf(Line(point1, point2))
+                    yIntercept1 > yIntercept2 -> yIntercept1 to N // 2 is "higher"
+                    yIntercept1 < yIntercept2 -> yIntercept1 to E // 2 is "lower"
+                    else -> throw IllegalStateException("Comparison of two values somehow was neither >, < or ==")
+                }
+            }
+            SE -> {
+                val yIntercept1 = getPosInterceptY(point1)
+                val yIntercept2 = getPosInterceptY(point2)
+                when {
+                    yIntercept1 == yIntercept2 -> return listOf(Line(point1, point2))
+                    yIntercept1 > yIntercept2 -> yIntercept1 to E // 2 is "higher"
+                    yIntercept1 < yIntercept2 -> yIntercept1 to S // 2 is "lower"
+                    else -> throw IllegalStateException("Comparison of two values somehow was neither >, < or ==")
+                }
+            }
+            SW -> {
+                val yIntercept1 = getNegInterceptY(point1)
+                val yIntercept2 = getNegInterceptY(point2)
+                when {
+                    yIntercept1 == yIntercept2 -> return listOf(Line(point1, point2))
+                    yIntercept1 > yIntercept2 -> yIntercept1 to W // 2 is "higher"
+                    yIntercept1 < yIntercept2 -> yIntercept1 to S // 2 is "lower"
+                    else -> throw IllegalStateException("Comparison of two values somehow was neither >, < or ==")
+                }
+            }
+            NW -> {
+                val yIntercept1 = getPosInterceptY(point1)
+                val yIntercept2 = getPosInterceptY(point2)
+                when {
+                    yIntercept1 == yIntercept2 -> return listOf(Line(point1, point2))
+                    yIntercept1 > yIntercept2 -> yIntercept1 to N // 2 is "higher"
+                    yIntercept1 < yIntercept2 -> yIntercept1 to W // 2 is "lower"
+                    else -> throw IllegalStateException("Comparison of two values somehow was neither >, < or ==")
+                }
+            }
         }
 
-        val possibleTurnPointX = Point(point2.x, -point2.x + yIntercept)
-        val possibleTurnPointY = Point(-point2.y + yIntercept, point2.y)
-        val turnPoint = listOf(possibleTurnPointX, possibleTurnPointY).minByOrNull { manhattanDistance(point1, it) }!!
+        val turnPoint = when (mainDirection to subsequentDirection) {
+            (NE to N), (SW to S) -> Point(point2.x, -point2.x + yIntercept)
+            (NE to E) -> Point(point2.y + yIntercept, point2.y)
+            (SW to W) -> Point(-point2.y + yIntercept, point2.y)
+            (SE to S), (NW to N) -> Point(point2.x, point2.x + yIntercept)
+            (SE to E), (NW to W) -> Point(point2.y - yIntercept, point2.y)
+            else -> throw IllegalStateException("Not possible to reach here")
+        }
         return listOf(Line(point1, turnPoint), Line(turnPoint, point2))
     }
 
