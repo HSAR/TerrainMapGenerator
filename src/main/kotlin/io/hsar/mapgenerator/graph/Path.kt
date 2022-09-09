@@ -20,13 +20,13 @@ object Path {
     fun createPath(point1: Point, point2: Point): List<Line> {
         val mainDirection = determineDirection(point1, point2)
         val c = when (mainDirection) {
-            N, NE, E, SW -> getPosInterceptY(point1)
-            SE, S, W, NW -> getPosInterceptY(point2)
+            N, NE, E, SW -> getPosInterceptY(point2)
+            SE, S, W, NW -> getPosInterceptY(point1)
         }
 
         val d = when (mainDirection) {
-            N, NE, E, SW -> getNegInterceptY(point2)
-            SE, S, W, NW -> getNegInterceptY(point1)
+            N, NE, E, SW -> getNegInterceptY(point1)
+            SE, S, W, NW -> getNegInterceptY(point2)
         }
 
         val turningOffX = (d - c) / 2.0
@@ -86,14 +86,14 @@ object Path {
      * Returns the direction of point2 from point1.
      */
     private fun determineDirection(point1: Point, point2: Point): CompassRose = when {
-        (point1.x == point2.x) && (point1.y < point2.y) -> N
-        (point1.x < point2.x) && (point1.y < point2.y) -> NE
+        (point1.x == point2.x) && (point1.y > point2.y) -> N
+        (point1.x < point2.x) && (point1.y > point2.y) -> NE
         (point1.x < point2.x) && (point1.y == point2.y) -> E
-        (point1.x < point2.x) && (point1.y > point2.y) -> SE
-        (point1.x == point2.x) && (point1.y > point2.y) -> S
-        (point1.x > point2.x) && (point1.y > point2.y) -> SW
+        (point1.x < point2.x) && (point1.y < point2.y) -> SE
+        (point1.x == point2.x) && (point1.y < point2.y) -> S
+        (point1.x > point2.x) && (point1.y < point2.y) -> SW
         (point1.x > point2.x) && (point1.y == point2.y) -> W
-        (point1.x > point2.x) && (point1.y < point2.y) -> NW
+        (point1.x > point2.x) && (point1.y > point2.y) -> NW
         else -> throw IllegalStateException("Failed to navigate between $point1 and $point2")
     }
 
