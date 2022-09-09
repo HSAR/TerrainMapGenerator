@@ -8,6 +8,7 @@ import io.hsar.mapgenerator.graph.Path.CompassRose.S
 import io.hsar.mapgenerator.graph.Path.CompassRose.SE
 import io.hsar.mapgenerator.graph.Path.CompassRose.SW
 import io.hsar.mapgenerator.graph.Path.CompassRose.W
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 object Path {
@@ -15,9 +16,9 @@ object Path {
     enum class CompassRose { N, NE, E, SE, S, SW, W, NW }
 
     /**
-     * For any arbitrary two points, generates a path that emerges diagonally from point1 towards point2, passes it and comes back around in an octagon.
+     * For any two points, generates a path that emerges diagonally from point1 towards point2, passes it and comes back around with 45-degree turns.
      */
-    fun createPath(point1: Point, point2: Point): List<Line> {
+    fun createTurningPath(point1: Point, point2: Point): List<Line> {
         val mainDirection = determineDirection(point1, point2)
         val c = when (mainDirection) {
             N, NE, E, SW -> getPosInterceptY(point2)
@@ -65,6 +66,23 @@ object Path {
     }
 
     /**
+     * For any two points, generates a path that emerges diagonally from point1 towards point2, then makes one 45-degree turn.
+     */
+    fun createAnglePath(point1: Point, point2: Point): List<Line> {
+        val mainDirection = determineDirection(point1, point2)
+        val yIntercept = when (mainDirection) {
+            N, S, E, W -> return listOf(Line(point1, point2))
+            NE, SW -> getNegInterceptY(point1)
+            SE, NW -> getPosInterceptY(point1)
+        }
+
+        val possibleTurnPointX = Point(point2.x, -point2.x + yIntercept)
+        val possibleTurnPointY = Point(-point2.y + yIntercept, point2.y)
+        val turnPoint = listOf(possibleTurnPointX, possibleTurnPointY).minByOrNull { manhattanDistance(point1, it) }!!
+        return listOf(Line(point1, turnPoint), Line(turnPoint, point2))
+    }
+
+    /**
      * For the NE/SW diagonal line, get the Y-intercept that would cause the line to pass through the given point.
      */
     private fun getPosInterceptY(point: Point): Double = point.y - point.x
@@ -85,7 +103,7 @@ object Path {
     /**
      * Returns the direction of point2 from point1.
      */
-    private fun determineDirection(point1: Point, point2: Point): CompassRose = when {
+    private fun determineDirection(point1: Point, point2: Point): Path.CompassRose = when {
         (point1.x == point2.x) && (point1.y > point2.y) -> N
         (point1.x < point2.x) && (point1.y > point2.y) -> NE
         (point1.x < point2.x) && (point1.y == point2.y) -> E
@@ -127,6 +145,12 @@ object Path {
 
         val turnLine3 = Line(turnPoint2, turnEndPoint)
         return listOf(turnLine1, turnLine2, turnLine3)
+    }
+
+    private fun manhattanDistance(point1: Point, point2: Point): Double {
+        val dx = abs(point1.x - point2.x)
+        val dy = abs(point1.y - point2.y)
+        return dx + dy
     }
 
     /**
