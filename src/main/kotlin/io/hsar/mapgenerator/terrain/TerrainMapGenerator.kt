@@ -1,6 +1,8 @@
 package io.hsar.mapgenerator.terrain
 
 import com.raylabz.opensimplex.Range
+import io.hsar.mapgenerator.graph.GraphUtils
+import io.hsar.mapgenerator.graph.GraphUtils.toAdjacentMap
 import io.hsar.mapgenerator.graph.toLine
 import io.hsar.mapgenerator.graph.toPoint
 import io.hsar.mapgenerator.graph.toPointD
@@ -8,9 +10,7 @@ import io.hsar.mapgenerator.image.CellImageRenderer
 import io.hsar.mapgenerator.image.ContourRenderer
 import io.hsar.mapgenerator.image.ImageBuilder
 import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
-import io.hsar.mapgenerator.map.Cell
 import io.hsar.mapgenerator.map.TerrainGenerator
-import io.hsar.mapgenerator.randomness.NoiseGenerator
 import io.hsar.mapgenerator.randomness.PointGenerator
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
@@ -53,19 +53,13 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
 //            .relax(height, width)
 
         val regions = graph.voronoiRegions().map { it.map { it.toPoint() } }
-        val mapCells = graph.generatorSites
-            .mapIndexed { index, pointD ->
-                Cell(
-                    site = pointD.toPoint(),
-                    shape = regions[index],
-                    height = NoiseGenerator.DEFAULT.generatePoint(pointD.x, pointD.y)
-                )
-            }
-
-
         val sites = graph.generatorSites.map { it.toPoint() }
         val vertices = graph.voronoiVertices.map { it.toPoint() }
         val siteJoins = graph.voronoiEdges.map { it.toLine(sites, vertices) }
+
+        val mapCells = GraphUtils.generateCells(
+            sites, regions, graph.voronoiEdges.toAdjacentMap()
+        )
 
         val graphImage: BufferedImage = ImageBuilder(width = width, height = height)
             .fillTransparent()

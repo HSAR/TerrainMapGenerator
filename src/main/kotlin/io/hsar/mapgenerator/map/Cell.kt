@@ -5,5 +5,6 @@ import io.hsar.mapgenerator.graph.Point
 data class Cell(
     val site: Point,
     val shape: List<Point>,
-    val height: Double
+    val height: Double,
+    val adjacentCells: List<Int>
 )
