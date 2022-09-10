@@ -68,9 +68,9 @@ class FacilityRenderer(private val metresPerPixel: Double, private val imageBuil
 
         val perimeter = generatePerimeter(buildingsBoundingBox).translate(buildingsCentreDeltaX, buildingsCentreDeltaY)
 
-        imageBuilder.drawShapeFill(perimeter, color = Palette.BACKING)
+        imageBuilder.drawShapeFill(perimeter, color = Palette.Colours.BACKING)
 
-        imageBuilder.drawShapeFills(facility, color = Palette.LIGHT)
+        imageBuilder.drawShapeFills(facility, color = Palette.Colours.LIGHT)
     }
 
     /**

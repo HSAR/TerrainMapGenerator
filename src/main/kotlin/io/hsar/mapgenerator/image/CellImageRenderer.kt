@@ -1,7 +1,5 @@
 package io.hsar.mapgenerator.image
 
-import io.hsar.mapgenerator.image.CellImageRenderer.CellPalette.COLORS
-import io.hsar.mapgenerator.image.CellImageRenderer.CellPalette.COLOR_MAP
 import io.hsar.mapgenerator.map.Cell
 import io.hsar.mapgenerator.randomness.NoiseGenerator
 import io.hsar.mapgenerator.terrain.TerrainMapGenerator
@@ -19,25 +17,25 @@ class CellImageRenderer(private val imageBuilder: ImageBuilder) {
         .map { (x, y) ->
             determineColor(NoiseGenerator.DEFAULT.generatePoint(x, y, TerrainMapGenerator.SAMPLE_SIZE))
         }
-        .minByOrNull { COLORS.indexOf(it) }!!
+        .minByOrNull { CellPalette.COLORS.indexOf(it) }!!
 
     /**
      * Based on a Double value between 0.0 and 1.0, issue a colour based on linearly rationing out the palette colours.
      */
     private fun determineColor(value: Double): Color {
         // Select closest key by smallest difference
-        val key = COLOR_MAP.keys.minByOrNull { v -> abs(v - value) }!!
-        return COLOR_MAP.getOrElse(key) { throw IllegalStateException("Failed to find a matching color for value $value.") }
+        val key = CellPalette.COLOR_MAP.keys.minByOrNull { v -> abs(v - value) }!!
+        return CellPalette.COLOR_MAP.getOrElse(key) { throw IllegalStateException("Failed to find a matching color for value $value.") }
     }
 
     object CellPalette {
         val COLORS = listOf(
-            Palette.BLUE, // Blue
-            Palette.DARK,
-            Palette.MAIN,
-            Palette.LIGHT,
-            Palette.BACKING,
-            Palette.WHITE,
+            Palette.Colours.BLUE, // Blue
+            Palette.Colours.DARK,
+            Palette.Colours.MAIN,
+            Palette.Colours.LIGHT,
+            Palette.Colours.BACKING,
+            Palette.Colours.WHITE,
         )
 
         private val segments = COLORS.size.toDouble()

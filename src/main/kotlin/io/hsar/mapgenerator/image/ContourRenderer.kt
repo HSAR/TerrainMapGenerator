@@ -24,12 +24,12 @@ object ContourRenderer {
         val contourPolygons = generateClassic(heightData, xSteps, ySteps, contourLevels.toDoubleArray())
 
         return ImageBuilder(width = width, height = height)
-            .fillColour(Palette.MAIN)
+            .fillColour(Palette.Colours.MAIN)
 //            .drawPolyLines(contourPolygons, Color.decode("#FFFFFF"))
             .also {
                 contourPolygons.forEach { (contourHeight, countourPolygon) ->
                     val lineWeight = if (contourLevels.indexOf(contourHeight) % 5 == 0) 1.5f else 1.0f
-                    it.drawPolyLine(countourPolygon, Palette.LIGHT, lineWeight)
+                    it.drawPolyLine(countourPolygon, Palette.Colours.LIGHT, lineWeight)
                 }
             }
             .build()

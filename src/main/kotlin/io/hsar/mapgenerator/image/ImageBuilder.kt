@@ -3,13 +3,16 @@ package io.hsar.mapgenerator.image
 import io.hsar.mapgenerator.graph.Line
 import io.hsar.mapgenerator.graph.Path
 import io.hsar.mapgenerator.graph.Point
+import io.hsar.mapgenerator.graph.Rectangle
 import java.awt.AlphaComposite
 import java.awt.BasicStroke
 import java.awt.Color
+import java.awt.Font
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import kotlin.math.min
 import kotlin.math.roundToInt
+
 
 class ImageBuilder(val width: Int, val height: Int) {
 
@@ -49,12 +52,14 @@ class ImageBuilder(val width: Int, val height: Int) {
         return this
     }
 
-    fun drawLine(point1: Point, point2: Point, color: Color) {
+    fun drawLine(line: Line, color: Color, width: Float = 3.0f) = drawLine(line.site1, line.site2, color, width)
+
+    fun drawLine(point1: Point, point2: Point, color: Color, width: Float = 3.0f) {
         val (p1x, p1y) = point1
         val (p2x, p2y) = point2
 
         g2d.color = color
-        g2d.stroke = BasicStroke(3.0f)
+        g2d.stroke = BasicStroke(width)
         g2d.drawLine(p1x.roundToInt(), p1y.roundToInt(), p2x.roundToInt(), p2y.roundToInt())
     }
 
@@ -133,5 +138,24 @@ class ImageBuilder(val width: Int, val height: Int) {
         val xPoints = shape.map { min(it.x.roundToInt(), width) }.toIntArray()
         val yPoints = shape.map { min(it.y.roundToInt(), height) }.toIntArray()
         return xPoints to yPoints
+    }
+
+    fun drawString(point: Point, string: String, fontAndColour: Pair<Font, Color> = Palette.Fonts.BASE) {
+        g2d.font = fontAndColour.first
+        g2d.color = fontAndColour.second
+        g2d.drawString(string, point.x.toFloat(), point.y.toFloat())
+    }
+
+    /**
+     * Draw a String centered in the middle of a Rectangle.
+     */
+    fun drawCenteredString(rect: Rectangle, text: String, fontAndColour: Pair<Font, Color> = Palette.Fonts.BASE) {
+        // Get the FontMetrics
+        val metrics = g2d.getFontMetrics(fontAndColour.first)
+        // Determine the X coordinate for the text
+        val x = rect.centre.x + (rect.width - metrics.stringWidth(text)) / 2
+        // Determine the Y coordinate for the text (note we add the ascent, as in java 2d 0 is top of the screen)
+        val y = rect.centre.y + (rect.height - metrics.height) / 2 + metrics.ascent
+        drawString(Point(x, y), text, fontAndColour)
     }
 }

@@ -6,6 +6,8 @@ object RandomGenerator {
 
     fun generateBoolean() = ThreadLocalRandom.current().nextBoolean()
 
+    fun generateUniform(rangeMin: Int, rangeMax: Int) = ThreadLocalRandom.current().nextInt(rangeMin, rangeMax)
+
     fun generateUniform(rangeMin: Double, rangeMax: Double) = ThreadLocalRandom.current().nextDouble(rangeMin, rangeMax)
 
     /**

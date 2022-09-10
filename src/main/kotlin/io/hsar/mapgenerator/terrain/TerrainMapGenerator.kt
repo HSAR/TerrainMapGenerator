@@ -10,6 +10,7 @@ import io.hsar.mapgenerator.graph.toPointD
 import io.hsar.mapgenerator.image.CellImageRenderer
 import io.hsar.mapgenerator.image.ContourRenderer
 import io.hsar.mapgenerator.image.FacilityRenderer
+import io.hsar.mapgenerator.image.GridRenderer
 import io.hsar.mapgenerator.image.ImageBuilder
 import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
 import io.hsar.mapgenerator.image.Palette
@@ -68,7 +69,7 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
             .also { imageBuilder ->
                 val cellImageRenderer = CellImageRenderer(imageBuilder)
                 val facilityRenderer = FacilityRenderer(metresPerPixel, imageBuilder)
-                imageBuilder.drawDiagonalPaths(siteJoins, Palette.DARK)
+                imageBuilder.drawDiagonalPaths(siteJoins, Palette.Colours.DARK)
 
                 mapCells.forEach { cell ->
                     cellImageRenderer.drawCell(cell)
@@ -91,6 +92,12 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
 
     fun generateContourImage(): BufferedImage {
         return ContourRenderer.createImage(heightData = heightData, contourHeight = 0.025)
+    }
+
+    fun generateGridImage(): BufferedImage {
+        val imageBuilder = ImageBuilder(width = width, height = height)
+            .also { it.fillTransparent() }
+        return GridRenderer(imageBuilder).createImage(metresPerPixel)
     }
 
     companion object {

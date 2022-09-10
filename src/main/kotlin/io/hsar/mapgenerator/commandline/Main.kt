@@ -20,15 +20,19 @@ object ShowImageCommand : Command("show-map") {
             width = width,
             height = height,
         ).also {
-            it.generateGraphImage()
-                .let { image ->
-                    ImageFrame().showImage(image)
-                }
+//            it.generateGraphImage()
+//                .let { image ->
+//                    ImageFrame().showImage(image)
+//                }
 //            it.generateHeightImage()
 //                .let { image ->
 //                    ImageFrame().showImage(image)
 //                }
-            it.generateContourImage()
+//            it.generateContourImage()
+//                .let { image ->
+//                    ImageFrame().showImage(image)
+//                }
+            it.generateGridImage()
                 .let { image ->
                     ImageFrame().showImage(image)
                 }
