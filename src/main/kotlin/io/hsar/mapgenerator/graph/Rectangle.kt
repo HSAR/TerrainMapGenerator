@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.graph
 
+import java.awt.geom.Rectangle2D
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -58,3 +59,5 @@ data class Rectangle(val point1: Point, val point2: Point) {
         }
     }
 }
+
+fun Rectangle2D.toRectangle() = Rectangle(Point(this.minX, this.minY), Point(this.maxX, this.maxY))

@@ -43,7 +43,7 @@ class ImageBuilder(val width: Int, val height: Int) {
 
     fun drawLines(edges: Collection<Line>, color: Color = Color.BLACK): ImageBuilder {
         edges.forEach { (point1, point2, vertices) ->
-            drawLine(point1, point2, color)
+            drawLine(point1, point2, color = color)
 
             vertices.forEach { vPoint ->
                 drawPoint(point = vPoint, diameter = 2, color = Color.BLUE)
@@ -52,9 +52,9 @@ class ImageBuilder(val width: Int, val height: Int) {
         return this
     }
 
-    fun drawLine(line: Line, color: Color, width: Float = 3.0f) = drawLine(line.site1, line.site2, color, width)
+    fun drawLine(line: Line, color: Color, width: Float = 3.0f) = drawLine(line.site1, line.site2, width, color)
 
-    fun drawLine(point1: Point, point2: Point, color: Color, width: Float = 3.0f) {
+    fun drawLine(point1: Point, point2: Point, width: Float = 3.0f, color: Color) {
         val (p1x, p1y) = point1
         val (p2x, p2y) = point2
 
@@ -63,14 +63,14 @@ class ImageBuilder(val width: Int, val height: Int) {
         g2d.drawLine(p1x.roundToInt(), p1y.roundToInt(), p2x.roundToInt(), p2y.roundToInt())
     }
 
-    fun drawDiagonalPaths(lines: Collection<Line>, color: Color): ImageBuilder = lines
+    fun drawDiagonalPaths(lines: Collection<Line>, width: Float = 3.0f, color: Color): ImageBuilder = lines
         .map { line ->
-            drawDiagonalPath(line = line, color = color)
+            drawDiagonalPath(line = line, width = width, color = color)
         }.last()
 
-    fun drawDiagonalPath(line: Line, color: Color) = drawDiagonalPath(line.site1, line.site2, color)
+    fun drawDiagonalPath(line: Line, width: Float = 3.0f, color: Color) = drawDiagonalPath(line.site1, line.site2, width, color)
 
-    fun drawDiagonalPath(point1: Point, point2: Point, color: Color): ImageBuilder {
+    fun drawDiagonalPath(point1: Point, point2: Point, width: Float = 3.0f, color: Color): ImageBuilder {
         val pathLines = Path.createAnglePath(point1, point2)
         drawLines(pathLines, color)
         return this
@@ -147,15 +147,21 @@ class ImageBuilder(val width: Int, val height: Int) {
     }
 
     /**
-     * Draw a String centered in the middle of a Rectangle.
+     * Draw a String centered on a Point.
      */
-    fun drawCenteredString(rect: Rectangle, text: String, fontAndColour: Pair<Font, Color> = Palette.Fonts.BASE) {
+    fun drawCenteredString(point: Point, text: String, fontAndColour: Pair<Font, Color> = Palette.Fonts.BASE) {
         // Get the FontMetrics
-        val metrics = g2d.getFontMetrics(fontAndColour.first)
+        val renderedStringSize = getTextSize(text, fontAndColour.first)
         // Determine the X coordinate for the text
-        val x = rect.centre.x + (rect.width - metrics.stringWidth(text)) / 2
-        // Determine the Y coordinate for the text (note we add the ascent, as in java 2d 0 is top of the screen)
-        val y = rect.centre.y + (rect.height - metrics.height) / 2 + metrics.ascent
+        val x = point.x - renderedStringSize.centre.x
+        // Determine the Y coordinate for the text
+        val y = point.y - renderedStringSize.centre.y
+//        drawShapeOutline(renderedStringSize.shape.translate(x, y)) // For debug purposes, draws a rectangle around the drawn text
         drawString(Point(x, y), text, fontAndColour)
     }
+
+    fun getTextSize(text: String, font: Font): Rectangle = g2d.getFontMetrics(font)
+        .let {
+            Rectangle(Point.ORIGIN, Point(it.getStringBounds(text, g2d).width, -it.ascent.toDouble()))
+        }
 }

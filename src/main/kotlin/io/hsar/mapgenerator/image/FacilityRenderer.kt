@@ -37,8 +37,8 @@ class FacilityRenderer(private val metresPerPixel: Double, private val imageBuil
      * Buildings are generated randomly but their internal area has a range defined here in square metres.
      */
     private enum class BuildingSize(val sizeRange: Pair<Double, Double>) {
-        LARGE(50_000.0 to 200_000.0),
-        MEDIUM(10_000.0 to 40_000.0),
+        LARGE(20_000.0 to 80_000.0),
+        MEDIUM(5_000.0 to 20_000.0),
         SMALL(1_000.0 to 4_000.0),
     }
 

@@ -20,18 +20,18 @@ object ShowImageCommand : Command("show-map") {
             width = width,
             height = height,
         ).also {
-//            it.generateGraphImage()
-//                .let { image ->
-//                    ImageFrame().showImage(image)
-//                }
+            it.generateGraphImage()
+                .let { image ->
+                    ImageFrame().showImage(image)
+                }
 //            it.generateHeightImage()
 //                .let { image ->
 //                    ImageFrame().showImage(image)
 //                }
-//            it.generateContourImage()
-//                .let { image ->
-//                    ImageFrame().showImage(image)
-//                }
+            it.generateContourImage()
+                .let { image ->
+                    ImageFrame().showImage(image)
+                }
             it.generateGridImage()
                 .let { image ->
                     ImageFrame().showImage(image)
@@ -64,18 +64,24 @@ object SaveImageCommand : Command("save-map") {
                     ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
                     logger.info("Saved image to $filePath")
                 }
-            it.generateHeightImage()
-                .let { image ->
-                    val filePath = "height-$path"
-                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
-                    logger.info("Saved image to $filePath")
-                }
-            it.generateContourImage()
-                .let { image ->
-                    val filePath = "contour-$path"
-                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
-                    logger.info("Saved image to $filePath")
-                }
+//            it.generateHeightImage()
+//                .let { image ->
+//                    val filePath = "height-$path"
+//                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
+//                    logger.info("Saved image to $filePath")
+//                }
+//            it.generateContourImage()
+//                .let { image ->
+//                    val filePath = "contour-$path"
+//                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
+//                    logger.info("Saved image to $filePath")
+//                }
+//            it.generateGridImage()
+//                .let { image ->
+//                    val filePath = "grid-$path"
+//                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
+//                    logger.info("Saved image to $filePath")
+//                }
         }
     }
 }
@@ -84,10 +90,10 @@ abstract class Command(val name: String) : Runnable {
 
     @Parameter(
         names = ["--metresPerPixel"],
-        description = "The scale of the map to generate, in metres per pixel. Defaults to 10, so a 1080x720px image would cover 10.8x7.2km.",
+        description = "The scale of the map to generate, in metres per pixel. Defaults to 2, so a 1080x720px image would cover 2.2x1.4km.",
         required = false
     )
-    protected var metresPerPixel = 10.0
+    protected var metresPerPixel = 2.0
 
     @Parameter(
         names = ["--metresPerContour"],

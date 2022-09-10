@@ -13,7 +13,7 @@ import io.hsar.mapgenerator.image.FacilityRenderer
 import io.hsar.mapgenerator.image.GridRenderer
 import io.hsar.mapgenerator.image.ImageBuilder
 import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
-import io.hsar.mapgenerator.image.Palette
+import io.hsar.mapgenerator.image.PathRenderer
 import io.hsar.mapgenerator.map.TerrainGenerator
 import io.hsar.mapgenerator.randomness.PointGenerator
 import org.apache.logging.log4j.LogManager
@@ -21,6 +21,8 @@ import org.apache.logging.log4j.Logger
 import org.kynosarges.tektosyne.geometry.RectD
 import org.kynosarges.tektosyne.geometry.Voronoi
 import java.awt.image.BufferedImage
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 
 class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Double, val height: Int, val width: Int) {
@@ -32,7 +34,7 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
     val heightData = TerrainGenerator.generateTerrain(width = width, height = height)
 
     fun generateGraphImage(): BufferedImage {
-        val numPoints = height * width / POINT_RATIO
+        val numPoints = (sqrt(height.toDouble() * width) / POINT_RATIO).roundToInt()
 
         val clipRect = RectD(0.0, 0.0, width.toDouble(), height.toDouble())
         val rangeX = Range(0.0, width.toDouble())
@@ -69,7 +71,8 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
             .also { imageBuilder ->
                 val cellImageRenderer = CellImageRenderer(imageBuilder)
                 val facilityRenderer = FacilityRenderer(metresPerPixel, imageBuilder)
-                imageBuilder.drawDiagonalPaths(siteJoins, Palette.Colours.DARK)
+
+                PathRenderer(metresPerPixel, imageBuilder).drawPaths(siteJoins)
 
                 mapCells.forEach { cell ->
                     cellImageRenderer.drawCell(cell)
@@ -97,13 +100,18 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
     fun generateGridImage(): BufferedImage {
         val imageBuilder = ImageBuilder(width = width, height = height)
             .also { it.fillTransparent() }
-        return GridRenderer(imageBuilder).createImage(metresPerPixel)
+        GridRenderer(imageBuilder).draw(
+            GZDand100kmGSID = "25F XK",
+            gridScale = GridRenderer.HUNDRED_M_GRID_SQUARES,
+            metresPerPixel = metresPerPixel
+        )
+        return imageBuilder.build()
     }
 
     companion object {
         private val logger: Logger = LogManager.getLogger(TerrainMapGenerator::class.java)
 
-        val POINT_RATIO = 40000 // Roughly 50 points at 1920x1080
+        val POINT_RATIO = 60 // Roughly 25 points at 1920x1080
         val SAMPLE_SIZE = 0.02
     }
 }
