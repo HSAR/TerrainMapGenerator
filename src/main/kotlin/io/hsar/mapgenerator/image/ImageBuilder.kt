@@ -95,9 +95,9 @@ class ImageBuilder(val width: Int, val height: Int) {
         return this
     }
 
-    fun drawPolyLine(polyLine: List<Point>, color: Color = Color.RED) {
+    fun drawPolyLine(polyLine: List<Point>, color: Color = Color.RED, width: Float = 1.0f) {
         g2d.color = color
-        g2d.stroke = BasicStroke(1.0f)
+        g2d.stroke = BasicStroke(width)
         val (xPoints, yPoints) = createPolyPoints(polyLine)
         g2d.drawPolyline(xPoints, yPoints, xPoints.size)
     }

@@ -28,10 +28,10 @@ object ShowImageCommand : Command("show-map") {
 //                .let { image ->
 //                    ImageFrame().showImage(image)
 //                }
-//            it.generateContourImage()
-//                .let { image ->
-//                    ImageFrame().showImage(image)
-//                }
+            it.generateContourImage()
+                .let { image ->
+                    ImageFrame().showImage(image)
+                }
         }
 
     }

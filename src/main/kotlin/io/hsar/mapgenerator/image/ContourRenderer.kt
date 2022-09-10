@@ -26,7 +26,12 @@ object ContourRenderer {
         return ImageBuilder(width = width, height = height)
             .fillColour(Palette.MAIN)
 //            .drawPolyLines(contourPolygons, Color.decode("#FFFFFF"))
-            .drawPolyLines(contourPolygons, Palette.LIGHT)
+            .also {
+                contourPolygons.forEach { (contourHeight, countourPolygon) ->
+                    val lineWeight = if (contourLevels.indexOf(contourHeight) % 5 == 0) 1.5f else 1.0f
+                    it.drawPolyLine(countourPolygon, Palette.LIGHT, lineWeight)
+                }
+            }
             .build()
     }
 
@@ -43,8 +48,10 @@ object ContourRenderer {
         xSteps: DoubleArray,
         ySteps: DoubleArray,
         contourLevels: DoubleArray
-    ): List<List<Point>> = ContourGenerator.generateClassic(heightData, xSteps, ySteps, contourLevels)
-        .map { contourPolygon -> listOf(contourPolygon.start.toPoint(), contourPolygon.end.toPoint()) }
+    ): List<Pair<Double, List<Point>>> = ContourGenerator.generateClassic(heightData, xSteps, ySteps, contourLevels)
+        .map { contourLine ->
+            contourLine.value to listOf(contourLine.start.toPoint(), contourLine.end.toPoint())
+        }
 
     const val X_PAD = 4
     const val Y_PAD = 4
