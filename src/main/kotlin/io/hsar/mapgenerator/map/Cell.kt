@@ -6,5 +6,5 @@ data class Cell(
     val site: Point,
     val shape: List<Point>,
     val height: Double,
-    val adjacentCells: List<Int>
+    val adjacentCells: Map<Int, Point>
 )

@@ -30,7 +30,7 @@ object GraphUtils {
                 site = point,
                 shape = cellRegions[index],
                 height = NoiseGenerator.DEFAULT.generatePoint(point.x, point.y),
-                adjacentCells = cellJoins[index]!!
+                adjacentCells = cellJoins[index]!!.associateWith { cellCentres[it] }
             )
         }
 

@@ -8,8 +8,8 @@ import io.hsar.mapgenerator.terrain.TerrainMapGenerator
 import java.awt.Color
 import kotlin.math.abs
 
-object CellImageRenderer {
-    fun drawCell(imageBuilder: ImageBuilder, cell: Cell) = with(imageBuilder) {
+class CellImageRenderer(private val imageBuilder: ImageBuilder) {
+    fun drawCell(cell: Cell) = with(imageBuilder) {
 //        drawShapeFill(cell.shape, determineCellColor(cell))
         drawShapeOutline(cell.shape, Color.DARK_GRAY)
         drawPoint(cell.site, color = Color.RED)
