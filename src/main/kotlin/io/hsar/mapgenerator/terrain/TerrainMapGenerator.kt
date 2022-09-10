@@ -1,8 +1,8 @@
 package io.hsar.mapgenerator.terrain
 
 import com.raylabz.opensimplex.Range
-import com.raylabz.opensimplex.RangedValue
 import io.hsar.mapgenerator.graph.GraphUtils
+import io.hsar.mapgenerator.graph.GraphUtils.relax
 import io.hsar.mapgenerator.graph.GraphUtils.toAdjacentMap
 import io.hsar.mapgenerator.graph.toLine
 import io.hsar.mapgenerator.graph.toPoint
@@ -12,12 +12,13 @@ import io.hsar.mapgenerator.image.ContourRenderer
 import io.hsar.mapgenerator.image.FacilityRenderer
 import io.hsar.mapgenerator.image.ImageBuilder
 import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
+import io.hsar.mapgenerator.image.Palette
 import io.hsar.mapgenerator.map.TerrainGenerator
+import io.hsar.mapgenerator.randomness.PointGenerator
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import org.kynosarges.tektosyne.geometry.RectD
 import org.kynosarges.tektosyne.geometry.Voronoi
-import java.awt.Color
 import java.awt.image.BufferedImage
 
 
@@ -35,14 +36,14 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
         val clipRect = RectD(0.0, 0.0, width.toDouble(), height.toDouble())
         val rangeX = Range(0.0, width.toDouble())
         val rangeY = Range(0.0, height.toDouble())
-//        val points = (0..numPoints).map { PointGenerator.randomDoublePoint(rangeX, rangeY) }
-        val points = listOf(
-            RangedValue(rangeX, width * 0.5) to RangedValue(rangeY, height * 0.5),
-            RangedValue(rangeX, width * 0.7) to RangedValue(rangeY, height * 0.3),
-            RangedValue(rangeX, width * 0.7) to RangedValue(rangeY, height * 0.9),
-            RangedValue(rangeX, width * 0.3) to RangedValue(rangeY, height * 0.7),
-            RangedValue(rangeX, width * 0.3) to RangedValue(rangeY, height * 0.3),
-        )
+        val points = (0..numPoints).map { PointGenerator.randomDoublePoint(rangeX, rangeY) }
+//        val points = listOf(
+//            RangedValue(rangeX, width * 0.5) to RangedValue(rangeY, height * 0.5),
+//            RangedValue(rangeX, width * 0.7) to RangedValue(rangeY, height * 0.3),
+//            RangedValue(rangeX, width * 0.7) to RangedValue(rangeY, height * 0.9),
+//            RangedValue(rangeX, width * 0.3) to RangedValue(rangeY, height * 0.7),
+//            RangedValue(rangeX, width * 0.3) to RangedValue(rangeY, height * 0.3),
+//        )
         val graph = points
             .map {
                 it.toPoint(rangeX, rangeY).toPointD()
@@ -50,7 +51,7 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
             .let { adjustedPoints ->
                 Voronoi.findAll(adjustedPoints.toTypedArray(), clipRect)
             }
-//            .relax(height, width)
+            .relax(height, width)
 //            .relax(height, width)
 
         val regions = graph.voronoiRegions().map { it.map { it.toPoint() } }
@@ -67,7 +68,7 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
             .also { imageBuilder ->
                 val cellImageRenderer = CellImageRenderer(imageBuilder)
                 val facilityRenderer = FacilityRenderer(metresPerPixel, imageBuilder)
-                imageBuilder.drawDiagonalPaths(siteJoins, Color.GREEN)
+                imageBuilder.drawDiagonalPaths(siteJoins, Palette.DARK)
 
                 mapCells.forEach { cell ->
                     cellImageRenderer.drawCell(cell)
@@ -95,7 +96,7 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
     companion object {
         private val logger: Logger = LogManager.getLogger(TerrainMapGenerator::class.java)
 
-        val POINT_RATIO = 80000 // Roughly 25 points at 1920x1080
+        val POINT_RATIO = 40000 // Roughly 50 points at 1920x1080
         val SAMPLE_SIZE = 0.02
     }
 }

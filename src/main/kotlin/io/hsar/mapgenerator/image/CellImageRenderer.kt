@@ -1,7 +1,7 @@
 package io.hsar.mapgenerator.image
 
-import io.hsar.mapgenerator.image.CellImageRenderer.Palette.COLORS
-import io.hsar.mapgenerator.image.CellImageRenderer.Palette.COLOR_MAP
+import io.hsar.mapgenerator.image.CellImageRenderer.CellPalette.COLORS
+import io.hsar.mapgenerator.image.CellImageRenderer.CellPalette.COLOR_MAP
 import io.hsar.mapgenerator.map.Cell
 import io.hsar.mapgenerator.randomness.NoiseGenerator
 import io.hsar.mapgenerator.terrain.TerrainMapGenerator
@@ -11,7 +11,7 @@ import kotlin.math.abs
 class CellImageRenderer(private val imageBuilder: ImageBuilder) {
     fun drawCell(cell: Cell) = with(imageBuilder) {
 //        drawShapeFill(cell.shape, determineCellColor(cell))
-        drawShapeOutline(cell.shape, Color.DARK_GRAY)
+//        drawShapeOutline(cell.shape, Color.DARK_GRAY)
         drawPoint(cell.site, color = Color.RED)
     }
 
@@ -30,14 +30,14 @@ class CellImageRenderer(private val imageBuilder: ImageBuilder) {
         return COLOR_MAP.getOrElse(key) { throw IllegalStateException("Failed to find a matching color for value $value.") }
     }
 
-    object Palette {
+    object CellPalette {
         val COLORS = listOf(
-            Color.decode("#276A88"), // Blue
-            Color.decode("#120909"),
-            Color.decode("#403A3A"),
-            Color.decode("#706B6B"),
-            Color.decode("#9F9D9C"),
-            Color.decode("#FFFFFF"),
+            Palette.BLUE, // Blue
+            Palette.DARK,
+            Palette.MAIN,
+            Palette.LIGHT,
+            Palette.BACKING,
+            Palette.WHITE,
         )
 
         private val segments = COLORS.size.toDouble()

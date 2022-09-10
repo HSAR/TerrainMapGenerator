@@ -13,7 +13,6 @@ import io.hsar.mapgenerator.image.FacilityRenderer.Complexity.COMPLEX
 import io.hsar.mapgenerator.image.FacilityRenderer.Complexity.INTERMEDIATE
 import io.hsar.mapgenerator.map.Cell
 import io.hsar.mapgenerator.randomness.RandomGenerator
-import java.awt.Color
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -29,24 +28,24 @@ class FacilityRenderer(private val metresPerPixel: Double, private val imageBuil
      * The complexity describes the number of buildings to be generated for it.
      */
     private enum class Complexity(val buildingsToGenerate: List<BuildingSize>) {
-        COMPLEX(listOf(MEDIUM, SMALL, SMALL)),
-        INTERMEDIATE(listOf(MEDIUM, SMALL)),
-        BULK(listOf(LARGE, MEDIUM))
+        COMPLEX(listOf(SMALL, SMALL, SMALL)),
+        INTERMEDIATE(listOf(MEDIUM, SMALL, MEDIUM)),
+        BULK(listOf(LARGE, SMALL))
     }
 
     /**
      * Buildings are generated randomly but their internal area has a range defined here in square metres.
      */
     private enum class BuildingSize(val sizeRange: Pair<Double, Double>) {
-        LARGE(200_000.0 to 800_000.0),
-        MEDIUM(20_000.0 to 80_000.0),
-        SMALL(2_000.0 to 8_000.0),
+        LARGE(50_000.0 to 200_000.0),
+        MEDIUM(10_000.0 to 40_000.0),
+        SMALL(1_000.0 to 4_000.0),
     }
 
     fun drawFacility(cell: Cell) {
         val complexity = when (cell.adjacentCells.size) {
             1, 2, 3 -> COMPLEX
-            4 -> INTERMEDIATE
+            4, 5 -> INTERMEDIATE
             else -> BULK
         }
 
@@ -62,12 +61,16 @@ class FacilityRenderer(private val metresPerPixel: Double, private val imageBuil
                 acc.join(joinAt, rectangle)
             }
 
-        val buildingsCentre = buildings.flatten().getBoundingBox().centre
-        val deltaX = cell.site.x - buildingsCentre.x
-        val deltaY = cell.site.y - buildingsCentre.y
-        val facility = buildings.map { it.translate(deltaX, deltaY) }
+        val buildingsBoundingBox = buildings.flatten().getBoundingBox()
+        val buildingsCentreDeltaX = cell.site.x - buildingsBoundingBox.centre.x
+        val buildingsCentreDeltaY = cell.site.y - buildingsBoundingBox.centre.y
+        val facility = buildings.map { it.translate(buildingsCentreDeltaX, buildingsCentreDeltaY) }
 
-        imageBuilder.drawShapeFills(facility, color = Color.YELLOW)
+        val perimeter = generatePerimeter(buildingsBoundingBox).translate(buildingsCentreDeltaX, buildingsCentreDeltaY)
+
+        imageBuilder.drawShapeFill(perimeter, color = Palette.BACKING)
+
+        imageBuilder.drawShapeFills(facility, color = Palette.LIGHT)
     }
 
     /**
@@ -78,10 +81,28 @@ class FacilityRenderer(private val metresPerPixel: Double, private val imageBuil
         val area = RandomGenerator.generateUniform(areaMin, areaMax)
 
         val squareLength = sqrt(area)
-        val buildingWidth = RandomGenerator.generateGaussian(squareLength, squareLength / 4)
+        val buildingWidth = RandomGenerator.generateGaussian(average = squareLength, stdDev = squareLength / 5)
         val buildingHeight = area / buildingWidth
         return Rectangle(ORIGIN, Point(buildingWidth / metresPerPixel, buildingHeight / metresPerPixel))
     }
+
+    /**
+     * Create an octagon around the bounding box of the buildings.
+     */
+    private fun generatePerimeter(buildingsBoundingBox: Rectangle) = buildingsBoundingBox
+        .let { box ->
+            val padding = PERIMETER_PADDING / metresPerPixel
+            listOf(
+                box.topLeft.translate(-padding, 0.0),
+                box.topLeft.translate(0.0, -padding),
+                box.topRight.translate(0.0, -padding),
+                box.topRight.translate(padding, 0.0),
+                box.bottomRight.translate(padding, 0.0),
+                box.bottomRight.translate(0.0, padding),
+                box.bottomLeft.translate(0.0, padding),
+                box.bottomLeft.translate(-padding, 0.0),
+            )
+        }
 
     private enum class JoinAt { TOP, BOTTOM }
 
@@ -108,5 +129,7 @@ class FacilityRenderer(private val metresPerPixel: Double, private val imageBuil
         }
     }
 
-
+    companion object {
+        const val PERIMETER_PADDING = 25.0
+    }
 }
