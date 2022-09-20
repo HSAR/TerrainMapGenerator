@@ -1,2 +1,2 @@
 # TerrainMapGenerator
-Randomly generates contoured survey-style maps.
+Randomly generates gridded maps.
