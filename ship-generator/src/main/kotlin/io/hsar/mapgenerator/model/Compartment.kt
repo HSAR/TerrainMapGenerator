@@ -1,8 +1,9 @@
-package model
+package io.hsar.mapgenerator.model
 
 import io.hsar.mapgenerator.graph.Point
 
-data class Room(
+data class Compartment(
     val name: String,
+    val type: CompartmentType,
     val shape: List<Point>
 )
