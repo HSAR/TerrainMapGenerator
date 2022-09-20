@@ -1,4 +1,4 @@
-package io.hsar.mapgenerator.image
+package io.hsar.mapgenerator.framework
 
 import io.hsar.mapgenerator.model.Ship
 

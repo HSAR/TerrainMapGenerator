@@ -16,10 +16,10 @@ class DeckTest {
     fun `name is correct when a single primary compartment is present on the deck`() {
         val objectUnderTest = Deck(
             id = "00",
-            compartments = listOf(
-                Compartment("shouldn't appear", HANGAR, emptyList()),
-                Compartment("shouldn't appear", CARGO, emptyList()),
-                Compartment("shouldn't appear", CORRIDOR, emptyList()),
+            compartmentSlices = listOf(
+                createCompartmentSlice(HANGAR),
+                createCompartmentSlice(CARGO),
+                createCompartmentSlice(CORRIDOR),
             )
         )
 
@@ -32,13 +32,13 @@ class DeckTest {
     fun `name is correct when multiple primary compartments are present on the deck`() {
         val objectUnderTest = Deck(
             id = "01",
-            compartments = listOf(
-                Compartment("shouldn't appear", BRIDGE, emptyList()),
-                Compartment("shouldn't appear", HANGAR, emptyList()),
-                Compartment("shouldn't appear", ENGINE, emptyList()),
-                Compartment("shouldn't appear", ENGINE, emptyList()),
-                Compartment("shouldn't appear", CARGO, emptyList()),
-                Compartment("shouldn't appear", CORRIDOR, emptyList()),
+            compartmentSlices = listOf(
+                createCompartmentSlice(BRIDGE),
+                createCompartmentSlice(HANGAR),
+                createCompartmentSlice(ENGINE),
+                createCompartmentSlice(ENGINE),
+                createCompartmentSlice(CARGO),
+                createCompartmentSlice(CORRIDOR),
             )
         )
 
@@ -51,9 +51,9 @@ class DeckTest {
     fun `name is correct when a single secondary compartment is present on the deck`() {
         val objectUnderTest = Deck(
             id = "00",
-            compartments = listOf(
-                Compartment("shouldn't appear", CARGO, emptyList()),
-                Compartment("shouldn't appear", CORRIDOR, emptyList()),
+            compartmentSlices = listOf(
+                createCompartmentSlice(CARGO),
+                createCompartmentSlice(CORRIDOR),
             )
         )
 
@@ -66,11 +66,11 @@ class DeckTest {
     fun `name is correct when multiple secondary compartments are present on the deck`() {
         val objectUnderTest = Deck(
             id = "01",
-            compartments = listOf(
-                Compartment("shouldn't appear", CARGO, emptyList()),
-                Compartment("shouldn't appear", CARGO, emptyList()),
-                Compartment("shouldn't appear", CREW_QUARTERS, emptyList()),
-                Compartment("shouldn't appear", CORRIDOR, emptyList()),
+            compartmentSlices = listOf(
+                createCompartmentSlice(CARGO),
+                createCompartmentSlice(CARGO),
+                createCompartmentSlice(CREW_QUARTERS),
+                createCompartmentSlice(CORRIDOR),
             )
         )
 
@@ -78,4 +78,7 @@ class DeckTest {
 
         assertThat(result, equalTo("01 (Cargo/Crew Quarters)"))
     }
+
+    private fun createCompartmentSlice(compartmentType: CompartmentType) =
+        CompartmentSlice("shouldn't appear", "shouldn't appear", compartmentType, emptyList())
 }

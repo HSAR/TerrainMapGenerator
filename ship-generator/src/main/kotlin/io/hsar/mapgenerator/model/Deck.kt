@@ -3,9 +3,9 @@ package io.hsar.mapgenerator.model
 import io.hsar.mapgenerator.model.CompartmentPriority.PRIMARY
 import io.hsar.mapgenerator.model.CompartmentPriority.SECONDARY
 
-data class Deck(val id: String, val compartments: List<Compartment>) {
+data class Deck(val id: String, val compartmentSlices: List<CompartmentSlice>) {
     val name: String
-        get() = compartments.sortedBy { it.type }
+        get() = compartmentSlices.sortedBy { it.type }
             .let { sortedCompartments ->
                 when {
                     sortedCompartments.any { it.type.priority == PRIMARY } -> {

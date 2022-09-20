@@ -1,9 +1,11 @@
 package io.hsar.mapgenerator.model
 
-import io.hsar.mapgenerator.graph.Point
-
+/**
+ * A compartment is a space that may span multiple decks, which are represented by compartment slices.
+ */
 data class Compartment(
+    val id: String,
     val name: String,
-    val type: CompartmentType,
-    val shape: List<Point>
+    val compartmentType: CompartmentType,
+    val slices: List<CompartmentSlice>
 )
