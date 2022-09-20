@@ -1,8 +1,8 @@
 package io.hsar.mapgenerator.graph
 
 import io.hsar.mapgenerator.graph.Rectangle.Companion.getBoundingBox
-import org.hamcrest.CoreMatchers
-import org.hamcrest.MatcherAssert
+import org.hamcrest.CoreMatchers.equalTo
+import org.hamcrest.MatcherAssert.assertThat
 import org.junit.jupiter.api.Test
 
 class RectangleTest {
@@ -23,11 +23,11 @@ class RectangleTest {
         val expectedBottomLeft = Point(0.0, 6.0)
         val expectedCentre = Point(1.5, 3.0)
 
-        MatcherAssert.assertThat(actualTopLeft, CoreMatchers.equalTo(expectedTopLeft))
-        MatcherAssert.assertThat(actualTopRight, CoreMatchers.equalTo(expectedTopRight))
-        MatcherAssert.assertThat(actualBottomRight, CoreMatchers.equalTo(expectedBottomRight))
-        MatcherAssert.assertThat(actualBottomLeft, CoreMatchers.equalTo(expectedBottomLeft))
-        MatcherAssert.assertThat(actualCentre, CoreMatchers.equalTo(expectedCentre))
+        assertThat(actualTopLeft, equalTo(expectedTopLeft))
+        assertThat(actualTopRight, equalTo(expectedTopRight))
+        assertThat(actualBottomRight, equalTo(expectedBottomRight))
+        assertThat(actualBottomLeft, equalTo(expectedBottomLeft))
+        assertThat(actualCentre, equalTo(expectedCentre))
     }
 
     @Test
@@ -46,11 +46,11 @@ class RectangleTest {
         val expectedBottomLeft = Point(-6.0, -2.0)
         val expectedCentre = Point(-3.5, -3.0)
 
-        MatcherAssert.assertThat(actualTopLeft, CoreMatchers.equalTo(expectedTopLeft))
-        MatcherAssert.assertThat(actualTopRight, CoreMatchers.equalTo(expectedTopRight))
-        MatcherAssert.assertThat(actualBottomRight, CoreMatchers.equalTo(expectedBottomRight))
-        MatcherAssert.assertThat(actualBottomLeft, CoreMatchers.equalTo(expectedBottomLeft))
-        MatcherAssert.assertThat(actualCentre, CoreMatchers.equalTo(expectedCentre))
+        assertThat(actualTopLeft, equalTo(expectedTopLeft))
+        assertThat(actualTopRight, equalTo(expectedTopRight))
+        assertThat(actualBottomRight, equalTo(expectedBottomRight))
+        assertThat(actualBottomLeft, equalTo(expectedBottomLeft))
+        assertThat(actualCentre, equalTo(expectedCentre))
     }
 
     @Test
@@ -60,7 +60,27 @@ class RectangleTest {
         val actual = original.translate(1.0, 2.0)
 
         val expected = Rectangle(Point(1.0, 2.0), Point(4.0, 8.0))
-        MatcherAssert.assertThat(actual, CoreMatchers.equalTo(expected))
+        assertThat(actual, equalTo(expected))
+    }
+
+    @Test
+    fun `resize-by-topleft works`() {
+        val original = Rectangle(Point(-1.0, -2.0), Point(3.0, 6.0))
+
+        val actual = original.resizeTopLeft(factorX = 0.25, factorY = 0.5)
+
+        val expected = Rectangle(Point(-1.0, -2.0), Point(0.0, 2.0))
+        assertThat(actual, equalTo(expected))
+    }
+
+    @Test
+    fun `resize-by-centre works`() {
+        val original = Rectangle(Point(-1.0, -2.0), Point(3.0, 6.0))
+
+        val actual = original.resizeCentred(factorX = 0.25, factorY = 0.5)
+
+        val expected = Rectangle(Point(0.5, 0.0), Point(1.5, 4.0))
+        assertThat(actual, equalTo(expected))
     }
 
     @Test
@@ -75,7 +95,7 @@ class RectangleTest {
         val actual = testPoints.getBoundingBox()
 
         val expected = Rectangle(Point(1.0, 0.0), Point(6.0, 4.0))
-        MatcherAssert.assertThat(actual, CoreMatchers.equalTo(expected))
+        assertThat(actual, equalTo(expected))
     }
 
 
@@ -89,6 +109,6 @@ class RectangleTest {
         val actual = testPoints.getBoundingBox(clipBox = Rectangle(Point(0.0, 0.0), Point(3.0, 3.0)))
 
         val expected = Rectangle(Point(1.0, 0.0), Point(3.0, 3.0))
-        MatcherAssert.assertThat(actual, CoreMatchers.equalTo(expected))
+        assertThat(actual, equalTo(expected))
     }
 }

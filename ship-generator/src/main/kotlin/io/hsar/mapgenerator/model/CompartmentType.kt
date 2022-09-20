@@ -5,14 +5,16 @@ import io.hsar.mapgenerator.model.CompartmentPriority.SECONDARY
 import io.hsar.mapgenerator.model.CompartmentPriority.TERTIARY
 
 enum class CompartmentType(val friendlyName: String, val priority: CompartmentPriority) {
-    BRIDGE("Bridge", PRIMARY),
+    BRIDGE_ADVANCED("Bridge", PRIMARY),
+    BRIDGE_BASIC("Bridge", PRIMARY),
     ENGINE("Engineering", PRIMARY),
     HANGAR("Hangar", PRIMARY),
+    CARGO_MAIN("Cargo", PRIMARY),
     WEAPONS("Weapons", SECONDARY),
-    CARGO("Cargo", SECONDARY),
+    CARGO_SMALL("Cargo", SECONDARY),
     CREW_QUARTERS("Crew Quarters", SECONDARY),
     AIRLOCK("Airlock", TERTIARY),
     CORRIDOR("Corridor", TERTIARY),
-    VERTICHAL_HATCH("Hatch", TERTIARY),
+    VERTICAL_HATCH("Hatch", TERTIARY),
 }
 

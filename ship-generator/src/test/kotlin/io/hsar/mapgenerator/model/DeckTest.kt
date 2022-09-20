@@ -1,7 +1,7 @@
 package io.hsar.mapgenerator.model
 
-import io.hsar.mapgenerator.model.CompartmentType.BRIDGE
-import io.hsar.mapgenerator.model.CompartmentType.CARGO
+import io.hsar.mapgenerator.model.CompartmentType.BRIDGE_ADVANCED
+import io.hsar.mapgenerator.model.CompartmentType.CARGO_SMALL
 import io.hsar.mapgenerator.model.CompartmentType.CORRIDOR
 import io.hsar.mapgenerator.model.CompartmentType.CREW_QUARTERS
 import io.hsar.mapgenerator.model.CompartmentType.ENGINE
@@ -18,7 +18,7 @@ class DeckTest {
             id = "00",
             compartmentSlices = listOf(
                 createCompartmentSlice(HANGAR),
-                createCompartmentSlice(CARGO),
+                createCompartmentSlice(CARGO_SMALL),
                 createCompartmentSlice(CORRIDOR),
             )
         )
@@ -33,11 +33,11 @@ class DeckTest {
         val objectUnderTest = Deck(
             id = "01",
             compartmentSlices = listOf(
-                createCompartmentSlice(BRIDGE),
+                createCompartmentSlice(BRIDGE_ADVANCED),
                 createCompartmentSlice(HANGAR),
                 createCompartmentSlice(ENGINE),
                 createCompartmentSlice(ENGINE),
-                createCompartmentSlice(CARGO),
+                createCompartmentSlice(CARGO_SMALL),
                 createCompartmentSlice(CORRIDOR),
             )
         )
@@ -52,7 +52,7 @@ class DeckTest {
         val objectUnderTest = Deck(
             id = "00",
             compartmentSlices = listOf(
-                createCompartmentSlice(CARGO),
+                createCompartmentSlice(CARGO_SMALL),
                 createCompartmentSlice(CORRIDOR),
             )
         )
@@ -67,8 +67,8 @@ class DeckTest {
         val objectUnderTest = Deck(
             id = "01",
             compartmentSlices = listOf(
-                createCompartmentSlice(CARGO),
-                createCompartmentSlice(CARGO),
+                createCompartmentSlice(CARGO_SMALL),
+                createCompartmentSlice(CARGO_SMALL),
                 createCompartmentSlice(CREW_QUARTERS),
                 createCompartmentSlice(CORRIDOR),
             )

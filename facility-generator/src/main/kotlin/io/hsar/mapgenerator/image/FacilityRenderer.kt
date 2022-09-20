@@ -2,7 +2,6 @@ package io.hsar.mapgenerator.image
 
 import io.hsar.mapgenerator.graph.Cell
 import io.hsar.mapgenerator.graph.Point
-import io.hsar.mapgenerator.graph.Point.Companion.ORIGIN
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.graph.Rectangle.Companion.getBoundingBox
 import io.hsar.mapgenerator.graph.translate
@@ -13,6 +12,7 @@ import io.hsar.mapgenerator.image.FacilityRenderer.Complexity.BULK
 import io.hsar.mapgenerator.image.FacilityRenderer.Complexity.COMPLEX
 import io.hsar.mapgenerator.image.FacilityRenderer.Complexity.INTERMEDIATE
 import io.hsar.mapgenerator.random.RandomGenerator
+import io.hsar.mapgenerator.random.RectangleGenerator
 import kotlin.math.abs
 
 /**
@@ -23,7 +23,7 @@ import kotlin.math.abs
  */
 class FacilityRenderer(
     private val metresPerPixel: Double,
-    private val imageBuilder: io.hsar.mapgenerator.image.ImageBuilder
+    private val imageBuilder: ImageBuilder
 ) {
 
     /**
@@ -82,13 +82,7 @@ class FacilityRenderer(
         val (areaMin, areaMax) = buildingSize.sizeRange
         val area = RandomGenerator.generateUniform(areaMin, areaMax)
 
-        val squareLength = kotlin.math.sqrt(area)
-        val buildingWidth = RandomGenerator.generateGaussian(
-            average = squareLength,
-            stdDev = squareLength / 5
-        )
-        val buildingHeight = area / buildingWidth
-        return Rectangle(ORIGIN, Point(buildingWidth / metresPerPixel, buildingHeight / metresPerPixel))
+        return RectangleGenerator.generateRectangle(area, 0.2).resizeTopLeft(1 / metresPerPixel, 1 / metresPerPixel)
     }
 
     /**

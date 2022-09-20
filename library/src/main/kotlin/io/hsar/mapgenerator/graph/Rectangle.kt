@@ -31,6 +31,25 @@ data class Rectangle(val point1: Point, val point2: Point) {
         point2.translate(deltaX, deltaY),
     )
 
+    fun resizeTopLeft(factorX: Double, factorY: Double): Rectangle =
+        Rectangle(point1, point1.translate(width * factorX, height * factorY))
+
+    /**
+     * Resize the rectangle, preserving its centre and reducing its width and height by the given scales.
+     */
+    fun resizeCentred(factorX: Double, factorY: Double): Rectangle {
+        val point1deltaX = (point1.x - centre.x) * factorX
+        val point1deltaY = (point1.y - centre.y) * factorY
+
+        val point2deltaX = (point2.x - centre.x) * factorX
+        val point2deltaY = (point2.y - centre.y) * factorY
+
+        return Rectangle(
+            Point(centre.x + point1deltaX, centre.y + point1deltaY),
+            Point(centre.x + point2deltaX, centre.y + point2deltaY)
+        )
+    }
+
     companion object {
         fun Collection<Point>.getBoundingBox(
             clipBox: Rectangle = Rectangle(Point(0.0, 0.0), Point(Double.MAX_VALUE, Double.MAX_VALUE))

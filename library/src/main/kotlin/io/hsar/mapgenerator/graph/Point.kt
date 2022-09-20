@@ -8,6 +8,8 @@ data class Point(val x: Double, val y: Double) {
 
     fun translate(deltaX: Double, deltaY: Double) = Point(x + deltaX, y + deltaY)
 
+    operator fun minus(other: Point) = Point(this.x - other.x, this.y - other.y)
+
     companion object {
         val ORIGIN = Point(0.0, 0.0)
     }
