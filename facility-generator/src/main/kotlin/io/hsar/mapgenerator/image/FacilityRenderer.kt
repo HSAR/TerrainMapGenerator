@@ -1,9 +1,9 @@
 package io.hsar.mapgenerator.image
 
 import io.hsar.mapgenerator.graph.Cell
+import io.hsar.mapgenerator.graph.GeomUtils.getBoundingBox
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
-import io.hsar.mapgenerator.graph.Rectangle.Companion.getBoundingBox
 import io.hsar.mapgenerator.graph.translate
 import io.hsar.mapgenerator.image.FacilityRenderer.BuildingSize.LARGE
 import io.hsar.mapgenerator.image.FacilityRenderer.BuildingSize.MEDIUM

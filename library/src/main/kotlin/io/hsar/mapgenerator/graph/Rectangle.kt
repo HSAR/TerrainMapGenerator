@@ -1,6 +1,5 @@
 package io.hsar.mapgenerator.graph
 
-import java.awt.geom.Rectangle2D
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -49,34 +48,4 @@ data class Rectangle(val point1: Point, val point2: Point) {
             Point(centre.x + point2deltaX, centre.y + point2deltaY)
         )
     }
-
-    companion object {
-        fun Collection<Point>.getBoundingBox(
-            clipBox: Rectangle = Rectangle(Point(0.0, 0.0), Point(Double.MAX_VALUE, Double.MAX_VALUE))
-        ): Rectangle {
-            if (isEmpty()) return Rectangle(Point.ORIGIN, Point.ORIGIN)
-
-            var north = clipBox.bottomRight.y
-            var west = clipBox.bottomRight.x
-            var south = clipBox.topLeft.y
-            var east = clipBox.topLeft.x
-
-            forEach { loc ->
-                north = min(north, loc.y)
-                west = min(west, loc.x)
-                south = max(south, loc.y)
-                east = max(east, loc.x)
-            }
-
-            // apply clipping box
-            north = max(clipBox.topLeft.y, north)
-            west = max(clipBox.topLeft.x, west)
-            south = min(clipBox.bottomRight.y, south)
-            east = min(clipBox.bottomRight.x, east)
-
-            return Rectangle(Point(west, north), Point(east, south))
-        }
-    }
 }
-
-fun Rectangle2D.toRectangle() = Rectangle(Point(this.minX, this.minY), Point(this.maxX, this.maxY))

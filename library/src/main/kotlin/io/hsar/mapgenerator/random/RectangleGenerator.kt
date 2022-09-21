@@ -20,4 +20,8 @@ object RectangleGenerator {
         val buildingHeight = area / buildingWidth
         return Rectangle(topLeft, topLeft.translate(buildingWidth, buildingHeight))
     }
+
+    fun generateRectangleCentreOn(area: Double, stdDevFactor: Double = 1.0, centre: Point = Point.ORIGIN) =
+        generateRectangle(area, stdDevFactor, Point.ORIGIN)
+            .let { rectangle -> rectangle.translate(-rectangle.centre.x, -rectangle.centre.y) }
 }

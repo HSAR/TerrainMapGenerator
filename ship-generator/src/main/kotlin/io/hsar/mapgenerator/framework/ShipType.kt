@@ -1,11 +1,13 @@
 package io.hsar.mapgenerator.framework
 
+import io.hsar.mapgenerator.model.CompartmentSize
+import io.hsar.mapgenerator.model.CompartmentSize.MEDIUM
+import io.hsar.mapgenerator.model.CompartmentSize.SMALL
 import io.hsar.mapgenerator.model.CompartmentType
-import io.hsar.mapgenerator.model.CompartmentType.BRIDGE_ADVANCED
-import io.hsar.mapgenerator.model.CompartmentType.BRIDGE_BASIC
-import io.hsar.mapgenerator.model.CompartmentType.CARGO_MAIN
-import io.hsar.mapgenerator.model.CompartmentType.CARGO_SMALL
+import io.hsar.mapgenerator.model.CompartmentType.BRIDGE
+import io.hsar.mapgenerator.model.CompartmentType.CARGO
 import io.hsar.mapgenerator.model.CompartmentType.ENGINE
+import io.hsar.mapgenerator.model.CompartmentType.WEAPONS
 
 /**
  * A classification of ship, including its essential statistics.
@@ -17,32 +19,36 @@ import io.hsar.mapgenerator.model.CompartmentType.ENGINE
 enum class ShipType(
     val deckRange: Pair<Int, Int>,
     val mainCorridors: Int,
+    val sizeRange: Pair<Double, Double>,
     val compartmentScale: CompartmentScale,
-    val baseCompartments: List<CompartmentType>,
+    val baseCompartments: List<Pair<CompartmentType, CompartmentSize>>,
     val minCargoSpace: Double = 0.0,
     val minMilitarySpace: Double = 0.0,
 ) {
     LIGHT_FREIGHTER(
         deckRange = 1 to 2,
         mainCorridors = 1,
+        sizeRange = 200.0 to 400.0,
         compartmentScale = CompartmentScale.SMALL,
         baseCompartments = listOf(
-            ENGINE,
-            CARGO_MAIN,
-            BRIDGE_BASIC
+            ENGINE to MEDIUM,
+            CARGO to MEDIUM,
+            CARGO to MEDIUM,
+            BRIDGE to SMALL
         ),
         minCargoSpace = 0.4
     ),
     CORVETTE(
         deckRange = 1 to 1,
         mainCorridors = 1,
+        sizeRange = 100.0 to 250.0,
         compartmentScale = CompartmentScale.SMALL,
         baseCompartments = listOf(
-            ENGINE,
-            CARGO_SMALL,
-            BRIDGE_ADVANCED
+            ENGINE to MEDIUM,
+            BRIDGE to SMALL,
+            WEAPONS to SMALL
         ),
         minCargoSpace = 0.2,
         minMilitarySpace = 0.3
-    )
+    ),
 }

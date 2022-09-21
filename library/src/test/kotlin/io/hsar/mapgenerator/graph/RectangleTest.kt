@@ -1,6 +1,6 @@
 package io.hsar.mapgenerator.graph
 
-import io.hsar.mapgenerator.graph.Rectangle.Companion.getBoundingBox
+import io.hsar.mapgenerator.graph.GeomUtils.getBoundingBox
 import org.hamcrest.CoreMatchers.equalTo
 import org.hamcrest.MatcherAssert.assertThat
 import org.junit.jupiter.api.Test
