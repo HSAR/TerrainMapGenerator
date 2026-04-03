@@ -5,6 +5,7 @@ import com.beust.jcommander.Parameter
 import com.beust.jcommander.Parameters
 import io.hsar.mapgenerator.TerrainMapGenerator
 import io.hsar.mapgenerator.gui.ImageFrame
+import io.hsar.mapgenerator.image.ImageWriter
 import java.nio.file.Path
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
@@ -60,7 +61,7 @@ object SaveImageCommand : Command("save-map") {
             it.generateGraphImage()
                 .let { image ->
                     val filePath = "graph-$path"
-                    io.hsar.mapgenerator.image.ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
+                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
                     logger.info("Saved image to $filePath")
                 }
 //            it.generateHeightImage()
@@ -81,6 +82,33 @@ object SaveImageCommand : Command("save-map") {
 //                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
 //                    logger.info("Saved image to $filePath")
 //                }
+        }
+    }
+}
+
+@Parameters(commandDescription = "Generates grid squares onto the given terrain map and saves it to disk next to the input file.")
+object ApplyGridCommand : Command("apply-grid") {
+
+    @Parameter(
+        names = ["--target"],
+        description = "Path to the originating image to.",
+        required = true
+    )
+    private lateinit var path: String
+
+    override fun run() {
+        TerrainMapGenerator(
+            metresPerPixel = metresPerPixel,
+            metresPerContour = metresPerContour,
+            width = width,
+            height = height,
+        ).also {
+            it.generateGridImage()
+                .let { image ->
+                    val filePath = "grid-$path"
+                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
+                    logger.info("Saved image to $filePath")
+                }
         }
     }
 }
@@ -127,6 +155,7 @@ fun main(args: Array<String>) {
         listOf(
             ShowImageCommand,
             SaveImageCommand,
+            ApplyGridCommand,
         )
             .associateBy { it.name }
 
