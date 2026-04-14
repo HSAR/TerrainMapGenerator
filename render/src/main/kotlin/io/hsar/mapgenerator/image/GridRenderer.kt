@@ -50,7 +50,7 @@ class GridRenderer(
         val numHorizontalLines = (imageBuilder.width / pixelsPerLine).toInt()
         val horizontalLineNumberStart = generateLineNumberStart(getDetailLevel, numHorizontalLines)
         (1..numHorizontalLines).map { horizontalLineIndex ->
-            val lineID = (horizontalLineNumberStart + horizontalLineIndex)
+            val lineID = horizontalLineNumberStart - horizontalLineIndex
             val lineIDString = lineID.padZeroes(getDetailLevel)
 
             val xPos = MIN_XY.x + imageBuilder.getTextSize(lineIDString, GRID_LINE_ID_FONT.first).width
