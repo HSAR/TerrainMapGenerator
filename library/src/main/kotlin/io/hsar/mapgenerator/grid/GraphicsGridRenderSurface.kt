@@ -6,6 +6,7 @@ import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Font
 import java.awt.Graphics2D
+import java.awt.RenderingHints
 import kotlin.math.roundToInt
 
 class GraphicsGridRenderSurface(
@@ -15,6 +16,10 @@ class GraphicsGridRenderSurface(
 ) : GridRenderSurface {
 
     override fun drawString(point: Point, string: String, fontAndColour: Pair<Font, Color>) {
+        graphics.setRenderingHint(
+            RenderingHints.KEY_TEXT_ANTIALIASING,
+            RenderingHints.VALUE_TEXT_ANTIALIAS_ON,
+        )
         graphics.font = fontAndColour.first
         graphics.color = fontAndColour.second
         graphics.drawString(string, point.x.toFloat(), point.y.toFloat())

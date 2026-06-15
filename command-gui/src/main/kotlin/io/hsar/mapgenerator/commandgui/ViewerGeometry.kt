@@ -4,6 +4,14 @@ import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import java.awt.image.BufferedImage
 
+/**
+ * Describes the off-screen canvas used by the viewer around the rendered map image.
+ *
+ * @property backgroundWidth Total drawable width of the padded background area.
+ * @property backgroundHeight Total drawable height of the padded background area.
+ * @property mapOffsetX Horizontal position where the top-left corner of the map image is placed.
+ * @property mapOffsetY Vertical position where the top-left corner of the map image is placed.
+ */
 internal data class ViewerGeometry(
     val backgroundWidth: Int,
     val backgroundHeight: Int,
@@ -11,15 +19,22 @@ internal data class ViewerGeometry(
     val mapOffsetY: Int,
 )
 
+/**
+ * Builds the viewer geometry for a rendered map image.
+ *
+ * The viewer keeps the map centered inside a padded black background so the image can be
+ * panned freely. The width remains double the image width, while the height uses a smaller
+ * 1.66x padding factor to reduce unused vertical space.
+ */
 internal fun geometryFor(image: BufferedImage): ViewerGeometry {
-    val backgroundWidth = image.width * 2
-    val backgroundHeight = image.height * 2
+    val backgroundWidth = (image.width * 1.66).toInt()
+    val backgroundHeight = (image.height * 1.66).toInt()
 
     return ViewerGeometry(
         backgroundWidth = backgroundWidth,
         backgroundHeight = backgroundHeight,
-        mapOffsetX = backgroundWidth / 4,
-        mapOffsetY = backgroundHeight / 4,
+        mapOffsetX = (backgroundWidth- image.height) / 2,
+        mapOffsetY = (backgroundHeight - image.height) / 2,
     )
 }
 

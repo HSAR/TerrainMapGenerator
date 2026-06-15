@@ -13,9 +13,9 @@ class ViewerGeometryTest {
         val geometry = geometryFor(BufferedImage(800, 600, BufferedImage.TYPE_INT_ARGB))
 
         assertThat(geometry.backgroundWidth, equalTo(1600))
-        assertThat(geometry.backgroundHeight, equalTo(1200))
+        assertThat(geometry.backgroundHeight, equalTo(996))
         assertThat(geometry.mapOffsetX, equalTo(400))
-        assertThat(geometry.mapOffsetY, equalTo(300))
+        assertThat(geometry.mapOffsetY, equalTo(198))
     }
 
     @Test
