@@ -48,4 +48,9 @@ data class Rectangle(val point1: Point, val point2: Point) {
             Point(centre.x + point2deltaX, centre.y + point2deltaY)
         )
     }
+
+    fun scale(factorX: Double, factorY: Double = factorX) = Rectangle(
+        point1.scale(factorX, factorY),
+        point2.scale(factorX, factorY),
+    )
 }

@@ -4,9 +4,12 @@ import com.raylabz.opensimplex.Range
 import io.hsar.mapgenerator.graph.GraphUtils
 import io.hsar.mapgenerator.graph.GraphUtils.relax
 import io.hsar.mapgenerator.graph.GraphUtils.toAdjacentMap
+import io.hsar.mapgenerator.graph.Cell
+import io.hsar.mapgenerator.graph.Line
 import io.hsar.mapgenerator.graph.toLine
 import io.hsar.mapgenerator.graph.toPoint
 import io.hsar.mapgenerator.graph.toPointD
+import io.hsar.mapgenerator.graph.scale
 import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
 import io.hsar.mapgenerator.image.PathRenderer
 import io.hsar.mapgenerator.image.TerrainGenerator
@@ -18,7 +21,7 @@ import org.apache.logging.log4j.Logger
 import org.kynosarges.tektosyne.geometry.RectD
 import org.kynosarges.tektosyne.geometry.Voronoi
 import kotlin.math.roundToInt
-import kotlin.math.sqrt
+import java.util.concurrent.ConcurrentHashMap
 
 
 class TerrainMapGenerator(
@@ -26,6 +29,8 @@ class TerrainMapGenerator(
     val metresPerContour: Double,
     val height: Int,
     val width: Int,
+    private val graphMapWidthMetres: Double = width * metresPerPixel,
+    private val graphMapHeightMetres: Double = height * metresPerPixel,
     seed: Long = System.currentTimeMillis(),
 ) {
 
@@ -36,43 +41,15 @@ class TerrainMapGenerator(
     private val seedSource = Random(seed)
     private val graphSeed = seedSource.nextLong()
     private val facilitySeed = seedSource.nextLong()
+    private val gridSeed = seedSource.nextLong()
 
     val heightData = TerrainGenerator.generateTerrain(width = width, height = height)
+    private val graphData by lazy { graphCache.getOrPut(cacheKey) { buildGraphData() } }
 
     fun generateGraphImage(): BufferedImage {
-        val graphRandom = Random(graphSeed)
         val facilityRandom = Random(facilitySeed)
-        val numPoints = (sqrt(height.toDouble() * width) / POINT_RATIO).roundToInt()
-
-        val clipRect = RectD(0.0, 0.0, width.toDouble(), height.toDouble())
-        val rangeX = Range(0.0, width.toDouble())
-        val rangeY = Range(0.0, height.toDouble())
-        val points = (0..numPoints).map { PointGenerator.randomDoublePoint(rangeX, rangeY, graphRandom) }
-//        val points = listOf(
-//            RangedValue(rangeX, width * 0.5) to RangedValue(rangeY, height * 0.5),
-//            RangedValue(rangeX, width * 0.7) to RangedValue(rangeY, height * 0.3),
-//            RangedValue(rangeX, width * 0.7) to RangedValue(rangeY, height * 0.9),
-//            RangedValue(rangeX, width * 0.3) to RangedValue(rangeY, height * 0.7),
-//            RangedValue(rangeX, width * 0.3) to RangedValue(rangeY, height * 0.3),
-//        )
-        val graph = points
-            .map {
-                it.toPoint(rangeX, rangeY).toPointD()
-            }
-            .let { adjustedPoints ->
-                Voronoi.findAll(adjustedPoints.toTypedArray(), clipRect)
-            }
-            .relax(height, width)
-//            .relax(height, width)
-
-        val regions = graph.voronoiRegions().map { it.map { it.toPoint() } }
-        val sites = graph.generatorSites.map { it.toPoint() }
-        val vertices = graph.voronoiVertices.map { it.toPoint() }
-        val siteJoins = graph.voronoiEdges.map { it.toLine(sites, vertices) }
-
-        val mapCells = GraphUtils.generateCells(
-            sites, regions, graph.voronoiEdges.toAdjacentMap()
-        )
+        val graphScale = 1 / metresPerPixel
+        val graph = graphData.scale(graphScale)
 
         val graphImage: BufferedImage = io.hsar.mapgenerator.image.ImageBuilder(width = width, height = height)
             .fillTransparent()
@@ -80,9 +57,9 @@ class TerrainMapGenerator(
                 val cellImageRenderer = io.hsar.mapgenerator.image.CellImageRenderer(imageBuilder)
                 val facilityRenderer = io.hsar.mapgenerator.image.FacilityRenderer(metresPerPixel, imageBuilder, facilityRandom)
 
-                PathRenderer(metresPerPixel, imageBuilder).drawPaths(siteJoins)
+                PathRenderer(metresPerPixel, imageBuilder).drawPaths(graph.siteJoins)
 
-                mapCells.forEach { cell ->
+                graph.mapCells.forEach { cell ->
                     cellImageRenderer.drawCell(cell)
                     facilityRenderer.drawFacility(cell)
                 }
@@ -108,7 +85,7 @@ class TerrainMapGenerator(
     fun generateGridImage(): BufferedImage {
         val imageBuilder = io.hsar.mapgenerator.image.ImageBuilder(width = width, height = height)
             .also { it.fillTransparent() }
-        io.hsar.mapgenerator.image.GridRenderer(imageBuilder).draw(
+        io.hsar.mapgenerator.image.GridRenderer(imageBuilder, Random(gridSeed)).draw(
             GZDand100kmGSID = "25F XK",
             gridScale = io.hsar.mapgenerator.image.GridRenderer.HUNDRED_M_GRID_SQUARES,
             metresPerPixel = metresPerPixel
@@ -119,7 +96,68 @@ class TerrainMapGenerator(
     companion object {
         private val logger: Logger = LogManager.getLogger(TerrainMapGenerator::class.java)
 
-        val POINT_RATIO = 60 // Roughly 25 points at 1920x1080
+        private const val POINTS_PER_MAP_HEIGHT_METRE = 90.0 // Roughly 25 points at 1920x1080 with 2m/px.
         val SAMPLE_SIZE = 0.02
+        private val graphCache = ConcurrentHashMap<GraphCacheKey, GraphData>()
     }
+
+    private val cacheKey = GraphCacheKey(
+        seed = seed,
+        widthMetres = graphMapWidthMetres,
+        heightMetres = graphMapHeightMetres,
+    )
+
+    private fun buildGraphData(): GraphData {
+        val numPoints = (graphMapHeightMetres / POINTS_PER_MAP_HEIGHT_METRE).roundToInt().coerceAtLeast(3)
+
+        val clipRect = RectD(0.0, 0.0, graphMapWidthMetres, graphMapHeightMetres)
+        val rangeX = Range(0.0, graphMapWidthMetres)
+        val rangeY = Range(0.0, graphMapHeightMetres)
+        val graphRandom = Random(graphSeed)
+        val points = (0..numPoints).map { PointGenerator.randomDoublePoint(rangeX, rangeY, graphRandom) }
+        val graph = points
+            .map {
+                it.toPoint(rangeX, rangeY).toPointD()
+            }
+            .let { adjustedPoints ->
+                Voronoi.findAll(adjustedPoints.toTypedArray(), clipRect)
+            }
+            .relax(graphMapHeightMetres, graphMapWidthMetres)
+
+        val regions = graph.voronoiRegions().map { it.map { it.toPoint() } }
+        val sites = graph.generatorSites.map { it.toPoint() }
+        val vertices = graph.voronoiVertices.map { it.toPoint() }
+        val siteJoins = graph.voronoiEdges.map { it.toLine(sites, vertices) }
+        val mapCells = GraphUtils.generateCells(
+            sites, regions, graph.voronoiEdges.toAdjacentMap()
+        )
+        return GraphData(
+            sites = sites,
+            regions = regions,
+            siteJoins = siteJoins,
+            mapCells = mapCells,
+        )
+    }
+
+    private data class GraphCacheKey(
+        val seed: Long,
+        val widthMetres: Double,
+        val heightMetres: Double,
+    )
+
+    private data class GraphData(
+        val sites: List<io.hsar.mapgenerator.graph.Point>,
+        val regions: List<List<io.hsar.mapgenerator.graph.Point>>,
+        val siteJoins: List<Line>,
+        val mapCells: List<Cell>,
+    ) {
+        fun scale(factor: Double) = GraphData(
+            sites = sites.scale(factor),
+            regions = regions.map { it.scale(factor) },
+            siteJoins = siteJoins.map { it.scale(factor) },
+            mapCells = mapCells.map { it.scale(factor) },
+        )
+    }
+
+    internal fun graphPointCount(): Int = (graphMapHeightMetres / POINTS_PER_MAP_HEIGHT_METRE).roundToInt().coerceAtLeast(3) + 1
 }

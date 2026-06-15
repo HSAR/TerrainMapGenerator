@@ -9,13 +9,14 @@ import io.hsar.mapgenerator.commandgui.MapViewerFrame
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.gui.ImageFrame
 import io.hsar.mapgenerator.image.ImageUtils.compose
-import io.hsar.mapgenerator.image.ImageUtils.scale
 import io.hsar.mapgenerator.image.ImageWriter
 import java.nio.file.Path
 import java.awt.image.BufferedImage
 import javax.swing.SwingUtilities
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
+import kotlin.math.roundToInt
+import java.util.concurrent.CancellationException
 import kotlin.system.exitProcess
 
 @Parameters(commandDescription = "Generates terrain maps and opens the Swing GUI viewer.")
@@ -23,7 +24,7 @@ object LaunchGuiCommand : Command("show-gui") {
     override fun run() {
         val sessionSeed = seed
         val settings = MapViewerSettings(
-            enabledLayers = MapLayer.values().toSet(),
+            enabledLayers = selectedLayers,
             seed = sessionSeed,
             metresPerPixel = metresPerPixel,
             metresPerContour = metresPerContour,
@@ -43,29 +44,24 @@ object LaunchGuiCommand : Command("show-gui") {
 @Parameters(commandDescription = "Generates a random terrain map and shows it in a GUI window.")
 object ShowImageCommand : Command("show-map") {
     override fun run() {
-        TerrainMapGenerator(
+        val terrainMapGenerator = TerrainMapGenerator(
             metresPerPixel = metresPerPixel,
             metresPerContour = metresPerContour,
             width = width,
             height = height,
-        ).also {
-            it.generateGraphImage()
-                .let { image ->
-                    ImageFrame().showImage(image)
-                }
-//            it.generateHeightImage()
-//                .let { image ->
-//                    ImageFrame().showImage(image)
-//                }
-            it.generateContourImage()
-                .let { image ->
-                    ImageFrame().showImage(image)
-                }
-            it.generateGridImage()
-                .let { image ->
-                    ImageFrame().showImage(image)
-                }
-        }
+            seed = seed,
+        )
+
+        renderSelectedLayers(
+            selectedLayers = selectedLayers,
+            renderers = mapOf(
+                MapLayer.GRAPH to { terrainMapGenerator.generateGraphImage() },
+                MapLayer.HEIGHT to { terrainMapGenerator.generateHeightImage() },
+                MapLayer.CONTOUR to { terrainMapGenerator.generateContourImage() },
+                MapLayer.GRID to { terrainMapGenerator.generateGridImage() },
+            ),
+        )
+            .forEach { image -> ImageFrame().showImage(image) }
 
     }
 }
@@ -81,37 +77,29 @@ object SaveImageCommand : Command("save-map") {
     private lateinit var path: String
 
     override fun run() {
-        TerrainMapGenerator(
+        val terrainMapGenerator = TerrainMapGenerator(
             metresPerPixel = metresPerPixel,
             metresPerContour = metresPerContour,
             width = width,
             height = height,
-        ).also {
-            it.generateGraphImage()
-                .let { image ->
-                    val filePath = "graph-$path"
-                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
-                    logger.info("Saved image to $filePath")
-                }
-//            it.generateHeightImage()
-//                .let { image ->
-//                    val filePath = "height-$path"
-//                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
-//                    logger.info("Saved image to $filePath")
-//                }
-//            it.generateContourImage()
-//                .let { image ->
-//                    val filePath = "contour-$path"
-//                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
-//                    logger.info("Saved image to $filePath")
-//                }
-//            it.generateGridImage()
-//                .let { image ->
-//                    val filePath = "grid-$path"
-//                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
-//                    logger.info("Saved image to $filePath")
-//                }
-        }
+            seed = seed,
+        )
+
+        renderSelectedLayers(
+            selectedLayers = selectedLayers,
+            renderers = mapOf(
+                MapLayer.GRAPH to { terrainMapGenerator.generateGraphImage() },
+                MapLayer.HEIGHT to { terrainMapGenerator.generateHeightImage() },
+                MapLayer.CONTOUR to { terrainMapGenerator.generateContourImage() },
+                MapLayer.GRID to { terrainMapGenerator.generateGridImage() },
+            ),
+        )
+            .zip(selectedLayers.sortedBy { it.ordinal })
+            .forEach { (image, layer) ->
+                val filePath = "${layer.name.lowercase()}-$path"
+                ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
+                logger.info("Saved image to $filePath")
+            }
     }
 }
 
@@ -126,23 +114,36 @@ object ApplyGridCommand : Command("apply-grid") {
     private lateinit var path: String
 
     override fun run() {
-        TerrainMapGenerator(
+        val terrainMapGenerator = TerrainMapGenerator(
             metresPerPixel = metresPerPixel,
             metresPerContour = metresPerContour,
             width = width,
             height = height,
-        ).also {
-            it.generateGridImage()
-                .let { image ->
-                    val filePath = "grid-$path"
-                    ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
-                    logger.info("Saved image to $filePath")
-                }
+            seed = seed,
+        )
+
+        if (MapLayer.GRID !in selectedLayers) {
+            logger.warn("Grid layer is not enabled, so no grid image will be generated.")
+            return
         }
+
+        terrainMapGenerator.generateGridImage()
+            .let { image ->
+                val filePath = "grid-$path"
+                ImageWriter.writeGreyScaleImage(image, Path.of(filePath))
+                logger.info("Saved image to $filePath")
+            }
     }
 }
 
 abstract class Command(val name: String) : Runnable {
+
+    @Parameter(
+        names = ["--layer"],
+        description = "Map layer to enable. Repeat to enable more layers.",
+        required = false
+    )
+    protected var layers = mutableListOf<MapLayer>()
 
     @Parameter(
         names = ["--seed"],
@@ -184,6 +185,9 @@ abstract class Command(val name: String) : Runnable {
         protected val logger: Logger = LogManager.getLogger(Command::class.java)
     }
 
+    protected val selectedLayers: Set<MapLayer>
+        get() = layers.toSet()
+
 }
 
 fun main(args: Array<String>) {
@@ -223,17 +227,32 @@ internal fun availableCommands(): List<Command> =
     )
 
 private fun renderViewerImage(settings: MapViewerSettings, seed: Long): BufferedImage {
+    fun ensureNotCancelled() {
+        if (Thread.currentThread().isInterrupted) {
+            throw CancellationException("Render cancelled")
+        }
+    }
+
+    val renderWidth = (settings.width * settings.zoom).roundToInt().coerceAtLeast(1)
+    val renderHeight = (settings.height * settings.zoom).roundToInt().coerceAtLeast(1)
+    val renderMetresPerPixel = settings.metresPerPixel / settings.zoom
+    val graphMapWidthMetres = settings.width * settings.metresPerPixel
+    val graphMapHeightMetres = settings.height * settings.metresPerPixel
+
     val terrainMapGenerator = TerrainMapGenerator(
-        metresPerPixel = settings.metresPerPixel,
+        metresPerPixel = renderMetresPerPixel,
         metresPerContour = settings.metresPerContour,
-        width = settings.width,
-        height = settings.height,
+        width = renderWidth,
+        height = renderHeight,
+        graphMapWidthMetres = graphMapWidthMetres,
+        graphMapHeightMetres = graphMapHeightMetres,
         seed = seed,
     )
 
     val layers = settings.enabledLayers
         .sortedBy { it.ordinal }
         .map { layer ->
+            ensureNotCancelled()
             when (layer) {
                 MapLayer.GRAPH -> terrainMapGenerator.generateGraphImage()
                 MapLayer.HEIGHT -> terrainMapGenerator.generateHeightImage()
@@ -242,7 +261,15 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): Buffered
             }
         }
 
+    ensureNotCancelled()
     return layers
         .compose()
-        .scale(settings.zoom)
 }
+
+internal fun renderSelectedLayers(
+    selectedLayers: Set<MapLayer>,
+    renderers: Map<MapLayer, () -> BufferedImage>,
+): List<BufferedImage> =
+    selectedLayers
+        .sortedBy { it.ordinal }
+        .map { layer -> renderers.getValue(layer).invoke() }

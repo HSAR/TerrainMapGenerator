@@ -6,18 +6,20 @@ import io.hsar.mapgenerator.random.GridGenerator
 import io.hsar.mapgenerator.random.GridGenerator.padZeroes
 import io.hsar.mapgenerator.random.RandomGenerator
 import java.awt.Font
+import java.util.Random
 import kotlin.math.log
 import kotlin.math.roundToInt
 
 class GridRenderer(
-    private val imageBuilder: io.hsar.mapgenerator.image.ImageBuilder
+    private val imageBuilder: io.hsar.mapgenerator.image.ImageBuilder,
+    private val random: Random = Random(),
 ) {
 
     private val MIN_XY = GRID_LINE_ID_PADDING
     private val MAX_XY = Point(imageBuilder.width.toDouble(), imageBuilder.height.toDouble())
 
     fun draw(
-        GZDand100kmGSID: String = "${GridGenerator.randomGridZone()} ${GridGenerator.random100kmGSID()}",
+        GZDand100kmGSID: String = "${GridGenerator.randomGridZone(random)} ${GridGenerator.random100kmGSID(random)}",
         gridScale: Int,
         metresPerPixel: Double
     ) {
@@ -75,7 +77,7 @@ class GridRenderer(
 
     private fun generateLineNumberStart(detailLevel: Int, totalLines: Int): Int {
         val maxLineNumberStart = Math.pow(10.0, detailLevel.toDouble()) - totalLines
-        return RandomGenerator.generateUniform(1, maxLineNumberStart.roundToInt())
+        return RandomGenerator.generateUniform(1, maxLineNumberStart.roundToInt(), random)
     }
 
     companion object {

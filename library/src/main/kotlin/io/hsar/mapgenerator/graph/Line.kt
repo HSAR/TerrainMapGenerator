@@ -9,6 +9,12 @@ data class Line(
     val vertices: List<Point> = emptyList()
 )
 
+fun Line.scale(factorX: Double, factorY: Double = factorX) = Line(
+    site1 = site1.scale(factorX, factorY),
+    site2 = site2.scale(factorX, factorY),
+    vertices = vertices.scale(factorX, factorY),
+)
+
 fun VoronoiEdge.toLine(sites: List<Point>, vertices: List<Point>): Line = Line(
     sites[site1],
     sites[site2],

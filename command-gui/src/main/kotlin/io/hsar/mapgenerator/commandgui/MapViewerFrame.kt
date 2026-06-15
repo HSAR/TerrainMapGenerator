@@ -10,8 +10,8 @@ import javax.swing.JFrame
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JScrollPane
+import javax.swing.Timer
 import javax.swing.SwingConstants
-import javax.swing.SwingUtilities
 import javax.swing.SwingWorker
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -25,7 +25,7 @@ class MapViewerFrame(
     private val imageLabel = JLabel("Loading map...", SwingConstants.CENTER)
     private val layerToggles = availableLayers.associateWith { layer ->
         JCheckBox(layer.displayName, layer in initialSettings.enabledLayers).also {
-            it.addActionListener { requestRender() }
+            it.addActionListener { requestRenderNow() }
         }
     }
     private val imageScrollPane = JScrollPane(imageLabel)
@@ -33,6 +33,9 @@ class MapViewerFrame(
     private var currentSettings = initialSettings
     private var renderRevision = 0
     private var activeWorker: SwingWorker<BufferedImage, Unit>? = null
+    private val renderDebounceTimer = Timer(RENDER_DEBOUNCE_MS) { requestRenderNow() }.apply {
+        isRepeats = false
+    }
 
     init {
         defaultCloseOperation = EXIT_ON_CLOSE
@@ -60,7 +63,7 @@ class MapViewerFrame(
                     else -> currentSettings.withZoom(ZOOM_STEP_OUT)
                 }
             }
-            requestRender()
+            scheduleRender()
             event.consume()
         }
 
@@ -74,15 +77,19 @@ class MapViewerFrame(
 
     fun showWindow() {
         isVisible = true
-        requestRender()
+        requestRenderNow()
     }
 
-    private fun requestRender() {
+    private fun scheduleRender() {
+        activeWorker?.cancel(true)
+        renderDebounceTimer.restart()
+    }
+
+    private fun requestRenderNow() {
+        renderDebounceTimer.stop()
         val selectedLayers = availableLayers
             .filter { layerToggles.getValue(it).isSelected }
             .toSet()
-        currentSettings = currentSettings.copy(enabledLayers = selectedLayers)
-
         title = currentSettings.windowTitle()
 
         if (selectedLayers.isEmpty()) {
@@ -96,7 +103,7 @@ class MapViewerFrame(
         imageLabel.text = "Rendering map..."
         imageLabel.icon = null
 
-        val renderSettings = currentSettings
+        val renderSettings = currentSettings.copy(enabledLayers = selectedLayers)
         val revision = ++renderRevision
         activeWorker?.cancel(true)
         activeWorker = object : SwingWorker<BufferedImage, Unit>() {
@@ -120,5 +127,6 @@ class MapViewerFrame(
     companion object {
         private const val ZOOM_STEP_IN = 1.2
         private const val ZOOM_STEP_OUT = 1 / 1.2
+        private const val RENDER_DEBOUNCE_MS = 120
     }
 }

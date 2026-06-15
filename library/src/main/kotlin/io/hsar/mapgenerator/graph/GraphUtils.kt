@@ -14,13 +14,13 @@ object GraphUtils {
     /**
      * Conduct Lloyd relaxation by identifying the centre of each Voronoi region and using these points as sites for another Voronoi diagram.
      */
-    fun VoronoiResults.relax(height: Int, width: Int): VoronoiResults = this.voronoiRegions()
+    fun VoronoiResults.relax(height: Double, width: Double): VoronoiResults = this.voronoiRegions()
         .map {
             GeoUtils.polygonCentroid(*it)
         }
         .let { newSites ->
             logger.info("Relaxing Voronoi graph with ${newSites.size} sites.")
-            Voronoi.findAll(newSites.toTypedArray(), RectD(0.0, 0.0, width.toDouble(), height.toDouble()))
+            Voronoi.findAll(newSites.toTypedArray(), RectD(0.0, 0.0, width, height))
         }
 
     fun generateCells(
