@@ -8,6 +8,7 @@ This repo contains a Kotlin-based program built using multiple Maven modules.
 - `ship-generator` contaings code for rendering science-fiction starships.
 - `render/` is the executable entry point for the CLI and should own command registration.
 - `command-gui/` is a Swing GUI library for viewing generated map images and should not depend on `render/`.
+  - The map viewer uses scroll-wheel zoom; keep the active seed stable across rerenders so graph and contour layers stay consistent for a single session.
 
 # Testing
 

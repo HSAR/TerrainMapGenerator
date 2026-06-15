@@ -14,6 +14,7 @@ import io.hsar.mapgenerator.image.FacilityRenderer.Complexity.INTERMEDIATE
 import io.hsar.mapgenerator.random.RandomGenerator
 import io.hsar.mapgenerator.random.RectangleGenerator
 import kotlin.math.abs
+import java.util.Random
 
 /**
  * Draws a factory facility using multiple randomly-positioned rectangular buildings, always aligned along the Euclidean plane.
@@ -23,7 +24,8 @@ import kotlin.math.abs
  */
 class FacilityRenderer(
     private val metresPerPixel: Double,
-    private val imageBuilder: ImageBuilder
+    private val imageBuilder: ImageBuilder,
+    private val random: Random = Random(),
 ) {
 
     /**
@@ -56,7 +58,7 @@ class FacilityRenderer(
                 generateBuilding(it)
             }
             .fold(emptyList<List<Point>>()) { acc, rectangle ->
-                val joinAt = when (RandomGenerator.generateBoolean()) {
+                val joinAt = when (RandomGenerator.generateBoolean(random)) {
                     true -> JoinAt.TOP
                     false -> JoinAt.BOTTOM
                 }
@@ -80,9 +82,9 @@ class FacilityRenderer(
      */
     private fun generateBuilding(buildingSize: BuildingSize): Rectangle {
         val (areaMin, areaMax) = buildingSize.sizeRange
-        val area = RandomGenerator.generateUniform(areaMin, areaMax)
+        val area = RandomGenerator.generateUniform(areaMin, areaMax, random)
 
-        return RectangleGenerator.generateRectangle(area, 0.2).resizeTopLeft(1 / metresPerPixel, 1 / metresPerPixel)
+        return RectangleGenerator.generateRectangle(area, 0.2, random).resizeTopLeft(1 / metresPerPixel, 1 / metresPerPixel)
     }
 
     /**

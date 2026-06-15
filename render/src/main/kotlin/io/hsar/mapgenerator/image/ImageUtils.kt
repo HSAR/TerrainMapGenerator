@@ -1,10 +1,12 @@
 package io.hsar.mapgenerator.image
 
 import java.awt.Color
+import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.awt.image.DataBufferInt
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 object ImageUtils {
 
@@ -102,6 +104,21 @@ object ImageUtils {
             }
 
     fun List<BufferedImage>.compose() = this.reduce { acc, curr -> acc + curr }
+
+    fun BufferedImage.scale(factor: Double) =
+        if (factor == 1.0) {
+            this
+        } else {
+            val scaledWidth = (width * factor).roundToInt().coerceAtLeast(1)
+            val scaledHeight = (height * factor).roundToInt().coerceAtLeast(1)
+            BufferedImage(scaledWidth, scaledHeight, BufferedImage.TYPE_INT_ARGB)
+                .also { image ->
+                    val graphics = image.createGraphics()
+                    graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+                    graphics.drawImage(this, 0, 0, scaledWidth, scaledHeight, null)
+                    graphics.dispose()
+                }
+        }
 
     private fun Color.toHSB() = Color.RGBtoHSB(this.red, this.green, this.blue, null)
 

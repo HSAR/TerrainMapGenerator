@@ -5,23 +5,34 @@ import java.awt.Dimension
 import java.awt.image.BufferedImage
 import javax.swing.BorderFactory
 import javax.swing.ImageIcon
-import javax.swing.JButton
-import javax.swing.JComboBox
+import javax.swing.JCheckBox
 import javax.swing.JFrame
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.SwingConstants
+import javax.swing.SwingUtilities
+import javax.swing.SwingWorker
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 class MapViewerFrame(
-    private val imagesByLayer: Map<MapLayer, BufferedImage>,
+    private val renderMap: (MapViewerSettings) -> BufferedImage,
     private val initialSettings: MapViewerSettings = MapViewerSettings(),
 ) : JFrame(initialSettings.windowTitle()) {
 
-    private val availableLayers = imagesByLayer.keys.sortedBy { it.ordinal }
-    private val imageLabel = JLabel("Select a map layer to view.", SwingConstants.CENTER)
-    private val layerSelector = JComboBox(availableLayers.toTypedArray())
-    private val refreshButton = JButton("Show layer")
+    private val availableLayers = MapLayer.values().toList()
+    private val imageLabel = JLabel("Loading map...", SwingConstants.CENTER)
+    private val layerToggles = availableLayers.associateWith { layer ->
+        JCheckBox(layer.displayName, layer in initialSettings.enabledLayers).also {
+            it.addActionListener { requestRender() }
+        }
+    }
+    private val imageScrollPane = JScrollPane(imageLabel)
+
+    private var currentSettings = initialSettings
+    private var renderRevision = 0
+    private var activeWorker: SwingWorker<BufferedImage, Unit>? = null
 
     init {
         defaultCloseOperation = EXIT_ON_CLOSE
@@ -29,24 +40,33 @@ class MapViewerFrame(
         preferredSize = Dimension(1280, 900)
 
         imageLabel.border = BorderFactory.createEmptyBorder(16, 16, 16, 16)
+        imageScrollPane.isWheelScrollingEnabled = false
+        imageScrollPane.preferredSize = Dimension(1280, 840)
 
         val controls = JPanel()
-        controls.add(JLabel("Layer:"))
-        controls.add(layerSelector)
-        controls.add(refreshButton)
-
-        add(controls, BorderLayout.NORTH)
-        add(JScrollPane(imageLabel), BorderLayout.CENTER)
-
-        if (availableLayers.isNotEmpty()) {
-            layerSelector.selectedItem = initialSettings.layer.takeIf(imagesByLayer::containsKey)
-                ?: availableLayers.first()
-        } else {
-            refreshButton.isEnabled = false
-            imageLabel.text = "No map layers were provided."
+        controls.add(JLabel("Layers:"))
+        availableLayers.forEach { layer ->
+            controls.add(layerToggles.getValue(layer))
         }
 
-        refreshButton.addActionListener { showSelectedLayer() }
+        add(controls, BorderLayout.NORTH)
+        add(imageScrollPane, BorderLayout.CENTER)
+
+        val zoomWheelHandler = java.awt.event.MouseWheelListener { event ->
+            val steps = abs(event.preciseWheelRotation).roundToInt().coerceAtLeast(1)
+            repeat(steps) {
+                currentSettings = when {
+                    event.preciseWheelRotation < 0 -> currentSettings.withZoom(ZOOM_STEP_IN)
+                    else -> currentSettings.withZoom(ZOOM_STEP_OUT)
+                }
+            }
+            requestRender()
+            event.consume()
+        }
+
+        imageLabel.addMouseWheelListener(zoomWheelHandler)
+        controls.addMouseWheelListener(zoomWheelHandler)
+        layerToggles.values.forEach { it.addMouseWheelListener(zoomWheelHandler) }
 
         pack()
         setLocationRelativeTo(null)
@@ -54,16 +74,51 @@ class MapViewerFrame(
 
     fun showWindow() {
         isVisible = true
-        if (availableLayers.isNotEmpty()) {
-            showSelectedLayer()
-        }
+        requestRender()
     }
 
-    private fun showSelectedLayer() {
-        val selectedLayer = layerSelector.selectedItem as? MapLayer ?: return
-        val image = imagesByLayer[selectedLayer] ?: return
+    private fun requestRender() {
+        val selectedLayers = availableLayers
+            .filter { layerToggles.getValue(it).isSelected }
+            .toSet()
+        currentSettings = currentSettings.copy(enabledLayers = selectedLayers)
 
-        imageLabel.icon = ImageIcon(image)
-        imageLabel.text = null
+        title = currentSettings.windowTitle()
+
+        if (selectedLayers.isEmpty()) {
+            activeWorker?.cancel(true)
+            activeWorker = null
+            imageLabel.icon = null
+            imageLabel.text = "Enable one or more layers to view the combined map."
+            return
+        }
+
+        imageLabel.text = "Rendering map..."
+        imageLabel.icon = null
+
+        val renderSettings = currentSettings
+        val revision = ++renderRevision
+        activeWorker?.cancel(true)
+        activeWorker = object : SwingWorker<BufferedImage, Unit>() {
+            override fun doInBackground(): BufferedImage = renderMap(renderSettings)
+
+            override fun done() {
+                if (revision != renderRevision || isCancelled) {
+                    return
+                }
+
+                try {
+                    imageLabel.icon = ImageIcon(get())
+                    imageLabel.text = null
+                } finally {
+                    activeWorker = null
+                }
+            }
+        }.also { it.execute() }
+    }
+
+    companion object {
+        private const val ZOOM_STEP_IN = 1.2
+        private const val ZOOM_STEP_OUT = 1 / 1.2
     }
 }

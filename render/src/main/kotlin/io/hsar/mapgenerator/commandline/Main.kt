@@ -8,8 +8,11 @@ import io.hsar.mapgenerator.commandgui.MapLayer
 import io.hsar.mapgenerator.commandgui.MapViewerFrame
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.gui.ImageFrame
+import io.hsar.mapgenerator.image.ImageUtils.compose
+import io.hsar.mapgenerator.image.ImageUtils.scale
 import io.hsar.mapgenerator.image.ImageWriter
 import java.nio.file.Path
+import java.awt.image.BufferedImage
 import javax.swing.SwingUtilities
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
@@ -18,27 +21,21 @@ import kotlin.system.exitProcess
 @Parameters(commandDescription = "Generates terrain maps and opens the Swing GUI viewer.")
 object LaunchGuiCommand : Command("show-gui") {
     override fun run() {
+        val sessionSeed = seed
         val settings = MapViewerSettings(
+            enabledLayers = MapLayer.values().toSet(),
+            seed = sessionSeed,
             metresPerPixel = metresPerPixel,
             metresPerContour = metresPerContour,
             width = width,
             height = height,
-        )
-        val terrainMapGenerator = TerrainMapGenerator(
-            metresPerPixel = metresPerPixel,
-            metresPerContour = metresPerContour,
-            width = width,
-            height = height,
-        )
-        val imagesByLayer = mapOf(
-            MapLayer.GRAPH to terrainMapGenerator.generateGraphImage(),
-            MapLayer.HEIGHT to terrainMapGenerator.generateHeightImage(),
-            MapLayer.CONTOUR to terrainMapGenerator.generateContourImage(),
-            MapLayer.GRID to terrainMapGenerator.generateGridImage(),
         )
 
         SwingUtilities.invokeLater {
-            MapViewerFrame(imagesByLayer, settings).showWindow()
+            MapViewerFrame(
+                renderMap = { renderViewerImage(it, sessionSeed) },
+                initialSettings = settings,
+            ).showWindow()
         }
     }
 }
@@ -148,6 +145,13 @@ object ApplyGridCommand : Command("apply-grid") {
 abstract class Command(val name: String) : Runnable {
 
     @Parameter(
+        names = ["--seed"],
+        description = "The seed used for deterministic map generation. Defaults to the current time.",
+        required = false
+    )
+    protected var seed = System.currentTimeMillis()
+
+    @Parameter(
         names = ["--metresPerPixel"],
         description = "The scale of the map to generate, in metres per pixel. Defaults to 2, so a 1080x720px image would cover 2.2x1.4km.",
         required = false
@@ -217,3 +221,28 @@ internal fun availableCommands(): List<Command> =
         SaveImageCommand,
         ApplyGridCommand,
     )
+
+private fun renderViewerImage(settings: MapViewerSettings, seed: Long): BufferedImage {
+    val terrainMapGenerator = TerrainMapGenerator(
+        metresPerPixel = settings.metresPerPixel,
+        metresPerContour = settings.metresPerContour,
+        width = settings.width,
+        height = settings.height,
+        seed = seed,
+    )
+
+    val layers = settings.enabledLayers
+        .sortedBy { it.ordinal }
+        .map { layer ->
+            when (layer) {
+                MapLayer.GRAPH -> terrainMapGenerator.generateGraphImage()
+                MapLayer.HEIGHT -> terrainMapGenerator.generateHeightImage()
+                MapLayer.CONTOUR -> terrainMapGenerator.generateContourImage()
+                MapLayer.GRID -> terrainMapGenerator.generateGridImage()
+            }
+        }
+
+    return layers
+        .compose()
+        .scale(settings.zoom)
+}

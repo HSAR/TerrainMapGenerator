@@ -52,7 +52,7 @@ class ShipGenerator(val width: Double, val height: Double) {
         val engineCompartment = emptyShip.createCompartment(
             CompartmentType.ENGINE,
             RectangleGenerator.generateRectangleCentreOn(
-                potentialEngineCompartment.potentialSizeRange.randomGaussian(0.3)
+                potentialEngineCompartment.potentialSizeRange.randomGaussian(stdDevFactor = 0.3)
             ),
             emptyShip.decks.takeLast(potentialEngineCompartment.decks).map { it.id }
         )

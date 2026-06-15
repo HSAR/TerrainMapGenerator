@@ -12,6 +12,7 @@ import io.hsar.mapgenerator.image.PathRenderer
 import io.hsar.mapgenerator.image.TerrainGenerator
 import io.hsar.mapgenerator.random.PointGenerator
 import java.awt.image.BufferedImage
+import java.util.Random
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import org.kynosarges.tektosyne.geometry.RectD
@@ -20,21 +21,33 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 
-class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Double, val height: Int, val width: Int) {
+class TerrainMapGenerator(
+    val metresPerPixel: Double,
+    val metresPerContour: Double,
+    val height: Int,
+    val width: Int,
+    seed: Long = System.currentTimeMillis(),
+) {
 
     init {
         logger.info("Creating map images ${width}px wide by ${height}px high at $metresPerPixel metres per pixel.")
     }
 
+    private val seedSource = Random(seed)
+    private val graphSeed = seedSource.nextLong()
+    private val facilitySeed = seedSource.nextLong()
+
     val heightData = TerrainGenerator.generateTerrain(width = width, height = height)
 
     fun generateGraphImage(): BufferedImage {
+        val graphRandom = Random(graphSeed)
+        val facilityRandom = Random(facilitySeed)
         val numPoints = (sqrt(height.toDouble() * width) / POINT_RATIO).roundToInt()
 
         val clipRect = RectD(0.0, 0.0, width.toDouble(), height.toDouble())
         val rangeX = Range(0.0, width.toDouble())
         val rangeY = Range(0.0, height.toDouble())
-        val points = (0..numPoints).map { PointGenerator.randomDoublePoint(rangeX, rangeY) }
+        val points = (0..numPoints).map { PointGenerator.randomDoublePoint(rangeX, rangeY, graphRandom) }
 //        val points = listOf(
 //            RangedValue(rangeX, width * 0.5) to RangedValue(rangeY, height * 0.5),
 //            RangedValue(rangeX, width * 0.7) to RangedValue(rangeY, height * 0.3),
@@ -65,7 +78,7 @@ class TerrainMapGenerator(val metresPerPixel: Double, val metresPerContour: Doub
             .fillTransparent()
             .also { imageBuilder ->
                 val cellImageRenderer = io.hsar.mapgenerator.image.CellImageRenderer(imageBuilder)
-                val facilityRenderer = io.hsar.mapgenerator.image.FacilityRenderer(metresPerPixel, imageBuilder)
+                val facilityRenderer = io.hsar.mapgenerator.image.FacilityRenderer(metresPerPixel, imageBuilder, facilityRandom)
 
                 PathRenderer(metresPerPixel, imageBuilder).drawPaths(siteJoins)
 
