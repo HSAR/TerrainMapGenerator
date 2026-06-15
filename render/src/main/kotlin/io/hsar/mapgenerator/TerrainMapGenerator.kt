@@ -10,6 +10,8 @@ import io.hsar.mapgenerator.graph.toLine
 import io.hsar.mapgenerator.graph.toPoint
 import io.hsar.mapgenerator.graph.toPointD
 import io.hsar.mapgenerator.graph.scale
+import io.hsar.mapgenerator.grid.GridLayer
+import io.hsar.mapgenerator.grid.GridLayerBuilder
 import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
 import io.hsar.mapgenerator.image.PathRenderer
 import io.hsar.mapgenerator.image.TerrainGenerator
@@ -43,7 +45,11 @@ class TerrainMapGenerator(
     private val facilitySeed = seedSource.nextLong()
     private val gridSeed = seedSource.nextLong()
 
-    val heightData = TerrainGenerator.generateTerrain(width = width, height = height)
+    val heightData = TerrainGenerator.generateTerrain(
+        width = width,
+        height = height,
+        metresPerPixel = metresPerPixel,
+    )
     private val graphData by lazy { graphCache.getOrPut(cacheKey) { buildGraphData() } }
 
     fun generateGraphImage(): BufferedImage {
@@ -85,13 +91,18 @@ class TerrainMapGenerator(
     fun generateGridImage(): BufferedImage {
         val imageBuilder = io.hsar.mapgenerator.image.ImageBuilder(width = width, height = height)
             .also { it.fillTransparent() }
-        io.hsar.mapgenerator.image.GridRenderer(imageBuilder, Random(gridSeed)).draw(
-            GZDand100kmGSID = "25F XK",
-            gridScale = io.hsar.mapgenerator.image.GridRenderer.HUNDRED_M_GRID_SQUARES,
-            metresPerPixel = metresPerPixel
-        )
+        io.hsar.mapgenerator.grid.GridLayerPainter.draw(imageBuilder, generateGridLayer())
         return imageBuilder.build()
     }
+
+    fun generateGridLayer(): GridLayer = GridLayerBuilder.build(
+        width = width,
+        height = height,
+        gridScale = io.hsar.mapgenerator.image.GridRenderer.HUNDRED_M_GRID_SQUARES,
+        metresPerPixel = metresPerPixel,
+        random = Random(gridSeed),
+        mapId = "25F XK",
+    )
 
     companion object {
         private val logger: Logger = LogManager.getLogger(TerrainMapGenerator::class.java)

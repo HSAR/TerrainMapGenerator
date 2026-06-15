@@ -7,15 +7,15 @@ import kotlin.math.truncate
  * Graham Relf, UK, 2006-2021
  */
 object TerrainGenerator {
-    fun generateTerrain(width: Int, height: Int): Array<DoubleArray> {
+    fun generateTerrain(width: Int, height: Int, metresPerPixel: Double): Array<DoubleArray> {
         return (0 until width).map { x ->
             (0 until height).map { y ->
-                calculateHeight(x = x, y = y)
+                calculateHeight(x = x * metresPerPixel, y = y * metresPerPixel)
             }.toDoubleArray()
         }.toTypedArray()
     }
 
-    private fun calculateHeight(x: Int, y: Int): Double {
+    private fun calculateHeight(x: Double, y: Double): Double {
         var height = 0.0
         for ((repeat_x, repeat_y) in REPEAT_PROFILES) {
             val j = (repeat_x * x + repeat_y * y) * RECIP128

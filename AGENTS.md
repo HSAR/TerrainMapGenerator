@@ -10,6 +10,7 @@ This repo contains a Kotlin-based program built using multiple Maven modules.
 - `command-gui/` is a Swing GUI library for viewing generated map images and should not depend on `render/`.
   - The map viewer uses scroll-wheel zoom; keep the active seed stable across rerenders so graph and contour layers stay consistent for a single session.
   - CLI layer selection is opt-in via repeated `--layer` flags; keep the GUI's initial layer state and any render calls aligned with the chosen CLI layers so disabled layers are neither shown nor generated.
+  - Terrain-based layers should be sampled from stable world-space coordinates derived from `metresPerPixel`, not raw pixel indices, so zoomed rerenders keep the same scale and only gain resolution.
 
 # Testing
 

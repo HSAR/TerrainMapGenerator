@@ -5,6 +5,7 @@ import com.beust.jcommander.Parameter
 import com.beust.jcommander.Parameters
 import io.hsar.mapgenerator.TerrainMapGenerator
 import io.hsar.mapgenerator.commandgui.MapLayer
+import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerFrame
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.gui.ImageFrame
@@ -17,6 +18,7 @@ import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import kotlin.math.roundToInt
 import java.util.concurrent.CancellationException
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.system.exitProcess
 
 @Parameters(commandDescription = "Generates terrain maps and opens the Swing GUI viewer.")
@@ -226,7 +228,7 @@ internal fun availableCommands(): List<Command> =
         ApplyGridCommand,
     )
 
-private fun renderViewerImage(settings: MapViewerSettings, seed: Long): BufferedImage {
+private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewerRenderData {
     fun ensureNotCancelled() {
         if (Thread.currentThread().isInterrupted) {
             throw CancellationException("Render cancelled")
@@ -239,31 +241,70 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): Buffered
     val graphMapWidthMetres = settings.width * settings.metresPerPixel
     val graphMapHeightMetres = settings.height * settings.metresPerPixel
 
-    val terrainMapGenerator = TerrainMapGenerator(
-        metresPerPixel = renderMetresPerPixel,
-        metresPerContour = settings.metresPerContour,
+    val baseLayers = settings.enabledLayers - MapLayer.GRID
+    val baseKey = BaseRenderKey(
+        seed = seed,
         width = renderWidth,
         height = renderHeight,
-        graphMapWidthMetres = graphMapWidthMetres,
-        graphMapHeightMetres = graphMapHeightMetres,
+        metresPerPixel = renderMetresPerPixel,
+        metresPerContour = settings.metresPerContour,
+        layers = baseLayers,
+    )
+    val gridKey = GridRenderKey(
         seed = seed,
+        width = renderWidth,
+        height = renderHeight,
+        metresPerPixel = renderMetresPerPixel,
+        metresPerContour = settings.metresPerContour,
     )
 
-    val layers = settings.enabledLayers
-        .sortedBy { it.ordinal }
-        .map { layer ->
-            ensureNotCancelled()
-            when (layer) {
-                MapLayer.GRAPH -> terrainMapGenerator.generateGraphImage()
-                MapLayer.HEIGHT -> terrainMapGenerator.generateHeightImage()
-                MapLayer.CONTOUR -> terrainMapGenerator.generateContourImage()
-                MapLayer.GRID -> terrainMapGenerator.generateGridImage()
-            }
-        }
+    val terrainMapGenerator by lazy {
+        TerrainMapGenerator(
+            metresPerPixel = renderMetresPerPixel,
+            metresPerContour = settings.metresPerContour,
+            width = renderWidth,
+            height = renderHeight,
+            graphMapWidthMetres = graphMapWidthMetres,
+            graphMapHeightMetres = graphMapHeightMetres,
+            seed = seed,
+        )
+    }
 
-    ensureNotCancelled()
-    return layers
-        .compose()
+    val baseImage = RenderCache.baseImages.getOrPut(baseKey) {
+        if (baseLayers.isEmpty()) {
+            io.hsar.mapgenerator.image.ImageBuilder(renderWidth, renderHeight)
+                .fillTransparent()
+                .build()
+        } else {
+            val layers = baseLayers
+                .sortedBy { it.ordinal }
+                .map { layer ->
+                    ensureNotCancelled()
+                    when (layer) {
+                        MapLayer.GRAPH -> terrainMapGenerator.generateGraphImage()
+                        MapLayer.HEIGHT -> terrainMapGenerator.generateHeightImage()
+                        MapLayer.CONTOUR -> terrainMapGenerator.generateContourImage()
+                        MapLayer.GRID -> error("Grid layer is rendered separately")
+                    }
+                }
+
+            ensureNotCancelled()
+            layers.compose()
+        }
+    }
+
+    val gridLayer = if (MapLayer.GRID in settings.enabledLayers) {
+        RenderCache.gridLayers.getOrPut(gridKey) {
+            terrainMapGenerator.generateGridLayer()
+        }
+    } else {
+        null
+    }
+
+    return MapViewerRenderData(
+        baseImage = baseImage,
+        gridLayer = gridLayer,
+    )
 }
 
 internal fun renderSelectedLayers(
@@ -273,3 +314,25 @@ internal fun renderSelectedLayers(
     selectedLayers
         .sortedBy { it.ordinal }
         .map { layer -> renderers.getValue(layer).invoke() }
+
+private data class BaseRenderKey(
+    val seed: Long,
+    val width: Int,
+    val height: Int,
+    val metresPerPixel: Double,
+    val metresPerContour: Double,
+    val layers: Set<MapLayer>,
+)
+
+private data class GridRenderKey(
+    val seed: Long,
+    val width: Int,
+    val height: Int,
+    val metresPerPixel: Double,
+    val metresPerContour: Double,
+)
+
+private object RenderCache {
+    val baseImages = ConcurrentHashMap<BaseRenderKey, BufferedImage>()
+    val gridLayers = ConcurrentHashMap<GridRenderKey, io.hsar.mapgenerator.grid.GridLayer>()
+}

@@ -4,6 +4,7 @@ import io.hsar.mapgenerator.graph.Line
 import io.hsar.mapgenerator.graph.Path
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
+import io.hsar.mapgenerator.grid.GridRenderSurface
 import java.awt.AlphaComposite
 import java.awt.BasicStroke
 import java.awt.Color
@@ -13,7 +14,7 @@ import java.awt.image.BufferedImage
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-class ImageBuilder(val width: Int, val height: Int) {
+class ImageBuilder(override val width: Int, override val height: Int) : GridRenderSurface {
 
     val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
     private val g2d = image.createGraphics()
@@ -42,7 +43,7 @@ class ImageBuilder(val width: Int, val height: Int) {
 
     fun drawLines(edges: Collection<Line>, color: Color = Color.BLACK): ImageBuilder {
         edges.forEach { (point1, point2, vertices) ->
-            drawLine(point1, point2, color = color)
+            drawLine(point1, point2, width = 3.0f, color = color)
 
             vertices.forEach { vPoint ->
                 drawPoint(point = vPoint, diameter = 2, color = Color.BLUE)
@@ -51,9 +52,9 @@ class ImageBuilder(val width: Int, val height: Int) {
         return this
     }
 
-    fun drawLine(line: Line, color: Color, width: Float = 3.0f) = drawLine(line.site1, line.site2, width, color)
+    fun drawLine(line: Line, color: Color, width: Float) = drawLine(line.site1, line.site2, width, color)
 
-    fun drawLine(point1: Point, point2: Point, width: Float = 3.0f, color: Color) {
+    override fun drawLine(point1: Point, point2: Point, width: Float, color: Color) {
         val (p1x, p1y) = point1
         val (p2x, p2y) = point2
 
@@ -140,10 +141,10 @@ class ImageBuilder(val width: Int, val height: Int) {
         return xPoints to yPoints
     }
 
-    fun drawString(
+    override fun drawString(
         point: Point,
         string: String,
-        fontAndColour: Pair<Font, Color> = io.hsar.mapgenerator.image.Palette.Fonts.BASE
+        fontAndColour: Pair<Font, Color>
     ) {
         g2d.font = fontAndColour.first
         g2d.color = fontAndColour.second
@@ -153,10 +154,10 @@ class ImageBuilder(val width: Int, val height: Int) {
     /**
      * Draw a String centered on a Point.
      */
-    fun drawCenteredString(
+    override fun drawCenteredString(
         point: Point,
         text: String,
-        fontAndColour: Pair<Font, Color> = io.hsar.mapgenerator.image.Palette.Fonts.BASE
+        fontAndColour: Pair<Font, Color>
     ) {
         // Get the FontMetrics
         val renderedStringSize = getTextSize(text, fontAndColour.first)
@@ -168,7 +169,7 @@ class ImageBuilder(val width: Int, val height: Int) {
         drawString(Point(x, y), text, fontAndColour)
     }
 
-    fun getTextSize(text: String, font: Font): Rectangle = g2d.getFontMetrics(font)
+    override fun getTextSize(text: String, font: Font): Rectangle = g2d.getFontMetrics(font)
         .let {
             Rectangle(Point.ORIGIN, Point(it.getStringBounds(text, g2d).width, -it.ascent.toDouble()))
         }
