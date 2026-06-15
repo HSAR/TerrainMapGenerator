@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.model
 
 import io.hsar.mapgenerator.graph.Rectangle
+import io.hsar.mapgenerator.model.CompartmentPriority.*
 
 /**
  * A compartment is a space that may span multiple decks, which are represented by compartment slices.
@@ -13,15 +14,15 @@ data class Compartment(
 )
 
 enum class CompartmentType(val friendlyName: String, val priority: CompartmentPriority) {
-    BRIDGE("Bridge", CompartmentPriority.PRIMARY),
-    ENGINE("Engineering", CompartmentPriority.PRIMARY),
-    HANGAR("Hangar", CompartmentPriority.PRIMARY),
-    CARGO("Cargo", CompartmentPriority.PRIMARY),
-    WEAPONS("Weapons", CompartmentPriority.SECONDARY),
-    CREW_QUARTERS("Crew Quarters", CompartmentPriority.SECONDARY),
-    AIRLOCK("Airlock", CompartmentPriority.TERTIARY),
-    CORRIDOR("Corridor", CompartmentPriority.TERTIARY),
-    VERTICAL_HATCH("Hatch", CompartmentPriority.TERTIARY),
+    BRIDGE("Bridge", PRIMARY),
+    ENGINE("Engineering", PRIMARY),
+    HANGAR("Hangar", PRIMARY),
+    CARGO("Cargo", PRIMARY),
+    WEAPONS("Weapons", SECONDARY),
+    CREW_QUARTERS("Crew Quarters", SECONDARY),
+    AIRLOCK("Airlock", TERTIARY),
+    CORRIDOR("Corridor", TERTIARY),
+    VERTICAL_HATCH("Hatch", TERTIARY),
 }
 
 enum class CompartmentSize(val deckRange: Pair<Double, Double>, val areaRange: Pair<Double, Double>) {

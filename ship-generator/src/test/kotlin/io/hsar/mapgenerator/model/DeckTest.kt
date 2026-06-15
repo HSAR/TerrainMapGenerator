@@ -20,7 +20,6 @@ class DeckTest {
             id = "00",
             compartmentSlices = listOf(
                 createCompartmentSlice(HANGAR),
-                createCompartmentSlice(CARGO),
                 createCompartmentSlice(CORRIDOR),
             )
         )
@@ -31,7 +30,7 @@ class DeckTest {
     }
 
     @Test
-    fun `name is correct when multiple primary compartments are present on the deck`() {
+    fun `name is correct when multiple primary and secondary compartments are present on the deck`() {
         val objectUnderTest = createTestDeck(
             id = "01",
             compartmentSlices = listOf(
@@ -40,13 +39,14 @@ class DeckTest {
                 createCompartmentSlice(ENGINE),
                 createCompartmentSlice(ENGINE),
                 createCompartmentSlice(CARGO),
-                createCompartmentSlice(CORRIDOR),
+                createCompartmentSlice(CORRIDOR), // should not appear
+                createCompartmentSlice(CREW_QUARTERS), // should not appear
             )
         )
 
         val result = objectUnderTest.name
 
-        assertThat(result, equalTo("01 (Bridge/Engineering/Hangar)"))
+        assertThat(result, equalTo("01 (Bridge/Engineering/Hangar/Cargo)"))
     }
 
     @Test
@@ -69,8 +69,6 @@ class DeckTest {
         val objectUnderTest = createTestDeck(
             id = "01",
             compartmentSlices = listOf(
-                createCompartmentSlice(CARGO),
-                createCompartmentSlice(CARGO),
                 createCompartmentSlice(CREW_QUARTERS),
                 createCompartmentSlice(CORRIDOR),
             )
@@ -78,7 +76,7 @@ class DeckTest {
 
         val result = objectUnderTest.name
 
-        assertThat(result, equalTo("01 (Cargo/Crew Quarters)"))
+        assertThat(result, equalTo("01 (Crew Quarters)"))
     }
 
     @Test
