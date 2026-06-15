@@ -2,8 +2,7 @@ package io.hsar.mapgenerator.commandgui
 
 import io.hsar.mapgenerator.grid.GraphicsGridRenderSurface
 import io.hsar.mapgenerator.grid.GridLayerPainter
-import io.hsar.mapgenerator.graph.Point
-import io.hsar.mapgenerator.graph.Rectangle
+import java.awt.Color
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.Graphics
@@ -37,13 +36,28 @@ class MapViewerFrame(
                 return
             }
 
-            g.drawImage(renderData.baseImage, 0, 0, null)
+            val geometry = geometryFor(renderData.baseImage)
+            val mapOffset = java.awt.Point(geometry.mapOffsetX, geometry.mapOffsetY)
+            g.color = Color.BLACK
+            g.fillRect(0, 0, width, height)
+            g.drawImage(renderData.baseImage, mapOffset.x, mapOffset.y, null)
             renderData.gridLayer?.let { gridLayer ->
-                GridLayerPainter.draw(
-                    GraphicsGridRenderSurface(g as Graphics2D, width, height),
-                    gridLayer,
-                    visibleRect.toGraphRectangle()
-                )
+                val mapBounds = java.awt.Rectangle(mapOffset.x, mapOffset.y, renderData.baseImage.width, renderData.baseImage.height)
+                val visibleMapBounds = visibleRect.intersection(mapBounds)
+
+                if (visibleMapBounds.width > 0 && visibleMapBounds.height > 0) {
+                    val graphics = (g as Graphics2D).create(mapOffset.x, mapOffset.y, renderData.baseImage.width, renderData.baseImage.height) as Graphics2D
+
+                    try {
+                        GridLayerPainter.draw(
+                            GraphicsGridRenderSurface(graphics, renderData.baseImage.width, renderData.baseImage.height),
+                            gridLayer,
+                            visibleMapBounds.toLayerViewport(mapOffset.x, mapOffset.y),
+                        )
+                    } finally {
+                        graphics.dispose()
+                    }
+                }
             }
 
             renderStatusText?.let { status ->
@@ -71,6 +85,7 @@ class MapViewerFrame(
         defaultCloseOperation = EXIT_ON_CLOSE
         layout = BorderLayout()
         preferredSize = Dimension(1280, 900)
+        canvas.background = Color.BLACK
 
         imageScrollPane.isWheelScrollingEnabled = false
         imageScrollPane.preferredSize = Dimension(1280, 840)
@@ -150,7 +165,8 @@ class MapViewerFrame(
                 try {
                     currentRenderData = get()
                     renderStatusText = null
-                    canvas.preferredSize = Dimension(currentRenderData!!.baseImage.width, currentRenderData!!.baseImage.height)
+                    val geometry = geometryFor(currentRenderData!!.baseImage)
+                    canvas.preferredSize = Dimension(geometry.backgroundWidth, geometry.backgroundHeight)
                     canvas.revalidate()
                     canvas.repaint()
                 } finally {
@@ -166,11 +182,6 @@ class MapViewerFrame(
         val y = (canvas.height - metrics.height) / 2 + metrics.ascent
         g.drawString(message, x.coerceAtLeast(16), y.coerceAtLeast(16))
     }
-
-    private fun java.awt.Rectangle.toGraphRectangle() = Rectangle(
-        Point(x.toDouble(), y.toDouble()),
-        Point((x + width).toDouble(), (y + height).toDouble()),
-    )
 
     companion object {
         private const val ZOOM_STEP_IN = 1.2
