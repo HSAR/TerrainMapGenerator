@@ -15,4 +15,4 @@ This repo contains a Kotlin-based program built using multiple Maven modules.
 
 # Code Style
 
-- Always prefer single-lambda declarations, implied return and function chains to using braces.
+- Always prefer highly functional Kotlin, with single-lambda declarations, implied return and function chains to using braces.

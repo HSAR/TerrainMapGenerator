@@ -13,7 +13,6 @@ import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.SwingConstants
-import javax.swing.SwingUtilities
 import javax.swing.SwingWorker
 
 class MapViewerFrame(
@@ -57,9 +56,9 @@ class MapViewerFrame(
         imageLabel.text = "Rendering ${selectedLayer.displayName.lowercase()} map..."
 
         object : SwingWorker<BufferedImage, Unit>() {
-            override fun doInBackground(): BufferedImage {
-                return MapViewer(initialSettings.copy(layer = selectedLayer)).render()
-            }
+            override fun doInBackground(): BufferedImage =
+                MapViewer(initialSettings.copy(layer = selectedLayer))
+                    .render()
 
             override fun done() {
                 try {
@@ -76,19 +75,18 @@ class MapViewerFrame(
 private class MapViewer(
     private val settings: MapViewerSettings,
 ) {
-    fun render(): BufferedImage {
-        val generator = TerrainMapGenerator(
-            metresPerPixel = settings.metresPerPixel,
-            metresPerContour = settings.metresPerContour,
-            width = settings.width,
-            height = settings.height,
-        )
-
-        return when (settings.layer) {
-            MapLayer.GRAPH -> generator.generateGraphImage()
-            MapLayer.HEIGHT -> generator.generateHeightImage()
-            MapLayer.CONTOUR -> generator.generateContourImage()
-            MapLayer.GRID -> generator.generateGridImage()
+    fun render(): BufferedImage = TerrainMapGenerator(
+        metresPerPixel = settings.metresPerPixel,
+        metresPerContour = settings.metresPerContour,
+        width = settings.width,
+        height = settings.height,
+    )
+        .let { generator ->
+            when (settings.layer) {
+                MapLayer.GRAPH -> generator.generateGraphImage()
+                MapLayer.HEIGHT -> generator.generateHeightImage()
+                MapLayer.CONTOUR -> generator.generateContourImage()
+                MapLayer.GRID -> generator.generateGridImage()
+            }
         }
-    }
 }
