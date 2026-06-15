@@ -6,6 +6,8 @@ This repo contains a Kotlin-based program built using multiple Maven modules.
 - `contour-generator/` contains code for rendering large areas of contoured survey-style imagery.
 - `facility-generator/` contains code for rendering blocky factory-style buildings.
 - `ship-generator` contaings code for rendering science-fiction starships.
+- `render/` is the executable entry point for the CLI and should own command registration.
+- `command-gui/` is a Swing GUI library for viewing generated map images and should not depend on `render/`.
 
 # Testing
 

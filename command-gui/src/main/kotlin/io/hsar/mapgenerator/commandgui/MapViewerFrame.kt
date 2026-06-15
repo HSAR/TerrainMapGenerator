@@ -1,6 +1,5 @@
 package io.hsar.mapgenerator.commandgui
 
-import io.hsar.mapgenerator.TerrainMapGenerator
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.image.BufferedImage
@@ -13,15 +12,16 @@ import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.SwingConstants
-import javax.swing.SwingWorker
 
 class MapViewerFrame(
+    private val imagesByLayer: Map<MapLayer, BufferedImage>,
     private val initialSettings: MapViewerSettings = MapViewerSettings(),
 ) : JFrame(initialSettings.windowTitle()) {
 
-    private val imageLabel = JLabel("Generate a map to begin viewing.", SwingConstants.CENTER)
-    private val layerSelector = JComboBox(MapLayer.values())
-    private val refreshButton = JButton("Render map")
+    private val availableLayers = imagesByLayer.keys.sortedBy { it.ordinal }
+    private val imageLabel = JLabel("Select a map layer to view.", SwingConstants.CENTER)
+    private val layerSelector = JComboBox(availableLayers.toTypedArray())
+    private val refreshButton = JButton("Show layer")
 
     init {
         defaultCloseOperation = EXIT_ON_CLOSE
@@ -38,8 +38,15 @@ class MapViewerFrame(
         add(controls, BorderLayout.NORTH)
         add(JScrollPane(imageLabel), BorderLayout.CENTER)
 
-        layerSelector.selectedItem = initialSettings.layer
-        refreshButton.addActionListener { renderSelectedMap() }
+        if (availableLayers.isNotEmpty()) {
+            layerSelector.selectedItem = initialSettings.layer.takeIf(imagesByLayer::containsKey)
+                ?: availableLayers.first()
+        } else {
+            refreshButton.isEnabled = false
+            imageLabel.text = "No map layers were provided."
+        }
+
+        refreshButton.addActionListener { showSelectedLayer() }
 
         pack()
         setLocationRelativeTo(null)
@@ -47,46 +54,16 @@ class MapViewerFrame(
 
     fun showWindow() {
         isVisible = true
-        renderSelectedMap()
-    }
-
-    private fun renderSelectedMap() {
-        val selectedLayer = layerSelector.selectedItem as MapLayer
-        refreshButton.isEnabled = false
-        imageLabel.text = "Rendering ${selectedLayer.displayName.lowercase()} map..."
-
-        object : SwingWorker<BufferedImage, Unit>() {
-            override fun doInBackground(): BufferedImage =
-                MapViewer(initialSettings.copy(layer = selectedLayer))
-                    .render()
-
-            override fun done() {
-                try {
-                    imageLabel.icon = ImageIcon(get())
-                    imageLabel.text = null
-                } finally {
-                    refreshButton.isEnabled = true
-                }
-            }
-        }.execute()
-    }
-}
-
-private class MapViewer(
-    private val settings: MapViewerSettings,
-) {
-    fun render(): BufferedImage = TerrainMapGenerator(
-        metresPerPixel = settings.metresPerPixel,
-        metresPerContour = settings.metresPerContour,
-        width = settings.width,
-        height = settings.height,
-    )
-        .let { generator ->
-            when (settings.layer) {
-                MapLayer.GRAPH -> generator.generateGraphImage()
-                MapLayer.HEIGHT -> generator.generateHeightImage()
-                MapLayer.CONTOUR -> generator.generateContourImage()
-                MapLayer.GRID -> generator.generateGridImage()
-            }
+        if (availableLayers.isNotEmpty()) {
+            showSelectedLayer()
         }
+    }
+
+    private fun showSelectedLayer() {
+        val selectedLayer = layerSelector.selectedItem as? MapLayer ?: return
+        val image = imagesByLayer[selectedLayer] ?: return
+
+        imageLabel.icon = ImageIcon(image)
+        imageLabel.text = null
+    }
 }

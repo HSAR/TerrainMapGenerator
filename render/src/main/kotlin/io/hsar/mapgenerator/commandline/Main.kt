@@ -4,12 +4,44 @@ import com.beust.jcommander.JCommander
 import com.beust.jcommander.Parameter
 import com.beust.jcommander.Parameters
 import io.hsar.mapgenerator.TerrainMapGenerator
+import io.hsar.mapgenerator.commandgui.MapLayer
+import io.hsar.mapgenerator.commandgui.MapViewerFrame
+import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.gui.ImageFrame
 import io.hsar.mapgenerator.image.ImageWriter
 import java.nio.file.Path
+import javax.swing.SwingUtilities
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import kotlin.system.exitProcess
+
+@Parameters(commandDescription = "Generates terrain maps and opens the Swing GUI viewer.")
+object LaunchGuiCommand : Command("show-gui") {
+    override fun run() {
+        val settings = MapViewerSettings(
+            metresPerPixel = metresPerPixel,
+            metresPerContour = metresPerContour,
+            width = width,
+            height = height,
+        )
+        val terrainMapGenerator = TerrainMapGenerator(
+            metresPerPixel = metresPerPixel,
+            metresPerContour = metresPerContour,
+            width = width,
+            height = height,
+        )
+        val imagesByLayer = mapOf(
+            MapLayer.GRAPH to terrainMapGenerator.generateGraphImage(),
+            MapLayer.HEIGHT to terrainMapGenerator.generateHeightImage(),
+            MapLayer.CONTOUR to terrainMapGenerator.generateContourImage(),
+            MapLayer.GRID to terrainMapGenerator.generateGridImage(),
+        )
+
+        SwingUtilities.invokeLater {
+            MapViewerFrame(imagesByLayer, settings).showWindow()
+        }
+    }
+}
 
 @Parameters(commandDescription = "Generates a random terrain map and shows it in a GUI window.")
 object ShowImageCommand : Command("show-map") {
@@ -151,13 +183,7 @@ abstract class Command(val name: String) : Runnable {
 }
 
 fun main(args: Array<String>) {
-    val commandsByName =
-        listOf(
-            ShowImageCommand,
-            SaveImageCommand,
-            ApplyGridCommand,
-        )
-            .associateBy { it.name }
+    val commandsByName = availableCommands().associateBy { it.name }
 
     JCommander()
         .also { commander ->
@@ -183,3 +209,11 @@ fun main(args: Array<String>) {
             }
         }
 }
+
+internal fun availableCommands(): List<Command> =
+    listOf(
+        LaunchGuiCommand,
+        ShowImageCommand,
+        SaveImageCommand,
+        ApplyGridCommand,
+    )

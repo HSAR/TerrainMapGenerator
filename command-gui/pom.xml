@@ -19,10 +19,6 @@
             <groupId>io.hsar.mapgenerator</groupId>
             <artifactId>library</artifactId>
         </dependency>
-        <dependency>
-            <groupId>io.hsar.mapgenerator</groupId>
-            <artifactId>render</artifactId>
-        </dependency>
 
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>
