@@ -28,8 +28,8 @@
         <kotlin.compiler.jvmTarget>18</kotlin.compiler.jvmTarget>
         <kotlin.version>2.2.0</kotlin.version>
 
-        <slf4j.version>2.18.0</slf4j.version>
-        <jackson.version>2.13.3</jackson.version>
+        <slf4j.version>2.26.0</slf4j.version>
+        <jackson.version>2.22.0</jackson.version>
         <junit.jupiter.version>5.7.2</junit.jupiter.version>
     </properties>
 
@@ -89,7 +89,7 @@
             <dependency>
                 <groupId>com.beust</groupId>
                 <artifactId>jcommander</artifactId>
-                <version>1.72</version>
+                <version>1.82</version>
             </dependency>
 
             <dependency>
