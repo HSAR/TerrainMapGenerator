@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui
 
 import io.hsar.mapgenerator.grid.GraphicsGridRenderSurface
 import io.hsar.mapgenerator.grid.GridLayerPainter
+import io.hsar.mapgenerator.grid.GridLayerPainter.TextMode
 import java.awt.Color
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -63,6 +64,7 @@ class MapViewerFrame(
                             GraphicsGridRenderSurface(graphics, renderData.baseImage.width, renderData.baseImage.height),
                             gridLayer,
                             visibleMapBounds.toLayerViewport(mapOffset.x, mapOffset.y),
+                            textMode = TextMode.STICKY_AXES,
                         )
                     } finally {
                         graphics.dispose()
