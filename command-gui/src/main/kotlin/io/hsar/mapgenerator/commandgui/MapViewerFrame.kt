@@ -26,7 +26,7 @@ class MapViewerFrame(
     private val initialSettings: MapViewerSettings = MapViewerSettings(),
 ) : JFrame(initialSettings.windowTitle()) {
 
-    private val availableLayers = MapLayer.values().toList()
+    private val availableLayers = initialSettings.availableLayers
     private val canvas = object : JPanel() {
         override fun paintComponent(g: Graphics) {
             super.paintComponent(g)
@@ -52,7 +52,7 @@ class MapViewerFrame(
         }
     }
     private val layerToggles = availableLayers.associateWith { layer ->
-        JCheckBox(layer.displayName, layer in initialSettings.enabledLayers).also {
+        JCheckBox(layer.displayName, layer.id in initialSettings.enabledLayerIds).also {
             it.addActionListener { requestRenderNow() }
         }
     }
@@ -136,7 +136,7 @@ class MapViewerFrame(
         renderStatusText = "Rendering map..."
         canvas.repaint()
 
-        val renderSettings = currentSettings.copy(enabledLayers = selectedLayers)
+        val renderSettings = currentSettings.copy(enabledLayerIds = selectedLayers.map { it.id }.toSet())
         val revision = ++renderRevision
         activeWorker?.cancel(true)
         activeWorker = object : SwingWorker<MapViewerRenderData, Unit>() {

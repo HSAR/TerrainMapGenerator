@@ -1,8 +1,12 @@
 package io.hsar.mapgenerator.commandgui
 
-enum class MapLayer(val displayName: String) {
+enum class MapLayer(
+    override val displayName: String,
+) : MapViewerLayer {
     HEIGHT("Height"),
     CONTOUR("Contour"),
     GRAPH("Graph"),
-    GRID("Grid"),
+    GRID("Grid");
+
+    override val id: String = name
 }

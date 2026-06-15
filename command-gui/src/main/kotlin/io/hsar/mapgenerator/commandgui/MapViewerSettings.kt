@@ -1,7 +1,11 @@
 package io.hsar.mapgenerator.commandgui
 
+import java.awt.image.BufferedImage
+
 data class MapViewerSettings(
-    val enabledLayers: Set<MapLayer> = MapLayer.values().toSet(),
+    val availableLayers: List<MapViewerLayer> = MapLayer.values().toList(),
+    val enabledLayerIds: Set<String> = availableLayers.map { it.id }.toSet(),
+    val staticLayerImages: Map<String, BufferedImage> = emptyMap(),
     val zoom: Double = 1.0,
     val metresPerPixel: Double = 2.0,
     val metresPerContour: Double = 10.0,

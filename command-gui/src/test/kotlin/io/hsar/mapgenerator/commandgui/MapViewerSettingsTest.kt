@@ -10,16 +10,17 @@ class MapViewerSettingsTest {
     fun `default settings enable all layers`() {
         val settings = MapViewerSettings()
 
-        assertThat(settings.enabledLayers, equalTo(MapLayer.values().toSet()))
+        assertThat(settings.availableLayers, equalTo(MapLayer.values().toList()))
+        assertThat(settings.enabledLayerIds, equalTo(MapLayer.values().map { it.id }.toSet()))
     }
 
     @Test
     fun `custom settings can enable a subset of layers`() {
         val settings = MapViewerSettings(
-            enabledLayers = setOf(MapLayer.GRID, MapLayer.CONTOUR),
+            enabledLayerIds = setOf(MapLayer.GRID.id, MapLayer.CONTOUR.id),
         )
 
-        assertThat(settings.enabledLayers, equalTo(setOf(MapLayer.GRID, MapLayer.CONTOUR)))
+        assertThat(settings.enabledLayerIds, equalTo(setOf(MapLayer.GRID.id, MapLayer.CONTOUR.id)))
     }
 
     @Test
