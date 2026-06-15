@@ -15,6 +15,13 @@ class MapViewerSettingsTest {
     }
 
     @Test
+    fun `default settings use twenty metres per pixel`() {
+        val settings = MapViewerSettings()
+
+        assertThat(settings.metresPerPixel, equalTo(20.0))
+    }
+
+    @Test
     fun `custom settings can enable a subset of layers`() {
         val settings = MapViewerSettings(
             enabledLayerIds = setOf(MapLayer.GRID.id, MapLayer.CONTOUR.id),

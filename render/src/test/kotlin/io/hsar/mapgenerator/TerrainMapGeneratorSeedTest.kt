@@ -51,6 +51,20 @@ class TerrainMapGeneratorSeedTest {
         assertThat(baseGenerator.graphPointCount(), equalTo(zoomedGenerator.graphPointCount()))
     }
 
+    @Test
+    fun `generated grid uses kilometre squares with two digit coordinates`() {
+        val gridLayer = TerrainMapGenerator(
+            metresPerPixel = 2.0,
+            metresPerContour = 10.0,
+            width = 1920,
+            height = 1080,
+            seed = 42L,
+        ).generateGridLayer()
+
+        assertThat(gridLayer.gridScale, equalTo(1_000))
+        assertThat(gridLayer.detailLevel, equalTo(2))
+    }
+
     private fun java.awt.image.BufferedImage.pixelData(): IntArray =
         IntArray(width * height).also { pixels ->
             getRGB(0, 0, width, height, pixels, 0, width)

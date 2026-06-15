@@ -98,7 +98,7 @@ class TerrainMapGenerator(
     fun generateGridLayer(): GridLayer = GridLayerBuilder.build(
         width = width,
         height = height,
-        gridScale = io.hsar.mapgenerator.image.GridRenderer.HUNDRED_M_GRID_SQUARES,
+        gridScale = io.hsar.mapgenerator.image.GridRenderer.ONE_KM_GRID_SQUARES,
         metresPerPixel = metresPerPixel,
         random = Random(gridSeed),
         mapId = "25F XK",

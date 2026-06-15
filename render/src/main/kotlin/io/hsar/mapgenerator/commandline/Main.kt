@@ -158,11 +158,11 @@ abstract class Command(val name: String) : Runnable {
     protected var seed = System.currentTimeMillis()
 
     @Parameter(
-        names = ["--metresPerPixel"],
-        description = "The scale of the map to generate, in metres per pixel. Defaults to 2, so a 1080x720px image would cover 2.2x1.4km.",
+        names = ["--metres-per-pixel", "--metresPerPixel"],
+        description = "The scale of the map to generate, in metres per pixel. Defaults to 20, so a 1920x1080px image covers 38.4x21.6km.",
         required = false
     )
-    protected var metresPerPixel = 2.0
+    protected var metresPerPixel = DEFAULT_METRES_PER_PIXEL
 
     @Parameter(
         names = ["--metresPerContour"],
@@ -195,10 +195,15 @@ abstract class Command(val name: String) : Runnable {
     companion object {
         @JvmStatic
         protected val logger: Logger = LogManager.getLogger(Command::class.java)
+
+        const val DEFAULT_METRES_PER_PIXEL = 20.0
     }
 
     protected val selectedLayers: Set<MapLayer>
         get() = layers.toSet()
+
+    internal val configuredMetresPerPixel: Double
+        get() = metresPerPixel
 
 }
 
