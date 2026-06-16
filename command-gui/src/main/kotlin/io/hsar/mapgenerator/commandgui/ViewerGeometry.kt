@@ -27,13 +27,13 @@ internal data class ViewerGeometry(
  * 1.66x padding factor to reduce unused vertical space.
  */
 internal fun geometryFor(image: BufferedImage): ViewerGeometry {
-    val backgroundWidth = (image.width * 1.66).toInt()
+    val backgroundWidth = image.width * 2
     val backgroundHeight = (image.height * 1.66).toInt()
 
     return ViewerGeometry(
         backgroundWidth = backgroundWidth,
         backgroundHeight = backgroundHeight,
-        mapOffsetX = (backgroundWidth- image.height) / 2,
+        mapOffsetX = (backgroundWidth - image.width) / 2,
         mapOffsetY = (backgroundHeight - image.height) / 2,
     )
 }

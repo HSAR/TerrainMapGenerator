@@ -19,6 +19,10 @@
             <groupId>io.hsar.mapgenerator</groupId>
             <artifactId>library</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.soywiz.korge</groupId>
+            <artifactId>korge-jvm</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>

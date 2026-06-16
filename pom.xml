@@ -18,6 +18,7 @@
         <module>contour-generator</module>
         <module>render</module>
         <module>command-gui</module>
+        <module>command-gui-swing-legacy</module>
     </modules>
 
     <properties>
@@ -64,6 +65,17 @@
                 <groupId>io.hsar.mapgenerator</groupId>
                 <artifactId>command-gui</artifactId>
                 <version>0.0.1-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>io.hsar.mapgenerator</groupId>
+                <artifactId>command-gui-swing-legacy</artifactId>
+                <version>0.0.1-SNAPSHOT</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.soywiz.korge</groupId>
+                <artifactId>korge-jvm</artifactId>
+                <version>5.4.0</version>
             </dependency>
 
             <dependency>
@@ -121,7 +133,7 @@
             <dependency>
                 <groupId>com.fasterxml.jackson.core</groupId>
                 <artifactId>jackson-annotations</artifactId>
-                <version>${jackson.version}</version>
+                <version>2.22</version>
             </dependency>
             <dependency>
                 <groupId>com.fasterxml.jackson.core</groupId>
