@@ -4,6 +4,7 @@ import io.hsar.mapgenerator.random.GridGenerator
 import io.hsar.mapgenerator.random.RandomGenerator
 import java.util.Random
 import kotlin.math.log
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 object GridLayerBuilder {
@@ -41,7 +42,14 @@ object GridLayerBuilder {
     }
 
     private fun generateLineNumberStart(detailLevel: Int, totalLines: Int, random: Random): Int {
-        val maxLineNumberStart = Math.pow(10.0, detailLevel.toDouble()) - totalLines
-        return RandomGenerator.generateUniform(1, maxLineNumberStart.roundToInt(), random)
+        val maxCoordinate = 10.0.pow(detailLevel).toInt() - 1
+        val minLineNumberStart = totalLines
+        val maxLineNumberStart = maxCoordinate - totalLines
+
+        require(minLineNumberStart <= maxLineNumberStart) {
+            "Grid has too many visible lines ($totalLines) for detail level $detailLevel."
+        }
+
+        return RandomGenerator.generateUniform(minLineNumberStart, maxLineNumberStart, random)
     }
 }

@@ -15,10 +15,9 @@ import io.hsar.mapgenerator.image.ImageUtils.compose
 import io.hsar.mapgenerator.image.ImageWriter
 import java.awt.Graphics2D
 import java.awt.RenderingHints
-import java.nio.file.Path
 import java.awt.image.BufferedImage
+import java.nio.file.Path
 import javax.imageio.ImageIO
-import javax.swing.SwingUtilities
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import kotlin.math.roundToInt
@@ -26,30 +25,27 @@ import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.system.exitProcess
 
-@Parameters(commandDescription = "Generates terrain maps and opens the Swing GUI viewer.")
+@Parameters(commandDescription = "Generates terrain maps and opens the KorGE map viewer.")
 object LaunchGuiCommand : Command("show-gui") {
     override fun run() {
-        val sessionSeed = seed
         val staticLayers = loadStaticImageLayers(staticImagePaths)
-        val availableLayers = buildViewerLayers(staticLayers)
-        val settings = MapViewerSettings(
-            availableLayers = availableLayers,
-            enabledLayerIds = defaultEnabledLayerIds(selectedLayers, staticLayers),
-            staticLayerImages = staticLayers.associate { it.layer.id to it.image },
-            seed = sessionSeed,
-            metresPerPixel = metresPerPixel,
-            metresPerContour = metresPerContour,
-            width = width,
-            height = height,
-        )
 
-        SwingUtilities.invokeLater {
-            MapViewerFrame(
-                renderMap = { renderViewerImage(it, sessionSeed) },
-                initialSettings = settings,
-            ).showWindow()
-        }
+        MapViewerFrame(
+            renderMap = ::renderViewerImage,
+            initialSettings = viewerSettings(staticLayers),
+        ).showWindow()
     }
+
+    private fun viewerSettings(staticLayers: List<LoadedStaticImageLayer>) = MapViewerSettings(
+        availableLayers = buildViewerLayers(staticLayers),
+        enabledLayerIds = defaultEnabledLayerIds(selectedLayers, staticLayers),
+        staticLayerImages = staticLayers.associate { it.layer.id to it.image },
+        seed = seed,
+        metresPerPixel = metresPerPixel,
+        metresPerContour = metresPerContour,
+        width = width,
+        height = height,
+    )
 }
 
 @Parameters(commandDescription = "Generates a random terrain map and shows it in a GUI window.")
@@ -326,6 +322,9 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewe
     )
 }
 
+private fun renderViewerImage(settings: MapViewerSettings): MapViewerRenderData =
+    renderViewerImage(settings, settings.seed)
+
 internal fun renderSelectedLayers(
     selectedLayers: List<MapViewerLayer>,
     renderers: Map<String, () -> BufferedImage>,
@@ -355,7 +354,7 @@ private object RenderCache {
     val gridLayers = ConcurrentHashMap<GridRenderKey, io.hsar.mapgenerator.grid.GridLayer>()
 }
 
-private data class LoadedStaticImageLayer(
+internal data class LoadedStaticImageLayer(
     val layer: StaticImageLayer,
     val image: BufferedImage,
 )
@@ -363,25 +362,28 @@ private data class LoadedStaticImageLayer(
 private fun buildViewerLayers(staticLayers: List<LoadedStaticImageLayer>): List<MapViewerLayer> =
     MapLayer.values().toList() + staticLayers.map { it.layer }
 
-private fun defaultEnabledLayerIds(
+internal fun defaultEnabledLayerIds(
     selectedLayers: Set<MapLayer>,
     staticLayers: List<LoadedStaticImageLayer>,
 ): Set<String> =
-    (selectedLayers.takeIf { it.isNotEmpty() } ?: MapLayer.values().toSet())
+    selectedBuiltInLayers(selectedLayers)
         .map { it.id }
         .toSet() + staticLayers.map { it.layer.id }
 
-private fun selectedViewerLayers(
+internal fun selectedViewerLayers(
     selectedLayers: Set<MapLayer>,
     staticLayers: List<LoadedStaticImageLayer>,
 ): List<MapViewerLayer> {
-    val selectedBuiltInIds = (selectedLayers.takeIf { it.isNotEmpty() } ?: MapLayer.values().toSet())
+    val selectedBuiltInIds = selectedBuiltInLayers(selectedLayers)
         .map { it.id }
         .toSet()
 
     return buildViewerLayers(staticLayers)
         .filter { it.id in selectedBuiltInIds || it is StaticImageLayer }
 }
+
+private fun selectedBuiltInLayers(selectedLayers: Set<MapLayer>): Set<MapLayer> =
+    selectedLayers.takeIf { it.isNotEmpty() } ?: MapLayer.values().toSet()
 
 private fun builtInRenderers(terrainMapGenerator: TerrainMapGenerator): Map<String, () -> BufferedImage> =
     mapOf(

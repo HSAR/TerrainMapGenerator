@@ -10,6 +10,30 @@ import java.awt.image.BufferedImage
 class MainLayerSelectionTest {
 
     @Test
+    fun `defaultEnabledLayerIds enables all built in layers when none are selected`() {
+        val staticLayer = loadedStaticLayer("static-layer", "Static")
+
+        val enabledIds = defaultEnabledLayerIds(
+            selectedLayers = emptySet(),
+            staticLayers = listOf(staticLayer),
+        )
+
+        assertThat(enabledIds, equalTo(MapLayer.values().map { it.id }.toSet() + staticLayer.layer.id))
+    }
+
+    @Test
+    fun `selectedViewerLayers preserves static layers alongside explicit built in selection`() {
+        val staticLayer = loadedStaticLayer("static-layer", "Static")
+
+        val layers = selectedViewerLayers(
+            selectedLayers = setOf(MapLayer.CONTOUR),
+            staticLayers = listOf(staticLayer),
+        )
+
+        assertThat(layers, equalTo(listOf(MapLayer.CONTOUR, staticLayer.layer)))
+    }
+
+    @Test
     fun `renderSelectedLayers only invokes the requested layers`() {
         val calls = mutableListOf<String>()
         val staticLayer = StaticImageLayer(id = "static-layer", displayName = "Static")
@@ -31,4 +55,10 @@ class MainLayerSelectionTest {
 
     private fun imageFor(layer: MapLayer): BufferedImage =
         BufferedImage(layer.ordinal + 1, layer.ordinal + 1, BufferedImage.TYPE_INT_ARGB)
+
+    private fun loadedStaticLayer(id: String, displayName: String) =
+        LoadedStaticImageLayer(
+            layer = StaticImageLayer(id = id, displayName = displayName),
+            image = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB),
+        )
 }
