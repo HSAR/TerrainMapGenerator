@@ -11,13 +11,13 @@ import io.hsar.mapgenerator.grid.GridLayer
 import korlibs.event.Key
 import korlibs.event.MouseButton
 import korlibs.korge.annotations.KorgeExperimental
-import korlibs.korge.input.keys
-import korlibs.korge.input.mouse
 import korlibs.korge.input.cursor
+import korlibs.korge.input.mouse
 import korlibs.korge.view.Camera
 import korlibs.korge.view.View
 import korlibs.korge.view.addUpdater
 import korlibs.math.geom.Vector2D
+import kotlin.math.pow
 
 @OptIn(KorgeExperimental::class)
 internal class MapViewerInteraction(
@@ -29,6 +29,10 @@ internal class MapViewerInteraction(
     private val mapWidth: Int,
     private val mapHeight: Int,
     private val gridLayer: GridLayer?,
+    private val isScreenOverlayBlocking: (Vector2D) -> Boolean = { false },
+    private val isMapPlacementDragging: () -> Boolean = { false },
+    private val onViewportChanged: (CameraViewport) -> Unit = {},
+    private val onTitleChanged: (String) -> Unit = {},
     private val onOverlayStateChanged: (GridOverlayState) -> Unit,
 ) {
     private var overlayDirty = true
@@ -56,14 +60,19 @@ internal class MapViewerInteraction(
 
         root.addUpdater {
             val pointer = input.mousePos
-            val leftHeld = input.mouseButtonPressed(MouseButton.LEFT)
-            val rightHeld = input.mouseButtonPressed(MouseButton.RIGHT)
-            val spaceHeld = input.keys[Key.SPACE]
+            val placementDragging = isMapPlacementDragging()
+            val intent = MapPointerIntentResolver.resolve(
+                pointerBlocked = isScreenOverlayBlocking(pointer),
+                dragging = panState.isDragging,
+                leftHeld = input.mouseButtonPressed(MouseButton.LEFT),
+                rightHeld = input.mouseButtonPressed(MouseButton.RIGHT),
+                spaceHeld = input.keys[Key.SPACE],
+            )
 
-            if (panState.update(pointer, rightHeld, spaceHeld)) {
+            if (panState.update(pointer, intent.rightPanHeld, intent.spacePanHeld)) {
                 markOverlayDirty()
             }
-            if (updateActiveReference(pointer, leftHeld)) {
+            if (updateActiveReference(pointer, if (placementDragging) input.mouseButtonPressed(MouseButton.LEFT) else intent.leftActive)) {
                 markOverlayDirty()
             }
 
@@ -73,7 +82,15 @@ internal class MapViewerInteraction(
 
         root.mouse {
             onScrollAnywhere {
-                if (cameraPanner.zoomAt(input.mousePos, if (scrollDeltaYLines < 0) ZOOM_STEP_IN else ZOOM_STEP_OUT)) {
+                if (MapPointerIntentResolver.resolve(
+                        pointerBlocked = isScreenOverlayBlocking(input.mousePos),
+                        dragging = panState.isDragging,
+                        leftHeld = input.mouseButtonPressed(MouseButton.LEFT),
+                        rightHeld = input.mouseButtonPressed(MouseButton.RIGHT),
+                        spaceHeld = input.keys[Key.SPACE],
+                    ).allowZoom &&
+                    cameraPanner.zoomAt(input.mousePos, zoomFactor(scrollDeltaYLines.toDouble()))
+                ) {
                     markOverlayDirty()
                 }
             }
@@ -84,8 +101,13 @@ internal class MapViewerInteraction(
 
     private fun applyViewport(viewport: CameraViewport) {
         camera.setTo(viewport.toCameraRectangle())
+        onViewportChanged(viewport)
+        onTitleChanged(viewportTitle(viewport))
         markOverlayDirty()
     }
+
+    private fun viewportTitle(viewport: CameraViewport): String =
+        "Terrain Map Viewer - ${viewport.viewportWidth}x${viewport.viewportHeight}px - ${formatZoom(viewport.zoom)}"
 
     private fun flushOverlayIfDirty() {
         val layer = gridLayer ?: return
@@ -173,7 +195,11 @@ internal class MapViewerInteraction(
     }
 
     private companion object {
-        private const val ZOOM_STEP_IN = 1.1
-        private const val ZOOM_STEP_OUT = 1 / 1.1
+        private const val ZOOM_STEP = 1.4
+
+        private fun zoomFactor(scrollDeltaYLines: Double): Double =
+            ZOOM_STEP.pow(-scrollDeltaYLines)
+
+        private fun formatZoom(value: Double) = "${(value * 100).toInt()}%"
     }
 }

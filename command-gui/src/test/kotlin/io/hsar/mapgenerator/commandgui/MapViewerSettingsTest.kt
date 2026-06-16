@@ -48,4 +48,15 @@ class MapViewerSettingsTest {
 
         assertThat(settings.windowTitle(), equalTo("Terrain Map Viewer - 800x600px - 150%"))
     }
+
+    @Test
+    fun `window title can be formatted for an explicit zoom`() {
+        val settings = MapViewerSettings(
+            width = 800,
+            height = 600,
+            zoom = 1.0,
+        )
+
+        assertThat(settings.windowTitle(2.0), equalTo("Terrain Map Viewer - 800x600px - 200%"))
+    }
 }

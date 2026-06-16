@@ -2,21 +2,25 @@ package io.hsar.mapgenerator.commandgui.korge.scene
 
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
+import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedUnitManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
 import io.hsar.mapgenerator.commandgui.korge.render.MapViewerRenderer
-import java.awt.Toolkit
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSidebar
+import korlibs.image.color.Colors
 import korlibs.korge.Korge
 import korlibs.korge.KorgeDisplayMode
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.view.Camera
 import korlibs.korge.view.camera
 import korlibs.korge.view.clipContainer
+import korlibs.korge.view.container
 import korlibs.korge.view.image
 import korlibs.korge.view.solidRect
-import korlibs.image.color.Colors
 import korlibs.math.geom.Size2D
 import kotlinx.coroutines.runBlocking
+import java.awt.Toolkit
 import kotlin.concurrent.thread
 
 internal class MapViewerScene(
@@ -31,15 +35,23 @@ internal class MapViewerScene(
             val screenSize = Toolkit.getDefaultToolkit().screenSize
             val renderData = renderMap(initialSettings)
             val renderedMap = renderer.render(renderData)
+            var currentViewport = CameraViewport.centeredOnMap(
+                geometry = renderedMap.geometry,
+                mapWidth = renderedMap.bitmap.width,
+                mapHeight = renderedMap.bitmap.height,
+                viewportWidth = screenSize.width,
+                viewportHeight = screenSize.height,
+            )
 
             runBlocking {
                 Korge(
                     windowWidth = screenSize.width,
                     windowHeight = screenSize.height,
-                    title = initialSettings.windowTitle(),
+                    title = initialSettings.windowTitle(currentViewport.zoom),
                     displayMode = KorgeDisplayMode.TOP_LEFT_NO_CLIP,
                 ) {
                     lateinit var world: Camera
+                    lateinit var unitManager: MapPlacedUnitManager
                     var gridOverlay: GridOverlayView? = null
 
                     solidRect(gameWindow.width, gameWindow.height, Colors.BLACK)
@@ -51,12 +63,33 @@ internal class MapViewerScene(
                                 x = renderedMap.geometry.mapOffsetX.toDouble()
                                 y = renderedMap.geometry.mapOffsetY.toDouble()
                             }
+
                         }
                     }
 
+                    val unitLayer = world.container()
+                    unitManager = MapPlacedUnitManager(
+                        root = views.stage,
+                        unitLayer = unitLayer,
+                        geometry = renderedMap.geometry,
+                        mapWidth = renderedMap.bitmap.width,
+                        mapHeight = renderedMap.bitmap.height,
+                        viewportProvider = { currentViewport },
+                    )
+                    unitManager.install()
+
                     gridOverlay = renderData.gridLayer?.let { layer ->
-                        GridOverlayView(layer).also { addChild(it) }
+                        GridOverlayView(layer).also {
+                            it.zIndex = 10_000.0
+                            addChild(it)
+                        }
                     }
+                    val sidebar = MapViewerSidebar(
+                        root = views.stage,
+                        viewportWidth = gameWindow.width,
+                        viewportHeight = gameWindow.height,
+                        onUnitDropped = unitManager::place,
+                    )
 
                     MapViewerInteraction(
                         root = views.stage,
@@ -67,6 +100,16 @@ internal class MapViewerScene(
                         mapWidth = renderedMap.bitmap.width,
                         mapHeight = renderedMap.bitmap.height,
                         gridLayer = renderData.gridLayer,
+                        isScreenOverlayBlocking = { point ->
+                            sidebar.blocksScreenPoint(point) ||
+                                    sidebar.isUnitDragging ||
+                                    sidebar.isUnitDialogOpen ||
+                                    unitManager.isContextMenuOpen ||
+                                    unitManager.blocksScreenPoint(point)
+                        },
+                        isMapPlacementDragging = unitManager::isDragging,
+                        onViewportChanged = { currentViewport = it },
+                        onTitleChanged = { gameWindow.title = it },
                         onOverlayStateChanged = { state ->
                             gridOverlay?.update(state)
                         },

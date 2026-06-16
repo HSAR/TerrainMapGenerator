@@ -13,7 +13,7 @@ data class MapViewerSettings(
     val height: Int = 1080,
     val seed: Long = System.currentTimeMillis(),
 ) {
-    fun windowTitle(): String = "Terrain Map Viewer - ${width}x${height}px - ${formatZoom(zoom)}"
+    fun windowTitle(zoom: Double = this.zoom): String = "Terrain Map Viewer - ${width}x${height}px - ${formatZoom(zoom)}"
 
     fun withZoom(factor: Double): MapViewerSettings =
         copy(zoom = (zoom * factor).coerceIn(MIN_ZOOM, MAX_ZOOM))

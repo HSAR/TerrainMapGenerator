@@ -22,6 +22,7 @@ object Palette {
 
     object Fonts {
         val BASE = Font("TVNordEF-RegularCon", Font.PLAIN, 20) to Colours.MAIN
+        val MAIN = BASE
         val STRONG = Font("TVNordEF-BoldCon", Font.PLAIN, 20) to Colours.DARK
         val FLAVOUR = Font("TVNordEF-RegularCon", Font.PLAIN, 20) to Colours.LIGHT
     }
