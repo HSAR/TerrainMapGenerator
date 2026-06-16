@@ -12,9 +12,9 @@ class ViewerGeometryTest {
     fun `background is twice the map size and map is centered`() {
         val geometry = geometryFor(BufferedImage(800, 600, BufferedImage.TYPE_INT_ARGB))
 
-        assertThat(geometry.backgroundWidth, equalTo(1600))
+        assertThat(geometry.backgroundWidth, equalTo(1328))
         assertThat(geometry.backgroundHeight, equalTo(996))
-        assertThat(geometry.mapOffsetX, equalTo(400))
+        assertThat(geometry.mapOffsetX, equalTo(264))
         assertThat(geometry.mapOffsetY, equalTo(198))
     }
 

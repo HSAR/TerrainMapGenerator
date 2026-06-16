@@ -11,11 +11,17 @@ internal enum class PanTrigger {
 }
 
 internal class PanState(
-    private val panner: PanPanner,
+    private val panner: PanMotion,
     private val updateCursor: (GameWindow.ICursor) -> Unit,
 ) {
     private val activeTriggers = EnumSet.noneOf(PanTrigger::class.java)
     private var currentCursor: GameWindow.ICursor? = null
+
+    val isActive: Boolean
+        get() = activeTriggers.isNotEmpty()
+
+    val isDragging: Boolean
+        get() = panner.isDragging
 
     fun setHeld(trigger: PanTrigger, held: Boolean, pointer: Vector2D) {
         if (held) {
@@ -33,38 +39,34 @@ internal class PanState(
         refreshCursor()
     }
 
-    fun onMouseDown(button: MouseButton, pointer: Vector2D, buttons: Int) {
-        if (button == MouseButton.RIGHT || MouseButton.RIGHT.pressedFromFlags(buttons)) {
-            setHeld(PanTrigger.RIGHT_CLICK, true, pointer)
-        }
-    }
-
-    fun onMouseMove(pointer: Vector2D, buttons: Int) {
-        if (MouseButton.RIGHT.pressedFromFlags(buttons)) {
+    fun update(pointer: Vector2D, rightHeld: Boolean, spaceHeld: Boolean): Boolean {
+        if (rightHeld) {
             activeTriggers.add(PanTrigger.RIGHT_CLICK)
         } else {
             activeTriggers.remove(PanTrigger.RIGHT_CLICK)
         }
 
-        if (activeTriggers.isNotEmpty() && !panner.isDragging) {
-            panner.start(pointer)
+        if (spaceHeld) {
+            activeTriggers.add(PanTrigger.SPACE)
+        } else {
+            activeTriggers.remove(PanTrigger.SPACE)
         }
 
-        if (panner.isDragging) {
-            panner.drag(pointer)
-        }
-
-        refreshCursor()
-    }
-
-    fun onMouseUp(button: MouseButton, buttons: Int) {
-        if (button == MouseButton.RIGHT || !MouseButton.RIGHT.pressedFromFlags(buttons)) {
-            activeTriggers.remove(PanTrigger.RIGHT_CLICK)
-            if (activeTriggers.isEmpty()) {
+        if (activeTriggers.isEmpty()) {
+            if (panner.isDragging) {
                 panner.stop()
             }
             refreshCursor()
+            return false
         }
+
+        if (!panner.isDragging) {
+            panner.start(pointer)
+        }
+
+        val moved = panner.drag(pointer)
+        refreshCursor()
+        return moved
     }
 
     fun refreshCursor() {

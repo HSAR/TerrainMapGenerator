@@ -23,11 +23,11 @@ internal data class ViewerGeometry(
  * Builds the viewer geometry for a rendered map image.
  *
  * The viewer keeps the map centered inside a padded black background so the image can be
- * panned freely. The width remains double the image width, while the height uses a smaller
- * 1.66x padding factor to reduce unused vertical space.
+ * panned freely. The background is 166% of the image size on both axes, leaving 33% extra
+ * space on each side of the centered image.
  */
 internal fun geometryFor(image: BufferedImage): ViewerGeometry {
-    val backgroundWidth = image.width * 2
+    val backgroundWidth = (image.width * 1.66).toInt()
     val backgroundHeight = (image.height * 1.66).toInt()
 
     return ViewerGeometry(
