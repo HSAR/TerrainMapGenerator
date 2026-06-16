@@ -59,7 +59,8 @@ internal object GridOverlayLayoutBuilder {
         val topGutterY = max(state.visibleCanvasTop + GridStyles.MAP_ID_PADDING.y, mapTop + GridStyles.MAP_ID_PADDING.y)
         val leftGutterX = max(state.visibleCanvasLeft + GridStyles.GRID_LINE_ID_PADDING.x, mapLeft + GridStyles.GRID_LINE_ID_PADDING.x)
         val mapIdX = max(state.visibleCanvasLeft + GridStyles.MAP_ID_PADDING.x, mapLeft + GridStyles.MAP_ID_PADDING.x)
-        val mapIdY = topGutterY - mapIdBounds.height / 2
+        val labelCenterY = topGutterY
+        val mapIdY = labelCenterY - mapIdBounds.height / 2
         val yAxisRightEdge = leftGutterX + axisBounds.width / 2
         val xAxisBottomEdge = topGutterY + axisBounds.height / 2
         val xLabelFadeStart = max(yAxisRightEdge, mapIdX + mapIdBounds.width)
@@ -93,7 +94,7 @@ internal object GridOverlayLayoutBuilder {
                 labels += GridLabel(
                     text = lineText,
                     x = lineCanvasX - labelBounds.width / 2,
-                    y = topGutterY - labelBounds.height / 2,
+                    y = labelCenterY - labelBounds.height / 2,
                     font = labelFont,
                     color = labelColour.withAlpha(labelAlpha),
                 )
@@ -166,7 +167,7 @@ internal object GridOverlayLayoutBuilder {
                 y = reference.screenY - referenceBounds.height - ACTIVE_REFERENCE_LABEL_OFFSET_Y,
                 font = GridStyles.GRID_LINE_ID_FONT.first,
                 color = Palette.Colours.RED,
-                shadows = activeReferenceShadows(),
+                shadows = accentLabelShadows(),
             )
         }
 
@@ -321,7 +322,7 @@ internal object GridOverlayLayoutBuilder {
     private fun shouldRenderVerticalLabel(fineMode: Boolean, lineIndex: Int, isMajorLine: Boolean): Boolean =
         !fineMode || isMajorLine || lineIndex % 2 == 0
 
-    private fun activeReferenceShadows(): List<GridLabelShadow> =
+    private fun accentLabelShadows(): List<GridLabelShadow> =
         listOf(
             GridLabelShadow(1.0, 1.0, Palette.Colours.MAIN),
         )

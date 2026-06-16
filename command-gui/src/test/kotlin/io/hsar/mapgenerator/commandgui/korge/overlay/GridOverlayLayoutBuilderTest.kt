@@ -73,6 +73,9 @@ class GridOverlayLayoutBuilderTest {
 
         assertThat(mapId.x, equalTo(GridStyles.MAP_ID_PADDING.x))
         assertThat(mapId.y, equalTo(42.0))
+        assertThat(mapId.font, equalTo(GridStyles.MAP_ID_FONT.first))
+        assertThat(mapId.color, equalTo(GridStyles.MAP_ID_FONT.second))
+        assertThat(mapId.shadows.size, equalTo(0))
     }
 
     @Test

@@ -19,7 +19,7 @@ internal object GridReferenceFormatter {
         val easting = formatCoordinate(eastingMetres / METRES_PER_REFERENCE_DIGIT)
         val northing = formatCoordinate(northingMetres / METRES_PER_REFERENCE_DIGIT)
 
-        return "$easting-$northing"
+        return "$easting $northing"
     }
 
     private fun formatCoordinate(value: Int): String =

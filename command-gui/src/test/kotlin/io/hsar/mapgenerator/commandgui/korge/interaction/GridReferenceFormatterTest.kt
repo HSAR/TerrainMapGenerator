@@ -15,7 +15,7 @@ class GridReferenceFormatterTest {
             mapY = 340.0,
         )
 
-        assertThat(reference, equalTo("0730-3900"))
+        assertThat(reference, equalTo("0730 3900"))
     }
 
     @Test
@@ -26,7 +26,7 @@ class GridReferenceFormatterTest {
             mapY = 340.0,
         )
 
-        assertThat(reference, equalTo("0130--0400"))
+        assertThat(reference, equalTo("0130 -0400"))
     }
 
     @Test
@@ -37,7 +37,7 @@ class GridReferenceFormatterTest {
             mapY = 340.0,
         )
 
-        assertThat(reference, equalTo("0130--0800"))
+        assertThat(reference, equalTo("0130 -0800"))
     }
 
     private fun layer(

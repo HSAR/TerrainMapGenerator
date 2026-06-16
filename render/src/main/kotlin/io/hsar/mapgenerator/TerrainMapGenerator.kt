@@ -101,7 +101,6 @@ class TerrainMapGenerator(
         gridScale = io.hsar.mapgenerator.image.GridRenderer.ONE_KM_GRID_SQUARES,
         metresPerPixel = metresPerPixel,
         random = Random(gridSeed),
-        mapId = "25F XK",
     )
 
     companion object {

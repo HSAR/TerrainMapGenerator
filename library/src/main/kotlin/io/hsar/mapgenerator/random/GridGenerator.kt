@@ -17,6 +17,9 @@ object GridGenerator {
     fun random100kmGSID(random: Random = Random()): String =
         "${VALID_100KM_COLUMN_IDS.elementAt(random.nextInt(VALID_100KM_COLUMN_IDS.size))}${VALID_100KM_ROW_IDS.elementAt(random.nextInt(VALID_100KM_ROW_IDS.size))}"
 
+    fun randomMGRSMapId(random: Random = Random()): String =
+        "${randomGridZone(random)} ${random100kmGSID(random)}"
+
     val VALID_LATITUDE_BANDS = ('C'..'X').toSet() - setOf('I', 'O')
     val VALID_100KM_COLUMN_IDS = ('A'..'Z').toSet() - setOf('I', 'O')
     val VALID_100KM_ROW_IDS = ('A'..'V').toSet() - setOf('I', 'O')

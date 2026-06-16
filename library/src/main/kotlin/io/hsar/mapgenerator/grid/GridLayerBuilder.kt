@@ -23,7 +23,7 @@ object GridLayerBuilder {
         val horizontalLineCount = (height / pixelsPerLine).toInt()
 
         return GridLayer(
-            mapId = mapId ?: "${GridGenerator.randomGridZone(random)} ${GridGenerator.random100kmGSID(random)}",
+            mapId = mapId ?: GridGenerator.randomMGRSMapId(random),
             gridScale = gridScale,
             metresPerPixel = metresPerPixel,
             detailLevel = detailLevel,
