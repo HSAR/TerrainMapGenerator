@@ -46,6 +46,15 @@ internal class GridOverlayView(
 
         labelContainer.removeChildren()
         layout.labels.forEach { label ->
+            label.shadows.forEach { shadow ->
+                val shadowRendered = renderLabel(label.text, label.font, shadow.color)
+                labelContainer.addChild(
+                    shadowRendered.apply {
+                        x = label.x + shadow.offsetX
+                        y = label.y + shadow.offsetY
+                    }
+                )
+            }
             val rendered = renderLabel(label.text, label.font, label.color)
             labelContainer.addChild(
                 rendered.apply {

@@ -7,6 +7,8 @@ object Palette {
     object Colours {
         val BLUE = Color.decode("#276A88")
 
+        val RED = Color.decode("#C23E3C")
+
         val DARK = Color.decode("#120909")
 
         val MAIN = Color.decode("#403A3A")

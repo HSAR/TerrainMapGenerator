@@ -28,4 +28,20 @@ class GridLayerBuilderTest {
 
         assertThat(first, equalTo(second))
     }
+
+    @Test
+    fun `generated line starts stay within the representable range`() {
+        val layer = GridLayerBuilder.build(
+            width = 1920,
+            height = 1080,
+            gridScale = 1000,
+            metresPerPixel = 20.0,
+            random = Random(42L),
+        )
+
+        assertThat(layer.verticalLineNumberStart >= layer.verticalLineCount, equalTo(true))
+        assertThat(layer.horizontalLineNumberStart >= layer.horizontalLineCount, equalTo(true))
+        assertThat(layer.verticalLineNumberStart + layer.verticalLineCount <= 99, equalTo(true))
+        assertThat(layer.horizontalLineNumberStart - layer.horizontalLineCount >= 0, equalTo(true))
+    }
 }

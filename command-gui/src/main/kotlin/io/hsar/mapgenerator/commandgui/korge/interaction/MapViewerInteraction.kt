@@ -31,6 +31,7 @@ internal class MapViewerInteraction(
 ) {
     private var overlayDirty = true
     private var lastOverlayState: GridOverlayState? = null
+    private var activeReference: GridCursorReference? = null
     private val cameraPanner = CameraPanner(
         initialViewport = CameraViewport.centeredOnMap(
             geometry = geometry,
@@ -53,10 +54,14 @@ internal class MapViewerInteraction(
 
         root.addUpdater {
             val pointer = input.mousePos
+            val leftHeld = input.mouseButtonPressed(MouseButton.LEFT)
             val rightHeld = input.mouseButtonPressed(MouseButton.RIGHT)
             val spaceHeld = input.keys[Key.SPACE]
 
             if (panState.update(pointer, rightHeld, spaceHeld)) {
+                markOverlayDirty()
+            }
+            if (updateActiveReference(pointer, leftHeld)) {
                 markOverlayDirty()
             }
 
@@ -102,6 +107,7 @@ internal class MapViewerInteraction(
             visibleCanvasTop = 0.0,
             visibleCanvasRight = viewportWidth.toDouble(),
             visibleCanvasBottom = viewportHeight.toDouble(),
+            activeReference = activeReference,
             gridLayer = layer,
         )
 
@@ -115,6 +121,41 @@ internal class MapViewerInteraction(
 
     private fun markOverlayDirty() {
         overlayDirty = true
+    }
+
+    private fun updateActiveReference(pointer: Vector2D, leftHeld: Boolean): Boolean {
+        val nextReference = if (leftHeld) {
+            createActiveReference(pointer)
+        } else {
+            null
+        }
+        if (nextReference == activeReference) {
+            return false
+        }
+
+        activeReference = nextReference
+        return true
+    }
+
+    private fun createActiveReference(pointer: Vector2D): GridCursorReference? {
+        val viewport = cameraPanner.viewport
+        val mapLeft = viewport.screenX(geometry.mapOffsetX.toDouble())
+        val mapTop = viewport.screenY(geometry.mapOffsetY.toDouble())
+        val mapRight = mapLeft + mapWidth * viewport.zoom
+        val mapBottom = mapTop + mapHeight * viewport.zoom
+
+        if (pointer.x !in mapLeft..mapRight || pointer.y !in mapTop..mapBottom) {
+            return null
+        }
+
+        val mapX = ((pointer.x - mapLeft) / viewport.zoom).coerceIn(0.0, mapWidth.toDouble())
+        val mapY = ((pointer.y - mapTop) / viewport.zoom).coerceIn(0.0, mapHeight.toDouble())
+
+        return GridCursorReference(
+            screenX = pointer.x,
+            screenY = pointer.y,
+            text = GridReferenceFormatter.format(layer = gridLayer ?: return null, mapX = mapX, mapY = mapY),
+        )
     }
 
     private fun currentViewport(viewport: CameraViewport): Rectangle {
@@ -148,5 +189,12 @@ internal data class GridOverlayState(
     val visibleCanvasTop: Double,
     val visibleCanvasRight: Double,
     val visibleCanvasBottom: Double,
+    val activeReference: GridCursorReference?,
     val gridLayer: GridLayer,
+)
+
+internal data class GridCursorReference(
+    val screenX: Double,
+    val screenY: Double,
+    val text: String,
 )
