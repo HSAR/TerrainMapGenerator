@@ -1,7 +1,5 @@
-package io.hsar.mapgenerator.commandgui.korge.render
+package io.hsar.mapgenerator.commandgui.korge.overlay
 
-import io.hsar.mapgenerator.commandgui.korge.interaction.GridCursorReference
-import io.hsar.mapgenerator.commandgui.korge.interaction.GridOverlayState
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.image.Palette
@@ -13,6 +11,7 @@ import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.lessThan
 import org.junit.jupiter.api.Test
 import java.awt.Font
+
 class GridOverlayLayoutBuilderTest {
 
     @Test

@@ -1,6 +1,5 @@
-package io.hsar.mapgenerator.commandgui.korge.render
+package io.hsar.mapgenerator.commandgui.korge.overlay
 
-import io.hsar.mapgenerator.commandgui.korge.interaction.GridOverlayState
 import io.hsar.mapgenerator.grid.GridLayer
 import korlibs.image.awt.toBMP32
 import korlibs.image.color.RGBA

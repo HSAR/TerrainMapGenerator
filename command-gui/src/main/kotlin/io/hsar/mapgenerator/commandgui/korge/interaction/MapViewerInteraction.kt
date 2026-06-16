@@ -1,11 +1,13 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
-import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.commandgui.korge.input.CameraPanner
 import io.hsar.mapgenerator.commandgui.korge.input.PanState
+import io.hsar.mapgenerator.commandgui.korge.overlay.GridCursorReference
+import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
+import io.hsar.mapgenerator.grid.GridLayer
 import korlibs.event.Key
 import korlibs.event.MouseButton
 import korlibs.korge.annotations.KorgeExperimental
@@ -175,26 +177,3 @@ internal class MapViewerInteraction(
         private const val ZOOM_STEP_OUT = 1 / 1.1
     }
 }
-
-internal data class GridOverlayState(
-    val viewport: Rectangle,
-    val mapOffsetX: Double,
-    val mapOffsetY: Double,
-    val scale: Double,
-    val pixelWidth: Int,
-    val pixelHeight: Int,
-    val backgroundWidth: Int,
-    val backgroundHeight: Int,
-    val visibleCanvasLeft: Double,
-    val visibleCanvasTop: Double,
-    val visibleCanvasRight: Double,
-    val visibleCanvasBottom: Double,
-    val activeReference: GridCursorReference?,
-    val gridLayer: GridLayer,
-)
-
-internal data class GridCursorReference(
-    val screenX: Double,
-    val screenY: Double,
-    val text: String,
-)

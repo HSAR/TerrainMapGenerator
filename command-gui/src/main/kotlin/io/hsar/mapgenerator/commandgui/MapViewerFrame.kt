@@ -1,6 +1,6 @@
 package io.hsar.mapgenerator.commandgui
 
-import io.hsar.mapgenerator.commandgui.korge.MapViewerScene
+import io.hsar.mapgenerator.commandgui.korge.scene.MapViewerScene
 
 class MapViewerFrame(
     private val renderMap: (MapViewerSettings) -> MapViewerRenderData,

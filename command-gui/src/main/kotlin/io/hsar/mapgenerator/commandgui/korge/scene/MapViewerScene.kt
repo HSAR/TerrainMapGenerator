@@ -1,9 +1,9 @@
-package io.hsar.mapgenerator.commandgui.korge
+package io.hsar.mapgenerator.commandgui.korge.scene
 
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
-import io.hsar.mapgenerator.commandgui.korge.render.GridOverlayView
+import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
 import io.hsar.mapgenerator.commandgui.korge.render.MapViewerRenderer
 import java.awt.Toolkit
 import korlibs.korge.Korge

@@ -1,6 +1,4 @@
-package io.hsar.mapgenerator.commandgui.korge.render
-
-import io.hsar.mapgenerator.commandgui.korge.interaction.GridOverlayState
+package io.hsar.mapgenerator.commandgui.korge.overlay
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.image.Palette

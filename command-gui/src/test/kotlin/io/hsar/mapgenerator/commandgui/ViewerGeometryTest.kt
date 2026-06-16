@@ -9,7 +9,7 @@ import java.awt.image.BufferedImage
 class ViewerGeometryTest {
 
     @Test
-    fun `background is twice the map size and map is centered`() {
+    fun `background geometry keeps the map centered inside padded space`() {
         val geometry = geometryFor(BufferedImage(800, 600, BufferedImage.TYPE_INT_ARGB))
 
         assertThat(geometry.backgroundWidth, equalTo(1328))
