@@ -19,6 +19,7 @@ internal data class GridOverlayState(
     val visibleCanvasRight: Double,
     val visibleCanvasBottom: Double,
     val activeReference: GridCursorReference?,
+    val measurement: GridMeasurement?,
     val gridLayer: GridLayer,
 )
 

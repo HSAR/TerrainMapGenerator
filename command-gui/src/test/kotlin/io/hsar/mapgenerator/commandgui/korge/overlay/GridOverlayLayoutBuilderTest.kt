@@ -196,6 +196,78 @@ class GridOverlayLayoutBuilderTest {
         assertThat(verticalReferenceSegments.last().color.alpha, equalTo(255))
     }
 
+    @Test
+    fun `measurement draws overlay line and tooltip below active reference`() {
+        val layout = GridOverlayLayoutBuilder.build(
+            state = state(
+                mapOffsetX = 0.0,
+                mapOffsetY = 0.0,
+                activeReference = GridCursorReference(
+                    screenX = 260.0,
+                    screenY = 280.0,
+                    text = "0730 3900",
+                ),
+                measurement = GridMeasurement(
+                    originMapX = 120.0,
+                    originMapY = 180.0,
+                    destinationMapX = 260.0,
+                    destinationMapY = 280.0,
+                    distanceMetres = 344,
+                    bearingDegrees = 125,
+                ),
+            ),
+            measureText = ::measureText,
+        )
+
+        val distance = layout.labels.first { it.text == "344m" }
+        val bearing = layout.labels.first { it.text == "125\u00b0" }
+        val arrow = layout.overlayArrows.single()
+
+        assertThat(distance.x, equalTo(272.0))
+        assertThat(distance.y, equalTo(292.0))
+        assertThat(distance.color, equalTo(Palette.Colours.RED))
+        assertThat(bearing.x, equalTo(272.0))
+        assertThat(bearing.y, equalTo(316.0))
+        assertThat(bearing.color, equalTo(Palette.Colours.RED))
+        assertThat(arrow.x1, equalTo(120.0))
+        assertThat(arrow.y1, equalTo(180.0))
+        assertThat(arrow.x2, equalTo(260.0))
+        assertThat(arrow.y2, equalTo(280.0))
+        assertThat(arrow.color.red, equalTo(Palette.Colours.RED.red))
+    }
+
+    @Test
+    fun `measurement line follows zoom rather than stale screen coordinates`() {
+        val layout = GridOverlayLayoutBuilder.build(
+            state = state(
+                mapOffsetX = 20.0,
+                mapOffsetY = 30.0,
+                scale = 2.0,
+                activeReference = GridCursorReference(
+                    screenX = 260.0,
+                    screenY = 280.0,
+                    text = "0730 3900",
+                ),
+                measurement = GridMeasurement(
+                    originMapX = 50.0,
+                    originMapY = 60.0,
+                    destinationMapX = 70.0,
+                    destinationMapY = 90.0,
+                    distanceMetres = 0,
+                    bearingDegrees = 0,
+                ),
+            ),
+            measureText = ::measureText,
+        )
+
+        val line = layout.overlayArrows.single()
+
+        assertThat(line.x1, equalTo(120.0))
+        assertThat(line.y1, equalTo(150.0))
+        assertThat(line.x2, equalTo(160.0))
+        assertThat(line.y2, equalTo(210.0))
+    }
+
     private fun state(
         mapOffsetX: Double = -140.0,
         mapOffsetY: Double = -120.0,
@@ -203,6 +275,7 @@ class GridOverlayLayoutBuilderTest {
         pixelsPerLine: Double = 10.0,
         scale: Double = 1.0,
         activeReference: GridCursorReference? = null,
+        measurement: GridMeasurement? = null,
     ) = GridOverlayState(
         viewport = Rectangle(Point(0.0, 0.0), Point(800.0, 600.0)),
         mapWorldX = 0.0,
@@ -219,6 +292,7 @@ class GridOverlayLayoutBuilderTest {
         visibleCanvasRight = 1200.0,
         visibleCanvasBottom = 900.0,
         activeReference = activeReference,
+        measurement = measurement,
         gridLayer = GridLayer(
             mapId = "25F XK",
             gridScale = 1000,

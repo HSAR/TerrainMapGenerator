@@ -23,6 +23,7 @@ internal class MapViewerSidebar(
     viewportWidth: Int,
     viewportHeight: Int,
     private val onUnitDropped: (MapViewerUnitTemplate, Vector2D) -> Unit,
+    private val canStartUnitDrag: () -> Boolean = { true },
 ) {
     private val overlay = root.container()
     private val panel = overlay.uiMaterialLayer()
@@ -185,7 +186,7 @@ internal class MapViewerSidebar(
     }
 
     private fun beginDrag(template: MapViewerUnitTemplate) {
-        if (dragState?.template == template) {
+        if (dragState?.template == template || !canStartUnitDrag()) {
             return
         }
 

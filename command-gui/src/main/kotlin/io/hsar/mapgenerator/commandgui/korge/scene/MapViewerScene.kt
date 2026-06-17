@@ -5,10 +5,12 @@ import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedUnitManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
 import io.hsar.mapgenerator.commandgui.korge.render.MapViewerRenderer
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSidebar
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerToolbar
 import korlibs.image.color.Colors
 import korlibs.korge.Korge
 import korlibs.korge.KorgeDisplayMode
@@ -51,6 +53,7 @@ internal class MapViewerScene(
                     title = initialSettings.windowTitle(currentViewport.zoom),
                     displayMode = KorgeDisplayMode.TOP_LEFT_NO_CLIP,
                 ) {
+                    var currentTool = MapViewerTool.SELECT
                     lateinit var world: Camera
                     var gridLinesOverlay: GridOverlayLinesView? = null
                     lateinit var iconLayer: korlibs.korge.view.Container
@@ -90,6 +93,7 @@ internal class MapViewerScene(
                         mapWidth = renderedMap.bitmap.width,
                         mapHeight = renderedMap.bitmap.height,
                         viewportProvider = { currentViewport },
+                        canInteractWithUnits = { currentTool == MapViewerTool.SELECT },
                     )
                     unitManager.install()
 
@@ -104,6 +108,14 @@ internal class MapViewerScene(
                         viewportWidth = gameWindow.width,
                         viewportHeight = gameWindow.height,
                         onUnitDropped = unitManager::place,
+                        canStartUnitDrag = { currentTool == MapViewerTool.SELECT },
+                    )
+                    val toolbar = MapViewerToolbar(
+                        root = views.stage,
+                        viewportWidth = gameWindow.width,
+                        viewportHeight = gameWindow.height,
+                        selectedTool = { currentTool },
+                        onToolSelected = { currentTool = it },
                     )
 
                     MapViewerInteraction(
@@ -115,12 +127,14 @@ internal class MapViewerScene(
                         mapWidth = renderedMap.bitmap.width,
                         mapHeight = renderedMap.bitmap.height,
                         gridLayer = renderData.gridLayer,
+                        currentTool = { currentTool },
                         isScreenOverlayBlocking = { point ->
+                            toolbar.blocksScreenPoint(point) ||
                             sidebar.blocksScreenPoint(point) ||
                                     sidebar.isUnitDragging ||
                                     sidebar.isUnitDialogOpen ||
                                     unitManager.isContextMenuOpen ||
-                                    unitManager.blocksScreenPoint(point)
+                                    (currentTool == MapViewerTool.SELECT && unitManager.blocksScreenPoint(point))
                         },
                         isMapPlacementDragging = unitManager::isDragging,
                         onViewportChanged = { currentViewport = it },

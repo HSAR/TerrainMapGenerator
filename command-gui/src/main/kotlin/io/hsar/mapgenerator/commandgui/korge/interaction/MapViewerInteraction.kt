@@ -4,6 +4,7 @@ import io.hsar.mapgenerator.commandgui.ViewerGeometry
 import io.hsar.mapgenerator.commandgui.korge.input.CameraPanner
 import io.hsar.mapgenerator.commandgui.korge.input.PanState
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridCursorReference
+import io.hsar.mapgenerator.commandgui.korge.overlay.GridMeasurement
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
@@ -29,6 +30,7 @@ internal class MapViewerInteraction(
     private val mapWidth: Int,
     private val mapHeight: Int,
     private val gridLayer: GridLayer?,
+    private val currentTool: () -> MapViewerTool = { MapViewerTool.SELECT },
     private val isScreenOverlayBlocking: (Vector2D) -> Boolean = { false },
     private val isMapPlacementDragging: () -> Boolean = { false },
     private val onViewportChanged: (CameraViewport) -> Unit = {},
@@ -38,6 +40,10 @@ internal class MapViewerInteraction(
     private var overlayDirty = true
     private var lastOverlayState: GridOverlayState? = null
     private var activeReference: GridCursorReference? = null
+    private var activeMeasurement: GridMeasurement? = null
+    private var measurementOrigin: MapPointerReference? = null
+    private var previousLeftHeld = false
+    private var previousTool = MapViewerTool.SELECT
     private val cameraPanner = CameraPanner(
         initialViewport = CameraViewport.centeredOnMap(
             geometry = geometry,
@@ -61,6 +67,7 @@ internal class MapViewerInteraction(
         root.addUpdater {
             val pointer = input.mousePos
             val placementDragging = isMapPlacementDragging()
+            val tool = currentTool()
             val intent = MapPointerIntentResolver.resolve(
                 pointerBlocked = isScreenOverlayBlocking(pointer),
                 dragging = panState.isDragging,
@@ -72,9 +79,22 @@ internal class MapViewerInteraction(
             if (panState.update(pointer, intent.rightPanHeld, intent.spacePanHeld)) {
                 markOverlayDirty()
             }
-            if (updateActiveReference(pointer, if (placementDragging) input.mouseButtonPressed(MouseButton.LEFT) else intent.leftActive)) {
+            if (tool != previousTool && clearMeasurement()) {
                 markOverlayDirty()
             }
+            if (updateMeasureState(pointer, intent.leftActive, tool)) {
+                markOverlayDirty()
+            }
+            if (updateActiveReference(
+                    pointer = pointer,
+                    leftHeld = if (placementDragging) input.mouseButtonPressed(MouseButton.LEFT) else intent.leftActive,
+                    tool = tool,
+                )
+            ) {
+                markOverlayDirty()
+            }
+            previousLeftHeld = intent.leftActive
+            previousTool = tool
 
             panState.refreshCursor()
             flushOverlayIfDirty()
@@ -134,6 +154,7 @@ internal class MapViewerInteraction(
             visibleCanvasRight = viewportWidth.toDouble(),
             visibleCanvasBottom = viewportHeight.toDouble(),
             activeReference = activeReference,
+            measurement = activeMeasurement,
             gridLayer = layer,
         )
 
@@ -149,9 +170,9 @@ internal class MapViewerInteraction(
         overlayDirty = true
     }
 
-    private fun updateActiveReference(pointer: Vector2D, leftHeld: Boolean): Boolean {
+    private fun updateActiveReference(pointer: Vector2D, leftHeld: Boolean, tool: MapViewerTool): Boolean {
         val nextReference = if (leftHeld) {
-            createActiveReference(pointer)
+            createActiveReference(pointer, clampToMap = tool == MapViewerTool.MEASURE && measurementOrigin != null)
         } else {
             null
         }
@@ -163,24 +184,82 @@ internal class MapViewerInteraction(
         return true
     }
 
-    private fun createActiveReference(pointer: Vector2D): GridCursorReference? {
+    private fun updateMeasureState(pointer: Vector2D, leftHeld: Boolean, tool: MapViewerTool): Boolean {
+        if (tool != MapViewerTool.MEASURE || gridLayer == null) {
+            return clearMeasurement()
+        }
+
+        if (!leftHeld) {
+            return clearMeasurement()
+        }
+
+        val origin = measurementOrigin
+            ?: if (previousLeftHeld) {
+                return false
+            } else {
+                createMapPointerReference(pointer, clampToMap = false)?.also { measurementOrigin = it } ?: return false
+            }
+        val destination = createMapPointerReference(pointer, clampToMap = true) ?: return false
+        val nextMeasurement = GridMeasurementCalculator.calculate(
+            layer = gridLayer,
+            originMapX = origin.mapX,
+            originMapY = origin.mapY,
+            destinationMapX = destination.mapX,
+            destinationMapY = destination.mapY,
+        )
+        if (nextMeasurement == activeMeasurement) {
+            return false
+        }
+
+        activeMeasurement = nextMeasurement
+        return true
+    }
+
+    private fun clearMeasurement(): Boolean {
+        if (measurementOrigin == null && activeMeasurement == null) {
+            return false
+        }
+
+        measurementOrigin = null
+        activeMeasurement = null
+        return true
+    }
+
+    private fun createActiveReference(pointer: Vector2D, clampToMap: Boolean): GridCursorReference? =
+        createMapPointerReference(pointer, clampToMap)
+            ?.let { reference ->
+                GridCursorReference(
+                    screenX = pointer.x.coerceIn(
+                        cameraPanner.viewport.screenX(geometry.mapOffsetX.toDouble()),
+                        cameraPanner.viewport.screenX(geometry.mapOffsetX.toDouble() + mapWidth),
+                    ),
+                    screenY = pointer.y.coerceIn(
+                        cameraPanner.viewport.screenY(geometry.mapOffsetY.toDouble()),
+                        cameraPanner.viewport.screenY(geometry.mapOffsetY.toDouble() + mapHeight),
+                    ),
+                    text = GridReferenceFormatter.format(layer = gridLayer ?: return null, mapX = reference.mapX, mapY = reference.mapY),
+                )
+            }
+
+    private fun createMapPointerReference(pointer: Vector2D, clampToMap: Boolean): MapPointerReference? {
         val viewport = cameraPanner.viewport
         val mapLeft = viewport.screenX(geometry.mapOffsetX.toDouble())
         val mapTop = viewport.screenY(geometry.mapOffsetY.toDouble())
         val mapRight = mapLeft + mapWidth * viewport.zoom
         val mapBottom = mapTop + mapHeight * viewport.zoom
 
-        if (pointer.x !in mapLeft..mapRight || pointer.y !in mapTop..mapBottom) {
+        if (!clampToMap && (pointer.x !in mapLeft..mapRight || pointer.y !in mapTop..mapBottom)) {
             return null
         }
 
-        val mapX = ((pointer.x - mapLeft) / viewport.zoom).coerceIn(0.0, mapWidth.toDouble())
-        val mapY = ((pointer.y - mapTop) / viewport.zoom).coerceIn(0.0, mapHeight.toDouble())
+        val screenX = pointer.x.coerceIn(mapLeft, mapRight)
+        val screenY = pointer.y.coerceIn(mapTop, mapBottom)
+        val mapX = ((screenX - mapLeft) / viewport.zoom).coerceIn(0.0, mapWidth.toDouble())
+        val mapY = ((screenY - mapTop) / viewport.zoom).coerceIn(0.0, mapHeight.toDouble())
 
-        return GridCursorReference(
-            screenX = pointer.x,
-            screenY = pointer.y,
-            text = GridReferenceFormatter.format(layer = gridLayer ?: return null, mapX = mapX, mapY = mapY),
+        return MapPointerReference(
+            mapX = mapX,
+            mapY = mapY,
         )
     }
 
@@ -204,4 +283,9 @@ internal class MapViewerInteraction(
 
         private fun formatZoom(value: Double) = "${(value * 100).toInt()}%"
     }
+
+    private data class MapPointerReference(
+        val mapX: Double,
+        val mapY: Double,
+    )
 }

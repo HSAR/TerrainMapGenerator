@@ -8,6 +8,7 @@ import io.hsar.mapgenerator.random.GridGenerator.padZeroes
 import java.awt.Color
 import java.awt.Font
 import java.awt.image.BufferedImage
+import kotlin.math.absoluteValue
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
@@ -16,6 +17,7 @@ import kotlin.math.roundToInt
 
 internal data class GridOverlayLayout(
     val lineRects: List<GridRect>,
+    val overlayArrows: List<GridArrow>,
     val labels: List<GridLabel>,
 )
 
@@ -24,6 +26,14 @@ internal data class GridRect(
     val y: Double,
     val width: Double,
     val height: Double,
+    val color: Color,
+)
+
+internal data class GridArrow(
+    val x1: Double,
+    val y1: Double,
+    val x2: Double,
+    val y2: Double,
     val color: Color,
 )
 
@@ -68,6 +78,7 @@ internal object GridOverlayLayoutBuilder {
 
         val labels = mutableListOf<GridLabel>()
         val lineRects = mutableListOf<GridRect>()
+        val overlayArrows = mutableListOf<GridArrow>()
 
         labels += GridLabel(
             text = layer.mapId,
@@ -172,10 +183,45 @@ internal object GridOverlayLayoutBuilder {
                 color = Palette.Colours.RED,
                 shadows = accentLabelShadows(),
             )
+
+            state.measurement?.let { measurement ->
+                val originScreenX = mapLeft + measurement.originMapX * state.scale
+                val originScreenY = mapTop + measurement.originMapY * state.scale
+                val destinationScreenX = mapLeft + measurement.destinationMapX * state.scale
+                val destinationScreenY = mapTop + measurement.destinationMapY * state.scale
+                overlayArrows += GridArrow(
+                    x1 = originScreenX,
+                    y1 = originScreenY,
+                    x2 = destinationScreenX,
+                    y2 = destinationScreenY,
+                    color = Palette.Colours.RED,
+                )
+                val distanceBounds = measureText(measurement.distanceText, GridStyles.GRID_LINE_ID_FONT.first)
+                val bearingBounds = measureText(measurement.bearingText, GridStyles.GRID_LINE_ID_FONT.first)
+                val tooltipX = reference.screenX + ACTIVE_REFERENCE_LABEL_OFFSET_X
+                val tooltipY = reference.screenY + ACTIVE_REFERENCE_LABEL_OFFSET_Y
+                labels += GridLabel(
+                    text = measurement.distanceText,
+                    x = tooltipX,
+                    y = tooltipY,
+                    font = GridStyles.GRID_LINE_ID_FONT.first,
+                    color = Palette.Colours.RED,
+                    shadows = accentLabelShadows(),
+                )
+                labels += GridLabel(
+                    text = measurement.bearingText,
+                    x = tooltipX,
+                    y = tooltipY + distanceBounds.height.absoluteValue + bearingBounds.height.absoluteValue + MEASUREMENT_TOOLTIP_LINE_GAP,
+                    font = GridStyles.GRID_LINE_ID_FONT.first,
+                    color = Palette.Colours.RED,
+                    shadows = accentLabelShadows(),
+                )
+            }
         }
 
         return GridOverlayLayout(
             lineRects = lineRects,
+            overlayArrows = overlayArrows,
             labels = labels,
         )
     }
@@ -344,6 +390,7 @@ internal object GridOverlayLayoutBuilder {
     private const val ACTIVE_REFERENCE_LINE_THICKNESS = 2.0
     private const val ACTIVE_REFERENCE_LABEL_OFFSET_X = 12.0
     private const val ACTIVE_REFERENCE_LABEL_OFFSET_Y = 12.0
+    private const val MEASUREMENT_TOOLTIP_LINE_GAP = 4.0
 }
 
 internal object AwtGridTextMeasurer {

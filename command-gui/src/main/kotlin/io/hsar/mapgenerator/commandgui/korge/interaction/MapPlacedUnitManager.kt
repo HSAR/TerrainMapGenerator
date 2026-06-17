@@ -26,6 +26,7 @@ internal class MapPlacedUnitManager(
     private val mapWidth: Int,
     private val mapHeight: Int,
     private val viewportProvider: () -> CameraViewport,
+    private val canInteractWithUnits: () -> Boolean = { true },
 ) {
     private val units = mutableListOf<PlacedUnit>()
     private val dragPreviewLayer = unitLayer.container()
@@ -47,7 +48,7 @@ internal class MapPlacedUnitManager(
     }
 
     fun place(template: MapViewerUnitTemplate, screenPoint: Vector2D) {
-        if (dragState != null) {
+        if (dragState != null || !canInteractWithUnits()) {
             return
         }
 
@@ -69,6 +70,9 @@ internal class MapPlacedUnitManager(
         get() = contextMenuState != null
 
     fun blocksScreenPoint(point: Vector2D): Boolean {
+        if (!canInteractWithUnits()) {
+            return false
+        }
         val viewport = viewportProvider()
         return units.any { unit -> MapPlacedUnitScreenBounds.contains(point, unit.snapshot(), viewport) }
     }
@@ -93,6 +97,9 @@ internal class MapPlacedUnitManager(
 
         view.mouse {
             onDown {
+                if (!canInteractWithUnits()) {
+                    return@onDown
+                }
                 when (button) {
                     MouseButton.LEFT -> beginDrag(placedUnit, currentPosGlobal)
                     MouseButton.RIGHT -> openContextMenu(placedUnit, currentPosGlobal)
@@ -103,7 +110,7 @@ internal class MapPlacedUnitManager(
     }
 
     private fun beginDrag(unit: PlacedUnit, screenPoint: Vector2D) {
-        if (dragState != null) {
+        if (dragState != null || !canInteractWithUnits()) {
             return
         }
 
@@ -144,6 +151,12 @@ internal class MapPlacedUnitManager(
 
     private fun updateDrag(pointer: Vector2D, leftHeld: Boolean) {
         val state = dragState ?: return
+        if (!canInteractWithUnits()) {
+            dragState = null
+            state.preview.removeFromParent()
+            state.unit.view.visible = true
+            return
+        }
         if (!leftHeld) {
             dragState = null
             state.preview.removeFromParent()
@@ -170,6 +183,9 @@ internal class MapPlacedUnitManager(
     }
 
     private fun openContextMenu(unit: PlacedUnit, screenPoint: Vector2D) {
+        if (!canInteractWithUnits()) {
+            return
+        }
         closeContextMenu()
         val stage = root.stage ?: return
         val stageWidth = stage.views.actualVirtualWidth.toDouble()
