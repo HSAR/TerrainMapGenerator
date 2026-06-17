@@ -7,7 +7,6 @@ import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.image
-import korlibs.korge.view.solidRect
 import java.awt.AlphaComposite
 import java.awt.Color
 import java.awt.Font
@@ -17,34 +16,18 @@ import java.awt.image.BufferedImage
 internal class GridOverlayView(
     private val gridLayer: GridLayer,
 ) : Container() {
-    private val lineContainer = container()
     private val labelContainer = container()
     private val labelCache = mutableMapOf<LabelCacheKey, korlibs.image.bitmap.Bitmap32>()
 
     init {
-        addChild(lineContainer)
         addChild(labelContainer)
     }
 
     fun update(state: GridOverlayState) {
-        val layout = GridOverlayLayoutBuilder.build(
-            state.copy(gridLayer = gridLayer),
-        )
-
-        lineContainer.removeChildren()
-        layout.lineRects.forEach { line ->
-            lineContainer.solidRect(
-                width = line.width.coerceAtLeast(1.0),
-                height = line.height.coerceAtLeast(1.0),
-                color = line.color.toRGBA(),
-            ) {
-                x = line.x
-                y = line.y
-            }
-        }
-
         labelContainer.removeChildren()
-        layout.labels.forEach { label ->
+        GridOverlayLayoutBuilder.build(
+            state.copy(gridLayer = gridLayer),
+        ).labels.forEach { label ->
             label.shadows.forEach { shadow ->
                 val shadowRendered = renderLabel(label.text, label.font, shadow.color)
                 labelContainer.addChild(

@@ -120,6 +120,8 @@ internal class MapViewerInteraction(
         val mapTop = viewport.screenY(geometry.mapOffsetY.toDouble())
         val state = GridOverlayState(
             viewport = currentViewport(viewport),
+            mapWorldX = geometry.mapOffsetX.toDouble(),
+            mapWorldY = geometry.mapOffsetY.toDouble(),
             mapOffsetX = mapLeft,
             mapOffsetY = mapTop,
             scale = viewport.zoom,

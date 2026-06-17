@@ -2,9 +2,9 @@ package io.hsar.mapgenerator.commandgui.korge.overlay
 
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
-import io.hsar.mapgenerator.image.Palette
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.GridStyles
+import io.hsar.mapgenerator.image.Palette
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
@@ -205,6 +205,8 @@ class GridOverlayLayoutBuilderTest {
         activeReference: GridCursorReference? = null,
     ) = GridOverlayState(
         viewport = Rectangle(Point(0.0, 0.0), Point(800.0, 600.0)),
+        mapWorldX = 0.0,
+        mapWorldY = 0.0,
         mapOffsetX = mapOffsetX,
         mapOffsetY = mapOffsetY,
         scale = scale,

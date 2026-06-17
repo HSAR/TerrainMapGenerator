@@ -1,13 +1,12 @@
 package io.hsar.mapgenerator.commandgui.korge.overlay
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
-import io.hsar.mapgenerator.image.Palette
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.GridStyles
+import io.hsar.mapgenerator.image.Palette
 import io.hsar.mapgenerator.random.GridGenerator.padZeroes
 import java.awt.Color
 import java.awt.Font
-import java.awt.Graphics2D
 import java.awt.image.BufferedImage
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -101,12 +100,13 @@ internal object GridOverlayLayoutBuilder {
             }
 
             lineRects += buildVerticalLineRects(
-                x = lineCanvasX,
+                mapX = lineMapX,
                 mapTop = mapTop,
                 mapBottom = mapBottom,
                 gutterBottom = xAxisBottomEdge,
                 color = GridStyles.GRID_LINE_COLOUR.withAlpha(lineAlpha),
                 width = if (isMajorLine) MAJOR_LINE_THICKNESS else MINOR_LINE_THICKNESS,
+                scale = state.scale,
             )
         }
 
@@ -131,12 +131,13 @@ internal object GridOverlayLayoutBuilder {
             )
 
             lineRects += buildHorizontalLineRects(
-                y = lineCanvasY,
+                mapY = lineMapY,
                 mapLeft = mapLeft,
                 mapRight = mapRight,
                 gutterRight = yAxisRightEdge,
                 color = GridStyles.GRID_LINE_COLOUR.withAlpha(lineAlpha),
                 width = if (isMajorLine) MAJOR_LINE_THICKNESS else MINOR_LINE_THICKNESS,
+                scale = state.scale,
             )
         }
 
@@ -146,20 +147,22 @@ internal object GridOverlayLayoutBuilder {
             val referenceBounds = measureText(reference.text, GridStyles.GRID_LINE_ID_FONT.first)
 
             lineRects += buildVerticalLineRects(
-                x = reference.screenX,
+                mapX = (reference.screenX - mapLeft) / state.scale,
                 mapTop = mapTop,
                 mapBottom = mapBottom,
                 gutterBottom = xAxisBottomEdge,
                 color = Palette.Colours.RED.withAlpha(lineAlpha),
                 width = ACTIVE_REFERENCE_LINE_THICKNESS,
+                scale = state.scale,
             )
             lineRects += buildHorizontalLineRects(
-                y = reference.screenY,
+                mapY = (reference.screenY - mapTop) / state.scale,
                 mapLeft = mapLeft,
                 mapRight = mapRight,
                 gutterRight = yAxisRightEdge,
                 color = Palette.Colours.RED.withAlpha(rowAlpha),
                 width = ACTIVE_REFERENCE_LINE_THICKNESS,
+                scale = state.scale,
             )
             labels += GridLabel(
                 text = reference.text,
@@ -178,12 +181,13 @@ internal object GridOverlayLayoutBuilder {
     }
 
     private fun buildVerticalLineRects(
-        x: Double,
+        mapX: Double,
         mapTop: Double,
         mapBottom: Double,
         gutterBottom: Double,
         color: Color,
         width: Double,
+        scale: Double,
     ): List<GridRect> {
         val start = max(mapTop, gutterBottom)
         val end = mapBottom
@@ -197,23 +201,25 @@ internal object GridOverlayLayoutBuilder {
             color = color,
             normalAlpha = color.alpha / 255.0,
         ) { segmentStart, segmentEnd, segmentAlpha ->
+            val lineWidth = width.coerceAtLeast(1.0) / scale
             GridRect(
-                x = x - width / 2,
-                y = segmentStart,
-                width = width.coerceAtLeast(1.0),
-                height = max(1.0, segmentEnd - segmentStart),
+                x = mapX - lineWidth / 2,
+                y = (segmentStart - mapTop) / scale,
+                width = lineWidth,
+                height = (segmentEnd - segmentStart) / scale,
                 color = color.withAlpha(segmentAlpha),
             )
         }
     }
 
     private fun buildHorizontalLineRects(
-        y: Double,
+        mapY: Double,
         mapLeft: Double,
         mapRight: Double,
         gutterRight: Double,
         color: Color,
         width: Double,
+        scale: Double,
     ): List<GridRect> {
         val start = max(mapLeft, gutterRight)
         val end = mapRight
@@ -227,11 +233,12 @@ internal object GridOverlayLayoutBuilder {
             color = color,
             normalAlpha = color.alpha / 255.0,
         ) { segmentStart, segmentEnd, segmentAlpha ->
+            val lineHeight = width.coerceAtLeast(1.0) / scale
             GridRect(
-                x = segmentStart,
-                y = y - width / 2,
-                width = max(1.0, segmentEnd - segmentStart),
-                height = width.coerceAtLeast(1.0),
+                x = (segmentStart - mapLeft) / scale,
+                y = mapY - lineHeight / 2,
+                width = (segmentEnd - segmentStart) / scale,
+                height = lineHeight,
                 color = color.withAlpha(segmentAlpha),
             )
         }

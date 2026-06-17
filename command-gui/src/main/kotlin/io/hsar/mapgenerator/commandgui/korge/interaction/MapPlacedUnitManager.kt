@@ -22,12 +22,13 @@ internal class MapPlacedUnitManager(
     private val root: Container,
     private val unitLayer: Container,
     private val geometry: ViewerGeometry,
+    private val mapMetresPerPixel: Double,
     private val mapWidth: Int,
     private val mapHeight: Int,
     private val viewportProvider: () -> CameraViewport,
 ) {
     private val units = mutableListOf<PlacedUnit>()
-    private val dragPreviewLayer = root.container()
+    private val dragPreviewLayer = unitLayer.container()
     private val contextMenuLayer = root.container()
     private var dragState: DragState? = null
     private var contextMenuState: ContextMenuState? = null
@@ -41,7 +42,6 @@ internal class MapPlacedUnitManager(
 
         root.addUpdater {
             val input = root.stage?.views?.input ?: return@addUpdater
-            updateUnitScales()
             updateDrag(input.mousePos, input.mouseButtonPressed(MouseButton.LEFT))
         }
     }
@@ -74,9 +74,11 @@ internal class MapPlacedUnitManager(
     }
 
     private fun addUnit(template: MapViewerUnitTemplate, worldPoint: Vector2D) {
+        val unitSize = worldUnitSize(template.bitmap)
         val view = unitLayer.image(template.bitmap) {
-            x = worldPoint.x - width * 0.5
-            y = worldPoint.y - height * 0.5
+            this.scale = unitSize.worldScale
+            x = worldPoint.x - unitSize.worldWidth * 0.5
+            y = worldPoint.y - unitSize.worldHeight * 0.5
         }
 
         val placedUnit = PlacedUnit(
@@ -84,11 +86,10 @@ internal class MapPlacedUnitManager(
             template = template,
             instanceName = template.name,
             mapPoint = worldPoint,
-            screenWidth = template.bitmap.width.toDouble(),
-            screenHeight = template.bitmap.height.toDouble(),
+            worldWidth = unitSize.worldWidth,
+            worldHeight = unitSize.worldHeight,
         )
         units += placedUnit
-        updateUnitScale(placedUnit, currentUnitScale())
 
         view.mouse {
             onDown {
@@ -129,10 +130,9 @@ internal class MapPlacedUnitManager(
         unit.view.visible = false
         dragPreviewLayer.removeChildren()
         val preview = dragPreviewLayer.image(unit.template.bitmap)
-        preview.xy(
-            screenPoint.x - grabOffset.x - unit.screenWidth * 0.5,
-            screenPoint.y - grabOffset.y - unit.screenHeight * 0.5,
-        )
+        preview.scale = unit.view.scaleX
+        preview.x = worldPoint.x - unit.worldWidth * 0.5
+        preview.y = worldPoint.y - unit.worldHeight * 0.5
         preview.zIndex = DRAG_PREVIEW_Z_INDEX
 
         dragState = DragState(
@@ -140,8 +140,6 @@ internal class MapPlacedUnitManager(
             preview = preview,
             offset = grabOffset,
         )
-        unit.view.x = worldPoint.x - unit.screenWidth * 0.5
-        unit.view.y = worldPoint.y - unit.screenHeight * 0.5
     }
 
     private fun updateDrag(pointer: Vector2D, leftHeld: Boolean) {
@@ -165,31 +163,10 @@ internal class MapPlacedUnitManager(
         )
 
         state.unit.mapPoint = worldPoint
-        state.unit.view.x = worldPoint.x - state.unit.screenWidth * 0.5
-        state.unit.view.y = worldPoint.y - state.unit.screenHeight * 0.5
-        state.preview.xy(
-            pointer.x - state.offset.x - state.unit.screenWidth * 0.5,
-            pointer.y - state.offset.y - state.unit.screenHeight * 0.5,
-        )
-    }
-
-    private fun updateUnitScales() {
-        val scale = currentUnitScale()
-        units.forEach { unit ->
-            updateUnitScale(unit, scale)
-        }
-        dragState?.unit?.let { updateUnitScale(it, scale) }
-    }
-
-    private fun currentUnitScale(): Double {
-        val zoom = viewportProvider().zoom
-        return if (zoom == 0.0) 1.0 else 1.0 / zoom
-    }
-
-    private fun updateUnitScale(unit: PlacedUnit, scale: Double) {
-        if (unit.view.scaleX != scale || unit.view.scaleY != scale) {
-            unit.view.scale = scale
-        }
+        state.unit.view.x = worldPoint.x - state.unit.worldWidth * 0.5
+        state.unit.view.y = worldPoint.y - state.unit.worldHeight * 0.5
+        state.preview.x = worldPoint.x - state.unit.worldWidth * 0.5
+        state.preview.y = worldPoint.y - state.unit.worldHeight * 0.5
     }
 
     private fun openContextMenu(unit: PlacedUnit, screenPoint: Vector2D) {
@@ -265,14 +242,14 @@ internal class MapPlacedUnitManager(
         val template: MapViewerUnitTemplate,
         var instanceName: String,
         var mapPoint: Vector2D,
-        val screenWidth: Double,
-        val screenHeight: Double,
+        val worldWidth: Double,
+        val worldHeight: Double,
     ) {
         fun snapshot(): MapPlacedUnitSnapshot =
             MapPlacedUnitSnapshot(
                 mapPoint = mapPoint,
-                screenWidth = screenWidth,
-                screenHeight = screenHeight,
+                worldWidth = worldWidth,
+                worldHeight = worldHeight,
             )
     }
 
@@ -287,7 +264,24 @@ internal class MapPlacedUnitManager(
         val backdrop: Container,
     )
 
+    private fun worldUnitSize(bitmap: korlibs.image.bitmap.Bitmap32): WorldUnitSize {
+        val worldWidth = UNIT_ICON_WIDTH_METRES / mapMetresPerPixel
+        val worldScale = worldWidth / bitmap.width
+        return WorldUnitSize(
+            worldWidth = worldWidth,
+            worldHeight = bitmap.height * worldScale,
+            worldScale = worldScale,
+        )
+    }
+
+    private data class WorldUnitSize(
+        val worldWidth: Double,
+        val worldHeight: Double,
+        val worldScale: Double,
+    )
+
     private companion object {
+        const val UNIT_ICON_WIDTH_METRES = 250.0
         const val DRAG_PREVIEW_Z_INDEX = 15_000.0
         const val CONTEXT_MENU_Z_INDEX = 35_000.0
     }

@@ -5,6 +5,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedUnitManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
+import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
 import io.hsar.mapgenerator.commandgui.korge.render.MapViewerRenderer
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSidebar
@@ -51,8 +52,10 @@ internal class MapViewerScene(
                     displayMode = KorgeDisplayMode.TOP_LEFT_NO_CLIP,
                 ) {
                     lateinit var world: Camera
+                    var gridLinesOverlay: GridOverlayLinesView? = null
+                    lateinit var iconLayer: korlibs.korge.view.Container
                     lateinit var unitManager: MapPlacedUnitManager
-                    var gridOverlay: GridOverlayView? = null
+                    var gridLabelsOverlay: GridOverlayView? = null
 
                     solidRect(gameWindow.width, gameWindow.height, Colors.BLACK)
                     clipContainer(Size2D(gameWindow.width, gameWindow.height)) {
@@ -64,23 +67,35 @@ internal class MapViewerScene(
                                 y = renderedMap.geometry.mapOffsetY.toDouble()
                             }
 
+                            val gridLineLayer = container()
+                            gridLineLayer.x = renderedMap.geometry.mapOffsetX.toDouble()
+                            gridLineLayer.y = renderedMap.geometry.mapOffsetY.toDouble()
+                            gridLineLayer.zIndex = 1.0
+                            renderData.gridLayer?.let { layer ->
+                                gridLinesOverlay = GridOverlayLinesView(layer).also {
+                                    gridLineLayer.addChild(it)
+                                }
+                            }
+
+                            iconLayer = container()
+                            iconLayer.zIndex = 2.0
                         }
                     }
 
-                    val unitLayer = world.container()
                     unitManager = MapPlacedUnitManager(
                         root = views.stage,
-                        unitLayer = unitLayer,
+                        unitLayer = iconLayer,
                         geometry = renderedMap.geometry,
+                        mapMetresPerPixel = initialSettings.metresPerPixel,
                         mapWidth = renderedMap.bitmap.width,
                         mapHeight = renderedMap.bitmap.height,
                         viewportProvider = { currentViewport },
                     )
                     unitManager.install()
 
-                    gridOverlay = renderData.gridLayer?.let { layer ->
+                    gridLabelsOverlay = renderData.gridLayer?.let { layer ->
                         GridOverlayView(layer).also {
-                            it.zIndex = 10_000.0
+                            it.zIndex = 25_000.0
                             addChild(it)
                         }
                     }
@@ -111,7 +126,8 @@ internal class MapViewerScene(
                         onViewportChanged = { currentViewport = it },
                         onTitleChanged = { gameWindow.title = it },
                         onOverlayStateChanged = { state ->
-                            gridOverlay?.update(state)
+                            gridLinesOverlay?.update(state)
+                            gridLabelsOverlay?.update(state)
                         },
                     ).install()
                 }

@@ -8,11 +8,11 @@ import org.junit.jupiter.api.Test
 class MapPlacedUnitScreenBoundsTest {
 
     @Test
-    fun `unit screen bounds keep the same size when zoom changes`() {
+    fun `unit screen bounds grow with zoom`() {
         val unit = MapPlacedUnitSnapshot(
             mapPoint = Vector2D(500.0, 300.0),
-            screenWidth = 64.0,
-            screenHeight = 32.0,
+            worldWidth = 64.0,
+            worldHeight = 32.0,
         )
         val zoomedOut = CameraViewport(
             centerX = 500.0,
@@ -30,16 +30,16 @@ class MapPlacedUnitScreenBoundsTest {
 
         assertThat(outBounds.width, equalTo(64.0))
         assertThat(outBounds.height, equalTo(32.0))
-        assertThat(inBounds.width, equalTo(64.0))
-        assertThat(inBounds.height, equalTo(32.0))
+        assertThat(inBounds.width, equalTo(256.0))
+        assertThat(inBounds.height, equalTo(128.0))
     }
 
     @Test
     fun `unit hit test follows the unit on screen`() {
         val unit = MapPlacedUnitSnapshot(
             mapPoint = Vector2D(500.0, 300.0),
-            screenWidth = 64.0,
-            screenHeight = 32.0,
+            worldWidth = 64.0,
+            worldHeight = 32.0,
         )
         val viewport = CameraViewport(
             centerX = 500.0,

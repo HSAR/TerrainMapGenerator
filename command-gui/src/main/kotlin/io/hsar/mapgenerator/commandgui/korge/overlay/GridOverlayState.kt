@@ -5,6 +5,8 @@ import io.hsar.mapgenerator.grid.GridLayer
 
 internal data class GridOverlayState(
     val viewport: Rectangle,
+    val mapWorldX: Double,
+    val mapWorldY: Double,
     val mapOffsetX: Double,
     val mapOffsetY: Double,
     val scale: Double,

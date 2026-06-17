@@ -8,10 +8,10 @@ internal object MapPlacedUnitScreenBounds {
         viewport: CameraViewport,
     ): ScreenBounds =
         ScreenBounds(
-            left = viewport.screenX(unit.mapPoint.x) - unit.screenWidth * 0.5,
-            top = viewport.screenY(unit.mapPoint.y) - unit.screenHeight * 0.5,
-            width = unit.screenWidth,
-            height = unit.screenHeight,
+            left = viewport.screenX(unit.mapPoint.x) - unit.worldWidth * viewport.zoom * 0.5,
+            top = viewport.screenY(unit.mapPoint.y) - unit.worldHeight * viewport.zoom * 0.5,
+            width = unit.worldWidth * viewport.zoom,
+            height = unit.worldHeight * viewport.zoom,
         )
 
     fun contains(
@@ -24,8 +24,8 @@ internal object MapPlacedUnitScreenBounds {
 
 internal data class MapPlacedUnitSnapshot(
     val mapPoint: Vector2D,
-    val screenWidth: Double,
-    val screenHeight: Double,
+    val worldWidth: Double,
+    val worldHeight: Double,
 )
 
 internal data class ScreenBounds(
