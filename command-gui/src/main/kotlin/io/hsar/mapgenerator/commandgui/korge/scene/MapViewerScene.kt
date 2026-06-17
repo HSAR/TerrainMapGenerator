@@ -2,6 +2,9 @@ package io.hsar.mapgenerator.commandgui.korge.scene
 
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingView
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedUnitManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
@@ -54,8 +57,11 @@ internal class MapViewerScene(
                     displayMode = KorgeDisplayMode.TOP_LEFT_NO_CLIP,
                 ) {
                     var currentTool = MapViewerTool.SELECT
+                    var currentDrawingMode = MapDrawingMode.FREEFORM
                     lateinit var world: Camera
                     var gridLinesOverlay: GridOverlayLinesView? = null
+                    val drawingStore = MapDrawingStore()
+                    lateinit var drawingView: MapDrawingView
                     lateinit var iconLayer: korlibs.korge.view.Container
                     lateinit var unitManager: MapPlacedUnitManager
                     var gridLabelsOverlay: GridOverlayView? = null
@@ -78,6 +84,14 @@ internal class MapViewerScene(
                                 gridLinesOverlay = GridOverlayLinesView(layer).also {
                                     gridLineLayer.addChild(it)
                                 }
+                            }
+
+                            val drawingLayer = container()
+                            drawingLayer.x = renderedMap.geometry.mapOffsetX.toDouble()
+                            drawingLayer.y = renderedMap.geometry.mapOffsetY.toDouble()
+                            drawingLayer.zIndex = 1.5
+                            drawingView = MapDrawingView().also {
+                                drawingLayer.addChild(it)
                             }
 
                             iconLayer = container()
@@ -115,7 +129,14 @@ internal class MapViewerScene(
                         viewportWidth = gameWindow.width,
                         viewportHeight = gameWindow.height,
                         selectedTool = { currentTool },
-                        onToolSelected = { currentTool = it },
+                        selectedDrawingMode = { currentDrawingMode },
+                        onToolSelected = {
+                            currentTool = it
+                            if (it != MapViewerTool.DRAW) {
+                                currentDrawingMode = MapDrawingMode.FREEFORM
+                            }
+                        },
+                        onDrawingModeSelected = { currentDrawingMode = it },
                     )
 
                     MapViewerInteraction(
@@ -128,6 +149,8 @@ internal class MapViewerScene(
                         mapHeight = renderedMap.bitmap.height,
                         gridLayer = renderData.gridLayer,
                         currentTool = { currentTool },
+                        currentDrawingMode = { currentDrawingMode },
+                        drawingStore = drawingStore,
                         isScreenOverlayBlocking = { point ->
                             toolbar.blocksScreenPoint(point) ||
                             sidebar.blocksScreenPoint(point) ||
@@ -137,11 +160,17 @@ internal class MapViewerScene(
                                     (currentTool == MapViewerTool.SELECT && unitManager.blocksScreenPoint(point))
                         },
                         isMapPlacementDragging = unitManager::isDragging,
-                        onViewportChanged = { currentViewport = it },
+                        onViewportChanged = {
+                            currentViewport = it
+                            drawingView.update(drawingStore.state, it.zoom)
+                        },
                         onTitleChanged = { gameWindow.title = it },
                         onOverlayStateChanged = { state ->
                             gridLinesOverlay?.update(state)
                             gridLabelsOverlay?.update(state)
+                        },
+                        onDrawingStateChanged = { state ->
+                            drawingView.update(state, currentViewport.zoom)
                         },
                     ).install()
                 }

@@ -1,6 +1,14 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingState
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
+import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.input.CameraPanner
 import io.hsar.mapgenerator.commandgui.korge.input.PanState
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridCursorReference
@@ -9,6 +17,7 @@ import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.grid.GridLayer
+import io.hsar.mapgenerator.image.Palette
 import korlibs.event.Key
 import korlibs.event.MouseButton
 import korlibs.korge.annotations.KorgeExperimental
@@ -18,6 +27,7 @@ import korlibs.korge.view.Camera
 import korlibs.korge.view.View
 import korlibs.korge.view.addUpdater
 import korlibs.math.geom.Vector2D
+import kotlin.math.hypot
 import kotlin.math.pow
 
 @OptIn(KorgeExperimental::class)
@@ -31,19 +41,24 @@ internal class MapViewerInteraction(
     private val mapHeight: Int,
     private val gridLayer: GridLayer?,
     private val currentTool: () -> MapViewerTool = { MapViewerTool.SELECT },
+    private val currentDrawingMode: () -> MapDrawingMode = { MapDrawingMode.FREEFORM },
+    private val drawingStore: MapDrawingStore = MapDrawingStore(),
     private val isScreenOverlayBlocking: (Vector2D) -> Boolean = { false },
     private val isMapPlacementDragging: () -> Boolean = { false },
     private val onViewportChanged: (CameraViewport) -> Unit = {},
     private val onTitleChanged: (String) -> Unit = {},
     private val onOverlayStateChanged: (GridOverlayState) -> Unit,
+    private val onDrawingStateChanged: (MapDrawingState) -> Unit = {},
 ) {
     private var overlayDirty = true
     private var lastOverlayState: GridOverlayState? = null
     private var activeReference: GridCursorReference? = null
     private var activeMeasurement: GridMeasurement? = null
     private var measurementOrigin: MapPointerReference? = null
+    private var activeDrawing: ActiveDrawing? = null
     private var previousLeftHeld = false
     private var previousTool = MapViewerTool.SELECT
+    private var previousDrawingMode = MapDrawingMode.FREEFORM
     private val cameraPanner = CameraPanner(
         initialViewport = CameraViewport.centeredOnMap(
             geometry = geometry,
@@ -68,6 +83,7 @@ internal class MapViewerInteraction(
             val pointer = input.mousePos
             val placementDragging = isMapPlacementDragging()
             val tool = currentTool()
+            val drawingMode = currentDrawingMode()
             val intent = MapPointerIntentResolver.resolve(
                 pointerBlocked = isScreenOverlayBlocking(pointer),
                 dragging = panState.isDragging,
@@ -82,8 +98,14 @@ internal class MapViewerInteraction(
             if (tool != previousTool && clearMeasurement()) {
                 markOverlayDirty()
             }
+            if ((tool != previousTool || drawingMode != previousDrawingMode) && clearActiveDrawingPreview()) {
+                notifyDrawingChanged()
+            }
             if (updateMeasureState(pointer, intent.leftActive, tool)) {
                 markOverlayDirty()
+            }
+            if (updateDrawingState(pointer, intent.leftActive, tool, drawingMode)) {
+                notifyDrawingChanged()
             }
             if (updateActiveReference(
                     pointer = pointer,
@@ -95,6 +117,7 @@ internal class MapViewerInteraction(
             }
             previousLeftHeld = intent.leftActive
             previousTool = tool
+            previousDrawingMode = drawingMode
 
             panState.refreshCursor()
             flushOverlayIfDirty()
@@ -171,7 +194,7 @@ internal class MapViewerInteraction(
     }
 
     private fun updateActiveReference(pointer: Vector2D, leftHeld: Boolean, tool: MapViewerTool): Boolean {
-        val nextReference = if (leftHeld) {
+        val nextReference = if (leftHeld && tool != MapViewerTool.DRAW) {
             createActiveReference(pointer, clampToMap = tool == MapViewerTool.MEASURE && measurementOrigin != null)
         } else {
             null
@@ -182,6 +205,59 @@ internal class MapViewerInteraction(
 
         activeReference = nextReference
         return true
+    }
+
+    private fun updateDrawingState(
+        pointer: Vector2D,
+        leftHeld: Boolean,
+        tool: MapViewerTool,
+        mode: MapDrawingMode,
+    ): Boolean {
+        if (tool != MapViewerTool.DRAW) {
+            return clearActiveDrawingPreview()
+        }
+
+        if (!leftHeld) {
+            return commitActiveDrawing()
+        }
+
+        val point = if (activeDrawing == null) {
+            if (previousLeftHeld) {
+                return false
+            }
+            createMapPointerReference(pointer, clampToMap = false)?.toDrawingPoint() ?: return false
+        } else {
+            createMapPointerReference(pointer, clampToMap = true)?.toDrawingPoint() ?: return false
+        }
+        val nextDrawing = activeDrawing?.updated(point) ?: mode.startedAt(point)
+        if (nextDrawing == activeDrawing) {
+            return false
+        }
+
+        activeDrawing = nextDrawing
+        drawingStore.preview(nextDrawing.preview)
+        return true
+    }
+
+    private fun commitActiveDrawing(): Boolean {
+        val drawing = activeDrawing?.committedOrNull() ?: return clearActiveDrawingPreview()
+        activeDrawing = null
+        drawingStore.commit(drawing)
+        return true
+    }
+
+    private fun clearActiveDrawingPreview(): Boolean {
+        if (activeDrawing == null && drawingStore.state.preview == null) {
+            return false
+        }
+
+        activeDrawing = null
+        drawingStore.clearPreview()
+        return true
+    }
+
+    private fun notifyDrawingChanged() {
+        onDrawingStateChanged(drawingStore.state)
     }
 
     private fun updateMeasureState(pointer: Vector2D, leftHeld: Boolean, tool: MapViewerTool): Boolean {
@@ -263,6 +339,15 @@ internal class MapViewerInteraction(
         )
     }
 
+    private fun MapPointerReference.toDrawingPoint() = MapDrawingPoint(mapX, mapY)
+
+    private fun MapDrawingMode.startedAt(point: MapDrawingPoint): ActiveDrawing =
+        when (this) {
+            MapDrawingMode.FREEFORM -> ActiveDrawing.Freeform(listOf(point))
+            MapDrawingMode.RECTANGLE -> ActiveDrawing.Rectangle(start = point, end = point)
+            MapDrawingMode.CIRCLE -> ActiveDrawing.Circle(center = point, edge = point)
+        }
+
     private fun currentViewport(viewport: CameraViewport): Rectangle {
         val visibleLeft = maxOf(0.0, viewport.left - geometry.mapOffsetX)
         val visibleTop = maxOf(0.0, viewport.top - geometry.mapOffsetY)
@@ -277,6 +362,7 @@ internal class MapViewerInteraction(
 
     private companion object {
         private const val ZOOM_STEP = 1.4
+        private const val MIN_FREEFORM_POINT_DISTANCE = 0.5
 
         private fun zoomFactor(scrollDeltaYLines: Double): Double =
             ZOOM_STEP.pow(-scrollDeltaYLines)
@@ -288,4 +374,59 @@ internal class MapViewerInteraction(
         val mapX: Double,
         val mapY: Double,
     )
+
+    private sealed interface ActiveDrawing {
+        val preview: MapDrawing
+
+        fun updated(point: MapDrawingPoint): ActiveDrawing
+
+        fun committedOrNull(): MapDrawing?
+
+        data class Freeform(
+            val points: List<MapDrawingPoint>,
+        ) : ActiveDrawing {
+            override val preview: MapDrawing
+                get() = FreeformDrawing(points.toList(), Palette.Colours.RED)
+
+            override fun updated(point: MapDrawingPoint): ActiveDrawing {
+                val lastPoint = points.last()
+                return if (hypot(point.x - lastPoint.x, point.y - lastPoint.y) >= MIN_FREEFORM_POINT_DISTANCE) {
+                    copy(points = points + point)
+                } else {
+                    this
+                }
+            }
+
+            override fun committedOrNull(): MapDrawing? =
+                points.takeIf { it.size >= 2 }?.let { FreeformDrawing(it.toList(), Palette.Colours.RED) }
+        }
+
+        data class Rectangle(
+            val start: MapDrawingPoint,
+            val end: MapDrawingPoint,
+        ) : ActiveDrawing {
+            override val preview: MapDrawing
+                get() = RectangleDrawing(start, end, Palette.Colours.RED)
+
+            override fun updated(point: MapDrawingPoint): ActiveDrawing =
+                copy(end = point)
+
+            override fun committedOrNull(): MapDrawing? =
+                preview.takeIf { start != end }
+        }
+
+        data class Circle(
+            val center: MapDrawingPoint,
+            val edge: MapDrawingPoint,
+        ) : ActiveDrawing {
+            override val preview: MapDrawing
+                get() = CircleDrawing(center, edge, Palette.Colours.RED)
+
+            override fun updated(point: MapDrawingPoint): ActiveDrawing =
+                copy(edge = point)
+
+            override fun committedOrNull(): MapDrawing? =
+                preview.takeIf { center != edge }
+        }
+    }
 }
