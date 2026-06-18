@@ -51,9 +51,9 @@ internal class MapPlacedObjectContextMenuManager(
     fun open(
         target: MapPlacedObject,
         screenPoint: Vector2D,
+        actions: List<MapPlacedObjectMenuAction> = target.contextMenuActions(),
         onActionSelected: () -> Unit = {},
     ) {
-        val actions = target.contextMenuActions()
         if (actions.isEmpty()) {
             return
         }

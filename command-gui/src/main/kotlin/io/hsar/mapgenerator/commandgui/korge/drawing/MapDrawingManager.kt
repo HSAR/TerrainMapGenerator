@@ -6,6 +6,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateDelta
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectContextMenuManager
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import korlibs.event.MouseButton
 import korlibs.korge.view.View
@@ -23,6 +24,8 @@ internal class MapDrawingManager(
     private val contextMenuManager: MapPlacedObjectContextMenuManager,
     private val canInteractWithDrawings: () -> Boolean = { true },
     private val onDrawingsChanged: (MapDrawingState) -> Unit = {},
+    private val onObjectMoved: (MapPlacedObjectSnapshot, MapPlacedObjectSnapshot) -> Unit = { _, _ -> },
+    private val onObjectDeleted: (MapPlacedObjectSnapshot) -> Unit = {},
 ) {
     private val coordinateSpace = MapCoordinateSpace(geometry, mapWidth, mapHeight)
     private var dragState: DragState? = null
@@ -53,6 +56,9 @@ internal class MapDrawingManager(
             previousRightHeld = input.mouseButtonPressed(MouseButton.RIGHT)
         }
     }
+
+    val isDragging: Boolean
+        get() = dragState != null
 
     fun blocksScreenPoint(point: Vector2D): Boolean {
         if (!canInteractWithDrawings()) {
@@ -85,6 +91,12 @@ internal class MapDrawingManager(
         contextMenuManager.open(
             target = drawing,
             screenPoint = pointer,
+            actions = listOf(
+                io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectMenuAction(
+                    label = "Delete",
+                    onSelected = { onObjectDeleted(drawing.snapshot()) },
+                ),
+            ),
             onActionSelected = { onDrawingsChanged(drawingStore.state) },
         )
         return true
@@ -116,12 +128,17 @@ internal class MapDrawingManager(
                 drawing = target,
                 startMapCoordinate = mapCoordinate,
                 lastDelta = MapCoordinateDelta(0.0, 0.0),
+                originalSnapshot = target.snapshot(),
             )
             previousLeftHeld = leftHeld
             return false
         }
 
         if (!leftHeld) {
+            val updatedSnapshot = state.drawing.snapshot()
+            if (updatedSnapshot != state.originalSnapshot) {
+                onObjectMoved(state.originalSnapshot, updatedSnapshot)
+            }
             dragState = null
             previousLeftHeld = false
             return false
@@ -155,5 +172,12 @@ internal class MapDrawingManager(
         val drawing: PlacedDrawing,
         val startMapCoordinate: MapCoordinate,
         var lastDelta: MapCoordinateDelta,
+        val originalSnapshot: MapPlacedObjectSnapshot,
     )
+
+    fun cancelTransientState(targetId: io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId? = null) {
+        if (targetId == null || dragState?.drawing?.id == targetId) {
+            dragState = null
+        }
+    }
 }

@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.drawing
 
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.image.Palette
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
@@ -11,7 +12,7 @@ class PlacedDrawingTest {
     @Test
     fun `drawing context menu exposes delete only`() {
         val drawing = PlacedDrawing(
-            id = 1L,
+            id = MapPlacedObjectId(1L),
             drawing = RectangleDrawing(
                 start = MapDrawingPoint(0.0, 0.0),
                 end = MapDrawingPoint(20.0, 10.0),
@@ -25,7 +26,7 @@ class PlacedDrawingTest {
     @Test
     fun `drawing hit testing uses normalized map coordinates`() {
         val drawing = PlacedDrawing(
-            id = 1L,
+            id = MapPlacedObjectId(1L),
             drawing = RectangleDrawing(
                 start = MapDrawingPoint(0.10, 0.10),
                 end = MapDrawingPoint(0.14, 0.12),

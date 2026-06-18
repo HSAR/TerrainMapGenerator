@@ -6,6 +6,10 @@ internal data class MapPlacedObjectMenuAction(
 )
 
 internal interface MapPlacedObject {
+    val id: MapPlacedObjectId
+
+    fun snapshot(): MapPlacedObjectSnapshot
+
     fun containsMapCoordinate(
         mapCoordinate: MapCoordinate,
         tolerance: Double = 0.0,

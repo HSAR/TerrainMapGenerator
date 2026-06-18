@@ -1,8 +1,10 @@
 package io.hsar.mapgenerator.commandgui.korge.drawing
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateDelta
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObject
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectMenuAction
 import java.awt.Color
 
@@ -33,10 +35,15 @@ internal data class CircleDrawing(
 ) : MapDrawing
 
 internal data class PlacedDrawing(
-    val id: Long,
+    override val id: MapPlacedObjectId,
     var drawing: MapDrawing,
-    private val onDelete: (() -> Unit)? = null,
 ) : MapPlacedObject {
+    override fun snapshot(): DrawingSnapshot =
+        DrawingSnapshot(
+            id = id,
+            drawing = drawing,
+        )
+
     override fun containsMapCoordinate(
         mapCoordinate: MapCoordinate,
         tolerance: Double,
@@ -53,7 +60,7 @@ internal data class PlacedDrawing(
         listOf(
             MapPlacedObjectMenuAction(
                 label = "Delete",
-                onSelected = { onDelete?.invoke() },
+                onSelected = {},
             ),
         )
 

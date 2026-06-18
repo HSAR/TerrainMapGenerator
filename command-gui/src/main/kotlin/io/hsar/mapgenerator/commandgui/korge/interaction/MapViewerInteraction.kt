@@ -47,6 +47,10 @@ internal class MapViewerInteraction(
     private val isScreenOverlayBlocking: (Vector2D) -> Boolean = { false },
     private val isMovableObjectUnderPointer: (Vector2D) -> Boolean = { false },
     private val isMapPlacementDragging: () -> Boolean = { false },
+    private val canUseUndoRedo: () -> Boolean = { true },
+    private val onDrawingCommitted: (MapDrawing) -> Unit = {},
+    private val onUndoRequested: () -> Unit = {},
+    private val onRedoRequested: () -> Unit = {},
     private val onViewportChanged: (CameraViewport) -> Unit = {},
     private val onTitleChanged: (String) -> Unit = {},
     private val onOverlayStateChanged: (GridOverlayState) -> Unit,
@@ -100,6 +104,10 @@ internal class MapViewerInteraction(
                 leftHeld = input.mouseButtonPressed(MouseButton.LEFT),
                 pointerBlocked = pointerBlocked,
             )
+
+            if (handleUndoRedo(input)) {
+                return@addUpdater
+            }
 
             if (panState.update(pointer, intent.rightPanHeld, intent.spacePanHeld)) {
                 markOverlayDirty()
@@ -283,7 +291,8 @@ internal class MapViewerInteraction(
     private fun commitActiveDrawing(): Boolean {
         val drawing = activeDrawing?.committedOrNull() ?: return clearActiveDrawingPreview()
         activeDrawing = null
-        drawingStore.commit(drawing)
+        drawingStore.clearPreview()
+        onDrawingCommitted(drawing)
         return true
     }
 
@@ -383,6 +392,23 @@ internal class MapViewerInteraction(
         }
 
     private fun MapCoordinate.toDrawingPoint() = MapDrawingPoint(x, y)
+
+    private fun handleUndoRedo(input: korlibs.korge.input.Input): Boolean {
+        if (!canUseUndoRedo() || activeDrawing != null || input.mouseButtonPressed(MouseButton.LEFT) || input.mouseButtonPressed(MouseButton.RIGHT)) {
+            return false
+        }
+
+        if (!input.keys.justPressed(Key.Z) || !input.keys[Key.CONTROL]) {
+            return false
+        }
+
+        if (input.keys[Key.SHIFT]) {
+            onRedoRequested()
+        } else {
+            onUndoRequested()
+        }
+        return true
+    }
 
     private fun MapDrawingMode.startedAt(point: MapDrawingPoint): ActiveDrawing =
         when (this) {

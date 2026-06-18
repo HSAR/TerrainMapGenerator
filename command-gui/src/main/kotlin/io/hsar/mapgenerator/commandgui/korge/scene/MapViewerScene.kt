@@ -7,11 +7,17 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingView
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
+import io.hsar.mapgenerator.commandgui.korge.interaction.CreateObjectAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapActionHistory
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapObjectController
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectContextMenuManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedUnitManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
+import io.hsar.mapgenerator.commandgui.korge.interaction.MoveObjectAction
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
 import io.hsar.mapgenerator.commandgui.korge.render.MapViewerRenderer
@@ -69,6 +75,8 @@ internal class MapViewerScene(
                     lateinit var drawingView: MapDrawingView
                     lateinit var iconLayer: korlibs.korge.view.Container
                     lateinit var unitManager: MapPlacedUnitManager
+                    lateinit var objectController: MapObjectController
+                    val actionHistory = MapActionHistory()
                     var gridLabelsOverlay: GridOverlayView? = null
                     val coordinateSpace = MapCoordinateSpace(renderedMap.geometry, renderedMap.bitmap.width, renderedMap.bitmap.height)
 
@@ -115,6 +123,16 @@ internal class MapViewerScene(
                         viewportProvider = { currentViewport },
                         contextMenuManager = contextMenuManager,
                         canInteractWithUnits = { currentTool == MapViewerTool.SELECT },
+                        onObjectMoved = { before, after ->
+                            actionHistory.record(MoveObjectAction(before, after))
+                        },
+                        onObjectDeleted = { snapshot ->
+                            objectController.deleteObject(snapshot.id)
+                            actionHistory.record(DeleteObjectAction(snapshot))
+                        },
+                        onUnitEdited = { before, after ->
+                            actionHistory.record(EditUnitAction(before, after))
+                        },
                     )
                     unitManager.install()
 
@@ -131,8 +149,30 @@ internal class MapViewerScene(
                         onDrawingsChanged = { state ->
                             drawingView.update(state, currentViewport.zoom)
                         },
+                        onObjectMoved = { before, after ->
+                            actionHistory.record(MoveObjectAction(before, after))
+                        },
+                        onObjectDeleted = { snapshot ->
+                            objectController.deleteObject(snapshot.id)
+                            actionHistory.record(DeleteObjectAction(snapshot))
+                        },
                     )
                     drawingManager.install()
+
+                    objectController = MapObjectController(
+                        unitManager = unitManager,
+                        drawingStore = drawingStore,
+                        onDrawingsChanged = { state ->
+                            drawingView.update(state, currentViewport.zoom)
+                        },
+                        clearTransientState = {
+                            contextMenuManager.close()
+                            unitManager.cancelTransientState()
+                            drawingManager.cancelTransientState()
+                            drawingStore.clearPreview()
+                            drawingView.update(drawingStore.state, currentViewport.zoom)
+                        },
+                    )
 
                     gridLabelsOverlay = renderData.gridLayer?.let { layer ->
                         GridOverlayView(layer).also {
@@ -144,7 +184,13 @@ internal class MapViewerScene(
                         root = views.stage,
                         viewportWidth = gameWindow.width,
                         viewportHeight = gameWindow.height,
-                        onUnitDropped = unitManager::place,
+                        onUnitDropped = { template, screenPoint ->
+                            unitManager.resolvePlacement(screenPoint)
+                                ?.let { mapCoordinate ->
+                                    objectController.createUnit(template, mapCoordinate)
+                                        .also { actionHistory.record(CreateObjectAction(it)) }
+                                }
+                        },
                         canStartUnitDrag = { currentTool == MapViewerTool.SELECT },
                     )
                     val toolbar = MapViewerToolbar(
@@ -174,6 +220,23 @@ internal class MapViewerScene(
                         currentTool = { currentTool },
                         currentDrawingMode = { currentDrawingMode },
                         drawingStore = drawingStore,
+                        canUseUndoRedo = {
+                            !sidebar.isUnitDialogOpen &&
+                                    !sidebar.isUnitDragging &&
+                                    !unitManager.isDragging &&
+                                    !unitManager.isEditDialogOpen &&
+                                    !drawingManager.isDragging
+                        },
+                        onDrawingCommitted = { drawing ->
+                            objectController.createDrawing(drawing)
+                                .also { actionHistory.record(CreateObjectAction(it)) }
+                        },
+                        onUndoRequested = {
+                            actionHistory.undo(objectController)
+                        },
+                        onRedoRequested = {
+                            actionHistory.redo(objectController)
+                        },
                         isMovableObjectUnderPointer = { point ->
                             currentTool == MapViewerTool.SELECT &&
                                     (unitManager.blocksScreenPoint(point) || drawingManager.blocksScreenPoint(point))

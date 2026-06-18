@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.drawing
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.image.Palette
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
@@ -21,7 +23,7 @@ class MapDrawingStoreTest {
         assertThat(store.state.preview, equalTo(preview))
         assertThat(store.state.drawings, equalTo(emptyList()))
 
-        store.commit(preview)
+        store.upsert(DrawingSnapshot(MapPlacedObjectId(1L), preview))
 
         assertThat(store.state.preview, equalTo(null))
         assertThat(store.state.drawings.map { it.drawing }, equalTo(listOf(preview)))
@@ -35,7 +37,7 @@ class MapDrawingStoreTest {
             color = Palette.Colours.RED,
         )
 
-        store.commit(drawing)
+        store.upsert(DrawingSnapshot(MapPlacedObjectId(1L), drawing))
         store.preview(CircleDrawing(MapDrawingPoint(5.0, 6.0), 0.25, Palette.Colours.RED))
         store.clearPreview()
 

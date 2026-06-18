@@ -23,11 +23,16 @@ internal class MapPlacedUnitManager(
     private val viewportProvider: () -> CameraViewport,
     private val contextMenuManager: MapPlacedObjectContextMenuManager,
     private val canInteractWithUnits: () -> Boolean = { true },
+    private val onObjectMoved: (MapPlacedObjectSnapshot, MapPlacedObjectSnapshot) -> Unit = { _, _ -> },
+    private val onObjectDeleted: (MapPlacedObjectSnapshot) -> Unit = {},
+    private val onUnitEdited: (UnitSnapshot, UnitSnapshot) -> Unit = { _, _ -> },
 ) {
     private val coordinateSpace = MapCoordinateSpace(geometry, mapWidth, mapHeight)
     private val units = mutableListOf<PlacedUnit>()
     private val dragPreviewLayer = unitLayer.container()
     private var dragState: DragState? = null
+    private var editDialog: MapViewerUnitEditDialog? = null
+    private var editDialogUnitId: MapPlacedObjectId? = null
 
     fun install() {
         dragPreviewLayer.zIndex = DRAG_PREVIEW_Z_INDEX
@@ -39,25 +44,14 @@ internal class MapPlacedUnitManager(
         }
     }
 
-    fun place(template: MapViewerUnitTemplate, screenPoint: Vector2D) {
-        if (dragState != null || !canInteractWithUnits()) {
-            return
-        }
-
-        val mapCoordinate = coordinateSpace.resolveScreenPoint(
-            screenPoint = screenPoint,
-            viewport = viewportProvider(),
-            bounds = coordinateSpace.backgroundBounds,
-        ) ?: return
-
-        addUnit(template, mapCoordinate)
-    }
-
     val isDragging: Boolean
         get() = dragState != null
 
     val isContextMenuOpen: Boolean
         get() = contextMenuManager.isOpen
+
+    val isEditDialogOpen: Boolean
+        get() = editDialog != null
 
     fun blocksScreenPoint(point: Vector2D): Boolean {
         if (!canInteractWithUnits()) {
@@ -68,38 +62,93 @@ internal class MapPlacedUnitManager(
         return units.any { unit -> unit.containsMapCoordinate(mapCoordinate) }
     }
 
-    private fun addUnit(template: MapViewerUnitTemplate, mapCoordinate: MapCoordinate) {
-        val unitSize = worldUnitSize(template.bitmap)
-        val worldPoint = coordinateSpace.toWorld(mapCoordinate)
-        val view = unitLayer.image(template.bitmap) {
-            this.scale = unitSize.worldScale
-            x = worldPoint.x - unitSize.worldWidth * 0.5
-            y = worldPoint.y - unitSize.worldHeight * 0.5
-        }
+    fun resolvePlacement(screenPoint: Vector2D): MapCoordinate? =
+        coordinateSpace.resolveScreenPoint(
+            screenPoint = screenPoint,
+            viewport = viewportProvider(),
+            bounds = coordinateSpace.backgroundBounds,
+        )
 
-        val placedUnit = PlacedUnit(
-            view = view,
+    fun buildSnapshot(
+        id: MapPlacedObjectId,
+        template: MapViewerUnitTemplate,
+        instanceName: String,
+        mapCoordinate: MapCoordinate,
+    ): UnitSnapshot {
+        val unitSize = worldUnitSize(template.bitmap)
+        return UnitSnapshot(
+            id = id,
             template = template,
-            instanceName = template.name,
+            instanceName = instanceName,
             mapCoordinate = mapCoordinate,
             normalizedWidth = unitSize.worldWidth / mapWidth,
             normalizedHeight = unitSize.worldHeight / mapHeight,
+        )
+    }
+
+    fun upsert(snapshot: UnitSnapshot) {
+        val existing = units.firstOrNull { it.id == snapshot.id }
+        val view = unitLayer.image(snapshot.template.bitmap)
+        if (existing != null) {
+            existing.template = snapshot.template
+            existing.instanceName = snapshot.instanceName
+            existing.mapCoordinate = snapshot.mapCoordinate
+            existing.normalizedWidth = snapshot.normalizedWidth
+            existing.normalizedHeight = snapshot.normalizedHeight
+            val unitSize = worldUnitSize(snapshot.template.bitmap)
+            existing.worldWidth = unitSize.worldWidth
+            existing.worldHeight = unitSize.worldHeight
+            existing.view.bitmap = view.bitmap
+            existing.view.scale = unitSize.worldScale
+            positionView(existing)
+            return
+        }
+
+        val unitSize = worldUnitSize(snapshot.template.bitmap)
+        val placedUnit = PlacedUnit(
+            id = snapshot.id,
+            view = view,
+            template = snapshot.template,
+            instanceName = snapshot.instanceName,
+            mapCoordinate = snapshot.mapCoordinate,
+            normalizedWidth = snapshot.normalizedWidth,
+            normalizedHeight = snapshot.normalizedHeight,
             worldWidth = unitSize.worldWidth,
             worldHeight = unitSize.worldHeight,
         )
+        view.scale = unitSize.worldScale
+        positionView(placedUnit)
         units += placedUnit
+        bindViewEvents(placedUnit)
+    }
 
-        view.mouse {
-            onDown {
-                if (!canInteractWithUnits()) {
-                    return@onDown
-                }
-                when (button) {
-                    MouseButton.LEFT -> beginDrag(placedUnit, currentPosGlobal)
-                    MouseButton.RIGHT -> openContextMenu(placedUnit, currentPosGlobal)
-                    else -> Unit
-                }
+    fun remove(id: MapPlacedObjectId): UnitSnapshot? =
+        units.indexOfFirst { it.id == id }
+            .takeIf { it >= 0 }
+            ?.let { index ->
+                units.removeAt(index).also { removed ->
+                    removed.view.removeFromParent()
+                    if (dragState?.unit?.id == removed.id) {
+                        dragState?.preview?.removeFromParent()
+                        dragState = null
+                    }
+                    if (editDialogUnitId == removed.id) {
+                        editDialog?.close()
+                    }
+                }.snapshot()
             }
+
+    fun snapshot(id: MapPlacedObjectId): UnitSnapshot? =
+        units.firstOrNull { it.id == id }?.snapshot()
+
+    fun cancelTransientState(targetId: MapPlacedObjectId? = null) {
+        if (targetId == null || dragState?.unit?.id == targetId) {
+            dragState?.preview?.removeFromParent()
+            dragState?.unit?.view?.visible = true
+            dragState = null
+        }
+        if (targetId == null || editDialogUnitId == targetId) {
+            editDialog?.close()
         }
     }
 
@@ -136,6 +185,7 @@ internal class MapPlacedUnitManager(
             unit = unit,
             preview = preview,
             offset = grabOffset,
+            originalSnapshot = unit.snapshot(),
         )
     }
 
@@ -148,6 +198,10 @@ internal class MapPlacedUnitManager(
             return
         }
         if (!leftHeld) {
+            val updatedSnapshot = state.unit.snapshot()
+            if (updatedSnapshot != state.originalSnapshot) {
+                onObjectMoved(state.originalSnapshot, updatedSnapshot)
+            }
             dragState = null
             state.preview.removeFromParent()
             state.unit.view.visible = true
@@ -165,8 +219,7 @@ internal class MapPlacedUnitManager(
         val worldPoint = coordinateSpace.toWorld(mapCoordinate)
 
         state.unit.mapCoordinate = mapCoordinate
-        state.unit.view.x = worldPoint.x - state.unit.worldWidth * 0.5
-        state.unit.view.y = worldPoint.y - state.unit.worldHeight * 0.5
+        positionView(state.unit)
         state.preview.x = worldPoint.x - state.unit.worldWidth * 0.5
         state.preview.y = worldPoint.y - state.unit.worldHeight * 0.5
     }
@@ -179,38 +232,49 @@ internal class MapPlacedUnitManager(
     }
 
     private fun openEditDialog(unit: PlacedUnit) {
-        MapViewerUnitEditDialog(
+        editDialog?.close()
+        editDialogUnitId = unit.id
+        editDialog = MapViewerUnitEditDialog(
             root = root,
             unitType = unit.template,
             initialName = unit.instanceName,
             onSave = { newName ->
-                unit.instanceName = newName
+                val before = unit.snapshot()
+                if (newName != unit.instanceName) {
+                    unit.instanceName = newName
+                    onUnitEdited(before, unit.snapshot())
+                }
             },
             onDismiss = {
-                // No-op.
+                editDialog = null
+                editDialogUnitId = null
             },
-        ).show(root.stage?.views?.actualVirtualWidth ?: 0, root.stage?.views?.actualVirtualHeight ?: 0)
-    }
-
-    private fun deleteUnit(unit: PlacedUnit) {
-        units.remove(unit)
-        unit.view.removeFromParent()
-        if (dragState?.unit == unit) {
-            dragState?.preview?.removeFromParent()
-            dragState = null
+        ).also {
+            it.show(root.stage?.views?.actualVirtualWidth ?: 0, root.stage?.views?.actualVirtualHeight ?: 0)
         }
     }
 
     private inner class PlacedUnit(
+        override val id: MapPlacedObjectId,
         val view: Image,
-        val template: MapViewerUnitTemplate,
+        var template: MapViewerUnitTemplate,
         var instanceName: String,
         var mapCoordinate: MapCoordinate,
-        val normalizedWidth: Double,
-        val normalizedHeight: Double,
-        val worldWidth: Double,
-        val worldHeight: Double,
+        var normalizedWidth: Double,
+        var normalizedHeight: Double,
+        var worldWidth: Double,
+        var worldHeight: Double,
     ) : MapPlacedObject {
+        override fun snapshot(): UnitSnapshot =
+            UnitSnapshot(
+                id = id,
+                template = template,
+                instanceName = instanceName,
+                mapCoordinate = mapCoordinate,
+                normalizedWidth = normalizedWidth,
+                normalizedHeight = normalizedHeight,
+            )
+
         override fun containsMapCoordinate(
             mapCoordinate: MapCoordinate,
             tolerance: Double,
@@ -230,7 +294,7 @@ internal class MapPlacedUnitManager(
                 ),
                 MapPlacedObjectMenuAction(
                     label = "Delete Unit",
-                    onSelected = { deleteUnit(this) },
+                    onSelected = { onObjectDeleted(snapshot()) },
                 ),
             )
 
@@ -239,24 +303,37 @@ internal class MapPlacedUnitManager(
                 x = mapCoordinate.x + mapDelta.x,
                 y = mapCoordinate.y + mapDelta.y,
             )
-            val worldPoint = coordinateSpace.toWorld(mapCoordinate)
-            view.x = worldPoint.x - worldWidth * 0.5
-            view.y = worldPoint.y - worldHeight * 0.5
+            positionView(this)
         }
-
-        fun snapshot(): MapPlacedUnitSnapshot =
-            MapPlacedUnitSnapshot(
-                mapCoordinate = mapCoordinate,
-                normalizedWidth = normalizedWidth,
-                normalizedHeight = normalizedHeight,
-            )
     }
 
     private data class DragState(
         val unit: PlacedUnit,
         val preview: Image,
         val offset: Vector2D,
+        val originalSnapshot: UnitSnapshot,
     )
+
+    private fun bindViewEvents(unit: PlacedUnit) {
+        unit.view.mouse {
+            onDown {
+                if (!canInteractWithUnits()) {
+                    return@onDown
+                }
+                when (button) {
+                    MouseButton.LEFT -> beginDrag(unit, currentPosGlobal)
+                    MouseButton.RIGHT -> openContextMenu(unit, currentPosGlobal)
+                    else -> Unit
+                }
+            }
+        }
+    }
+
+    private fun positionView(unit: PlacedUnit) {
+        val worldPoint = coordinateSpace.toWorld(unit.mapCoordinate)
+        unit.view.x = worldPoint.x - unit.worldWidth * 0.5
+        unit.view.y = worldPoint.y - unit.worldHeight * 0.5
+    }
 
     private fun worldUnitSize(bitmap: korlibs.image.bitmap.Bitmap32): WorldUnitSize {
         val worldWidth = UNIT_ICON_WIDTH_METRES / mapMetresPerPixel

@@ -1,10 +1,11 @@
 package io.hsar.mapgenerator.commandgui.korge.drawing
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 
 internal class MapDrawingStore {
-    private var nextId = 1L
     private val committedDrawings = mutableListOf<PlacedDrawing>()
     private var activePreview: MapDrawing? = null
 
@@ -18,18 +19,31 @@ internal class MapDrawingStore {
         activePreview = drawing
     }
 
-    fun commit(drawing: MapDrawing) {
-        val id = nextId++
-        committedDrawings += PlacedDrawing(
-            id = id,
-            drawing = drawing,
-            onDelete = { remove(id) },
-        )
+    fun upsert(snapshot: DrawingSnapshot) {
+        val index = committedDrawings.indexOfFirst { it.id == snapshot.id }
+        if (index >= 0) {
+            committedDrawings[index] = PlacedDrawing(
+                id = snapshot.id,
+                drawing = snapshot.drawing,
+            )
+        } else {
+            committedDrawings += PlacedDrawing(
+                id = snapshot.id,
+                drawing = snapshot.drawing,
+            )
+        }
         activePreview = null
     }
 
-    fun remove(id: Long): Boolean =
-        committedDrawings.removeAll { it.id == id }
+    fun remove(id: MapPlacedObjectId): DrawingSnapshot? =
+        committedDrawings.indexOfFirst { it.id == id }
+            .takeIf { it >= 0 }
+            ?.let { index ->
+                committedDrawings.removeAt(index).snapshot()
+            }
+
+    fun snapshot(id: MapPlacedObjectId): DrawingSnapshot? =
+        committedDrawings.firstOrNull { it.id == id }?.snapshot()
 
     fun findAt(mapCoordinate: MapCoordinate, tolerance: Double, coordinateSpace: MapCoordinateSpace): PlacedDrawing? =
         committedDrawings.lastOrNull { it.containsMapCoordinate(mapCoordinate, tolerance, coordinateSpace) }
