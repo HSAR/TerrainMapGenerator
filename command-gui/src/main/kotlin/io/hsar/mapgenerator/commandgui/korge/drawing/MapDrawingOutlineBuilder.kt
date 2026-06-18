@@ -1,20 +1,20 @@
 package io.hsar.mapgenerator.commandgui.korge.drawing
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
 import java.awt.Color
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.sin
 
 internal object MapDrawingOutlineBuilder {
-    fun build(drawing: MapDrawing, zoom: Double): List<MapDrawingSegment> =
+    fun build(drawing: MapDrawing, zoom: Double, coordinateSpace: MapCoordinateSpace): List<MapDrawingSegment> =
         when (drawing) {
             is FreeformDrawing -> drawing.points.zipWithNext()
                 .map { (start, end) -> MapDrawingSegment(start, end, drawing.color) }
 
             is RectangleDrawing -> rectangleSegments(drawing.start, drawing.end, drawing.color)
-            is CircleDrawing -> circleSegments(drawing.center, drawing.edge, drawing.color, zoom)
+            is CircleDrawing -> circleSegments(drawing.center, drawing.radius, drawing.color, zoom, coordinateSpace)
         }
 
     private fun rectangleSegments(start: MapDrawingPoint, end: MapDrawingPoint, color: Color): List<MapDrawingSegment> {
@@ -31,20 +31,24 @@ internal object MapDrawingOutlineBuilder {
 
     private fun circleSegments(
         center: MapDrawingPoint,
-        edge: MapDrawingPoint,
+        radius: Double,
         color: Color,
         zoom: Double,
+        coordinateSpace: MapCoordinateSpace,
     ): List<MapDrawingSegment> {
-        val radius = hypot(edge.x - center.x, edge.y - center.y)
         if (radius <= 0.0) {
             return emptyList()
         }
 
-        val segmentCount = max(MIN_CIRCLE_SEGMENTS, (radius * zoom / CIRCLE_PIXELS_PER_SEGMENT).toInt())
+        val segmentCount = max(
+            MIN_CIRCLE_SEGMENTS,
+            (coordinateSpace.circleRadiusPixels(radius) * zoom / CIRCLE_PIXELS_PER_SEGMENT).toInt(),
+        )
+        val xRadius = radius / coordinateSpace.aspectRatio
         val points = (0..segmentCount).map { index ->
             val angle = 2.0 * PI * index / segmentCount
             MapDrawingPoint(
-                x = center.x + cos(angle) * radius,
+                x = center.x + cos(angle) * xRadius,
                 y = center.y + sin(angle) * radius,
             )
         }

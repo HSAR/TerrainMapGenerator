@@ -27,6 +27,7 @@ import korlibs.korge.view.Camera
 import korlibs.korge.view.View
 import korlibs.korge.view.addUpdater
 import korlibs.math.geom.Vector2D
+import korlibs.render.GameWindow
 import kotlin.math.hypot
 import kotlin.math.pow
 
@@ -44,12 +45,14 @@ internal class MapViewerInteraction(
     private val currentDrawingMode: () -> MapDrawingMode = { MapDrawingMode.FREEFORM },
     private val drawingStore: MapDrawingStore = MapDrawingStore(),
     private val isScreenOverlayBlocking: (Vector2D) -> Boolean = { false },
+    private val isMovableObjectUnderPointer: (Vector2D) -> Boolean = { false },
     private val isMapPlacementDragging: () -> Boolean = { false },
     private val onViewportChanged: (CameraViewport) -> Unit = {},
     private val onTitleChanged: (String) -> Unit = {},
     private val onOverlayStateChanged: (GridOverlayState) -> Unit,
     private val onDrawingStateChanged: (MapDrawingState) -> Unit = {},
 ) {
+    private val coordinateSpace = MapCoordinateSpace(geometry, mapWidth, mapHeight)
     private var overlayDirty = true
     private var lastOverlayState: GridOverlayState? = null
     private var activeReference: GridCursorReference? = null
@@ -120,6 +123,12 @@ internal class MapViewerInteraction(
             previousDrawingMode = drawingMode
 
             panState.refreshCursor()
+            updateHoverCursor(
+                pointer = pointer,
+                tool = tool,
+                isOverlayBlocked = intent.leftActive || isScreenOverlayBlocking(pointer),
+                isPanning = panState.isDragging || intent.rightPanHeld || intent.spacePanHeld,
+            )
             flushOverlayIfDirty()
         }
 
@@ -193,6 +202,24 @@ internal class MapViewerInteraction(
         overlayDirty = true
     }
 
+    private fun updateHoverCursor(
+        pointer: Vector2D,
+        tool: MapViewerTool,
+        isOverlayBlocked: Boolean,
+        isPanning: Boolean,
+    ) {
+        val movableObjectUnderPointer = isMovableObjectUnderPointer(pointer)
+        if (isPanning || tool != MapViewerTool.SELECT || (isOverlayBlocked && !movableObjectUnderPointer)) {
+            return
+        }
+
+        root.cursor = if (movableObjectUnderPointer) {
+            GameWindow.Cursor.HAND
+        } else {
+            GameWindow.Cursor.DEFAULT
+        }
+    }
+
     private fun updateActiveReference(pointer: Vector2D, leftHeld: Boolean, tool: MapViewerTool): Boolean {
         val nextReference = if (leftHeld && tool != MapViewerTool.DRAW) {
             createActiveReference(pointer, clampToMap = tool == MapViewerTool.MEASURE && measurementOrigin != null)
@@ -225,11 +252,19 @@ internal class MapViewerInteraction(
             if (previousLeftHeld) {
                 return false
             }
-            createMapPointerReference(pointer, clampToMap = false)?.toDrawingPoint() ?: return false
+            createMapPointerReference(pointer, clampToMap = false, bounds = coordinateSpace.backgroundBounds)
+                ?.mapCoordinate
+                ?.toDrawingPoint() ?: return false
         } else {
-            createMapPointerReference(pointer, clampToMap = true)?.toDrawingPoint() ?: return false
+            createMapPointerReference(pointer, clampToMap = true, bounds = coordinateSpace.backgroundBounds)
+                ?.mapCoordinate
+                ?.toDrawingPoint() ?: return false
         }
-        val nextDrawing = activeDrawing?.updated(point) ?: mode.startedAt(point)
+        val nextDrawing = activeDrawing?.updated(
+            point = point,
+            minimumFreeformPointDistance = minimumFreeformPointDistance(mapWidth, mapHeight),
+            circleAspectRatio = coordinateSpace.aspectRatio,
+        ) ?: mode.startedAt(point)
         if (nextDrawing == activeDrawing) {
             return false
         }
@@ -273,15 +308,16 @@ internal class MapViewerInteraction(
             ?: if (previousLeftHeld) {
                 return false
             } else {
-                createMapPointerReference(pointer, clampToMap = false)?.also { measurementOrigin = it } ?: return false
+                createMapPointerReference(pointer, clampToMap = false, bounds = coordinateSpace.mapBounds)
+                    ?.also { measurementOrigin = it } ?: return false
             }
-        val destination = createMapPointerReference(pointer, clampToMap = true) ?: return false
+        val destination = createMapPointerReference(pointer, clampToMap = true, bounds = coordinateSpace.mapBounds) ?: return false
         val nextMeasurement = GridMeasurementCalculator.calculate(
             layer = gridLayer,
-            originMapX = origin.mapX,
-            originMapY = origin.mapY,
-            destinationMapX = destination.mapX,
-            destinationMapY = destination.mapY,
+            originMapX = origin.mapPixelX,
+            originMapY = origin.mapPixelY,
+            destinationMapX = destination.mapPixelX,
+            destinationMapY = destination.mapPixelY,
         )
         if (nextMeasurement == activeMeasurement) {
             return false
@@ -302,7 +338,7 @@ internal class MapViewerInteraction(
     }
 
     private fun createActiveReference(pointer: Vector2D, clampToMap: Boolean): GridCursorReference? =
-        createMapPointerReference(pointer, clampToMap)
+        createMapPointerReference(pointer, clampToMap, coordinateSpace.mapBounds)
             ?.let { reference ->
                 GridCursorReference(
                     screenX = pointer.x.coerceIn(
@@ -313,39 +349,40 @@ internal class MapViewerInteraction(
                         cameraPanner.viewport.screenY(geometry.mapOffsetY.toDouble()),
                         cameraPanner.viewport.screenY(geometry.mapOffsetY.toDouble() + mapHeight),
                     ),
-                    text = GridReferenceFormatter.format(layer = gridLayer ?: return null, mapX = reference.mapX, mapY = reference.mapY),
+                    text = GridReferenceFormatter.format(
+                        layer = gridLayer ?: return null,
+                        mapX = reference.mapPixelX,
+                        mapY = reference.mapPixelY,
+                    ),
                 )
             }
 
-    private fun createMapPointerReference(pointer: Vector2D, clampToMap: Boolean): MapPointerReference? {
-        val viewport = cameraPanner.viewport
-        val mapLeft = viewport.screenX(geometry.mapOffsetX.toDouble())
-        val mapTop = viewport.screenY(geometry.mapOffsetY.toDouble())
-        val mapRight = mapLeft + mapWidth * viewport.zoom
-        val mapBottom = mapTop + mapHeight * viewport.zoom
-
-        if (!clampToMap && (pointer.x !in mapLeft..mapRight || pointer.y !in mapTop..mapBottom)) {
-            return null
+    private fun createMapPointerReference(
+        pointer: Vector2D,
+        clampToMap: Boolean,
+        bounds: MapCoordinateBounds,
+    ): MapPointerReference? =
+        (if (clampToMap) {
+            coordinateSpace.resolveScreenPointClamped(pointer, cameraPanner.viewport, bounds)
+        } else {
+            coordinateSpace.resolveScreenPoint(pointer, cameraPanner.viewport, bounds)
+        })?.let { mapCoordinate ->
+            coordinateSpace.toMapPixels(mapCoordinate).let { mapPixels ->
+                MapPointerReference(
+                    mapCoordinate = mapCoordinate,
+                    mapPixelX = mapPixels.x,
+                    mapPixelY = mapPixels.y,
+                )
+            }
         }
 
-        val screenX = pointer.x.coerceIn(mapLeft, mapRight)
-        val screenY = pointer.y.coerceIn(mapTop, mapBottom)
-        val mapX = ((screenX - mapLeft) / viewport.zoom).coerceIn(0.0, mapWidth.toDouble())
-        val mapY = ((screenY - mapTop) / viewport.zoom).coerceIn(0.0, mapHeight.toDouble())
-
-        return MapPointerReference(
-            mapX = mapX,
-            mapY = mapY,
-        )
-    }
-
-    private fun MapPointerReference.toDrawingPoint() = MapDrawingPoint(mapX, mapY)
+    private fun MapCoordinate.toDrawingPoint() = MapDrawingPoint(x, y)
 
     private fun MapDrawingMode.startedAt(point: MapDrawingPoint): ActiveDrawing =
         when (this) {
             MapDrawingMode.FREEFORM -> ActiveDrawing.Freeform(listOf(point))
             MapDrawingMode.RECTANGLE -> ActiveDrawing.Rectangle(start = point, end = point)
-            MapDrawingMode.CIRCLE -> ActiveDrawing.Circle(center = point, edge = point)
+            MapDrawingMode.CIRCLE -> ActiveDrawing.Circle(center = point, radius = 0.0)
         }
 
     private fun currentViewport(viewport: CameraViewport): Rectangle {
@@ -362,7 +399,7 @@ internal class MapViewerInteraction(
 
     private companion object {
         private const val ZOOM_STEP = 1.4
-        private const val MIN_FREEFORM_POINT_DISTANCE = 0.5
+        private const val MIN_FREEFORM_POINT_DISTANCE_PX = 2.0
 
         private fun zoomFactor(scrollDeltaYLines: Double): Double =
             ZOOM_STEP.pow(-scrollDeltaYLines)
@@ -371,14 +408,19 @@ internal class MapViewerInteraction(
     }
 
     private data class MapPointerReference(
-        val mapX: Double,
-        val mapY: Double,
+        val mapCoordinate: MapCoordinate,
+        val mapPixelX: Double,
+        val mapPixelY: Double,
     )
 
     private sealed interface ActiveDrawing {
         val preview: MapDrawing
 
-        fun updated(point: MapDrawingPoint): ActiveDrawing
+        fun updated(
+            point: MapDrawingPoint,
+            minimumFreeformPointDistance: Double,
+            circleAspectRatio: Double,
+        ): ActiveDrawing
 
         fun committedOrNull(): MapDrawing?
 
@@ -388,9 +430,13 @@ internal class MapViewerInteraction(
             override val preview: MapDrawing
                 get() = FreeformDrawing(points.toList(), Palette.Colours.RED)
 
-            override fun updated(point: MapDrawingPoint): ActiveDrawing {
+            override fun updated(
+                point: MapDrawingPoint,
+                minimumFreeformPointDistance: Double,
+                circleAspectRatio: Double,
+            ): ActiveDrawing {
                 val lastPoint = points.last()
-                return if (hypot(point.x - lastPoint.x, point.y - lastPoint.y) >= MIN_FREEFORM_POINT_DISTANCE) {
+                return if (hypot(point.x - lastPoint.x, point.y - lastPoint.y) >= minimumFreeformPointDistance) {
                     copy(points = points + point)
                 } else {
                     this
@@ -408,7 +454,11 @@ internal class MapViewerInteraction(
             override val preview: MapDrawing
                 get() = RectangleDrawing(start, end, Palette.Colours.RED)
 
-            override fun updated(point: MapDrawingPoint): ActiveDrawing =
+            override fun updated(
+                point: MapDrawingPoint,
+                minimumFreeformPointDistance: Double,
+                circleAspectRatio: Double,
+            ): ActiveDrawing =
                 copy(end = point)
 
             override fun committedOrNull(): MapDrawing? =
@@ -417,16 +467,23 @@ internal class MapViewerInteraction(
 
         data class Circle(
             val center: MapDrawingPoint,
-            val edge: MapDrawingPoint,
+            val radius: Double,
         ) : ActiveDrawing {
             override val preview: MapDrawing
-                get() = CircleDrawing(center, edge, Palette.Colours.RED)
+                get() = CircleDrawing(center, radius, Palette.Colours.RED)
 
-            override fun updated(point: MapDrawingPoint): ActiveDrawing =
-                copy(edge = point)
+            override fun updated(
+                point: MapDrawingPoint,
+                minimumFreeformPointDistance: Double,
+                circleAspectRatio: Double,
+            ): ActiveDrawing =
+                copy(radius = hypot((point.x - center.x) * circleAspectRatio, point.y - center.y))
 
             override fun committedOrNull(): MapDrawing? =
-                preview.takeIf { center != edge }
+                preview.takeIf { radius > 0.0 }
         }
     }
 }
+
+internal fun minimumFreeformPointDistance(mapWidth: Int, mapHeight: Int): Double =
+    2.0 / minOf(mapWidth.toDouble(), mapHeight.toDouble())

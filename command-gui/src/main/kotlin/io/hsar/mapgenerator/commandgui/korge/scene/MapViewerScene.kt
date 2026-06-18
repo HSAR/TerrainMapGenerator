@@ -2,10 +2,13 @@ package io.hsar.mapgenerator.commandgui.korge.scene
 
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingManager
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingView
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectContextMenuManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedUnitManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
@@ -61,10 +64,13 @@ internal class MapViewerScene(
                     lateinit var world: Camera
                     var gridLinesOverlay: GridOverlayLinesView? = null
                     val drawingStore = MapDrawingStore()
+                    lateinit var contextMenuManager: MapPlacedObjectContextMenuManager
+                    lateinit var drawingManager: MapDrawingManager
                     lateinit var drawingView: MapDrawingView
                     lateinit var iconLayer: korlibs.korge.view.Container
                     lateinit var unitManager: MapPlacedUnitManager
                     var gridLabelsOverlay: GridOverlayView? = null
+                    val coordinateSpace = MapCoordinateSpace(renderedMap.geometry, renderedMap.bitmap.width, renderedMap.bitmap.height)
 
                     solidRect(gameWindow.width, gameWindow.height, Colors.BLACK)
                     clipContainer(Size2D(gameWindow.width, gameWindow.height)) {
@@ -87,10 +93,8 @@ internal class MapViewerScene(
                             }
 
                             val drawingLayer = container()
-                            drawingLayer.x = renderedMap.geometry.mapOffsetX.toDouble()
-                            drawingLayer.y = renderedMap.geometry.mapOffsetY.toDouble()
                             drawingLayer.zIndex = 1.5
-                            drawingView = MapDrawingView().also {
+                            drawingView = MapDrawingView(coordinateSpace).also {
                                 drawingLayer.addChild(it)
                             }
 
@@ -98,6 +102,8 @@ internal class MapViewerScene(
                             iconLayer.zIndex = 2.0
                         }
                     }
+
+                    contextMenuManager = MapPlacedObjectContextMenuManager(views.stage)
 
                     unitManager = MapPlacedUnitManager(
                         root = views.stage,
@@ -107,9 +113,26 @@ internal class MapViewerScene(
                         mapWidth = renderedMap.bitmap.width,
                         mapHeight = renderedMap.bitmap.height,
                         viewportProvider = { currentViewport },
+                        contextMenuManager = contextMenuManager,
                         canInteractWithUnits = { currentTool == MapViewerTool.SELECT },
                     )
                     unitManager.install()
+
+                    drawingManager = MapDrawingManager(
+                        root = views.stage,
+                        geometry = renderedMap.geometry,
+                        mapWidth = renderedMap.bitmap.width,
+                        mapHeight = renderedMap.bitmap.height,
+                        viewportProvider = { currentViewport },
+                        currentTool = { currentTool },
+                        drawingStore = drawingStore,
+                        contextMenuManager = contextMenuManager,
+                        canInteractWithDrawings = { currentTool == MapViewerTool.SELECT },
+                        onDrawingsChanged = { state ->
+                            drawingView.update(state, currentViewport.zoom)
+                        },
+                    )
+                    drawingManager.install()
 
                     gridLabelsOverlay = renderData.gridLayer?.let { layer ->
                         GridOverlayView(layer).also {
@@ -151,12 +174,18 @@ internal class MapViewerScene(
                         currentTool = { currentTool },
                         currentDrawingMode = { currentDrawingMode },
                         drawingStore = drawingStore,
+                        isMovableObjectUnderPointer = { point ->
+                            currentTool == MapViewerTool.SELECT &&
+                                    (unitManager.blocksScreenPoint(point) || drawingManager.blocksScreenPoint(point))
+                        },
                         isScreenOverlayBlocking = { point ->
                             toolbar.blocksScreenPoint(point) ||
                             sidebar.blocksScreenPoint(point) ||
                                     sidebar.isUnitDragging ||
                                     sidebar.isUnitDialogOpen ||
                                     unitManager.isContextMenuOpen ||
+                                    drawingManager.blocksScreenPoint(point) ||
+                                    contextMenuManager.blocksScreenPoint(point) ||
                                     (currentTool == MapViewerTool.SELECT && unitManager.blocksScreenPoint(point))
                         },
                         isMapPlacementDragging = unitManager::isDragging,

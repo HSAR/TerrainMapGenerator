@@ -24,7 +24,7 @@ class MapDrawingStoreTest {
         store.commit(preview)
 
         assertThat(store.state.preview, equalTo(null))
-        assertThat(store.state.drawings, equalTo(listOf(preview)))
+        assertThat(store.state.drawings.map { it.drawing }, equalTo(listOf(preview)))
     }
 
     @Test
@@ -36,10 +36,10 @@ class MapDrawingStoreTest {
         )
 
         store.commit(drawing)
-        store.preview(CircleDrawing(MapDrawingPoint(5.0, 6.0), MapDrawingPoint(7.0, 8.0), Palette.Colours.RED))
+        store.preview(CircleDrawing(MapDrawingPoint(5.0, 6.0), 0.25, Palette.Colours.RED))
         store.clearPreview()
 
         assertThat(store.state.preview, equalTo(null))
-        assertThat(store.state.drawings, equalTo(listOf(drawing)))
+        assertThat(store.state.drawings.map { it.drawing }, equalTo(listOf(drawing)))
     }
 }

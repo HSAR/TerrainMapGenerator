@@ -1,5 +1,9 @@
 package io.hsar.mapgenerator.commandgui.korge.drawing
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateDelta
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObject
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectMenuAction
 import java.awt.Color
 
 internal data class MapDrawingPoint(
@@ -24,11 +28,41 @@ internal data class RectangleDrawing(
 
 internal data class CircleDrawing(
     val center: MapDrawingPoint,
-    val edge: MapDrawingPoint,
+    val radius: Double,
     override val color: Color,
 ) : MapDrawing
 
+internal data class PlacedDrawing(
+    val id: Long,
+    var drawing: MapDrawing,
+    private val onDelete: (() -> Unit)? = null,
+) : MapPlacedObject {
+    override fun containsMapCoordinate(
+        mapCoordinate: MapCoordinate,
+        tolerance: Double,
+        coordinateSpace: io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace?,
+    ): Boolean =
+        MapDrawingHitTest.contains(
+            drawing = drawing,
+            point = MapDrawingPoint(mapCoordinate.x, mapCoordinate.y),
+            tolerance = tolerance,
+            coordinateSpace = coordinateSpace,
+        )
+
+    override fun contextMenuActions(): List<MapPlacedObjectMenuAction> =
+        listOf(
+            MapPlacedObjectMenuAction(
+                label = "Delete",
+                onSelected = { onDelete?.invoke() },
+            ),
+        )
+
+    override fun moveBy(mapDelta: MapCoordinateDelta) {
+        drawing = MapDrawingTranslator.translate(drawing, mapDelta)
+    }
+}
+
 internal data class MapDrawingState(
-    val drawings: List<MapDrawing> = emptyList(),
+    val drawings: List<PlacedDrawing> = emptyList(),
     val preview: MapDrawing? = null,
 )

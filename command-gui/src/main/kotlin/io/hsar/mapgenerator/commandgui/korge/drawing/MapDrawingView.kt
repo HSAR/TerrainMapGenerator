@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.drawing
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
 import korlibs.image.color.RGBA
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
@@ -9,7 +11,9 @@ import korlibs.math.geom.radians
 import kotlin.math.atan2
 import kotlin.math.hypot
 
-internal class MapDrawingView : Container() {
+internal class MapDrawingView(
+    private val coordinateSpace: MapCoordinateSpace,
+) : Container() {
     private val segmentContainer = container()
 
     init {
@@ -18,24 +22,26 @@ internal class MapDrawingView : Container() {
 
     fun update(state: MapDrawingState, zoom: Double) {
         val strokeWidth = SCREEN_STROKE_WIDTH / zoom.coerceAtLeast(0.0001)
-        val drawings = state.drawings + listOfNotNull(state.preview)
+        val drawings = state.drawings.map { it.drawing } + listOfNotNull(state.preview)
 
         segmentContainer.removeChildren()
         drawings
-            .flatMap { MapDrawingOutlineBuilder.build(it, zoom) }
+            .flatMap { MapDrawingOutlineBuilder.build(it, zoom, coordinateSpace) }
             .forEach { drawSegment(it, strokeWidth) }
     }
 
     private fun drawSegment(segment: MapDrawingSegment, strokeWidth: Double) {
-        val dx = segment.end.x - segment.start.x
-        val dy = segment.end.y - segment.start.y
+        val worldStart = coordinateSpace.toWorld(MapCoordinate(segment.start.x, segment.start.y))
+        val worldEnd = coordinateSpace.toWorld(MapCoordinate(segment.end.x, segment.end.y))
+        val dx = worldEnd.x - worldStart.x
+        val dy = worldEnd.y - worldStart.y
         val length = hypot(dx, dy)
         if (length <= 0.0) {
             return
         }
 
         val rotatedSegment = segmentContainer.container()
-        rotatedSegment.xy(segment.start.x, segment.start.y)
+        rotatedSegment.xy(worldStart.x, worldStart.y)
         rotatedSegment.rotation = atan2(dy, dx).toFloat().radians
         rotatedSegment.solidRect(
             width = length,

@@ -1,11 +1,8 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextBitmapRenderer
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitEditDialog
-import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
-import korlibs.image.color.RGBA
 import korlibs.korge.input.mouse
 import korlibs.korge.internal.KorgeInternal
 import korlibs.korge.view.Container
@@ -13,8 +10,6 @@ import korlibs.korge.view.Image
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
 import korlibs.korge.view.image
-import korlibs.korge.view.solidRect
-import korlibs.korge.view.xy
 import korlibs.math.geom.Vector2D
 
 @OptIn(KorgeInternal::class)
@@ -26,20 +21,17 @@ internal class MapPlacedUnitManager(
     private val mapWidth: Int,
     private val mapHeight: Int,
     private val viewportProvider: () -> CameraViewport,
+    private val contextMenuManager: MapPlacedObjectContextMenuManager,
     private val canInteractWithUnits: () -> Boolean = { true },
 ) {
+    private val coordinateSpace = MapCoordinateSpace(geometry, mapWidth, mapHeight)
     private val units = mutableListOf<PlacedUnit>()
     private val dragPreviewLayer = unitLayer.container()
-    private val contextMenuLayer = root.container()
     private var dragState: DragState? = null
-    private var contextMenuState: ContextMenuState? = null
 
     fun install() {
         dragPreviewLayer.zIndex = DRAG_PREVIEW_Z_INDEX
         dragPreviewLayer.mouseEnabled = false
-
-        contextMenuLayer.zIndex = CONTEXT_MENU_Z_INDEX
-        contextMenuLayer.mouseEnabled = true
 
         root.addUpdater {
             val input = root.stage?.views?.input ?: return@addUpdater
@@ -52,33 +44,33 @@ internal class MapPlacedUnitManager(
             return
         }
 
-        val worldPoint = MapViewerUnitPlacementResolver.resolve(
+        val mapCoordinate = coordinateSpace.resolveScreenPoint(
             screenPoint = screenPoint,
             viewport = viewportProvider(),
-            geometry = geometry,
-            mapWidth = mapWidth,
-            mapHeight = mapHeight,
+            bounds = coordinateSpace.backgroundBounds,
         ) ?: return
 
-        addUnit(template, worldPoint)
+        addUnit(template, mapCoordinate)
     }
 
     val isDragging: Boolean
         get() = dragState != null
 
     val isContextMenuOpen: Boolean
-        get() = contextMenuState != null
+        get() = contextMenuManager.isOpen
 
     fun blocksScreenPoint(point: Vector2D): Boolean {
         if (!canInteractWithUnits()) {
             return false
         }
         val viewport = viewportProvider()
-        return units.any { unit -> MapPlacedUnitScreenBounds.contains(point, unit.snapshot(), viewport) }
+        val mapCoordinate = coordinateSpace.screenToMap(point, viewport)
+        return units.any { unit -> unit.containsMapCoordinate(mapCoordinate) }
     }
 
-    private fun addUnit(template: MapViewerUnitTemplate, worldPoint: Vector2D) {
+    private fun addUnit(template: MapViewerUnitTemplate, mapCoordinate: MapCoordinate) {
         val unitSize = worldUnitSize(template.bitmap)
+        val worldPoint = coordinateSpace.toWorld(mapCoordinate)
         val view = unitLayer.image(template.bitmap) {
             this.scale = unitSize.worldScale
             x = worldPoint.x - unitSize.worldWidth * 0.5
@@ -89,7 +81,9 @@ internal class MapPlacedUnitManager(
             view = view,
             template = template,
             instanceName = template.name,
-            mapPoint = worldPoint,
+            mapCoordinate = mapCoordinate,
+            normalizedWidth = unitSize.worldWidth / mapWidth,
+            normalizedHeight = unitSize.worldHeight / mapHeight,
             worldWidth = unitSize.worldWidth,
             worldHeight = unitSize.worldHeight,
         )
@@ -115,24 +109,20 @@ internal class MapPlacedUnitManager(
         }
 
         val viewport = viewportProvider()
-        val currentScreenPoint = Vector2D(
-            x = viewport.screenX(unit.mapPoint.x),
-            y = viewport.screenY(unit.mapPoint.y),
-        )
+        val currentScreenPoint = coordinateSpace.worldToScreen(coordinateSpace.toWorld(unit.mapCoordinate), viewport)
         val grabOffset = Vector2D(
             x = screenPoint.x - currentScreenPoint.x,
             y = screenPoint.y - currentScreenPoint.y,
         )
-        val worldPoint = MapViewerUnitPlacementResolver.resolveClamped(
+        val mapCoordinate = coordinateSpace.resolveScreenPointClamped(
             screenPoint = Vector2D(
                 x = screenPoint.x - grabOffset.x,
                 y = screenPoint.y - grabOffset.y,
             ),
             viewport = viewport,
-            geometry = geometry,
-            mapWidth = mapWidth,
-            mapHeight = mapHeight,
+            bounds = coordinateSpace.backgroundBounds,
         )
+        val worldPoint = coordinateSpace.toWorld(mapCoordinate)
 
         unit.view.visible = false
         dragPreviewLayer.removeChildren()
@@ -164,18 +154,17 @@ internal class MapPlacedUnitManager(
             return
         }
 
-        val worldPoint = MapViewerUnitPlacementResolver.resolveClamped(
+        val mapCoordinate = coordinateSpace.resolveScreenPointClamped(
             screenPoint = Vector2D(
                 x = pointer.x - state.offset.x,
                 y = pointer.y - state.offset.y,
             ),
             viewport = viewportProvider(),
-            geometry = geometry,
-            mapWidth = mapWidth,
-            mapHeight = mapHeight,
+            bounds = coordinateSpace.backgroundBounds,
         )
+        val worldPoint = coordinateSpace.toWorld(mapCoordinate)
 
-        state.unit.mapPoint = worldPoint
+        state.unit.mapCoordinate = mapCoordinate
         state.unit.view.x = worldPoint.x - state.unit.worldWidth * 0.5
         state.unit.view.y = worldPoint.y - state.unit.worldHeight * 0.5
         state.preview.x = worldPoint.x - state.unit.worldWidth * 0.5
@@ -186,52 +175,7 @@ internal class MapPlacedUnitManager(
         if (!canInteractWithUnits()) {
             return
         }
-        closeContextMenu()
-        val stage = root.stage ?: return
-        val stageWidth = stage.views.actualVirtualWidth.toDouble()
-        val stageHeight = stage.views.actualVirtualHeight.toDouble()
-        val menuWidth = 180.0
-        val menuHeight = 44.0
-        val left = screenPoint.x.coerceIn(0.0, (stageWidth - menuWidth).coerceAtLeast(0.0))
-        val top = screenPoint.y.coerceIn(0.0, (stageHeight - menuHeight).coerceAtLeast(0.0))
-
-        val backdrop = contextMenuLayer.container()
-        backdrop.solidRect(stageWidth, stageHeight, RGBA(0, 0, 0, 0))
-        backdrop.mouse {
-            onDown {
-                if (button == MouseButton.LEFT) {
-                    closeContextMenu()
-                }
-            }
-        }
-
-        val menu = contextMenuLayer.container()
-        menu.xy(left, top)
-        menu.solidRect(menuWidth, menuHeight, RGBA(255, 255, 255, 255))
-        menu.solidRect(menuWidth - 4.0, menuHeight - 4.0, RGBA(48, 58, 58, 255)) {
-            x = 2.0
-            y = 2.0
-        }
-
-        val option = menu.container()
-        option.solidRect(menuWidth - 8.0, menuHeight - 8.0, RGBA(255, 255, 255, 16)) {
-            x = 4.0
-            y = 4.0
-        }
-        option.mouse {
-            onDown {
-                if (button == MouseButton.LEFT) {
-                    closeContextMenu()
-                    openEditDialog(unit)
-                }
-            }
-        }
-        option.image(MapViewerTextBitmapRenderer.render("Edit Unit", Palette.Fonts.MAIN.first, Palette.Colours.WHITE)) {
-            x = 12.0
-            y = (menuHeight - height) * 0.5
-        }
-
-        contextMenuState = ContextMenuState(menu = menu, backdrop = backdrop)
+        contextMenuManager.open(unit, screenPoint)
     }
 
     private fun openEditDialog(unit: PlacedUnit) {
@@ -248,24 +192,63 @@ internal class MapPlacedUnitManager(
         ).show(root.stage?.views?.actualVirtualWidth ?: 0, root.stage?.views?.actualVirtualHeight ?: 0)
     }
 
-    private fun closeContextMenu() {
-        contextMenuLayer.removeChildren()
-        contextMenuState = null
+    private fun deleteUnit(unit: PlacedUnit) {
+        units.remove(unit)
+        unit.view.removeFromParent()
+        if (dragState?.unit == unit) {
+            dragState?.preview?.removeFromParent()
+            dragState = null
+        }
     }
 
-    private data class PlacedUnit(
+    private inner class PlacedUnit(
         val view: Image,
         val template: MapViewerUnitTemplate,
         var instanceName: String,
-        var mapPoint: Vector2D,
+        var mapCoordinate: MapCoordinate,
+        val normalizedWidth: Double,
+        val normalizedHeight: Double,
         val worldWidth: Double,
         val worldHeight: Double,
-    ) {
+    ) : MapPlacedObject {
+        override fun containsMapCoordinate(
+            mapCoordinate: MapCoordinate,
+            tolerance: Double,
+            coordinateSpace: MapCoordinateSpace?,
+        ): Boolean {
+            val halfWidth = normalizedWidth * 0.5
+            val halfHeight = normalizedHeight * 0.5
+            return mapCoordinate.x in (this.mapCoordinate.x - halfWidth - tolerance)..(this.mapCoordinate.x + halfWidth + tolerance) &&
+                    mapCoordinate.y in (this.mapCoordinate.y - halfHeight - tolerance)..(this.mapCoordinate.y + halfHeight + tolerance)
+        }
+
+        override fun contextMenuActions(): List<MapPlacedObjectMenuAction> =
+            listOf(
+                MapPlacedObjectMenuAction(
+                    label = "Edit Unit",
+                    onSelected = { openEditDialog(this) },
+                ),
+                MapPlacedObjectMenuAction(
+                    label = "Delete Unit",
+                    onSelected = { deleteUnit(this) },
+                ),
+            )
+
+        override fun moveBy(mapDelta: MapCoordinateDelta) {
+            mapCoordinate = MapCoordinate(
+                x = mapCoordinate.x + mapDelta.x,
+                y = mapCoordinate.y + mapDelta.y,
+            )
+            val worldPoint = coordinateSpace.toWorld(mapCoordinate)
+            view.x = worldPoint.x - worldWidth * 0.5
+            view.y = worldPoint.y - worldHeight * 0.5
+        }
+
         fun snapshot(): MapPlacedUnitSnapshot =
             MapPlacedUnitSnapshot(
-                mapPoint = mapPoint,
-                worldWidth = worldWidth,
-                worldHeight = worldHeight,
+                mapCoordinate = mapCoordinate,
+                normalizedWidth = normalizedWidth,
+                normalizedHeight = normalizedHeight,
             )
     }
 
@@ -273,11 +256,6 @@ internal class MapPlacedUnitManager(
         val unit: PlacedUnit,
         val preview: Image,
         val offset: Vector2D,
-    )
-
-    private data class ContextMenuState(
-        val menu: Container,
-        val backdrop: Container,
     )
 
     private fun worldUnitSize(bitmap: korlibs.image.bitmap.Bitmap32): WorldUnitSize {
@@ -299,6 +277,5 @@ internal class MapPlacedUnitManager(
     private companion object {
         const val UNIT_ICON_WIDTH_METRES = 250.0
         const val DRAG_PREVIEW_Z_INDEX = 15_000.0
-        const val CONTEXT_MENU_Z_INDEX = 35_000.0
     }
 }
