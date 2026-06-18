@@ -5,34 +5,43 @@ import com.beust.jcommander.Parameter
 import com.beust.jcommander.Parameters
 import io.hsar.mapgenerator.TerrainMapGenerator
 import io.hsar.mapgenerator.commandgui.MapLayer
+import io.hsar.mapgenerator.commandgui.MapViewerFrame
 import io.hsar.mapgenerator.commandgui.MapViewerLayer
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
-import io.hsar.mapgenerator.commandgui.MapViewerFrame
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
+import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
 import io.hsar.mapgenerator.gui.ImageFrame
 import io.hsar.mapgenerator.image.ImageUtils.compose
 import io.hsar.mapgenerator.image.ImageWriter
+import org.apache.logging.log4j.LogManager
+import org.apache.logging.log4j.Logger
 import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.nio.file.Path
-import javax.imageio.ImageIO
-import org.apache.logging.log4j.LogManager
-import org.apache.logging.log4j.Logger
-import kotlin.math.roundToInt
 import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
+import javax.imageio.ImageIO
+import kotlin.math.roundToInt
 import kotlin.system.exitProcess
 
 @Parameters(commandDescription = "Generates terrain maps and opens the KorGE map viewer.")
 object LaunchGuiCommand : Command("show-gui") {
+    @Parameter(
+        names = ["--map"],
+        description = "Path to a map image to prefill the create new operation screen.",
+        required = false,
+    )
+    private var mapPath: String? = null
+
     override fun run() {
         val staticLayers = loadStaticImageLayers(staticImagePaths)
 
         MapViewerFrame(
             renderMap = ::renderViewerImage,
             initialSettings = viewerSettings(staticLayers),
+            initialSetupInputs = initialSetupInputs(mapPath, staticImagePaths),
         ).showWindow()
     }
 
@@ -465,3 +474,18 @@ private fun outputLayerName(layer: MapViewerLayer): String =
             ?: layer.displayName.replace(Regex("[^A-Za-z0-9._-]"), "_")
         else -> layer.displayName.replace(Regex("[^A-Za-z0-9._-]"), "_")
     }
+
+internal fun initialSetupInputs(
+    mapPath: String?,
+    legacyImagePaths: List<String>,
+): MapViewerSetupInputs {
+    val path = mapPath ?: legacyImagePaths.firstOrNull() ?: return MapViewerSetupInputs()
+    val absolutePath = Path.of(path).toAbsolutePath().normalize()
+    val image = ImageIO.read(absolutePath.toFile())
+        ?: error("Could not read image from $absolutePath")
+
+    return MapViewerSetupInputs(
+        mapImagePath = absolutePath.toString(),
+        mapImage = image,
+    )
+}

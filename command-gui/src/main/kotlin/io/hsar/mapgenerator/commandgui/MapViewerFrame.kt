@@ -5,10 +5,11 @@ import io.hsar.mapgenerator.commandgui.korge.scene.MapViewerScene
 class MapViewerFrame(
     private val renderMap: (MapViewerSettings) -> MapViewerRenderData,
     private val initialSettings: MapViewerSettings = MapViewerSettings(),
+    private val initialSetupInputs: MapViewerSetupInputs = MapViewerSetupInputs(),
 ) {
 
     fun showWindow() {
-        MapViewerScene(renderMap, initialSettings).showWindow()
+        MapViewerScene(renderMap, initialSettings, initialSetupInputs).showWindow()
     }
 
 }

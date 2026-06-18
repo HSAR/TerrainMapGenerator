@@ -5,6 +5,9 @@ import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasItem
 import org.junit.jupiter.api.Test
+import java.awt.image.BufferedImage
+import java.io.File
+import javax.imageio.ImageIO
 
 class MainTest {
 
@@ -32,8 +35,36 @@ class MainTest {
         assertThat(command.configuredMetresPerPixel, equalTo(12.5))
     }
 
+    @Test
+    fun `initial setup inputs load the explicit map path`() {
+        val imageFile = createImageFile("explicit-map.png")
+
+        val inputs = initialSetupInputs(imageFile.absolutePath, emptyList())
+
+        assertThat(inputs.mapImagePath, equalTo(imageFile.absolutePath))
+        assertThat(inputs.mapImage?.width, equalTo(8))
+        assertThat(inputs.mapImage?.height, equalTo(6))
+    }
+
+    @Test
+    fun `initial setup inputs fall back to the first legacy image path`() {
+        val imageFile = createImageFile("legacy-map.png")
+
+        val inputs = initialSetupInputs(null, listOf(imageFile.absolutePath))
+
+        assertThat(inputs.mapImagePath, equalTo(imageFile.absolutePath))
+        assertThat(inputs.mapImage?.width, equalTo(8))
+        assertThat(inputs.mapImage?.height, equalTo(6))
+    }
+
     private fun testCommand(): Command =
         object : Command("test") {
             override fun run() = Unit
+        }
+
+    private fun createImageFile(name: String): File =
+        File.createTempFile(name.removeSuffix(".png"), ".png").also { file ->
+            file.deleteOnExit()
+            ImageIO.write(BufferedImage(8, 6, BufferedImage.TYPE_INT_ARGB), "png", file)
         }
 }

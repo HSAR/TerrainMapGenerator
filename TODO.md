@@ -5,6 +5,8 @@
     - Includes any and all icon images for units
     - Units properties (name, properties)
         - Custom properties can be created, saved and reloaded as key-value pairs
+  - Saves (and turns) should have thumbnails which can be displayed alongside them
+  - Ledger-based approach to game state
 - Icons should scale independent of map size
     - When zooming out, tokens should gather appropriately (eg. platoons to companies)
 - Launchpad UI for selecting a save or starting a new file

@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui
 import java.awt.image.BufferedImage
 
 data class MapViewerSettings(
+    val operationName: String? = null,
     val availableLayers: List<MapViewerLayer> = MapLayer.values().toList(),
     val enabledLayerIds: Set<String> = availableLayers.map { it.id }.toSet(),
     val staticLayerImages: Map<String, BufferedImage> = emptyMap(),
@@ -13,7 +14,11 @@ data class MapViewerSettings(
     val height: Int = 1080,
     val seed: Long = System.currentTimeMillis(),
 ) {
-    fun windowTitle(zoom: Double = this.zoom): String = "Terrain Map Viewer - ${width}x${height}px - ${formatZoom(zoom)}"
+    fun windowTitle(zoom: Double = this.zoom): String =
+        listOfNotNull(
+            operationName?.takeIf { it.isNotBlank() },
+            "Operational Command Tool - ${width}x${height}px - ${formatZoom(zoom)}",
+        ).joinToString(" - ")
 
     fun withZoom(factor: Double): MapViewerSettings =
         copy(zoom = (zoom * factor).coerceIn(MIN_ZOOM, MAX_ZOOM))

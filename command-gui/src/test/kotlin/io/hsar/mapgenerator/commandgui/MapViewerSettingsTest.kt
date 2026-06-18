@@ -46,7 +46,7 @@ class MapViewerSettingsTest {
             zoom = 1.5,
         )
 
-        assertThat(settings.windowTitle(), equalTo("Terrain Map Viewer - 800x600px - 150%"))
+        assertThat(settings.windowTitle(), equalTo("Operational Command Tool - 800x600px - 150%"))
     }
 
     @Test
@@ -57,6 +57,17 @@ class MapViewerSettingsTest {
             zoom = 1.0,
         )
 
-        assertThat(settings.windowTitle(2.0), equalTo("Terrain Map Viewer - 800x600px - 200%"))
+        assertThat(settings.windowTitle(2.0), equalTo("Operational Command Tool - 800x600px - 200%"))
+    }
+
+    @Test
+    fun `window title includes operation name when present`() {
+        val settings = MapViewerSettings(
+            operationName = "Operation Copperhead",
+            width = 800,
+            height = 600,
+        )
+
+        assertThat(settings.windowTitle(), equalTo("Operation Copperhead - Operational Command Tool - 800x600px - 100%"))
     }
 }

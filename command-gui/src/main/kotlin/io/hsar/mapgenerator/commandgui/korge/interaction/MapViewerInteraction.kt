@@ -174,7 +174,7 @@ internal class MapViewerInteraction(
     }
 
     private fun viewportTitle(viewport: CameraViewport): String =
-        "Terrain Map Viewer - ${viewport.viewportWidth}x${viewport.viewportHeight}px - ${formatZoom(viewport.zoom)}"
+        "Operational Command Tool - ${viewport.viewportWidth}x${viewport.viewportHeight}px - ${formatZoom(viewport.zoom)}"
 
     private fun flushOverlayIfDirty() {
         val layer = gridLayer ?: return

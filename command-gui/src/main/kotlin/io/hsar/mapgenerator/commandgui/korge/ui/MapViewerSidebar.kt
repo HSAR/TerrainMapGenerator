@@ -24,6 +24,7 @@ internal class MapViewerSidebar(
     viewportHeight: Int,
     private val onUnitDropped: (MapViewerUnitTemplate, Vector2D) -> Unit,
     private val canStartUnitDrag: () -> Boolean = { true },
+    initialUnitTemplates: List<MapViewerUnitTemplate> = MapViewerUnitTemplateFactory.defaults(),
 ) {
     private val overlay = root.container()
     private val panel = overlay.uiMaterialLayer()
@@ -33,7 +34,7 @@ internal class MapViewerSidebar(
     private val toggleButton = overlay.container()
     private val dragLayer = overlay.container()
     private val labelRenderer = MapViewerTextBitmapRenderer
-    private val unitTemplates = MapViewerUnitTemplateFactory.defaults().toMutableList()
+    private val unitTemplates = initialUnitTemplates.toMutableList()
     private var collapsed = false
     private var dragState: DragState? = null
     private var createUnitDialog: MapViewerUnitCreateDialog? = null
@@ -44,6 +45,9 @@ internal class MapViewerSidebar(
 
     internal val isUnitDialogOpen: Boolean
         get() = createUnitDialog != null
+
+    internal val unitTemplateCount: Int
+        get() = unitTemplates.size
 
     init {
         overlay.zIndex = 10_000.0
