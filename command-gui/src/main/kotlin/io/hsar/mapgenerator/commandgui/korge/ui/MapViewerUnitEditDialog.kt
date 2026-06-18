@@ -3,12 +3,10 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.color.RGBA
-import korlibs.image.font.DefaultTtfFontAsBitmap
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
 import korlibs.korge.ui.uiTextInput
 import korlibs.korge.view.Container
-import korlibs.korge.view.ViewRenderer
 import korlibs.korge.view.container
 import korlibs.korge.view.image
 import korlibs.korge.view.solidRect
@@ -24,7 +22,8 @@ internal class MapViewerUnitEditDialog(
     private val initialName: String,
     private val initialPositionX: String,
     private val initialPositionY: String,
-    private val onSave: (String, String, String) -> Unit,
+    private val initialDestroyed: Boolean,
+    private val onSave: (String, String, String, Boolean) -> Unit,
     private val onDismiss: () -> Unit,
 ) {
     private val layer = root.container()
@@ -47,7 +46,7 @@ internal class MapViewerUnitEditDialog(
         }
 
         val panelWidth = 420.0
-        val panelHeight = 356.0
+        val panelHeight = 440.0
         val panelLeft = (viewportWidth - panelWidth) * 0.5
         val panelTop = (viewportHeight - panelHeight) * 0.5
 
@@ -92,10 +91,8 @@ internal class MapViewerUnitEditDialog(
 
         val nameInput = content.uiTextInput(initialName, Size2D(260.0, 32.0)).apply {
             xy(0.0, 156.0)
-            skin = ViewRenderer { }
             padding = Margin(4f, 3f, 3f, 3f)
             controller.textColor = RGBA(255, 255, 255, 255)
-            font = DefaultTtfFontAsBitmap
         }
 
         val positionLabel = content.container()
@@ -112,22 +109,58 @@ internal class MapViewerUnitEditDialog(
 
         val positionXInput = content.uiTextInput(initialPositionX, Size2D(120.0, 32.0)).apply {
             xy(0.0, 250.0)
-            skin = ViewRenderer { }
             padding = Margin(4f, 3f, 3f, 3f)
             controller.textColor = RGBA(255, 255, 255, 255)
-            font = DefaultTtfFontAsBitmap
         }
 
         val positionYInput = content.uiTextInput(initialPositionY, Size2D(120.0, 32.0)).apply {
             xy(150.0, 250.0)
-            skin = ViewRenderer { }
             padding = Margin(4f, 3f, 3f, 3f)
             controller.textColor = RGBA(255, 255, 255, 255)
-            font = DefaultTtfFontAsBitmap
+        }
+
+        val destroyedLabel = content.container()
+        destroyedLabel.xy(0.0, 292.0)
+        destroyedLabel.image(labelRenderer.render("Destroyed", Palette.Fonts.MAIN.first, Palette.Colours.WHITE))
+
+        var destroyedValue = initialDestroyed
+        val destroyedToggle = content.container()
+        destroyedToggle.xy(0.0, 318.0)
+
+        fun refreshDestroyedToggle() {
+            destroyedToggle.removeChildren()
+            destroyedToggle.solidRect(260.0, 32.0, RGBA(255, 255, 255, 255))
+            destroyedToggle.solidRect(256.0, 28.0, toRgba(Palette.Colours.DARK)) {
+                x = 2.0
+                y = 2.0
+            }
+
+            val box = destroyedToggle.container()
+            box.xy(10.0, 6.0)
+            box.solidRect(20.0, 20.0, RGBA(255, 255, 255, 255))
+            box.solidRect(16.0, 16.0, toRgba(Palette.Colours.DARK)) {
+                x = 2.0
+                y = 2.0
+            }
+            if (destroyedValue) {
+                box.image(labelRenderer.render("X", Palette.Fonts.STRONG.first, Palette.Colours.RED)) {
+                    x = 2.0
+                    y = -3.0
+                }
+            }
+        }
+
+        refreshDestroyedToggle()
+        destroyedToggle.mouse {
+            onClick {
+                destroyedValue = !destroyedValue
+                refreshDestroyedToggle()
+            }
         }
 
         val saveButton = content.container()
-        saveButton.xy(0.0, 302.0)
+        saveButton.xy(0.0, 360.0)
+        saveButton.zIndex = 10.0
         buildButton(saveButton, 110.0, 40.0, "Save") {
             val name = nameInput.text.trim()
             val positionX = positionXInput.text.trim()
@@ -136,12 +169,13 @@ internal class MapViewerUnitEditDialog(
                 return@buildButton
             }
 
-            onSave(name, positionX, positionY)
+            onSave(name, positionX, positionY, destroyedValue)
             close()
         }
 
         val cancelButton = content.container()
-        cancelButton.xy(130.0, 302.0)
+        cancelButton.xy(130.0, 360.0)
+        cancelButton.zIndex = 10.0
         buildButton(cancelButton, 110.0, 40.0, "Cancel") {
             close()
         }

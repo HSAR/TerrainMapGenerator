@@ -3,15 +3,21 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitEditDialog
 import io.hsar.mapgenerator.grid.GridLayer
+import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
+import korlibs.image.bitmap.Bitmap32
+import korlibs.image.color.RGBA
 import korlibs.korge.input.mouse
 import korlibs.korge.internal.KorgeInternal
 import korlibs.korge.view.Container
 import korlibs.korge.view.Image
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
+import korlibs.korge.view.graphics
 import korlibs.korge.view.image
+import korlibs.math.geom.Point
 import korlibs.math.geom.Vector2D
+import java.awt.Color
 
 @OptIn(KorgeInternal::class)
 internal class MapPlacedUnitManager(
@@ -76,12 +82,14 @@ internal class MapPlacedUnitManager(
         template: MapViewerUnitTemplate,
         instanceName: String,
         mapCoordinate: MapCoordinate,
+        destroyed: Boolean = false,
     ): UnitSnapshot {
         val unitSize = worldUnitSize(template.bitmap)
         return UnitSnapshot(
             id = id,
             template = template,
             instanceName = instanceName,
+            destroyed = destroyed,
             mapCoordinate = mapCoordinate,
             normalizedWidth = unitSize.worldWidth / mapWidth,
             normalizedHeight = unitSize.worldHeight / mapHeight,
@@ -90,17 +98,17 @@ internal class MapPlacedUnitManager(
 
     fun upsert(snapshot: UnitSnapshot) {
         val existing = units.firstOrNull { it.id == snapshot.id }
-        val view = unitLayer.image(snapshot.template.bitmap)
         if (existing != null) {
             existing.template = snapshot.template
             existing.instanceName = snapshot.instanceName
+            existing.destroyed = snapshot.destroyed
             existing.mapCoordinate = snapshot.mapCoordinate
             existing.normalizedWidth = snapshot.normalizedWidth
             existing.normalizedHeight = snapshot.normalizedHeight
             val unitSize = worldUnitSize(snapshot.template.bitmap)
             existing.worldWidth = unitSize.worldWidth
             existing.worldHeight = unitSize.worldHeight
-            existing.view.bitmap = view.bitmap
+            existing.rebuildVisual(snapshot.template.bitmap)
             existing.view.scale = unitSize.worldScale
             positionView(existing)
             return
@@ -109,16 +117,17 @@ internal class MapPlacedUnitManager(
         val unitSize = worldUnitSize(snapshot.template.bitmap)
         val placedUnit = PlacedUnit(
             id = snapshot.id,
-            view = view,
+            view = unitLayer.container(),
             template = snapshot.template,
             instanceName = snapshot.instanceName,
+            destroyed = snapshot.destroyed,
             mapCoordinate = snapshot.mapCoordinate,
             normalizedWidth = snapshot.normalizedWidth,
             normalizedHeight = snapshot.normalizedHeight,
             worldWidth = unitSize.worldWidth,
             worldHeight = unitSize.worldHeight,
         )
-        view.scale = unitSize.worldScale
+        placedUnit.view.scale = unitSize.worldScale
         positionView(placedUnit)
         units += placedUnit
         bindViewEvents(placedUnit)
@@ -131,7 +140,7 @@ internal class MapPlacedUnitManager(
                 units.removeAt(index).also { removed ->
                     removed.view.removeFromParent()
                     if (dragState?.unit?.id == removed.id) {
-                        dragState?.preview?.removeFromParent()
+                        dragState?.preview?.container?.removeFromParent()
                         dragState = null
                     }
                     if (editDialogUnitId == removed.id) {
@@ -145,7 +154,7 @@ internal class MapPlacedUnitManager(
 
     fun cancelTransientState(targetId: MapPlacedObjectId? = null) {
         if (targetId == null || dragState?.unit?.id == targetId) {
-            dragState?.preview?.removeFromParent()
+            dragState?.preview?.container?.removeFromParent()
             dragState?.unit?.view?.visible = true
             dragState = null
         }
@@ -177,11 +186,12 @@ internal class MapPlacedUnitManager(
 
         unit.view.visible = false
         dragPreviewLayer.removeChildren()
-        val preview = dragPreviewLayer.image(unit.template.bitmap)
-        preview.scale = unit.view.scaleX
-        preview.x = worldPoint.x - unit.worldWidth * 0.5
-        preview.y = worldPoint.y - unit.worldHeight * 0.5
-        preview.zIndex = DRAG_PREVIEW_Z_INDEX
+        val preview = createVisual(dragPreviewLayer, unit.template.bitmap, unit.destroyed).also {
+            it.container.scale = unit.view.scaleX
+            it.container.x = worldPoint.x - unit.worldWidth * 0.5
+            it.container.y = worldPoint.y - unit.worldHeight * 0.5
+            it.container.zIndex = DRAG_PREVIEW_Z_INDEX
+        }
 
         dragState = DragState(
             unit = unit,
@@ -195,7 +205,7 @@ internal class MapPlacedUnitManager(
         val state = dragState ?: return
         if (!canInteractWithUnits()) {
             dragState = null
-            state.preview.removeFromParent()
+            state.preview.container.removeFromParent()
             state.unit.view.visible = true
             return
         }
@@ -205,7 +215,7 @@ internal class MapPlacedUnitManager(
                 onObjectMoved(state.originalSnapshot, updatedSnapshot)
             }
             dragState = null
-            state.preview.removeFromParent()
+            state.preview.container.removeFromParent()
             state.unit.view.visible = true
             return
         }
@@ -222,8 +232,8 @@ internal class MapPlacedUnitManager(
 
         state.unit.mapCoordinate = mapCoordinate
         positionView(state.unit)
-        state.preview.x = worldPoint.x - state.unit.worldWidth * 0.5
-        state.preview.y = worldPoint.y - state.unit.worldHeight * 0.5
+        state.preview.container.x = worldPoint.x - state.unit.worldWidth * 0.5
+        state.preview.container.y = worldPoint.y - state.unit.worldHeight * 0.5
     }
 
     private fun openContextMenu(unit: PlacedUnit, screenPoint: Vector2D) {
@@ -243,14 +253,18 @@ internal class MapPlacedUnitManager(
             initialName = unit.instanceName,
             initialPositionX = position.easting,
             initialPositionY = position.northing,
-            onSave = save@{ newName, newPositionX, newPositionY ->
+            initialDestroyed = unit.destroyed,
+            onSave = save@{ newName, newPositionX, newPositionY, newDestroyed ->
                 val before = unit.snapshot()
                 val updatedCoordinate = referenceToMapCoordinate(newPositionX, newPositionY) ?: return@save
                 val nameChanged = newName != unit.instanceName
                 val positionChanged = updatedCoordinate != unit.mapCoordinate
-                if (nameChanged || positionChanged) {
+                val destroyedChanged = newDestroyed != unit.destroyed
+                if (nameChanged || positionChanged || destroyedChanged) {
                     unit.instanceName = newName
                     unit.mapCoordinate = updatedCoordinate
+                    unit.destroyed = newDestroyed
+                    unit.updateStateOverlay()
                     positionView(unit)
                     onUnitEdited(before, unit.snapshot())
                 }
@@ -301,20 +315,31 @@ internal class MapPlacedUnitManager(
 
     private inner class PlacedUnit(
         override val id: MapPlacedObjectId,
-        val view: Image,
+        val view: Container,
         var template: MapViewerUnitTemplate,
         var instanceName: String,
+        var destroyed: Boolean,
         var mapCoordinate: MapCoordinate,
         var normalizedWidth: Double,
         var normalizedHeight: Double,
         var worldWidth: Double,
         var worldHeight: Double,
     ) : MapPlacedObject {
+        var icon: Image = view.image(template.bitmap)
+            private set
+        private var overlayLayer: Container = view.container()
+
+        init {
+            overlayLayer.zIndex = 1.0
+            updateStateOverlay()
+        }
+
         override fun snapshot(): UnitSnapshot =
             UnitSnapshot(
                 id = id,
                 template = template,
                 instanceName = instanceName,
+                destroyed = destroyed,
                 mapCoordinate = mapCoordinate,
                 normalizedWidth = normalizedWidth,
                 normalizedHeight = normalizedHeight,
@@ -350,11 +375,28 @@ internal class MapPlacedUnitManager(
             )
             positionView(this)
         }
+
+        fun rebuildVisual(bitmap: Bitmap32) {
+            view.removeChildren()
+            icon = view.image(bitmap)
+            overlayLayer = view.container().also { it.zIndex = 1.0 }
+            updateStateOverlay()
+        }
+
+        fun updateStateOverlay() {
+            overlayLayer.removeChildren()
+            overlayLayer.alpha = 1.0
+            if (!destroyed) {
+                return
+            }
+            overlayLayer.alpha = 0.5
+            drawStateCross(overlayLayer, icon.bitmap.width.toDouble(), icon.bitmap.height.toDouble(), toRgba(Palette.Colours.RED))
+        }
     }
 
     private data class DragState(
         val unit: PlacedUnit,
-        val preview: Image,
+        val preview: UnitVisual,
         val offset: Vector2D,
         val originalSnapshot: UnitSnapshot,
     )
@@ -380,6 +422,69 @@ internal class MapPlacedUnitManager(
         unit.view.y = worldPoint.y - unit.worldHeight * 0.5
     }
 
+    private data class UnitVisual(
+        val container: Container,
+        val icon: Image,
+    )
+
+    private fun createVisual(parent: Container, bitmap: Bitmap32, destroyed: Boolean): UnitVisual {
+        val container = parent.container()
+        val icon = container.image(bitmap)
+        val overlayLayer = container.container().also { it.zIndex = 1.0 }
+        if (destroyed) {
+            overlayLayer.alpha = 0.5
+            drawStateCross(overlayLayer, bitmap.width.toDouble(), bitmap.height.toDouble(), toRgba(Palette.Colours.RED))
+        }
+        return UnitVisual(container = container, icon = icon)
+    }
+
+    private fun drawStateCross(
+        parent: Container,
+        width: Double,
+        height: Double,
+        color: RGBA,
+    ) {
+        val thickness = minOf(width, height) * 0.18
+        val cornerInset = thickness * 0.85
+        val centerInset = thickness * 0.48
+
+        fun arm(points: List<Point>) {
+            parent.graphics {
+                fill(color) {
+                    moveTo(points[0].x, points[0].y)
+                    points.drop(1).forEach { lineTo(it.x, it.y) }
+                    close()
+                }
+            }
+        }
+
+        arm(
+            listOf(
+                Point(0.0, cornerInset),
+                Point(cornerInset, 0.0),
+                Point(width * 0.5 - centerInset, height * 0.5 - centerInset),
+                Point(width * 0.5 + centerInset, height * 0.5 + centerInset),
+                Point(width - cornerInset, height),
+                Point(width, height - cornerInset),
+                Point(width * 0.5 + centerInset, height * 0.5 - centerInset),
+                Point(width * 0.5 - centerInset, height * 0.5 + centerInset),
+            ),
+        )
+
+        arm(
+            listOf(
+                Point(0.0, height - cornerInset),
+                Point(cornerInset, height),
+                Point(width * 0.5 - centerInset, height * 0.5 + centerInset),
+                Point(width * 0.5 + centerInset, height * 0.5 - centerInset),
+                Point(width - cornerInset, 0.0),
+                Point(width, cornerInset),
+                Point(width * 0.5 + centerInset, height * 0.5 + centerInset),
+                Point(width * 0.5 - centerInset, height * 0.5 - centerInset),
+            ),
+        )
+    }
+
     private fun worldUnitSize(bitmap: korlibs.image.bitmap.Bitmap32): WorldUnitSize {
         val worldWidth = UNIT_ICON_WIDTH_METRES / mapMetresPerPixel
         val worldScale = worldWidth / bitmap.width
@@ -395,6 +500,9 @@ internal class MapPlacedUnitManager(
         val worldHeight: Double,
         val worldScale: Double,
     )
+
+    private fun toRgba(color: Color, alpha: Int = color.alpha): RGBA =
+        RGBA(color.red, color.green, color.blue, alpha)
 
     private companion object {
         const val UNIT_ICON_WIDTH_METRES = 250.0

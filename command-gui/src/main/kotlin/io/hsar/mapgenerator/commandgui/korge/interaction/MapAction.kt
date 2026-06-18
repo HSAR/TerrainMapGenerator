@@ -14,6 +14,7 @@ internal data class UnitSnapshot(
     override val id: MapPlacedObjectId,
     val template: MapViewerUnitTemplate,
     val instanceName: String,
+    val destroyed: Boolean,
     val mapCoordinate: MapCoordinate,
     val normalizedWidth: Double,
     val normalizedHeight: Double,
