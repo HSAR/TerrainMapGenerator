@@ -74,6 +74,11 @@ internal class MapCoordinateSpace(
         y = point.y * mapHeight,
     )
 
+    fun fromMapPixels(point: Vector2D) = MapCoordinate(
+        x = point.x / mapWidth,
+        y = point.y / mapHeight,
+    )
+
     fun toWorldWidth(normalizedWidth: Double) =
         normalizedWidth * mapWidth
 

@@ -22,7 +22,9 @@ internal class MapViewerUnitEditDialog(
     private val root: Container,
     private val unitType: MapViewerUnitTemplate,
     private val initialName: String,
-    private val onSave: (String) -> Unit,
+    private val initialPositionX: String,
+    private val initialPositionY: String,
+    private val onSave: (String, String, String) -> Unit,
     private val onDismiss: () -> Unit,
 ) {
     private val layer = root.container()
@@ -45,7 +47,7 @@ internal class MapViewerUnitEditDialog(
         }
 
         val panelWidth = 420.0
-        val panelHeight = 280.0
+        val panelHeight = 356.0
         val panelLeft = (viewportWidth - panelWidth) * 0.5
         val panelTop = (viewportHeight - panelHeight) * 0.5
 
@@ -96,20 +98,50 @@ internal class MapViewerUnitEditDialog(
             font = DefaultTtfFontAsBitmap
         }
 
+        val positionLabel = content.container()
+        positionLabel.xy(0.0, 198.0)
+        positionLabel.image(labelRenderer.render("Position", Palette.Fonts.MAIN.first, Palette.Colours.WHITE))
+
+        val positionXLabel = content.container()
+        positionXLabel.xy(0.0, 224.0)
+        positionXLabel.image(labelRenderer.render("X", Palette.Fonts.MAIN.first, Palette.Colours.WHITE))
+
+        val positionYLabel = content.container()
+        positionYLabel.xy(150.0, 224.0)
+        positionYLabel.image(labelRenderer.render("Y", Palette.Fonts.MAIN.first, Palette.Colours.WHITE))
+
+        val positionXInput = content.uiTextInput(initialPositionX, Size2D(120.0, 32.0)).apply {
+            xy(0.0, 250.0)
+            skin = ViewRenderer { }
+            padding = Margin(4f, 3f, 3f, 3f)
+            controller.textColor = RGBA(255, 255, 255, 255)
+            font = DefaultTtfFontAsBitmap
+        }
+
+        val positionYInput = content.uiTextInput(initialPositionY, Size2D(120.0, 32.0)).apply {
+            xy(150.0, 250.0)
+            skin = ViewRenderer { }
+            padding = Margin(4f, 3f, 3f, 3f)
+            controller.textColor = RGBA(255, 255, 255, 255)
+            font = DefaultTtfFontAsBitmap
+        }
+
         val saveButton = content.container()
-        saveButton.xy(0.0, 212.0)
+        saveButton.xy(0.0, 302.0)
         buildButton(saveButton, 110.0, 40.0, "Save") {
             val name = nameInput.text.trim()
+            val positionX = positionXInput.text.trim()
+            val positionY = positionYInput.text.trim()
             if (name.isBlank()) {
                 return@buildButton
             }
 
-            onSave(name)
+            onSave(name, positionX, positionY)
             close()
         }
 
         val cancelButton = content.container()
-        cancelButton.xy(130.0, 212.0)
+        cancelButton.xy(130.0, 302.0)
         buildButton(cancelButton, 110.0, 40.0, "Cancel") {
             close()
         }

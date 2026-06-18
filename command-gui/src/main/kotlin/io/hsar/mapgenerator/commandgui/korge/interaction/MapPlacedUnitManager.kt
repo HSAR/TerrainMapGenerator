@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitEditDialog
+import io.hsar.mapgenerator.grid.GridLayer
 import korlibs.event.MouseButton
 import korlibs.korge.input.mouse
 import korlibs.korge.internal.KorgeInternal
@@ -20,6 +21,7 @@ internal class MapPlacedUnitManager(
     private val mapMetresPerPixel: Double,
     private val mapWidth: Int,
     private val mapHeight: Int,
+    private val gridLayer: GridLayer? = null,
     private val viewportProvider: () -> CameraViewport,
     private val contextMenuManager: MapPlacedObjectContextMenuManager,
     private val canInteractWithUnits: () -> Boolean = { true },
@@ -234,14 +236,22 @@ internal class MapPlacedUnitManager(
     private fun openEditDialog(unit: PlacedUnit) {
         editDialog?.close()
         editDialogUnitId = unit.id
+        val position = initialReferenceFields(unit)
         editDialog = MapViewerUnitEditDialog(
             root = root,
             unitType = unit.template,
             initialName = unit.instanceName,
-            onSave = { newName ->
+            initialPositionX = position.easting,
+            initialPositionY = position.northing,
+            onSave = save@{ newName, newPositionX, newPositionY ->
                 val before = unit.snapshot()
-                if (newName != unit.instanceName) {
+                val updatedCoordinate = referenceToMapCoordinate(newPositionX, newPositionY) ?: return@save
+                val nameChanged = newName != unit.instanceName
+                val positionChanged = updatedCoordinate != unit.mapCoordinate
+                if (nameChanged || positionChanged) {
                     unit.instanceName = newName
+                    unit.mapCoordinate = updatedCoordinate
+                    positionView(unit)
                     onUnitEdited(before, unit.snapshot())
                 }
             },
@@ -251,6 +261,41 @@ internal class MapPlacedUnitManager(
             },
         ).also {
             it.show(root.stage?.views?.actualVirtualWidth ?: 0, root.stage?.views?.actualVirtualHeight ?: 0)
+        }
+    }
+
+    private fun initialReferenceFields(unit: PlacedUnit): GridReferenceFields {
+        val mapPixels = coordinateSpace.toMapPixels(unit.mapCoordinate)
+        return gridLayer?.let { layer ->
+            GridReferenceFormatter.formatFields(layer, mapPixels.x, mapPixels.y)
+        } ?: GridReferenceFields(
+            easting = fallbackReference(mapCoordinate = unit.mapCoordinate.x),
+            northing = fallbackReference(mapCoordinate = unit.mapCoordinate.y),
+        )
+    }
+
+    private fun referenceToMapCoordinate(easting: String, northing: String): MapCoordinate? {
+        val layer = gridLayer
+        return if (layer != null) {
+            GridReferenceFormatter.parseFields(layer, easting, northing)?.let { mapPixels ->
+                coordinateSpace.fromMapPixels(Vector2D(mapPixels.x, mapPixels.y))
+            }
+        } else {
+            val parsedX = easting.trim().toIntOrNull() ?: return null
+            val parsedY = northing.trim().toIntOrNull() ?: return null
+            MapCoordinate(
+                x = parsedX.coerceIn(-9_999, 9_999) / 9_999.0,
+                y = parsedY.coerceIn(-9_999, 9_999) / 9_999.0,
+            )
+        }
+    }
+
+    private fun fallbackReference(mapCoordinate: Double): String {
+        val scaled = (mapCoordinate.coerceIn(-1.0, 1.0) * 9_999).toInt()
+        return if (scaled < 0) {
+            "-${scaled.unaryMinus().toString().padStart(4, '0')}"
+        } else {
+            scaled.toString().padStart(4, '0')
         }
     }
 

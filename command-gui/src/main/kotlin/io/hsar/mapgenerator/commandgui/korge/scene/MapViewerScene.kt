@@ -120,6 +120,7 @@ internal class MapViewerScene(
                         mapMetresPerPixel = initialSettings.metresPerPixel,
                         mapWidth = renderedMap.bitmap.width,
                         mapHeight = renderedMap.bitmap.height,
+                        gridLayer = renderData.gridLayer,
                         viewportProvider = { currentViewport },
                         contextMenuManager = contextMenuManager,
                         canInteractWithUnits = { currentTool == MapViewerTool.SELECT },
