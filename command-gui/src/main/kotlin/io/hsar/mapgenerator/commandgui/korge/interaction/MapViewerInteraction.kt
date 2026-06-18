@@ -76,6 +76,7 @@ internal class MapViewerInteraction(
         panner = cameraPanner,
         updateCursor = { root.cursor = it },
     )
+    private val toolGestureGate = MapToolGestureGate()
 
     fun install() {
         val stage = root.stage ?: error("MapViewerInteraction requires the root to be attached to a stage")
@@ -87,12 +88,17 @@ internal class MapViewerInteraction(
             val placementDragging = isMapPlacementDragging()
             val tool = currentTool()
             val drawingMode = currentDrawingMode()
+            val pointerBlocked = isScreenOverlayBlocking(pointer)
             val intent = MapPointerIntentResolver.resolve(
-                pointerBlocked = isScreenOverlayBlocking(pointer),
+                pointerBlocked = pointerBlocked,
                 dragging = panState.isDragging,
                 leftHeld = input.mouseButtonPressed(MouseButton.LEFT),
                 rightHeld = input.mouseButtonPressed(MouseButton.RIGHT),
                 spaceHeld = input.keys[Key.SPACE],
+            )
+            val toolGesture = toolGestureGate.update(
+                leftHeld = input.mouseButtonPressed(MouseButton.LEFT),
+                pointerBlocked = pointerBlocked,
             )
 
             if (panState.update(pointer, intent.rightPanHeld, intent.spacePanHeld)) {
@@ -104,21 +110,21 @@ internal class MapViewerInteraction(
             if ((tool != previousTool || drawingMode != previousDrawingMode) && clearActiveDrawingPreview()) {
                 notifyDrawingChanged()
             }
-            if (updateMeasureState(pointer, intent.leftActive, tool)) {
+            if (updateMeasureState(pointer, toolGesture.leftToolActive, tool)) {
                 markOverlayDirty()
             }
-            if (updateDrawingState(pointer, intent.leftActive, tool, drawingMode)) {
+            if (updateDrawingState(pointer, toolGesture.leftToolActive, tool, drawingMode)) {
                 notifyDrawingChanged()
             }
             if (updateActiveReference(
                     pointer = pointer,
-                    leftHeld = if (placementDragging) input.mouseButtonPressed(MouseButton.LEFT) else intent.leftActive,
+                    leftHeld = if (placementDragging) input.mouseButtonPressed(MouseButton.LEFT) else toolGesture.leftToolActive,
                     tool = tool,
                 )
             ) {
                 markOverlayDirty()
             }
-            previousLeftHeld = intent.leftActive
+            previousLeftHeld = toolGesture.leftToolActive
             previousTool = tool
             previousDrawingMode = drawingMode
 
@@ -126,7 +132,7 @@ internal class MapViewerInteraction(
             updateHoverCursor(
                 pointer = pointer,
                 tool = tool,
-                isOverlayBlocked = intent.leftActive || isScreenOverlayBlocking(pointer),
+                isOverlayBlocked = toolGesture.leftToolActive || pointerBlocked,
                 isPanning = panState.isDragging || intent.rightPanHeld || intent.spacePanHeld,
             )
             flushOverlayIfDirty()
