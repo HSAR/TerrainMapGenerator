@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
 import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
@@ -413,6 +414,7 @@ internal class MapViewerInteraction(
     private fun MapDrawingMode.startedAt(point: MapDrawingPoint): ActiveDrawing =
         when (this) {
             MapDrawingMode.FREEFORM -> ActiveDrawing.Freeform(listOf(point))
+            MapDrawingMode.LINE -> ActiveDrawing.Line(start = point, end = point)
             MapDrawingMode.RECTANGLE -> ActiveDrawing.Rectangle(start = point, end = point)
             MapDrawingMode.CIRCLE -> ActiveDrawing.Circle(center = point, radius = 0.0)
         }
@@ -485,6 +487,24 @@ internal class MapViewerInteraction(
         ) : ActiveDrawing {
             override val preview: MapDrawing
                 get() = RectangleDrawing(start, end, Palette.Colours.RED)
+
+            override fun updated(
+                point: MapDrawingPoint,
+                minimumFreeformPointDistance: Double,
+                circleAspectRatio: Double,
+            ): ActiveDrawing =
+                copy(end = point)
+
+            override fun committedOrNull(): MapDrawing? =
+                preview.takeIf { start != end }
+        }
+
+        data class Line(
+            val start: MapDrawingPoint,
+            val end: MapDrawingPoint,
+        ) : ActiveDrawing {
+            override val preview: MapDrawing
+                get() = LineDrawing(start, end, Palette.Colours.RED)
 
             override fun updated(
                 point: MapDrawingPoint,

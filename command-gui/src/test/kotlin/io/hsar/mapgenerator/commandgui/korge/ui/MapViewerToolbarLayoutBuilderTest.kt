@@ -14,7 +14,7 @@ class MapViewerToolbarLayoutBuilderTest {
             viewportHeight = 900,
         )
 
-        assertThat(layout.contains(Vector2D(800.0, 30.0)), equalTo(true))
+        assertThat(layout.bounds.contains(Vector2D(800.0, 30.0)), equalTo(true))
     }
 
     @Test
@@ -30,7 +30,45 @@ class MapViewerToolbarLayoutBuilderTest {
             drawingModesVisible = true,
         )
 
-        assertThat(collapsed.contains(Vector2D(800.0, 90.0)), equalTo(false))
-        assertThat(expanded.contains(Vector2D(800.0, 90.0)), equalTo(true))
+        assertThat(collapsed.bounds.contains(Vector2D(800.0, 90.0)), equalTo(false))
+        assertThat(expanded.bounds.contains(Vector2D(800.0, 90.0)), equalTo(true))
+    }
+
+    @Test
+    fun `toolbar widens to fit added drawing modes dynamically`() {
+        val compact = MapViewerToolbarLayoutBuilder.build(
+            viewportWidth = 1600,
+            viewportHeight = 900,
+            drawingModesVisible = true,
+            drawingModeCount = 3,
+        )
+        val expanded = MapViewerToolbarLayoutBuilder.build(
+            viewportWidth = 1600,
+            viewportHeight = 900,
+            drawingModesVisible = true,
+            drawingModeCount = 4,
+        )
+
+        assertThat(expanded.bounds.width > compact.bounds.width, equalTo(true))
+    }
+
+    @Test
+    fun `top row remains centered when drawing mode row is shown`() {
+        val collapsed = MapViewerToolbarLayoutBuilder.build(
+            viewportWidth = 1600,
+            viewportHeight = 900,
+            drawingModesVisible = false,
+            toolCount = 3,
+            drawingModeCount = 4,
+        )
+        val expanded = MapViewerToolbarLayoutBuilder.build(
+            viewportWidth = 1600,
+            viewportHeight = 900,
+            drawingModesVisible = true,
+            toolCount = 3,
+            drawingModeCount = 4,
+        )
+
+        assertThat(expanded.toolRowLeft, equalTo(collapsed.toolRowLeft))
     }
 }

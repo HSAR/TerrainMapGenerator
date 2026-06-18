@@ -14,6 +14,7 @@ internal object MapDrawingHitTest {
             is FreeformDrawing -> drawing.points.zipWithNext()
                 .any { (start, end) -> distanceToSegment(point, start, end) <= tolerance * FREEFORM_TOLERANCE_MULTIPLIER }
 
+            is LineDrawing -> distanceToSegment(point, drawing.start, drawing.end) <= tolerance * FREEFORM_TOLERANCE_MULTIPLIER
             is RectangleDrawing -> rectangleContains(drawing, point, tolerance)
             is CircleDrawing -> circleContains(drawing, point, tolerance, coordinateSpace)
         }

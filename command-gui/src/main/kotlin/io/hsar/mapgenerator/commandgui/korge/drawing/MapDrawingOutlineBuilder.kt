@@ -13,6 +13,7 @@ internal object MapDrawingOutlineBuilder {
             is FreeformDrawing -> drawing.points.zipWithNext()
                 .map { (start, end) -> MapDrawingSegment(start, end, drawing.color) }
 
+            is LineDrawing -> listOf(MapDrawingSegment(drawing.start, drawing.end, drawing.color))
             is RectangleDrawing -> rectangleSegments(drawing.start, drawing.end, drawing.color)
             is CircleDrawing -> circleSegments(drawing.center, drawing.radius, drawing.color, zoom, coordinateSpace)
         }

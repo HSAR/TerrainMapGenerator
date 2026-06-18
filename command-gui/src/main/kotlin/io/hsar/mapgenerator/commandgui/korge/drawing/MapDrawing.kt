@@ -22,6 +22,12 @@ internal data class FreeformDrawing(
     override val color: Color,
 ) : MapDrawing
 
+internal data class LineDrawing(
+    val start: MapDrawingPoint,
+    val end: MapDrawingPoint,
+    override val color: Color,
+) : MapDrawing
+
 internal data class RectangleDrawing(
     val start: MapDrawingPoint,
     val end: MapDrawingPoint,

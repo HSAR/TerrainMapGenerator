@@ -23,11 +23,17 @@ internal class MapViewerToolbar(
     private val onToolSelected: (MapViewerTool) -> Unit,
     private val onDrawingModeSelected: (MapDrawingMode) -> Unit,
 ) {
+    private val toolButtons = listOf(
+        ToolbarButtonSpec(MapViewerTool.SELECT, "Select"),
+        ToolbarButtonSpec(MapViewerTool.MEASURE, "Measure"),
+        ToolbarButtonSpec(MapViewerTool.DRAW, "Draw"),
+    )
+    private val drawingModeButtons = MapDrawingMode.entries
     private val overlay = root.container()
     private val content = overlay.container()
     private var currentViewportWidth = viewportWidth
     private var currentViewportHeight = viewportHeight
-    private var bounds = MapViewerToolbarLayoutBuilder.build(viewportWidth, viewportHeight)
+    private var layout = MapViewerToolbarLayoutBuilder.build(viewportWidth, viewportHeight)
 
     init {
         overlay.zIndex = Z_INDEX
@@ -38,7 +44,7 @@ internal class MapViewerToolbar(
     }
 
     fun blocksScreenPoint(point: Vector2D): Boolean =
-        bounds.contains(point)
+        layout.bounds.contains(point)
 
     fun refresh() {
         render()
@@ -47,24 +53,26 @@ internal class MapViewerToolbar(
     private fun relayout(viewportWidth: Int, viewportHeight: Int) {
         currentViewportWidth = viewportWidth
         currentViewportHeight = viewportHeight
-        bounds = MapViewerToolbarLayoutBuilder.build(
+        layout = MapViewerToolbarLayoutBuilder.build(
             viewportWidth = viewportWidth,
             viewportHeight = viewportHeight,
             drawingModesVisible = selectedTool() == MapViewerTool.DRAW,
+            toolCount = toolButtons.size,
+            drawingModeCount = drawingModeButtons.size,
         )
         render()
     }
 
     private fun render() {
         content.removeChildren()
-        content.xy(bounds.left, bounds.top)
-        addButton(MapViewerTool.SELECT, "Select", 0.0)
-        addButton(MapViewerTool.MEASURE, "Measure", BUTTON_WIDTH + BUTTON_GAP)
-        addButton(MapViewerTool.DRAW, "Draw", (BUTTON_WIDTH + BUTTON_GAP) * 2.0)
+        content.xy(0.0, layout.bounds.top)
+        toolButtons.forEachIndexed { index, button ->
+            addButton(button.tool, button.label, layout.toolRowLeft + index * (BUTTON_WIDTH + BUTTON_GAP))
+        }
         if (selectedTool() == MapViewerTool.DRAW) {
-            addDrawingModeButton(MapDrawingMode.FREEFORM, "Freeform", 0.0)
-            addDrawingModeButton(MapDrawingMode.RECTANGLE, "Rectangle", DRAW_MODE_WIDTH + BUTTON_GAP)
-            addDrawingModeButton(MapDrawingMode.CIRCLE, "Circle", (DRAW_MODE_WIDTH + BUTTON_GAP) * 2.0)
+            drawingModeButtons.forEachIndexed { index, button ->
+                addDrawingModeButton(button, layout.drawingModeRowLeft + index * (DRAW_MODE_WIDTH + BUTTON_GAP))
+            }
         }
     }
 
@@ -89,7 +97,7 @@ internal class MapViewerToolbar(
         }
     }
 
-    private fun addDrawingModeButton(mode: MapDrawingMode, label: String, left: Double) {
+    private fun addDrawingModeButton(mode: MapDrawingMode, left: Double) {
         val active = selectedDrawingMode() == mode
         val button = content.container()
         button.xy(left, BUTTON_HEIGHT + DRAW_MODE_TOP_GAP)
@@ -98,7 +106,7 @@ internal class MapViewerToolbar(
             x = 2.0
             y = 2.0
         }
-        button.image(MapViewerTextBitmapRenderer.render(label, Palette.Fonts.MAIN.first, Palette.Colours.WHITE)) {
+        button.image(MapViewerTextBitmapRenderer.render(mode.label, Palette.Fonts.MAIN.first, Palette.Colours.WHITE)) {
             x = (DRAW_MODE_WIDTH - width) * 0.5
             y = (DRAW_MODE_HEIGHT - height) * 0.5
         }
@@ -122,11 +130,24 @@ internal class MapViewerToolbar(
         fun toRgba(color: Color, alpha: Int = color.alpha) =
             RGBA(color.red, color.green, color.blue, alpha)
     }
+
+    private data class ToolbarButtonSpec(
+        val tool: MapViewerTool,
+        val label: String,
+    )
 }
+
+internal data class MapViewerToolbarLayout(
+    val bounds: ScreenBounds,
+    val toolRowLeft: Double,
+    val drawingModeRowLeft: Double,
+)
 
 internal object MapViewerToolbarLayoutBuilder {
     private const val TOP_PADDING = 16.0
-    private const val TOTAL_WIDTH = (120.0 * 3) + (12.0 * 2)
+    private const val BUTTON_WIDTH = 120.0
+    private const val BUTTON_GAP = 12.0
+    private const val DRAW_MODE_WIDTH = 120.0
     private const val TOP_LEVEL_HEIGHT = 40.0
     private const val DRAW_MODE_HEIGHT = 34.0
     private const val DRAW_MODE_TOP_GAP = 8.0
@@ -135,14 +156,37 @@ internal object MapViewerToolbarLayoutBuilder {
         viewportWidth: Int,
         viewportHeight: Int,
         drawingModesVisible: Boolean = false,
-    ) = ScreenBounds(
-        left = (viewportWidth - TOTAL_WIDTH) * 0.5,
-        top = TOP_PADDING,
-        width = TOTAL_WIDTH,
-        height = if (drawingModesVisible) {
-            TOP_LEVEL_HEIGHT + DRAW_MODE_TOP_GAP + DRAW_MODE_HEIGHT
+        toolCount: Int = 3,
+        drawingModeCount: Int = 4,
+    ): MapViewerToolbarLayout {
+        val toolRowWidth = sequenceWidth(toolCount, BUTTON_WIDTH)
+        val drawingModeRowWidth = sequenceWidth(drawingModeCount, DRAW_MODE_WIDTH)
+        val visibleDrawingWidth = if (drawingModesVisible) drawingModeRowWidth else 0.0
+        val boundsWidth = maxOf(toolRowWidth, visibleDrawingWidth)
+        val boundsLeft = (viewportWidth - boundsWidth) * 0.5
+        val toolRowLeft = (viewportWidth - toolRowWidth) * 0.5
+        val drawingModeRowLeft = (viewportWidth - drawingModeRowWidth) * 0.5
+
+        return MapViewerToolbarLayout(
+            bounds = ScreenBounds(
+                left = boundsLeft,
+                top = TOP_PADDING,
+                width = boundsWidth,
+                height = if (drawingModesVisible) {
+                    TOP_LEVEL_HEIGHT + DRAW_MODE_TOP_GAP + DRAW_MODE_HEIGHT
+                } else {
+                    TOP_LEVEL_HEIGHT
+                },
+            ),
+            toolRowLeft = toolRowLeft,
+            drawingModeRowLeft = drawingModeRowLeft,
+        )
+    }
+
+    private fun sequenceWidth(count: Int, itemWidth: Double): Double =
+        if (count <= 0) {
+            0.0
         } else {
-            TOP_LEVEL_HEIGHT
-        },
-    )
+            (count * itemWidth) + ((count - 1) * BUTTON_GAP)
+        }
 }
