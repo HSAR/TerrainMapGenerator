@@ -105,12 +105,24 @@ class OperationSaveRoundTripTest {
                 operationName = loaded.operationName,
                 createdAt = loaded.createdAt,
                 updatedAt = loaded.updatedAt,
-                camera = loaded.camera.toViewport(
+                camera = loaded.camera?.toViewport(
                     geometry = geometryFor(loaded.mapImage),
                     mapWidth = loaded.settings.width,
                     mapHeight = loaded.settings.height,
                     viewportWidth = loaded.settings.width,
                     viewportHeight = loaded.settings.height,
+                ) ?: CameraViewport.centeredOnMap(
+                    geometry = geometryFor(loaded.mapImage),
+                    mapWidth = loaded.settings.width,
+                    mapHeight = loaded.settings.height,
+                    viewportWidth = loaded.settings.width,
+                    viewportHeight = loaded.settings.height,
+                    zoom = CameraViewport.fitZoomToViewport(
+                        mapWidth = loaded.settings.width,
+                        mapHeight = loaded.settings.height,
+                        viewportWidth = loaded.settings.width,
+                        viewportHeight = loaded.settings.height,
+                    ),
                 ),
                 settings = loaded.settings,
                 mapImage = loaded.mapImage,

@@ -12,7 +12,7 @@ internal data class GameSaveDto(
     val name: String,
     val createdAt: String,
     val updatedAt: String,
-    val camera: CameraSaveDto,
+    val camera: CameraSaveDto? = null,
     val map: MapSaveDto,
 )
 

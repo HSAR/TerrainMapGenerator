@@ -141,9 +141,10 @@ class OperationSaveWriterTest {
 
         val save = OperationSaveReader().read(savePath)
 
-        assertThat(save.game.camera.x, equalTo(0.25))
-        assertThat(save.game.camera.y, equalTo(0.75))
-        assertThat(save.game.camera.zoom, equalTo(1.5))
+        assertThat(save.game.camera != null, equalTo(true))
+        assertThat(save.game.camera!!.x, equalTo(0.25))
+        assertThat(save.game.camera!!.y, equalTo(0.75))
+        assertThat(save.game.camera!!.zoom, equalTo(1.5))
     }
 
     @Test

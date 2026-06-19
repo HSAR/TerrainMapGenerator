@@ -82,16 +82,29 @@ internal data class CameraViewport(
             mapHeight: Int,
             viewportWidth: Int,
             viewportHeight: Int,
+            zoom: Double = 1.0,
         ): CameraViewport =
             CameraViewport(
                 centerX = geometry.mapOffsetX + mapWidth / 2.0,
                 centerY = geometry.mapOffsetY + mapHeight / 2.0,
-                zoom = 1.0,
+                zoom = zoom,
                 viewportWidth = viewportWidth,
                 viewportHeight = viewportHeight,
                 worldWidth = geometry.backgroundWidth,
                 worldHeight = geometry.backgroundHeight,
             ).clamped()
+
+        fun fitZoomToViewport(
+            mapWidth: Int,
+            mapHeight: Int,
+            viewportWidth: Int,
+            viewportHeight: Int,
+            paddingFactor: Double = 0.95,
+        ): Double {
+            val widthZoom = viewportWidth / mapWidth.toDouble()
+            val heightZoom = viewportHeight / mapHeight.toDouble()
+            return minOf(widthZoom, heightZoom) * paddingFactor
+        }
 
         private const val MIN_ZOOM = 0.5
         private const val MAX_ZOOM = 4.0

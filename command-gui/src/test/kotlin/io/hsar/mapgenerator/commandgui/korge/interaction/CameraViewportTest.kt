@@ -25,6 +25,18 @@ class CameraViewportTest {
     }
 
     @Test
+    fun `fit zoom scales the map to nearly fill the viewport`() {
+        val zoom = CameraViewport.fitZoomToViewport(
+            mapWidth = 1000,
+            mapHeight = 800,
+            viewportWidth = 500,
+            viewportHeight = 400,
+        )
+
+        assertThat(zoom, closeTo(0.475, 0.0001))
+    }
+
+    @Test
     fun `dragging right moves the camera left through world space`() {
         val viewport = initialViewport.pan(Vector2D(100.0, 0.0))
 

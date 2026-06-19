@@ -48,6 +48,7 @@ import korlibs.korge.Korge
 import korlibs.korge.KorgeDisplayMode
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.view.Camera
+import korlibs.korge.view.Container
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.camera
 import korlibs.korge.view.clipContainer
@@ -112,12 +113,19 @@ internal class MapViewerScene(
                             mapHeight = renderedMap.bitmap.height,
                             viewportWidth = gameWindow.width,
                             viewportHeight = gameWindow.height,
+                            zoom = CameraViewport.fitZoomToViewport(
+                                mapWidth = renderedMap.bitmap.width,
+                                mapHeight = renderedMap.bitmap.height,
+                                viewportWidth = gameWindow.width,
+                                viewportHeight = gameWindow.height,
+                            ),
                         )
                         gameWindow.title = settings.windowTitle(currentViewport.zoom)
 
                         var currentTool = MapViewerTool.SELECT
                         var currentDrawingMode = MapDrawingMode.FREEFORM
                         lateinit var world: Camera
+                        lateinit var sceneLayers: MapViewerSceneLayers
                         var gridLinesOverlay: GridOverlayLinesView? = null
                         val drawingStore = MapDrawingStore()
                         lateinit var contextMenuManager: ContextMenuManager
@@ -126,6 +134,7 @@ internal class MapViewerScene(
                         lateinit var iconLayer: korlibs.korge.view.Container
                         lateinit var unitManager: MapPlacedUnitManager
                         lateinit var objectController: MapObjectController
+                        lateinit var saveNoticeLayer: Container
                         val actionHistory = MapActionHistory()
                         val operationId = loadedOperation?.operationId ?: UUID.randomUUID()
                         val operationCreatedAt = loadedOperation?.createdAt ?: Instant.now()
@@ -133,14 +142,6 @@ internal class MapViewerScene(
                         var gridLabelsOverlay: GridOverlayView? = null
                         val coordinateSpace = MapCoordinateSpace(renderedMap.geometry, renderedMap.bitmap.width, renderedMap.bitmap.height)
                         val saveButtonBounds = ScreenBounds(16.0, 16.0, 158.0, 40.0)
-                        val uiLayer = views.stage.container().also {
-                            it.zIndex = 100_000.0
-                            it.mouseEnabled = false
-                        }
-                        val saveNoticeLayer = uiLayer.container().also {
-                            it.visible = false
-                            it.mouseEnabled = false
-                        }
                         var saveNoticeMessage: String? = null
                         var saveNoticeExpiresAtMs = 0L
 
@@ -161,22 +162,29 @@ internal class MapViewerScene(
                             saveNoticeMessage = "Saved ${target.fileName}"
                             saveNoticeExpiresAtMs = System.currentTimeMillis() + 10_000L
                             saveNoticeLayer.removeChildren()
-                            saveNoticeLayer.image(
-                                MapViewerTextBitmapRenderer.render(
-                                    text = saveNoticeMessage!!,
-                                    font = io.hsar.mapgenerator.image.Palette.Fonts.MAIN.first,
-                                    color = io.hsar.mapgenerator.image.Palette.Colours.WHITE,
-                                ),
+                            val noticeText = MapViewerTextBitmapRenderer.render(
+                                text = saveNoticeMessage!!,
+                                font = io.hsar.mapgenerator.image.Palette.Fonts.MAIN.first,
+                                color = io.hsar.mapgenerator.image.Palette.Colours.WHITE,
                             )
+                            saveNoticeLayer.solidRect(
+                                width = (noticeText.width + 24).toDouble(),
+                                height = (noticeText.height + 16).toDouble(),
+                                color = korlibs.image.color.RGBA(0, 0, 0, 180),
+                            )
+                            saveNoticeLayer.image(noticeText) {
+                                x = 12.0
+                                y = 8.0
+                            }
                             saveNoticeLayer.visible = true
-                            saveNoticeLayer.xy(16.0, gameWindow.height - saveNoticeLayer.height - 16.0)
+                            saveNoticeLayer.xy(16.0, gameWindow.height - (noticeText.height + 16) - 16.0)
                         }
 
-                        solidRect(gameWindow.width, gameWindow.height, Colors.BLACK)
-                        clipContainer(Size2D(gameWindow.width, gameWindow.height)) {
-                            world = camera {
-                                solidRect(renderedMap.geometry.backgroundWidth, renderedMap.geometry.backgroundHeight, Colors.BLACK)
+                        sceneLayers = MapViewerSceneLayers.create(views.stage, gameWindow.width, gameWindow.height)
 
+                        sceneLayers.background.solidRect(gameWindow.width, gameWindow.height, Colors.BLACK)
+                        sceneLayers.map.clipContainer(Size2D(gameWindow.width, gameWindow.height)) {
+                            world = camera {
                                 image(renderedMap.bitmap) {
                                     x = renderedMap.geometry.mapOffsetX.toDouble()
                                     y = renderedMap.geometry.mapOffsetY.toDouble()
@@ -185,7 +193,6 @@ internal class MapViewerScene(
                                 val gridLineLayer = container()
                                 gridLineLayer.x = renderedMap.geometry.mapOffsetX.toDouble()
                                 gridLineLayer.y = renderedMap.geometry.mapOffsetY.toDouble()
-                                gridLineLayer.zIndex = 1.0
                                 renderData.gridLayer?.let { layer ->
                                     gridLinesOverlay = GridOverlayLinesView(layer).also {
                                         gridLineLayer.addChild(it)
@@ -193,20 +200,18 @@ internal class MapViewerScene(
                                 }
 
                                 val drawingLayer = container()
-                                drawingLayer.zIndex = 1.5
                                 drawingView = MapDrawingView(coordinateSpace).also {
                                     drawingLayer.addChild(it)
                                 }
 
                                 iconLayer = container()
-                                iconLayer.zIndex = 2.0
                             }
                         }
 
-                        contextMenuManager = ContextMenuManager(views.stage)
+                        contextMenuManager = ContextMenuManager(sceneLayers.ui)
 
                         unitManager = MapPlacedUnitManager(
-                            root = views.stage,
+                            root = sceneLayers.ui,
                             unitLayer = iconLayer,
                             geometry = renderedMap.geometry,
                             mapMetresPerPixel = settings.metresPerPixel,
@@ -234,7 +239,7 @@ internal class MapViewerScene(
                         unitManager.install()
 
                         drawingManager = MapDrawingManager(
-                            root = views.stage,
+                            root = sceneLayers.ui,
                             geometry = renderedMap.geometry,
                             mapWidth = renderedMap.bitmap.width,
                             mapHeight = renderedMap.bitmap.height,
@@ -275,12 +280,11 @@ internal class MapViewerScene(
 
                         gridLabelsOverlay = renderData.gridLayer?.let { layer ->
                             GridOverlayView(layer).also {
-                                it.zIndex = 25_000.0
-                                addChild(it)
+                                sceneLayers.overlay.addChild(it)
                             }
                         }
                         val sidebar = MapViewerSidebar(
-                            root = views.stage,
+                            root = sceneLayers.ui,
                             viewportWidth = gameWindow.width,
                             viewportHeight = gameWindow.height,
                             onUnitDropped = { template, screenPoint ->
@@ -323,7 +327,7 @@ internal class MapViewerScene(
                                 sidebar.removeUnitTemplate(id, notify = false)
                         }
                         val toolbar = MapViewerToolbar(
-                            root = views.stage,
+                            root = sceneLayers.ui,
                             viewportWidth = gameWindow.width,
                             viewportHeight = gameWindow.height,
                             selectedTool = { currentTool },
@@ -337,13 +341,18 @@ internal class MapViewerScene(
                             onDrawingModeSelected = { currentDrawingMode = it },
                         )
 
+                        saveNoticeLayer = sceneLayers.ui.container().also {
+                            it.mouseEnabled = false
+                            it.visible = false
+                        }
+
                         val startupLedgerEntries = loadedOperation?.ledgerEntries ?: initialLedgerEntries
                         startupLedgerEntries.forEach { entry ->
                             entry.redo(ledgerController)
                             actionHistory.record(entry)
                         }
 
-                        MapViewerLaunchUi.button(views.stage, saveButtonBounds.width, saveButtonBounds.height, "Save Operation") {
+                        MapViewerLaunchUi.button(sceneLayers.ui, saveButtonBounds.width, saveButtonBounds.height, "Save Operation") {
                             saveOperation()
                         }.xy(saveButtonBounds.left, saveButtonBounds.top)
 
@@ -352,7 +361,6 @@ internal class MapViewerScene(
                             if (saveNoticeMessage != null) {
                                 if (now <= saveNoticeExpiresAtMs) {
                                     saveNoticeLayer.visible = true
-                                    saveNoticeLayer.xy(16.0, gameWindow.height - saveNoticeLayer.height - 16.0)
                                 } else {
                                     saveNoticeMessage = null
                                     saveNoticeLayer.removeChildren()
@@ -377,7 +385,7 @@ internal class MapViewerScene(
                         }
 
                         MapViewerInteraction(
-                            root = views.stage,
+                            root = sceneLayers.ui,
                             camera = world,
                             geometry = renderedMap.geometry,
                             viewportWidth = gameWindow.width,

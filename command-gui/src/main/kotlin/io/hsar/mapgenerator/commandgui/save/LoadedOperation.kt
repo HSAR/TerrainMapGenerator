@@ -12,7 +12,7 @@ internal data class LoadedOperation(
     val createdAt: Instant,
     val updatedAt: Instant,
     val settings: MapViewerSettings,
-    val camera: CameraSaveDto,
+    val camera: CameraSaveDto?,
     val mapImage: BufferedImage,
     val ledgerEntries: List<LedgerEntry>,
     val nextUnitTemplateId: Long,
