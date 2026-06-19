@@ -3,7 +3,6 @@
 - Turns can be saved as points in the ledger
 - Save and reload system
     - Unit custom properties can be created, saved and reloaded as key-value pairs
-    - Saves (and turns) should have thumbnails which can be displayed alongside them relevant sections of the UI
 - Icons should scale independent of map size
     - When zooming out, tokens should gather appropriately (eg. platoons to companies)
 - Measure tool should lock to the midpoint of a unit when starting and ending, unless shift key is held

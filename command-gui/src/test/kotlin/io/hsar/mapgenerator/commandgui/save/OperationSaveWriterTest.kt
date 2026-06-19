@@ -13,6 +13,7 @@ import korlibs.image.color.RGBA
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.lessThanOrEqualTo
+import org.hamcrest.Matchers.notNullValue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.awt.image.BufferedImage
@@ -34,6 +35,8 @@ class OperationSaveWriterTest {
         val mapFile = tempDir.resolve("map.png")
         val unitFile = tempDir.resolve("unit.svg")
         val mapImage = BufferedImage(1024, 256, BufferedImage.TYPE_INT_RGB)
+        val thumbnailImage = BufferedImage(640, 360, BufferedImage.TYPE_INT_RGB)
+        thumbnailImage.setRGB(10, 10, java.awt.Color.RED.rgb)
         ImageIO.write(mapImage, "png", mapFile.toFile())
         Files.writeString(unitFile, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"4\" height=\"4\"/>")
         val unitTemplate = MapViewerUnitTemplate(
@@ -50,6 +53,7 @@ class OperationSaveWriterTest {
             request(
                 operationId = operationId,
                 mapImage = mapImage,
+                thumbnailImage = thumbnailImage,
                 mapSource = AssetSource.fromFile(mapFile.toFile()),
                 ledgerEntries = listOf(CreateUnitTemplateAction(UnitTemplateSnapshot(UnitTemplateId(7), unitTemplate, 0))),
             ),
@@ -59,6 +63,7 @@ class OperationSaveWriterTest {
 
         assertThat(save.game.id, equalTo(operationId.toString()))
         assertThat(save.game.formatVersion, equalTo(2))
+        assertThat(save.game.thumbnailAssetId, equalTo(operationId.toString()))
         assertThat(save.game.map.assetId, equalTo("00000000-0000-0000-0000-000000000001"))
         ZipFile(savePath.toFile()).use { zip ->
             val gameJson = OperationSaveJson.objectMapper.readTree(zip.getInputStream(zip.getEntry("game.json")))
@@ -74,7 +79,8 @@ class OperationSaveWriterTest {
             assertThat(zip.read("assets/00000000-0000-0000-0000-000000000001.png"), equalTo(Files.readAllBytes(mapFile)))
             assertThat(zip.read("assets/00000000-0000-0000-0000-000000000002.svg"), equalTo(Files.readAllBytes(unitFile)))
             val thumbnail = ImageIO.read(zip.getInputStream(zip.getEntry("assets/$operationId.jpg")))
-            assertThat(thumbnail.width, lessThanOrEqualTo(512))
+            assertThat(thumbnail, notNullValue())
+            assertThat(thumbnail.width, lessThanOrEqualTo(256))
         }
     }
 
@@ -171,6 +177,7 @@ class OperationSaveWriterTest {
     private fun request(
         operationId: UUID,
         mapImage: BufferedImage,
+        thumbnailImage: BufferedImage? = null,
         mapSource: AssetSource?,
         ledgerEntries: List<io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry>,
         camera: CameraViewport = CameraViewport.centeredOnMap(
@@ -193,6 +200,7 @@ class OperationSaveWriterTest {
             metresPerPixel = 20.0,
         ),
         mapImage = mapImage,
+        thumbnailImage = thumbnailImage,
         mapAssetSource = mapSource,
         ledgerEntries = ledgerEntries,
     )

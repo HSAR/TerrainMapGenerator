@@ -10,8 +10,17 @@ class MapViewerLaunchLayoutTest {
     fun `launchpad panel is centered`() {
         val layout = MapViewerLaunchpadLayoutBuilder.build(1600, 900)
 
-        assertThat(layout.panelBounds.left, equalTo(590.0))
-        assertThat(layout.panelBounds.top, equalTo(290.0))
+        assertThat(layout.homePanelBounds.left, equalTo(590.0))
+        assertThat(layout.homePanelBounds.top, equalTo(290.0))
+        assertThat(layout.headerBounds.left, equalTo(530.0))
+    }
+
+    @Test
+    fun `save browser expands vertically`() {
+        val layout = MapViewerLaunchpadLayoutBuilder.build(1600, 900)
+
+        assertThat(layout.savePanelBounds.height > layout.homePanelBounds.height, equalTo(true))
+        assertThat(layout.saveListBounds.height > 0.0, equalTo(true))
     }
 
     @Test
@@ -19,8 +28,10 @@ class MapViewerLaunchLayoutTest {
         val layout = MapViewerNewOperationLayoutBuilder.build(1600, 900)
 
         assertThat(layout.mapPanelBounds.left < layout.unitsPanelBounds.left, equalTo(true))
-        assertThat(layout.titleBounds.left, equalTo(layout.operationNameBounds.left))
+        assertThat(layout.screenHeaderBounds.left, equalTo(36.0))
+        assertThat(layout.titleBounds.left, equalTo(580.0))
+        assertThat(layout.operationNameBounds.left < layout.mapPanelBounds.right, equalTo(true))
         assertThat(layout.backButtonBounds.left < layout.launchButtonBounds.left, equalTo(true))
-        assertThat(layout.launchButtonBounds.left > layout.operationNameBounds.right, equalTo(true))
+        assertThat(layout.launchButtonBounds.left > layout.unitsPanelBounds.left, equalTo(true))
     }
 }

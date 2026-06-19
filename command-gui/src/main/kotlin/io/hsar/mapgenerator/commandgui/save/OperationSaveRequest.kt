@@ -16,6 +16,7 @@ internal data class OperationSaveRequest(
     val camera: CameraViewport,
     val settings: MapViewerSettings,
     val mapImage: BufferedImage,
+    val thumbnailImage: BufferedImage? = null,
     val mapAssetSource: AssetSource?,
     val ledgerEntries: List<LedgerEntry>,
 )

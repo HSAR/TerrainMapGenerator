@@ -38,6 +38,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextBitmapRenderer
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerToolbar
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.commandgui.save.LoadedOperation
+import io.hsar.mapgenerator.commandgui.save.OperationSaveCatalogue
 import io.hsar.mapgenerator.commandgui.save.OperationSaveLoader
 import io.hsar.mapgenerator.commandgui.save.OperationSaveRequest
 import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
@@ -58,8 +59,12 @@ import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Size2D
 import kotlinx.coroutines.runBlocking
+import java.awt.Rectangle
+import java.awt.Robot
 import java.awt.Toolkit
+import java.awt.image.BufferedImage
 import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Instant
 import java.util.*
 import javax.swing.JFileChooser
@@ -146,6 +151,7 @@ internal class MapViewerScene(
                         var saveNoticeExpiresAtMs = 0L
 
                         fun saveOperation() {
+                            val thumbnailImage = captureCurrentScreen()
                             val target = saveWriter.write(
                                 OperationSaveRequest(
                                     operationId = operationId,
@@ -155,6 +161,7 @@ internal class MapViewerScene(
                                     camera = currentViewport,
                                     settings = settings,
                                     mapImage = renderData.baseImage,
+                                    thumbnailImage = thumbnailImage,
                                     mapAssetSource = operationMapImage?.assetSource,
                                     ledgerEntries = actionHistory.appliedEntries,
                                 ),
@@ -445,7 +452,18 @@ internal class MapViewerScene(
                         ).install()
                     }
 
-                    fun loadExistingOperation() {
+                    fun loadExistingOperation(path: Path) {
+                        val loaded = OperationSaveLoader().load(path)
+                        launchpadView?.close()
+                        launchpadView = null
+                        showViewer(
+                            settings = loaded.settings,
+                            initialLedgerEntries = emptyList(),
+                            loadedOperation = loaded,
+                        )
+                    }
+
+                    fun browseForExistingOperation() {
                         val defaultSaveDirectory = OperationSaveWriter().defaultSaveDirectory()
                         Files.createDirectories(defaultSaveDirectory)
                         val chooser = JFileChooser().apply {
@@ -457,14 +475,7 @@ internal class MapViewerScene(
                             return
                         }
 
-                        val loaded = OperationSaveLoader().load(chooser.selectedFile.toPath())
-                        launchpadView?.close()
-                        launchpadView = null
-                        showViewer(
-                            settings = loaded.settings,
-                            initialLedgerEntries = emptyList(),
-                            loadedOperation = loaded,
-                        )
+                        loadExistingOperation(chooser.selectedFile.toPath())
                     }
 
                     fun launchDraft(draft: NewOperationDraft) {
@@ -501,12 +512,17 @@ internal class MapViewerScene(
                         launchFlow.returnToLaunchpad()
                         newOperationView?.close()
                         newOperationView = null
+                        val saveDirectory = OperationSaveWriter().defaultSaveDirectory()
+                        Files.createDirectories(saveDirectory)
+                        val savedOperations = OperationSaveCatalogue().list(saveDirectory)
                         launchpadView = MapViewerLaunchpadView(
                             root = views.stage,
                             viewportWidth = gameWindow.width,
                             viewportHeight = gameWindow.height,
+                            savedOperations = savedOperations,
                             onCreateNewOperation = { showNewOperation() },
-                            onLaunchExistingOperation = { loadExistingOperation() },
+                            onLoadSavedOperation = { summary -> loadExistingOperation(summary.path) },
+                            onOpenSavePicker = { browseForExistingOperation() },
                         )
                     }
 
@@ -520,6 +536,12 @@ internal class MapViewerScene(
         }
     }
 }
+
+private fun captureCurrentScreen(): BufferedImage? =
+    runCatching {
+        val screen = Toolkit.getDefaultToolkit().screenSize
+        Robot().createScreenCapture(Rectangle(0, 0, screen.width, screen.height))
+    }.getOrNull()
 
 private fun MapViewerSettings.operationTitle(viewerTitle: String): String =
     operationName

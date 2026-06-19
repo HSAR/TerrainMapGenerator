@@ -97,23 +97,24 @@ internal class MapViewerNewOperationView(
     }
 
     private fun renderHeader() {
-        val title = MapViewerLaunchUi.label(layer, "Create New Operation", strong = true)
-        title.xy((layout.viewportWidth - title.width) * 0.5, layout.titleBounds.top)
-
-        operationNameInput = textInput(
-            parent = layer,
-            text = operationName,
-            bounds = layout.operationNameBounds,
-        )
-
-        statusContainer = layer.container().also {
-            it.xy(layout.operationNameBounds.left, layout.operationNameBounds.bottom + 10.0)
-        }
+        MapViewerLaunchpadTemplate.renderHeader(layer, layout.headerBounds)
+        MapViewerLaunchpadTemplate.renderScreenHeader(layer, layout.screenHeaderBounds, "New Operation", onBack)
     }
 
     private fun renderMapSection() {
         val panel = MapViewerLaunchUi.panel(layer, layout.mapPanelBounds)
-        MapViewerLaunchUi.label(panel, "Map", strong = true).xy(CONTENT_PADDING, CONTENT_PADDING)
+        MapViewerLaunchUi.label(panel, "Operational Details", strong = true).xy(CONTENT_PADDING, CONTENT_PADDING)
+
+        MapViewerLaunchUi.label(panel, "Operation Name").xy(CONTENT_PADDING, 34.0)
+        operationNameInput = textInput(
+            parent = panel,
+            text = operationName,
+            bounds = layout.operationNameBounds,
+        )
+
+        statusContainer = panel.container().also {
+            it.xy(layout.operationNameBounds.left, layout.operationNameBounds.bottom + 10.0)
+        }
 
         MapViewerLaunchUi.button(panel, 160.0, 36.0, if (mapImage == null) "Choose Image" else "Change Image") {
             chooseMapImage()
@@ -121,27 +122,27 @@ internal class MapViewerNewOperationView(
 
         val previewBounds = ScreenBounds(
             left = CONTENT_PADDING,
-            top = 68.0,
+            top = 104.0,
             width = layout.mapPanelBounds.width - CONTENT_PADDING * 2.0,
             height = 164.0,
         )
         renderMapPreview(panel, mapImage, previewBounds)
 
-        MapViewerLaunchUi.label(panel, "Pixels per metre").xy(CONTENT_PADDING, 250.0)
+        MapViewerLaunchUi.label(panel, "Pixels per metre").xy(CONTENT_PADDING, 292.0)
         pixelsPerMetreInput = textInput(
             parent = panel,
             text = pixelsPerMetreText,
             bounds = ScreenBounds(
                 left = CONTENT_PADDING,
-                top = 272.0,
+                top = 314.0,
                 width = 200.0,
                 height = INPUT_HEIGHT,
             ),
         )
 
         mapImage?.let { image ->
-            MapViewerLaunchUi.label(panel, image.name).xy(CONTENT_PADDING, 314.0)
-        } ?: MapViewerLaunchUi.label(panel, "No map image selected", color = Palette.Colours.LIGHT).xy(CONTENT_PADDING, 314.0)
+            MapViewerLaunchUi.label(panel, image.name).xy(CONTENT_PADDING, 356.0)
+        } ?: MapViewerLaunchUi.label(panel, "No map image selected", color = Palette.Colours.LIGHT).xy(CONTENT_PADDING, 356.0)
     }
 
     private fun renderUnitTypes() {
@@ -157,10 +158,6 @@ internal class MapViewerNewOperationView(
     }
 
     private fun renderButtons() {
-        MapViewerLaunchUi.button(layer, 120.0, 42.0, "Back") {
-            onBack()
-        }.xy(layout.backButtonBounds.left, layout.backButtonBounds.top)
-
         MapViewerLaunchUi.button(layer, 190.0, 42.0, "Launch Operation") {
             launch()
         }.xy(layout.launchButtonBounds.left, layout.launchButtonBounds.top)
@@ -420,7 +417,6 @@ internal class MapViewerNewOperationView(
         const val INPUT_HEIGHT = 32.0
         const val HANDLE_WIDTH = 28.0
         const val HANDLE_HEIGHT = 28.0
-
         private fun <T> MutableList<T>.move(fromIndex: Int, toIndex: Int) {
             if (fromIndex == toIndex) return
             val item = removeAt(fromIndex)
@@ -432,6 +428,8 @@ internal class MapViewerNewOperationView(
 internal data class MapViewerNewOperationLayout(
     val viewportWidth: Int,
     val viewportHeight: Int,
+    val headerBounds: ScreenBounds,
+    val screenHeaderBounds: ScreenBounds,
     val titleBounds: ScreenBounds,
     val operationNameBounds: ScreenBounds,
     val mapPanelBounds: ScreenBounds,
@@ -443,22 +441,27 @@ internal data class MapViewerNewOperationLayout(
 internal object MapViewerNewOperationLayoutBuilder {
     fun build(viewportWidth: Int, viewportHeight: Int): MapViewerNewOperationLayout {
         val margin = 36.0
-        val top = 32.0
+        val top = 20.0
         val columnGap = 28.0
-        val panelTop = 150.0
+        val screenHeaderTop = 108.0
+        val panelTop = 210.0
         val panelWidth = (viewportWidth - margin * 2.0 - columnGap) * 0.5
         val panelHeight = viewportHeight - panelTop - margin
         val operationWidth = 440.0
+        val bodyWidth = viewportWidth - margin * 2.0
+        val headerWidth = 540.0
 
         return MapViewerNewOperationLayout(
             viewportWidth = viewportWidth,
             viewportHeight = viewportHeight,
-            titleBounds = ScreenBounds((viewportWidth - operationWidth) * 0.5, top, operationWidth, 34.0),
-            operationNameBounds = ScreenBounds((viewportWidth - operationWidth) * 0.5, top + 46.0, operationWidth, 38.0),
+            headerBounds = ScreenBounds((viewportWidth - headerWidth) * 0.5, top, headerWidth, 78.0),
+            screenHeaderBounds = ScreenBounds((viewportWidth - bodyWidth) * 0.5, screenHeaderTop, bodyWidth, 86.0),
+            titleBounds = ScreenBounds((viewportWidth - operationWidth) * 0.5, screenHeaderTop + 16.0, operationWidth, 34.0),
+            operationNameBounds = ScreenBounds(20.0, 62.0, panelWidth - 40.0, 38.0),
             mapPanelBounds = ScreenBounds(margin, panelTop, panelWidth, panelHeight),
             unitsPanelBounds = ScreenBounds(margin + panelWidth + columnGap, panelTop, panelWidth, panelHeight),
-            backButtonBounds = ScreenBounds(margin, top + 44.0, 120.0, 42.0),
-            launchButtonBounds = ScreenBounds(viewportWidth - margin - 190.0, top + 44.0, 190.0, 42.0),
+            backButtonBounds = ScreenBounds(margin, screenHeaderTop + 22.0, 120.0, 42.0),
+            launchButtonBounds = ScreenBounds(viewportWidth - margin - 190.0, screenHeaderTop + 22.0, 190.0, 42.0),
         )
     }
 }

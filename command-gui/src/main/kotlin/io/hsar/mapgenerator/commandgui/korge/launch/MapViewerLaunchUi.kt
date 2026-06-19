@@ -52,6 +52,15 @@ internal object MapViewerLaunchUi {
         }
 
     fun label(parent: Container, text: String, strong: Boolean = false, color: Color = Palette.Colours.WHITE): Container =
+        label(parent, text, strong, color, scale = 1.0)
+
+    fun label(
+        parent: Container,
+        text: String,
+        strong: Boolean = false,
+        color: Color = Palette.Colours.WHITE,
+        scale: Double,
+    ): Container =
         parent.container().also { label ->
             label.image(
                 MapViewerTextBitmapRenderer.render(
@@ -60,6 +69,7 @@ internal object MapViewerLaunchUi {
                     color = color,
                 ),
             )
+            label.scale = scale
         }
 
     fun toRgba(color: Color, alpha: Int = color.alpha): RGBA =

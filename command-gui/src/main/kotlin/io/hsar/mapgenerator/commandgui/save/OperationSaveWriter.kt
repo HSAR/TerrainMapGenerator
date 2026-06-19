@@ -35,7 +35,7 @@ internal class OperationSaveWriter(
         )
         val thumbnailAsset = assets.registerThumbnail(
             operationId = request.operationId,
-            image = request.mapImage,
+            image = request.thumbnailImage ?: request.mapImage,
         )
         val ledgerMapper = LedgerEntrySaveMapper(assets)
         val ledger = request.ledgerEntries.map(ledgerMapper::toDto)
@@ -47,6 +47,7 @@ internal class OperationSaveWriter(
             name = request.operationName,
             createdAt = request.createdAt.toString(),
             updatedAt = updatedAt.toString(),
+            thumbnailAssetId = thumbnailAsset.id.toString(),
             camera = request.camera.toSaveCamera(geometry, request.mapImage.width, request.mapImage.height),
             map = MapSaveDto(
                 metresPerPixel = request.settings.metresPerPixel,
@@ -262,7 +263,7 @@ internal class OperationAssetRegistry(
         }
 
     private companion object {
-        const val MAX_THUMBNAIL_WIDTH = 512
+        const val MAX_THUMBNAIL_WIDTH = 256
         const val JPEG_QUALITY = 0.72f
     }
 }

@@ -1,27 +1,54 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
+import io.hsar.mapgenerator.commandgui.save.SavedOperationSummary
+import io.hsar.mapgenerator.image.Palette
 import korlibs.image.color.Colors
+import korlibs.image.color.RGBA
+import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
+import korlibs.korge.view.image
 import korlibs.korge.view.onStageResized
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 internal class MapViewerLaunchpadView(
     private val root: Container,
     viewportWidth: Int,
     viewportHeight: Int,
+    private val savedOperations: List<SavedOperationSummary>,
     private val onCreateNewOperation: () -> Unit,
-    private val onLaunchExistingOperation: () -> Unit,
+    private val onLoadSavedOperation: (SavedOperationSummary) -> Unit,
+    private val onOpenSavePicker: () -> Unit,
 ) {
     private val layer = root.container()
     private var layout = MapViewerLaunchpadLayoutBuilder.build(viewportWidth, viewportHeight)
+    private var mode = LaunchpadMode.HOME
+    private var scrollOffset = 0.0
 
     init {
         layer.zIndex = Z_INDEX
         layer.onStageResized { width, height ->
             render(width, height)
+        }
+        layer.mouse {
+            onScrollAnywhere {
+                if (mode == LaunchpadMode.EXISTING_OPERATIONS && layout.savePanelBounds.contains(views.input.mousePos)) {
+                    val maxScroll = maxScroll()
+                    if (maxScroll > 0.0) {
+                        scrollOffset = (scrollOffset + (scrollDeltaYLines * SCROLL_STEP_PX)).coerceIn(0.0, maxScroll)
+                        render(
+                            layer.stage?.views?.gameWindow?.width ?: layout.viewportWidth.toInt(),
+                            layer.stage?.views?.gameWindow?.height ?: layout.viewportHeight.toInt(),
+                        )
+                    }
+                }
+            }
         }
         render(viewportWidth, viewportHeight)
     }
@@ -32,49 +59,227 @@ internal class MapViewerLaunchpadView(
 
     private fun render(viewportWidth: Int, viewportHeight: Int) {
         layout = MapViewerLaunchpadLayoutBuilder.build(viewportWidth, viewportHeight)
+        scrollOffset = scrollOffset.coerceIn(0.0, maxScroll())
         layer.removeChildren()
         layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), Colors.BLACK)
+        MapViewerLaunchpadTemplate.renderHeader(layer, layout.headerBounds)
 
-        val panel = MapViewerLaunchUi.panel(layer, layout.panelBounds)
-        val title = MapViewerLaunchUi.label(panel, "Operational Command Tool", strong = true)
-        title.xy((layout.panelBounds.width - title.width) * 0.5, 44.0)
+        when (mode) {
+            LaunchpadMode.HOME -> renderHome(MapViewerLaunchUi.panel(layer, layout.homePanelBounds))
+            LaunchpadMode.EXISTING_OPERATIONS -> renderExistingOperations(MapViewerLaunchUi.panel(layer, layout.savePanelBounds))
+        }
+    }
+
+    private fun renderHome(panel: Container) {
+        val bounds = layout.homePanelBounds
         val welcome = MapViewerLaunchUi.label(panel, "Welcome, Commander.")
-        welcome.xy((layout.panelBounds.width - welcome.width) * 0.5, 86.0)
+        welcome.xy((bounds.width - welcome.width) * 0.5, 62.0)
 
-        val buttonLeft = (layout.panelBounds.width - BUTTON_WIDTH) * 0.5
-        MapViewerLaunchUi.button(panel, BUTTON_WIDTH, BUTTON_HEIGHT, "Create New Operation", onClick = onCreateNewOperation)
-            .xy(buttonLeft, 150.0)
+        val buttonLeft = (bounds.width - BUTTON_WIDTH) * 0.5
+        MapViewerLaunchUi.button(panel, BUTTON_WIDTH, BUTTON_HEIGHT, "New Operation", onClick = onCreateNewOperation)
+            .xy(buttonLeft, 126.0)
         MapViewerLaunchUi.button(
             parent = panel,
             width = BUTTON_WIDTH,
             height = BUTTON_HEIGHT,
-            label = "Launch Existing Operation",
-            onClick = onLaunchExistingOperation,
-        ).xy(buttonLeft, 212.0)
+            label = "Ongoing Operations",
+            onClick = {
+                mode = LaunchpadMode.EXISTING_OPERATIONS
+                scrollOffset = 0.0
+                rerender()
+            },
+        ).xy(buttonLeft, 188.0)
     }
+
+    private fun renderExistingOperations(panel: Container) {
+        val bounds = layout.savePanelBounds
+        val title = MapViewerLaunchUi.label(panel, "Ongoing Operations", strong = true)
+        title.xy((bounds.width - title.width) * 0.5, 34.0)
+
+        MapViewerLaunchUi.button(panel, 96.0, 36.0, "Back") {
+            mode = LaunchpadMode.HOME
+            rerender()
+        }.xy(24.0, 28.0)
+
+        val listBounds = layout.saveListBounds
+
+        val content = panel.container().also {
+            it.xy(listBounds.left + 12.0, listBounds.top + 12.0 - scrollOffset)
+        }
+        if (savedOperations.isEmpty()) {
+            MapViewerLaunchUi.label(content, "No valid saves found in the default save directory.", color = Palette.Colours.LIGHT)
+                .xy(12.0, 12.0)
+        } else {
+            savedOperations.forEachIndexed { index, summary ->
+                renderSaveRow(content, summary, index)
+            }
+        }
+        renderScrollbar(panel)
+
+        MapViewerLaunchUi.button(
+            parent = panel,
+            width = 280.0,
+            height = BUTTON_HEIGHT,
+            label = "Browse For Save File",
+            onClick = onOpenSavePicker,
+        ).xy((bounds.width - 280.0) * 0.5, bounds.height - BUTTON_HEIGHT - 24.0)
+    }
+
+    private fun renderSaveRow(parent: Container, summary: SavedOperationSummary, index: Int) {
+        val rowTop = index * SAVE_ROW_HEIGHT
+        val rowWidth = layout.saveRowWidth
+        val rowHeight = SAVE_ROW_HEIGHT - 12.0
+        val row = parent.container()
+        row.xy(0.0, rowTop)
+        row.solidRect(rowWidth, rowHeight, RGBA(255, 255, 255, 255))
+        row.solidRect(rowWidth - 4.0, rowHeight - 4.0, MapViewerLaunchUi.toRgba(Palette.Colours.DARK)) {
+            x = 2.0
+            y = 2.0
+        }
+        row.mouse {
+            onClick { onLoadSavedOperation(summary) }
+        }
+
+        val borderInset = 4.0
+        val previewFrameHeight = rowHeight - (borderInset * 2.0)
+        val previewFrameWidth = previewFrameHeight * 16.0 / 9.0
+        val previewFrameLeft = borderInset
+        val previewFrameTop = borderInset
+        row.solidRect(previewFrameWidth, previewFrameHeight, RGBA(255, 255, 255, 255)) {
+            x = previewFrameLeft
+            y = previewFrameTop
+        }
+        summary.thumbnail?.let { thumbnail ->
+            row.image(thumbnail) {
+                val scale = minOf(previewFrameWidth / width, previewFrameHeight / height)
+                this.scale = scale
+                x = previewFrameLeft + ((previewFrameWidth - (width * scale)) * 0.5)
+                y = previewFrameTop + ((previewFrameHeight - (height * scale)) * 0.5)
+            }
+        }
+
+        val textLeft = previewFrameLeft + previewFrameWidth + 18.0
+        val name = MapViewerLaunchUi.label(row, summary.operationName, strong = true)
+        name.xy(textLeft, 18.0)
+        val updated = MapViewerLaunchUi.label(row, formatTimestamp(summary.updatedAt), color = Palette.Colours.LIGHT)
+        updated.xy(textLeft, 50.0)
+    }
+
+    private fun renderScrollbar(panel: Container) {
+        val maxScroll = maxScroll()
+        val bounds = layout.scrollbarBounds
+        val disabled = maxScroll <= 0.0
+        panel.solidRect(bounds.width, bounds.height, RGBA(255, 255, 255, if (disabled) 70 else 140)) {
+            x = bounds.left
+            y = bounds.top
+        }
+        val thumbHeight = if (disabled) {
+            bounds.height
+        } else {
+            max(bounds.height * (layout.saveListBounds.height / totalContentHeight()), MIN_SCROLL_THUMB_HEIGHT)
+        }
+        val thumbTop = if (disabled) {
+            bounds.top
+        } else {
+            bounds.top + ((bounds.height - thumbHeight) * (scrollOffset / maxScroll))
+        }
+        panel.solidRect(bounds.width - 4.0, thumbHeight - 4.0, MapViewerLaunchUi.toRgba(Palette.Colours.WHITE, if (disabled) 80 else 220)) {
+            x = bounds.left + 2.0
+            y = thumbTop + 2.0
+        }
+    }
+
+    private fun maxScroll(): Double =
+        (totalContentHeight() - layout.saveListBounds.height).coerceAtLeast(0.0)
+
+    private fun totalContentHeight(): Double =
+        savedOperations.size * SAVE_ROW_HEIGHT
+
+    private fun rerender() {
+        render(
+            layer.stage?.views?.gameWindow?.width ?: layout.viewportWidth.toInt(),
+            layer.stage?.views?.gameWindow?.height ?: layout.viewportHeight.toInt(),
+        )
+    }
+
+    private fun formatTimestamp(instant: java.time.Instant): String =
+        TIMESTAMP_FORMATTER.format(instant.atZone(ZoneId.systemDefault()))
 
     private companion object {
         const val Z_INDEX = 60_000.0
         const val BUTTON_WIDTH = 300.0
         const val BUTTON_HEIGHT = 44.0
+        const val SAVE_ROW_HEIGHT = 108.0
+        const val SCROLL_STEP_PX = 36.0
+        const val MIN_SCROLL_THUMB_HEIGHT = 28.0
+        val TIMESTAMP_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
     }
 }
 
+private enum class LaunchpadMode {
+    HOME,
+    EXISTING_OPERATIONS,
+}
+
 internal data class MapViewerLaunchpadLayout(
-    val panelBounds: ScreenBounds,
+    val headerBounds: ScreenBounds,
+    val homePanelBounds: ScreenBounds,
+    val savePanelBounds: ScreenBounds,
+    val saveListBounds: ScreenBounds,
+    val scrollbarBounds: ScreenBounds,
+    val saveRowWidth: Double,
+    val viewportWidth: Double,
+    val viewportHeight: Double,
 )
 
 internal object MapViewerLaunchpadLayoutBuilder {
     fun build(viewportWidth: Int, viewportHeight: Int): MapViewerLaunchpadLayout {
-        val panelWidth = 420.0
-        val panelHeight = 320.0
+        val headerWidth = 540.0
+        val headerHeight = 78.0
+        val homePanelWidth = 420.0
+        val homePanelHeight = 320.0
+        val savePanelWidth = 760.0
+        val savePanelHeight = (viewportHeight * 0.78).roundToInt().toDouble().coerceAtLeast(520.0)
+        val saveListTop = 110.0
+        val saveListBottomPadding = 88.0
+        val saveListLeft = 24.0
+        val scrollbarWidth = 18.0
+        val saveListWidth = savePanelWidth - saveListLeft * 2.0 - scrollbarWidth - 12.0
+        val saveListHeight = savePanelHeight - saveListTop - saveListBottomPadding - 24.0
         return MapViewerLaunchpadLayout(
-            panelBounds = ScreenBounds(
-                left = (viewportWidth - panelWidth) * 0.5,
-                top = (viewportHeight - panelHeight) * 0.5,
-                width = panelWidth,
-                height = panelHeight,
+            headerBounds = ScreenBounds(
+                left = (viewportWidth - headerWidth) * 0.5,
+                top = 20.0,
+                width = headerWidth,
+                height = headerHeight,
             ),
+            homePanelBounds = ScreenBounds(
+                left = (viewportWidth - homePanelWidth) * 0.5,
+                top = (viewportHeight - homePanelHeight) * 0.5,
+                width = homePanelWidth,
+                height = homePanelHeight,
+            ),
+            savePanelBounds = ScreenBounds(
+                left = (viewportWidth - savePanelWidth) * 0.5,
+                top = (viewportHeight - savePanelHeight) * 0.5,
+                width = savePanelWidth,
+                height = savePanelHeight,
+            ),
+            saveListBounds = ScreenBounds(
+                left = saveListLeft,
+                top = saveListTop,
+                width = saveListWidth,
+                height = saveListHeight,
+            ),
+            scrollbarBounds = ScreenBounds(
+                left = saveListLeft + saveListWidth + 12.0,
+                top = saveListTop,
+                width = scrollbarWidth,
+                height = saveListHeight,
+            ),
+            saveRowWidth = saveListWidth - 24.0,
+            viewportWidth = viewportWidth.toDouble(),
+            viewportHeight = viewportHeight.toDouble(),
         )
     }
 }
