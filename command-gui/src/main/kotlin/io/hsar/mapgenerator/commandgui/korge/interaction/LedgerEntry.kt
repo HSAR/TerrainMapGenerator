@@ -4,10 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
 import java.util.UUID
 import kotlin.collections.ArrayDeque
-import kotlin.collections.List
-import kotlin.collections.Map
-import kotlin.collections.isNotEmpty
-import kotlin.collections.toList
 
 internal data class MapPlacedObjectId(
     val value: UUID,
@@ -153,4 +149,16 @@ internal class MapActionHistory {
         undoStack.addLast(action)
         return true
     }
+
+    fun undoEntry(controller: LedgerController): LedgerEntry? =
+        undoStack.removeLastOrNull()?.also { action ->
+            action.undo(controller)
+            redoStack.addLast(action)
+        }
+
+    fun redoEntry(controller: LedgerController): LedgerEntry? =
+        redoStack.removeLastOrNull()?.also { action ->
+            action.redo(controller)
+            undoStack.addLast(action)
+        }
 }

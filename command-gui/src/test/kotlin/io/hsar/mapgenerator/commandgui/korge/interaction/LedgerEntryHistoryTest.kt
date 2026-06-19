@@ -56,6 +56,20 @@ class LedgerEntryHistoryTest {
         assertThat(controller.templates.map { it.template.name }, equalTo(listOf("Unit 1")))
     }
 
+    @Test
+    fun `undo entry returns the entry that changed state`() {
+        val history = MapActionHistory()
+        val controller = TestLedgerController()
+        val entry = TestLedgerEntry("first")
+
+        history.record(entry)
+
+        val undone = history.undoEntry(controller)
+
+        assertThat(undone, equalTo(entry))
+        assertThat(history.canRedo, equalTo(true))
+    }
+
     private data class TestLedgerEntry(
         val name: String,
     ) : LedgerEntry {

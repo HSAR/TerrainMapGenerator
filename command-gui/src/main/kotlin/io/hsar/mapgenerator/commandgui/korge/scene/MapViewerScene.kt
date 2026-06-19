@@ -24,7 +24,6 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedUnitManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchFlow
-import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchUi
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchpadView
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerNewOperationView
 import io.hsar.mapgenerator.commandgui.korge.launch.NewOperationDraft
@@ -36,7 +35,6 @@ import io.hsar.mapgenerator.commandgui.korge.render.MapViewerRenderer
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSidebar
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextBitmapRenderer
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerToolbar
-import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.commandgui.save.LoadedOperation
 import io.hsar.mapgenerator.commandgui.save.OperationSaveCatalogue
 import io.hsar.mapgenerator.commandgui.save.OperationSaveLoader
@@ -131,6 +129,7 @@ internal class MapViewerScene(
                         var currentDrawingMode = MapDrawingMode.FREEFORM
                         lateinit var world: Camera
                         lateinit var sceneLayers: MapViewerSceneLayers
+                        var escapeMenu: MapViewerEscapeMenu? = null
                         var gridLinesOverlay: GridOverlayLinesView? = null
                         val drawingStore = MapDrawingStore()
                         lateinit var contextMenuManager: ContextMenuManager
@@ -146,11 +145,14 @@ internal class MapViewerScene(
                         val saveWriter = OperationSaveWriter()
                         var gridLabelsOverlay: GridOverlayView? = null
                         val coordinateSpace = MapCoordinateSpace(renderedMap.geometry, renderedMap.bitmap.width, renderedMap.bitmap.height)
-                        val saveButtonBounds = ScreenBounds(16.0, 16.0, 158.0, 40.0)
                         var saveNoticeMessage: String? = null
                         var saveNoticeExpiresAtMs = 0L
 
-                        fun saveOperation() {
+                        fun saveOperation(noticePrefix: String = "Saved") {
+                            val escapeMenuWasOpen = escapeMenu?.isOpen == true
+                            if (escapeMenuWasOpen) {
+                                escapeMenu?.close()
+                            }
                             val thumbnailImage = captureCurrentScreen()
                             val target = saveWriter.write(
                                 OperationSaveRequest(
@@ -166,7 +168,7 @@ internal class MapViewerScene(
                                     ledgerEntries = actionHistory.appliedEntries,
                                 ),
                             )
-                            saveNoticeMessage = "Saved ${target.fileName}"
+                            saveNoticeMessage = "$noticePrefix ${target.fileName}"
                             saveNoticeExpiresAtMs = System.currentTimeMillis() + 10_000L
                             saveNoticeLayer.removeChildren()
                             val noticeText = MapViewerTextBitmapRenderer.render(
@@ -185,6 +187,18 @@ internal class MapViewerScene(
                             }
                             saveNoticeLayer.visible = true
                             saveNoticeLayer.xy(16.0, gameWindow.height - (noticeText.height + 16) - 16.0)
+                            if (escapeMenuWasOpen) {
+                                escapeMenu?.toggle()
+                            }
+                        }
+
+                        val autosaveController = MapViewerAutosaveController {
+                            saveOperation("Autosaved")
+                        }
+
+                        fun recordLedgerEntry(entry: LedgerEntry) {
+                            actionHistory.record(entry)
+                            autosaveController.enqueue(entry)
                         }
 
                         sceneLayers = MapViewerSceneLayers.create(views.stage, gameWindow.width, gameWindow.height)
@@ -231,16 +245,16 @@ internal class MapViewerScene(
                             onObjectMoved = { before, after ->
                                 MapPlacedObjectPatch.diff(before, after)
                                     .takeIf { it.isNotEmpty() }
-                                    ?.let { actionHistory.record(EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before))) }
+                                    ?.let { recordLedgerEntry(EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before))) }
                             },
                             onObjectDeleted = { snapshot ->
                                 objectController.deleteObject(snapshot.id)
-                                actionHistory.record(DeleteObjectAction(snapshot))
+                                recordLedgerEntry(DeleteObjectAction(snapshot))
                             },
                             onUnitEdited = { before, after ->
                                 MapPlacedObjectPatch.diff(before, after)
                                     .takeIf { it.isNotEmpty() }
-                                    ?.let { actionHistory.record(EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before))) }
+                                    ?.let { recordLedgerEntry(EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before))) }
                             },
                         )
                         unitManager.install()
@@ -261,11 +275,11 @@ internal class MapViewerScene(
                             onObjectMoved = { before, after ->
                                 MapPlacedObjectPatch.diff(before, after)
                                     .takeIf { it.isNotEmpty() }
-                                    ?.let { actionHistory.record(EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before))) }
+                                    ?.let { recordLedgerEntry(EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before))) }
                             },
                             onObjectDeleted = { snapshot ->
                                 objectController.deleteObject(snapshot.id)
-                                actionHistory.record(DeleteObjectAction(snapshot))
+                                recordLedgerEntry(DeleteObjectAction(snapshot))
                             },
                         )
                         drawingManager.install()
@@ -298,15 +312,15 @@ internal class MapViewerScene(
                                 unitManager.resolvePlacement(screenPoint)
                                     ?.let { mapCoordinate ->
                                         objectController.createUnit(template, mapCoordinate)
-                                            .also { actionHistory.record(CreateObjectAction(it)) }
+                                            .also { recordLedgerEntry(CreateObjectAction(it)) }
                                     }
                             },
                             contextMenuManager = contextMenuManager,
                             onUnitTemplateCreated = { snapshot ->
-                                actionHistory.record(CreateUnitTemplateAction(snapshot))
+                                recordLedgerEntry(CreateUnitTemplateAction(snapshot))
                             },
                             onUnitTemplateDeleted = { snapshot ->
-                                actionHistory.record(DeleteUnitTemplateAction(snapshot))
+                                recordLedgerEntry(DeleteUnitTemplateAction(snapshot))
                             },
                             canStartUnitDrag = { currentTool == MapViewerTool.SELECT },
                             initialUnitTemplates = emptyList(),
@@ -352,6 +366,17 @@ internal class MapViewerScene(
                             it.mouseEnabled = false
                             it.visible = false
                         }
+                        escapeMenu = MapViewerEscapeMenu(
+                            root = sceneLayers.ui,
+                            viewportWidth = { gameWindow.width },
+                            viewportHeight = { gameWindow.height },
+                            onReturnToLaunchpad = {
+                                escapeMenu?.close()
+                                autosaveController.flush(force = true)
+                                sceneLayers.destroy()
+                                showLaunchpad()
+                            },
+                        )
 
                         val startupLedgerEntries = loadedOperation?.ledgerEntries ?: initialLedgerEntries
                         startupLedgerEntries.forEach { entry ->
@@ -359,11 +384,7 @@ internal class MapViewerScene(
                             actionHistory.record(entry)
                         }
 
-                        MapViewerLaunchUi.button(sceneLayers.ui, saveButtonBounds.width, saveButtonBounds.height, "Save Operation") {
-                            saveOperation()
-                        }.xy(saveButtonBounds.left, saveButtonBounds.top)
-
-                        views.stage.addUpdater {
+                        sceneLayers.ui.addUpdater {
                             val now = System.currentTimeMillis()
                             if (saveNoticeMessage != null) {
                                 if (now <= saveNoticeExpiresAtMs) {
@@ -374,6 +395,7 @@ internal class MapViewerScene(
                                     saveNoticeLayer.visible = false
                                 }
                             }
+                            autosaveController.update(now)
                             val input = views.input
                             if (input.keys.justPressed(Key.S) &&
                                 input.keys[Key.CONTROL] &&
@@ -384,6 +406,15 @@ internal class MapViewerScene(
                                 !drawingManager.isDragging
                             ) {
                                 saveOperation()
+                            }
+                            if (input.keys.justPressed(Key.ESCAPE) &&
+                                !sidebar.isUnitDialogOpen &&
+                                !sidebar.isUnitDragging &&
+                                !unitManager.isDragging &&
+                                !unitManager.isEditDialogOpen &&
+                                !drawingManager.isDragging
+                            ) {
+                                escapeMenu?.toggle()
                             }
                         }
 
@@ -413,13 +444,13 @@ internal class MapViewerScene(
                             },
                             onDrawingCommitted = { drawing ->
                                 objectController.createDrawing(drawing)
-                                    .also { actionHistory.record(CreateObjectAction(it)) }
+                                    .also { recordLedgerEntry(CreateObjectAction(it)) }
                             },
                             onUndoRequested = {
-                                actionHistory.undo(ledgerController)
+                                actionHistory.undoEntry(ledgerController)?.let(autosaveController::enqueue)
                             },
                             onRedoRequested = {
-                                actionHistory.redo(ledgerController)
+                                actionHistory.redoEntry(ledgerController)?.let(autosaveController::enqueue)
                             },
                             isMovableObjectUnderPointer = { point ->
                                 currentTool == MapViewerTool.SELECT &&
@@ -427,12 +458,12 @@ internal class MapViewerScene(
                             },
                             isScreenOverlayBlocking = { point ->
                                 toolbar.blocksScreenPoint(point) ||
-                                        saveButtonBounds.contains(point) ||
                                         sidebar.blocksScreenPoint(point) ||
                                         sidebar.isUnitDragging ||
                                         sidebar.isUnitDialogOpen ||
                                         unitManager.isContextMenuOpen ||
                                         drawingManager.blocksScreenPoint(point) ||
+                                        escapeMenu?.blocks(point) == true ||
                                         contextMenuManager.blocksScreenPoint(point) ||
                                         (currentTool == MapViewerTool.SELECT && unitManager.blocksScreenPoint(point))
                             },

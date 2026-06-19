@@ -9,6 +9,13 @@ internal class MapViewerSceneLayers private constructor(
     val overlay: Container,
     val ui: Container,
 ) {
+    fun destroy() {
+        ui.parent?.removeChild(ui)
+        overlay.parent?.removeChild(overlay)
+        map.parent?.removeChild(map)
+        background.parent?.removeChild(background)
+    }
+
     companion object {
         fun create(root: Container, viewportWidth: Int, viewportHeight: Int): MapViewerSceneLayers {
             val background = root.container().also { it.zIndex = BACKGROUND_Z_INDEX }
