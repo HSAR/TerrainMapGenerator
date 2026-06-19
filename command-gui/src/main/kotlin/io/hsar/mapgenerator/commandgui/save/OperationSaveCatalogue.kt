@@ -1,7 +1,7 @@
 package io.hsar.mapgenerator.commandgui.save
 
-import korlibs.image.awt.toBMP32
 import korlibs.image.bitmap.Bitmap32
+import korlibs.image.color.RGBA
 import java.awt.image.BufferedImage
 import java.nio.file.Files
 import java.nio.file.Path
@@ -65,10 +65,14 @@ internal class OperationSaveCatalogue {
             }
 
     private fun BufferedImage.toThumbnailBitmap(): Bitmap32 =
-        if (colorModel.hasAlpha()) {
-            toBMP32().premultipliedIfRequired()
-        } else {
-            toBMP32()
+        Bitmap32(width, height) { x, y ->
+            val argb = getRGB(x, y)
+            RGBA(
+                (argb ushr 16) and 0xFF,
+                (argb ushr 8) and 0xFF,
+                argb and 0xFF,
+                (argb ushr 24) and 0xFF,
+            )
         }
 
     private companion object {

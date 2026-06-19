@@ -19,6 +19,8 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
+import korlibs.image.bitmap.Bitmap32
+import korlibs.image.color.RGBA
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -143,6 +145,77 @@ class OperationSaveRoundTripTest {
         ZipFile(secondSave.toFile()).use { zip ->
             assertThat(zip.getEntry("assets/$operationId.jpg") != null, equalTo(true))
         }
+    }
+
+    @Test
+    fun `png unit icons keep their colours across repeated save loads`() {
+        val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000cd")
+        val iconSource = AssetSource(
+            path = tempDir.resolve("missing-icon.png").toString(),
+            originalFilename = "missing-icon.png",
+            extension = "png",
+            mediaType = "image/png",
+        )
+        val template = MapViewerUnitTemplate(
+            name = "Alpha",
+            bitmap = Bitmap32(2, 1) { x, _ ->
+                if (x == 0) RGBA(255, 0, 0, 255) else RGBA(0, 0, 255, 255)
+            },
+            assetSource = iconSource,
+        )
+
+        val firstSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = operationId,
+                mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                ledgerEntries = listOf(CreateUnitTemplateAction(UnitTemplateSnapshot(UnitTemplateId(1), template, 0))),
+            ),
+            tempDir.resolve("first-icon-save.oct.zip"),
+        )
+
+        val firstLoaded = OperationSaveLoader().load(firstSave)
+        val firstTemplate = firstLoaded.ledgerEntries.filterIsInstance<CreateUnitTemplateAction>().single().snapshot.template
+        assertThat(firstTemplate.bitmap.getRgba(0, 0), equalTo(RGBA(255, 0, 0, 255)))
+        assertThat(firstTemplate.bitmap.getRgba(1, 0), equalTo(RGBA(0, 0, 255, 255)))
+
+        val secondSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = firstLoaded.operationId,
+                operationName = firstLoaded.operationName,
+                createdAt = firstLoaded.createdAt,
+                updatedAt = firstLoaded.updatedAt,
+                camera = firstLoaded.camera?.toViewport(
+                    geometry = geometryFor(firstLoaded.mapImage),
+                    mapWidth = firstLoaded.settings.width,
+                    mapHeight = firstLoaded.settings.height,
+                    viewportWidth = firstLoaded.settings.width,
+                    viewportHeight = firstLoaded.settings.height,
+                ) ?: CameraViewport.centeredOnMap(
+                    geometry = geometryFor(firstLoaded.mapImage),
+                    mapWidth = firstLoaded.settings.width,
+                    mapHeight = firstLoaded.settings.height,
+                    viewportWidth = firstLoaded.settings.width,
+                    viewportHeight = firstLoaded.settings.height,
+                    zoom = CameraViewport.fitZoomToViewport(
+                        mapWidth = firstLoaded.settings.width,
+                        mapHeight = firstLoaded.settings.height,
+                        viewportWidth = firstLoaded.settings.width,
+                        viewportHeight = firstLoaded.settings.height,
+                    ),
+                ),
+                settings = firstLoaded.settings,
+                mapImage = firstLoaded.mapImage,
+                mapSource = null,
+                ledgerEntries = firstLoaded.ledgerEntries,
+            ),
+            tempDir.resolve("second-icon-save.oct.zip"),
+        )
+
+        val secondLoaded = OperationSaveLoader().load(secondSave)
+        val secondTemplate = secondLoaded.ledgerEntries.filterIsInstance<CreateUnitTemplateAction>().single().snapshot.template
+        assertThat(secondTemplate.bitmap.getRgba(0, 0), equalTo(RGBA(255, 0, 0, 255)))
+        assertThat(secondTemplate.bitmap.getRgba(1, 0), equalTo(RGBA(0, 0, 255, 255)))
     }
 
     private fun request(

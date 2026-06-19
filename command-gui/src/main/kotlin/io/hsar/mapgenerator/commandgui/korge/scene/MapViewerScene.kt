@@ -42,6 +42,7 @@ import io.hsar.mapgenerator.commandgui.save.OperationSaveRequest
 import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
 import io.hsar.mapgenerator.commandgui.save.toViewport
 import korlibs.event.Key
+import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.Colors
 import korlibs.korge.Korge
 import korlibs.korge.KorgeDisplayMode
@@ -57,10 +58,7 @@ import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Size2D
 import kotlinx.coroutines.runBlocking
-import java.awt.Rectangle
-import java.awt.Robot
 import java.awt.Toolkit
-import java.awt.image.BufferedImage
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -149,11 +147,7 @@ internal class MapViewerScene(
                         var saveNoticeExpiresAtMs = 0L
 
                         fun saveOperation(noticePrefix: String = "Saved") {
-                            val escapeMenuWasOpen = escapeMenu?.isOpen == true
-                            if (escapeMenuWasOpen) {
-                                escapeMenu?.close()
-                            }
-                            val thumbnailImage = captureCurrentScreen()
+                            val thumbnailImage = renderedMap.bitmap.toBufferedImage()
                             val target = saveWriter.write(
                                 OperationSaveRequest(
                                     operationId = operationId,
@@ -187,13 +181,18 @@ internal class MapViewerScene(
                             }
                             saveNoticeLayer.visible = true
                             saveNoticeLayer.xy(16.0, gameWindow.height - (noticeText.height + 16) - 16.0)
-                            if (escapeMenuWasOpen) {
-                                escapeMenu?.toggle()
-                            }
                         }
 
                         val autosaveController = MapViewerAutosaveController {
                             saveOperation("Autosaved")
+                        }
+
+                        fun clearTransientInteractionState() {
+                            contextMenuManager.close()
+                            unitManager.cancelTransientState()
+                            drawingManager.cancelTransientState()
+                            drawingStore.clearPreview()
+                            drawingView.update(drawingStore.state, currentViewport.zoom)
                         }
 
                         fun recordLedgerEntry(entry: LedgerEntry) {
@@ -371,8 +370,9 @@ internal class MapViewerScene(
                             viewportWidth = { gameWindow.width },
                             viewportHeight = { gameWindow.height },
                             onReturnToLaunchpad = {
+                                clearTransientInteractionState()
                                 escapeMenu?.close()
-                                autosaveController.flush(force = true)
+                                saveOperation()
                                 sceneLayers.destroy()
                                 showLaunchpad()
                             },
@@ -463,7 +463,7 @@ internal class MapViewerScene(
                                         sidebar.isUnitDialogOpen ||
                                         unitManager.isContextMenuOpen ||
                                         drawingManager.blocksScreenPoint(point) ||
-                                        escapeMenu?.blocks(point) == true ||
+                                        escapeMenu?.isOpen == true ||
                                         contextMenuManager.blocksScreenPoint(point) ||
                                         (currentTool == MapViewerTool.SELECT && unitManager.blocksScreenPoint(point))
                             },
@@ -568,11 +568,15 @@ internal class MapViewerScene(
     }
 }
 
-private fun captureCurrentScreen(): BufferedImage? =
-    runCatching {
-        val screen = Toolkit.getDefaultToolkit().screenSize
-        Robot().createScreenCapture(Rectangle(0, 0, screen.width, screen.height))
-    }.getOrNull()
+private fun Bitmap32.toBufferedImage(): java.awt.image.BufferedImage =
+    java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_ARGB).also { image ->
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val rgba = getRgba(x, y)
+                image.setRGB(x, y, (rgba.a shl 24) or (rgba.r shl 16) or (rgba.g shl 8) or rgba.b)
+            }
+        }
+    }
 
 private fun MapViewerSettings.operationTitle(viewerTitle: String): String =
     operationName

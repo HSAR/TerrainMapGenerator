@@ -9,3 +9,8 @@
 - Universal UI model and switch to corner-only white borders for better aesthetics
 - Destroyed units can be hidden or shown with reduced opacity
 - Support arbitrary states which are independently toggleable instead of mutually exclusive
+
+## Bugs
+
+- SVGs don't import correctly
+- Fonts are currently bitmap images

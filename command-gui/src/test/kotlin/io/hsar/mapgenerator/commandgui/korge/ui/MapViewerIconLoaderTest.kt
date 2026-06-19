@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import korlibs.image.color.RGBA
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.notNullValue
@@ -60,4 +61,24 @@ class MapViewerIconLoaderTest {
             file.delete()
         }
     }
+
+    @Test
+    fun `loads raster unit icon colours without shifting channels`() {
+        val file = File.createTempFile("unit-icon", ".png")
+        val image = BufferedImage(2, 1, BufferedImage.TYPE_INT_ARGB)
+        image.setRGB(0, 0, 0xFFFF0000.toInt())
+        image.setRGB(1, 0, 0xFF0000FF.toInt())
+        ImageIO.write(image, "png", file)
+
+        try {
+            val bitmap = MapViewerIconLoader.load(file)
+
+            assertThat(bitmap, notNullValue())
+            assertThat(bitmap!!.getRgba(0, 0), equalTo(RGBA(255, 0, 0, 255)))
+            assertThat(bitmap.getRgba(1, 0), equalTo(RGBA(0, 0, 255, 255)))
+        } finally {
+            file.delete()
+        }
+    }
+
 }

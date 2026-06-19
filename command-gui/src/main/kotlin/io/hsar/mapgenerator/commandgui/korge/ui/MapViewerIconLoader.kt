@@ -1,9 +1,9 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
-import korlibs.image.awt.toBMP32
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import korlibs.image.vector.format.SVG
+import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -25,12 +25,12 @@ internal object MapViewerIconLoader {
 
     private fun loadRaster(file: File): Bitmap32? {
         val image = ImageIO.read(file) ?: return null
-        return image.toBMP32().premultipliedIfRequired().trimTransparentBounds()
+        return image.toBitmap32().trimTransparentBounds()
     }
 
     private fun loadRaster(bytes: ByteArray): Bitmap32? {
         val image = ImageIO.read(ByteArrayInputStream(bytes)) ?: return null
-        return image.toBMP32().premultipliedIfRequired().trimTransparentBounds()
+        return image.toBitmap32().trimTransparentBounds()
     }
 
     private fun loadSvg(file: File): Bitmap32? = runCatching {
@@ -74,7 +74,7 @@ internal object MapViewerIconLoader {
 
         for (y in 0 until height) {
             for (x in 0 until width) {
-                if ((getRgba(x, y).value ushr 24) == 0) {
+                if (getRgba(x, y).a == 0) {
                     continue
                 }
 
@@ -91,4 +91,15 @@ internal object MapViewerIconLoader {
             copySliceWithBounds(left, top, right + 1, bottom + 1)
         }
     }
+
+    private fun BufferedImage.toBitmap32(): Bitmap32 =
+        Bitmap32(width, height) { x, y ->
+            val argb = getRGB(x, y)
+            RGBA(
+                (argb ushr 16) and 0xFF,
+                (argb ushr 8) and 0xFF,
+                argb and 0xFF,
+                (argb ushr 24) and 0xFF,
+            )
+        }
 }

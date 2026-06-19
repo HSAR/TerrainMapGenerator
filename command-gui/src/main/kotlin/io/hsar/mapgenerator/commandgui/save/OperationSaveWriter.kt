@@ -111,6 +111,17 @@ internal class OperationAssetRegistry(
             )
         }
 
+    private fun registerBitmap(bitmap: Bitmap32, role: String, source: AssetSource?): RegisteredAsset =
+        source
+            ?.existingFileAsset(role)
+            ?: bitmap.toBufferedImage().let { image ->
+                if (bitmap.hasTransparency()) {
+                    image.fallbackAsset(role = role, originalFilename = source?.originalFilename, forcePng = true)
+                } else {
+                    image.fallbackAsset(role = role, originalFilename = source?.originalFilename)
+                }
+            }
+
     fun registerBufferedImage(image: BufferedImage, role: String, source: AssetSource?): RegisteredAsset =
         source
             ?.existingFileAsset(role)
@@ -125,17 +136,6 @@ internal class OperationAssetRegistry(
             originalFilename = null,
             bytes = image.thumbnail(MAX_THUMBNAIL_WIDTH).encodeJpeg(),
         ).also(registeredAssets::add)
-
-    private fun registerBitmap(bitmap: Bitmap32, role: String, source: AssetSource?): RegisteredAsset =
-        source
-            ?.existingFileAsset(role)
-            ?: bitmap.toBufferedImage().let { image ->
-                if (bitmap.hasTransparency()) {
-                    image.fallbackAsset(role = role, originalFilename = source?.originalFilename, forcePng = true)
-                } else {
-                    image.fallbackAsset(role = role, originalFilename = source?.originalFilename)
-                }
-            }
 
     private fun AssetSource.existingFileAsset(role: String): RegisteredAsset? {
         val file = file().takeIf { it.isFile } ?: return null
@@ -165,7 +165,7 @@ internal class OperationAssetRegistry(
             mediaType = if (usePng) "image/png" else "image/jpeg",
             role = role,
             originalFilename = originalFilename,
-            bytes = if (usePng) encodePng() else encodeJpeg(),
+            bytes = if (usePng) toArgbBufferedImage().encodePng() else toRgb().encodeJpeg(),
         ).also(registeredAssets::add)
     }
 
@@ -177,15 +177,8 @@ internal class OperationAssetRegistry(
             append(width).append('x').append(height).append(':')
             for (y in 0 until height) {
                 for (x in 0 until width) {
-                    append(getRgba(x, y).value).append(',')
+                    append(getRgba(x, y).toArgbInt()).append(',')
                 }
-            }
-        }
-
-    private fun Bitmap32.hasTransparency(): Boolean =
-        (0 until height).any { y ->
-            (0 until width).any { x ->
-                (getRgba(x, y).value ushr 24) != 255
             }
         }
 
@@ -193,8 +186,15 @@ internal class OperationAssetRegistry(
         BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { image ->
             for (y in 0 until height) {
                 for (x in 0 until width) {
-                    image.setRGB(x, y, getRgba(x, y).value)
+                    image.setRGB(x, y, getRgba(x, y).toArgbInt())
                 }
+            }
+        }
+
+    private fun Bitmap32.hasTransparency(): Boolean =
+        (0 until height).any { y ->
+            (0 until width).any { x ->
+                getRgba(x, y).a != 255
             }
         }
 
@@ -262,11 +262,27 @@ internal class OperationAssetRegistry(
             output.toByteArray()
         }
 
+    private fun BufferedImage.toArgbBufferedImage(): BufferedImage =
+        if (type == BufferedImage.TYPE_INT_ARGB) {
+            this
+        } else {
+            BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { image ->
+                for (y in 0 until height) {
+                    for (x in 0 until width) {
+                        image.setRGB(x, y, getRGB(x, y))
+                    }
+                }
+            }
+        }
+
     private companion object {
         const val MAX_THUMBNAIL_WIDTH = 256
         const val JPEG_QUALITY = 0.72f
     }
 }
+
+private fun korlibs.image.color.RGBA.toArgbInt(): Int =
+    (a shl 24) or (r shl 16) or (g shl 8) or b
 
 internal data class RegisteredAsset(
     val id: UUID,

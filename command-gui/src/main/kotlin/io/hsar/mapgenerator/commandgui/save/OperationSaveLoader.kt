@@ -93,14 +93,28 @@ internal class OperationSaveLoader {
     private fun decodeBufferedImage(bytes: ByteArray, fileName: String): BufferedImage? =
         when (fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()) {
             "svg" -> MapViewerIconLoader.load(bytes, fileName)?.toBufferedImage()
-            else -> ImageIO.read(bytes.inputStream())
+            else -> ImageIO.read(bytes.inputStream())?.toArgbBufferedImage()
         }
 
     private fun korlibs.image.bitmap.Bitmap32.toBufferedImage() =
         BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { image ->
             for (y in 0 until height) {
                 for (x in 0 until width) {
-                    image.setRGB(x, y, getRgba(x, y).value)
+                    val rgba = getRgba(x, y)
+                    image.setRGB(x, y, (rgba.a shl 24) or (rgba.r shl 16) or (rgba.g shl 8) or rgba.b)
+                }
+            }
+        }
+
+    private fun BufferedImage.toArgbBufferedImage(): BufferedImage =
+        if (type == BufferedImage.TYPE_INT_ARGB) {
+            this
+        } else {
+            BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { image ->
+                for (y in 0 until height) {
+                    for (x in 0 until width) {
+                        image.setRGB(x, y, getRGB(x, y))
+                    }
                 }
             }
         }

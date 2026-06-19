@@ -51,6 +51,7 @@ internal class MapViewerEscapeMenu(
         val subtitle = MapViewerLaunchUi.label(panel, "Return to the launchpad after saving.")
         subtitle.xy(layout.subtitleX - (subtitle.width * 0.5), layout.subtitleY)
         MapViewerLaunchUi.button(panel, layout.returnButtonBounds.width, layout.returnButtonBounds.height, "Return To Launchpad") {
+            close()
             onReturnToLaunchpad()
         }.xy(layout.returnButtonBounds.left, layout.returnButtonBounds.top)
         MapViewerLaunchUi.button(panel, layout.closeButtonBounds.width, layout.closeButtonBounds.height, "Close") {
