@@ -2,10 +2,10 @@ package io.hsar.mapgenerator.commandgui.korge.drawing
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
+import io.hsar.mapgenerator.commandgui.korge.interaction.ContextMenuManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateDelta
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectContextMenuManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import korlibs.event.MouseButton
@@ -21,7 +21,7 @@ internal class MapDrawingManager(
     private val viewportProvider: () -> CameraViewport,
     private val currentTool: () -> MapViewerTool,
     private val drawingStore: MapDrawingStore,
-    private val contextMenuManager: MapPlacedObjectContextMenuManager,
+    private val contextMenuManager: ContextMenuManager,
     private val canInteractWithDrawings: () -> Boolean = { true },
     private val onDrawingsChanged: (MapDrawingState) -> Unit = {},
     private val onObjectMoved: (MapPlacedObjectSnapshot, MapPlacedObjectSnapshot) -> Unit = { _, _ -> },

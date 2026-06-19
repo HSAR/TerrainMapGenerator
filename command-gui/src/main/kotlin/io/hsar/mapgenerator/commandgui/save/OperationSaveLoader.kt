@@ -1,0 +1,233 @@
+package io.hsar.mapgenerator.commandgui.save
+
+import io.hsar.mapgenerator.commandgui.MapViewerSettings
+import io.hsar.mapgenerator.commandgui.StaticImageLayer
+import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
+import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
+import io.hsar.mapgenerator.commandgui.korge.interaction.CreateObjectAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
+import java.awt.Color
+import java.awt.image.BufferedImage
+import java.nio.file.Path
+import java.time.Instant
+import java.util.*
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import javax.imageio.ImageIO
+
+internal class OperationSaveLoader {
+    fun load(path: Path): LoadedOperation =
+        ZipFile(path.toFile()).use { zip ->
+            val save = OperationSaveReader().read(path)
+            require(save.game.formatVersion == FORMAT_VERSION) {
+                "Unsupported save format version ${save.game.formatVersion}"
+            }
+
+            val mapAsset = loadAsset(zip, save.game.map.assetId)
+            val mapImage = decodeBufferedImage(mapAsset.bytes, mapAsset.entry.name)
+                ?: error("Unable to decode map asset ${mapAsset.entry.name}")
+
+            val settings = MapViewerSettings(
+                operationName = save.game.name,
+                availableLayers = listOf(StaticImageLayer(id = save.game.map.assetId, displayName = "Map")),
+                enabledLayerIds = setOf(save.game.map.assetId),
+                staticLayerImages = mapOf(save.game.map.assetId to mapImage),
+                width = mapImage.width,
+                height = mapImage.height,
+                metresPerPixel = save.game.map.metresPerPixel,
+            )
+
+            val replayed = RuntimeLedgerReplayer(zip).replay(save.ledger.entries)
+            LoadedOperation(
+                operationId = UUID.fromString(save.game.id),
+                operationName = save.game.name,
+                createdAt = Instant.parse(save.game.createdAt),
+                updatedAt = Instant.parse(save.game.updatedAt),
+                settings = settings,
+                camera = save.game.camera,
+                mapImage = mapImage,
+                ledgerEntries = replayed.ledgerEntries,
+                nextUnitTemplateId = replayed.nextUnitTemplateId,
+            )
+        }
+
+    private fun loadAsset(zip: ZipFile, assetId: String): AssetBytes =
+        resolveAssetEntry(zip, assetId).let { entry ->
+            AssetBytes(
+                entry = entry,
+                bytes = zip.getInputStream(entry).use { it.readBytes() },
+            )
+        }
+
+    private fun resolveAssetEntry(zip: ZipFile, assetId: String): ZipEntry {
+        val prefix = "assets/$assetId."
+        val matches = zip.entries().asSequence()
+            .filter { !it.isDirectory }
+            .filter { it.name.startsWith(prefix) }
+            .toList()
+
+        return when (matches.size) {
+            1 -> matches.single()
+            0 -> error("Missing asset for id $assetId")
+            else -> error("Multiple assets found for id $assetId")
+        }
+    }
+
+    private fun decodeBufferedImage(bytes: ByteArray, fileName: String): BufferedImage? =
+        when (fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()) {
+            "svg" -> MapViewerIconLoader.load(bytes, fileName)?.toBufferedImage()
+            else -> ImageIO.read(bytes.inputStream())
+        }
+
+    private fun korlibs.image.bitmap.Bitmap32.toBufferedImage() =
+        BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { image ->
+            for (y in 0 until height) {
+                for (x in 0 until width) {
+                    image.setRGB(x, y, getRgba(x, y).value)
+                }
+            }
+        }
+
+    private companion object {
+        const val FORMAT_VERSION = 2
+    }
+}
+
+private data class AssetBytes(
+    val entry: ZipEntry,
+    val bytes: ByteArray,
+)
+
+private data class ReplayedLedger(
+    val ledgerEntries: List<LedgerEntry>,
+    val nextUnitTemplateId: Long,
+)
+
+private class RuntimeLedgerReplayer(
+    private val zip: ZipFile,
+) {
+    private val templatesByAssetId = mutableMapOf<String, MapViewerUnitTemplate>()
+    private var nextUnitTemplateId = 1L
+
+    fun replay(entries: List<LedgerEntrySaveDto>): ReplayedLedger {
+        val runtimeEntries = entries.mapNotNull(::toRuntimeEntry)
+        return ReplayedLedger(
+            ledgerEntries = runtimeEntries,
+            nextUnitTemplateId = nextUnitTemplateId,
+        )
+    }
+
+    private fun toRuntimeEntry(entry: LedgerEntrySaveDto): LedgerEntry? =
+        when (entry) {
+            is CreateObjectEntrySaveDto -> entry.objectData.toRuntimeSnapshot(entry.objectId)
+                .let(::CreateObjectAction)
+
+            is DeleteObjectEntrySaveDto -> entry.objectData.toRuntimeSnapshot(entry.objectId)
+                .let(::DeleteObjectAction)
+
+            is EditObjectEntrySaveDto -> EditObjectAction(
+                objectId = MapPlacedObjectId(entry.objectId),
+                forward = entry.forward,
+                backward = entry.backward,
+            )
+
+            is CreateUnitTemplateEntrySaveDto -> entry.unitTemplate.toRuntimeSnapshot()
+                .also { nextUnitTemplateId = maxOf(nextUnitTemplateId, it.id.value + 1) }
+                .let(::CreateUnitTemplateAction)
+
+            is DeleteUnitTemplateEntrySaveDto -> entry.unitTemplate.toRuntimeSnapshot()
+                .let(::DeleteUnitTemplateAction)
+        }
+
+    private fun SavedMapObjectDto.toRuntimeSnapshot(id: UUID): MapPlacedObjectSnapshot =
+        when (this) {
+            is SavedUnitObjectDto -> {
+                val template = template.toRuntimeTemplate()
+                UnitSnapshot(
+                    id = MapPlacedObjectId(id),
+                    template = template,
+                    instanceName = instanceName,
+                    destroyed = destroyed,
+                    mapCoordinate = mapCoordinate.toRuntime(),
+                    normalizedWidth = normalizedWidth,
+                    normalizedHeight = normalizedHeight,
+                )
+            }
+
+            is SavedDrawingObjectDto -> DrawingSnapshot(
+                id = MapPlacedObjectId(id),
+                drawing = drawing.toRuntimeDrawing(),
+            )
+        }
+
+    private fun UnitTemplateSnapshotSaveDto.toRuntimeSnapshot() =
+        UnitTemplateSnapshot(
+            id = UnitTemplateId(id),
+            template = template.toRuntimeTemplate(),
+            index = index,
+        )
+
+    private fun UnitTemplateSaveDto.toRuntimeTemplate() =
+        templatesByAssetId.getOrPut(assetId) {
+            val entry = resolveAssetEntry(zip, assetId)
+            val bytes = zip.getInputStream(entry).use { it.readBytes() }
+            val bitmap = MapViewerIconLoader.load(bytes, entry.name)
+                ?: error("Unable to load template asset ${entry.name}")
+            MapViewerUnitTemplate(name = name, bitmap = bitmap)
+        }
+
+    private fun resolveAssetEntry(zip: ZipFile, assetId: String): ZipEntry {
+        val prefix = "assets/$assetId."
+        val matches = zip.entries().asSequence()
+            .filter { !it.isDirectory }
+            .filter { it.name.startsWith(prefix) }
+            .toList()
+
+        return when (matches.size) {
+            1 -> matches.single()
+            0 -> error("Missing asset for id $assetId")
+            else -> error("Multiple assets found for id $assetId")
+        }
+    }
+
+    private fun DrawingSaveDto.toRuntimeDrawing(): MapDrawing =
+        when (type) {
+            "freeform" -> FreeformDrawing(points = points.orEmpty().map { it.toRuntime() }, color = color.toColor())
+            "line" -> LineDrawing(start = start!!.toRuntime(), end = end!!.toRuntime(), color = color.toColor())
+            "rectangle" -> RectangleDrawing(start = start!!.toRuntime(), end = end!!.toRuntime(), color = color.toColor())
+            "circle" -> CircleDrawing(center = center!!.toRuntime(), radius = radius ?: 0.0, color = color.toColor())
+            else -> error("Unsupported drawing type $type")
+        }
+
+    private fun MapCoordinateSaveDto.toRuntime() =
+        MapCoordinate(x = x, y = y)
+
+    private fun MapDrawingPointSaveDto.toRuntime() =
+        MapDrawingPoint(x = x, y = y)
+
+    private fun String.toColor(): Color {
+        val hex = removePrefix("#")
+        val alpha = hex.substring(0, 2).toInt(16)
+        val red = hex.substring(2, 4).toInt(16)
+        val green = hex.substring(4, 6).toInt(16)
+        val blue = hex.substring(6, 8).toInt(16)
+        return Color(red, green, blue, alpha)
+    }
+}

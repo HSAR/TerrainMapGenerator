@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
+import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconFit
@@ -58,6 +59,7 @@ internal class MapViewerNewOperationView(
                 imagePath = path,
                 image = image,
                 previewBitmap = image.toBMP32().premultipliedIfRequired(),
+                assetSource = AssetSource.fromFile(File(path)),
             )
         }
     }
@@ -276,6 +278,7 @@ internal class MapViewerNewOperationView(
             imagePath = file.absolutePath,
             image = image,
             previewBitmap = image.toBMP32().premultipliedIfRequired(),
+            assetSource = AssetSource.fromFile(file),
         )
         render(layout.viewportWidth, layout.viewportHeight)
     }
@@ -287,6 +290,7 @@ internal class MapViewerNewOperationView(
             id = nextRowId++,
             name = file.nameWithoutExtension,
             bitmap = bitmap,
+            assetSource = AssetSource.fromFile(file),
         )
         render(layout.viewportWidth, layout.viewportHeight)
     }
@@ -300,6 +304,7 @@ internal class MapViewerNewOperationView(
                     name = image.name,
                     imagePath = image.imagePath,
                     image = image.image,
+                    assetSource = image.assetSource,
                 )
             },
             pixelsPerMetre = pixelsPerMetreText.toDoubleOrNull() ?: -1.0,
@@ -307,6 +312,7 @@ internal class MapViewerNewOperationView(
                 MapViewerUnitTemplate(
                     name = row.name,
                     bitmap = row.bitmap,
+                    assetSource = row.assetSource,
                 )
             },
         )
@@ -382,12 +388,14 @@ internal class MapViewerNewOperationView(
         val imagePath: String,
         val image: BufferedImage,
         val previewBitmap: Bitmap32,
+        val assetSource: AssetSource?,
     )
 
     private data class UnitRow(
         override val id: Long,
         override var name: String,
         val bitmap: Bitmap32,
+        val assetSource: AssetSource?,
         var input: UITextInput? = null,
     ) : ReorderRow
 

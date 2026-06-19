@@ -2,6 +2,8 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
+import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -42,6 +44,31 @@ class OperationLaunchConfigurationFactoryTest {
         assertThat(layerId in configuration.settings.enabledLayerIds, equalTo(true))
     }
 
+    @Test
+    fun `unit templates from setup are seeded into the initial ledger`() {
+        val draft = NewOperationDraft(
+            operationName = "Operation Copperhead",
+            mapImage = OperationMapImage("Satellite", "satellite.png", image(100, 50)),
+            unitTemplates = listOf(
+                template("Alpha"),
+                template("Bravo"),
+            ),
+        )
+
+        val configuration = OperationLaunchConfigurationFactory.create(draft, MapViewerSettings())
+
+        assertThat(configuration.initialLedgerEntries.size, equalTo(2))
+        assertThat(configuration.initialLedgerEntries[0] is CreateUnitTemplateAction, equalTo(true))
+        assertThat((configuration.initialLedgerEntries[0] as CreateUnitTemplateAction).snapshot.id, equalTo(UnitTemplateId(1)))
+        assertThat((configuration.initialLedgerEntries[1] as CreateUnitTemplateAction).snapshot.id, equalTo(UnitTemplateId(2)))
+    }
+
     private fun image(width: Int, height: Int): BufferedImage =
         BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+
+    private fun template(name: String) =
+        io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate(
+            name = name,
+            bitmap = korlibs.image.bitmap.Bitmap32(4, 4),
+        )
 }

@@ -6,6 +6,7 @@ import io.hsar.mapgenerator.image.Palette
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
+import java.util.*
 
 class MapDrawingStoreTest {
 
@@ -23,7 +24,7 @@ class MapDrawingStoreTest {
         assertThat(store.state.preview, equalTo(preview))
         assertThat(store.state.drawings, equalTo(emptyList()))
 
-        store.upsert(DrawingSnapshot(MapPlacedObjectId(1L), preview))
+        store.upsert(DrawingSnapshot(MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000001")), preview))
 
         assertThat(store.state.preview, equalTo(null))
         assertThat(store.state.drawings.map { it.drawing }, equalTo(listOf(preview)))
@@ -37,7 +38,7 @@ class MapDrawingStoreTest {
             color = Palette.Colours.RED,
         )
 
-        store.upsert(DrawingSnapshot(MapPlacedObjectId(1L), drawing))
+        store.upsert(DrawingSnapshot(MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000001")), drawing))
         store.preview(CircleDrawing(MapDrawingPoint(5.0, 6.0), 0.25, Palette.Colours.RED))
         store.clearPreview()
 

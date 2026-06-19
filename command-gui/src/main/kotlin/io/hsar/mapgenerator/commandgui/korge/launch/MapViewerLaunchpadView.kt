@@ -49,7 +49,6 @@ internal class MapViewerLaunchpadView(
             width = BUTTON_WIDTH,
             height = BUTTON_HEIGHT,
             label = "Launch Existing Operation",
-            disabled = true,
             onClick = onLaunchExistingOperation,
         ).xy(buttonLeft, 212.0)
     }

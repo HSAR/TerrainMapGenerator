@@ -42,6 +42,7 @@ internal class MapViewerInteraction(
     private val mapWidth: Int,
     private val mapHeight: Int,
     private val gridLayer: GridLayer?,
+    private val initialViewport: CameraViewport? = null,
     private val currentTool: () -> MapViewerTool = { MapViewerTool.SELECT },
     private val currentDrawingMode: () -> MapDrawingMode = { MapDrawingMode.FREEFORM },
     private val drawingStore: MapDrawingStore = MapDrawingStore(),
@@ -68,7 +69,7 @@ internal class MapViewerInteraction(
     private var previousTool = MapViewerTool.SELECT
     private var previousDrawingMode = MapDrawingMode.FREEFORM
     private val cameraPanner = CameraPanner(
-        initialViewport = CameraViewport.centeredOnMap(
+        initialViewport = initialViewport ?: CameraViewport.centeredOnMap(
             geometry = geometry,
             mapWidth = mapWidth,
             mapHeight = mapHeight,

@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.grid
 
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
+import io.hsar.mapgenerator.grid.GridLayerPainter.normalFadeStart
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo

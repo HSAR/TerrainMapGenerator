@@ -6,13 +6,14 @@ import io.hsar.mapgenerator.image.Palette
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
+import java.util.*
 
 class PlacedDrawingTest {
 
     @Test
     fun `drawing context menu exposes delete only`() {
         val drawing = PlacedDrawing(
-            id = MapPlacedObjectId(1L),
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000001")),
             drawing = RectangleDrawing(
                 start = MapDrawingPoint(0.0, 0.0),
                 end = MapDrawingPoint(20.0, 10.0),
@@ -26,7 +27,7 @@ class PlacedDrawingTest {
     @Test
     fun `drawing hit testing uses normalized map coordinates`() {
         val drawing = PlacedDrawing(
-            id = MapPlacedObjectId(1L),
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000001")),
             drawing = RectangleDrawing(
                 start = MapDrawingPoint(0.10, 0.10),
                 end = MapDrawingPoint(0.14, 0.12),

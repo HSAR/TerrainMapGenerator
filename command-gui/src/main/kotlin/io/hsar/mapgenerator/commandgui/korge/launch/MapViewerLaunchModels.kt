@@ -1,8 +1,13 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
+import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
+import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import java.awt.image.BufferedImage
 import java.io.File
 
@@ -16,6 +21,7 @@ internal data class OperationMapImage(
     val name: String,
     val imagePath: String,
     val image: BufferedImage,
+    val assetSource: AssetSource? = null,
 )
 
 internal data class NewOperationDraft(
@@ -28,6 +34,8 @@ internal data class NewOperationDraft(
 internal data class OperationLaunchConfiguration(
     val settings: MapViewerSettings,
     val unitTemplates: List<MapViewerUnitTemplate>,
+    val initialLedgerEntries: List<LedgerEntry>,
+    val mapImage: OperationMapImage?,
 )
 
 internal class MapViewerLaunchFlow {
@@ -62,7 +70,12 @@ internal object OperationLaunchConfigurationFactory {
         baseSettings: MapViewerSettings,
     ): OperationLaunchConfiguration {
         val mapImage = draft.mapImage
-            ?: return OperationLaunchConfiguration(settings = baseSettings, unitTemplates = draft.unitTemplates)
+            ?: return OperationLaunchConfiguration(
+                settings = baseSettings,
+                unitTemplates = draft.unitTemplates,
+                initialLedgerEntries = draft.seededUnitTemplateEntries(),
+                mapImage = null,
+            )
 
         val staticLayer = StaticImageLayer(
             id = "operation-map-${File(mapImage.imagePath).absolutePath}",
@@ -82,6 +95,19 @@ internal object OperationLaunchConfigurationFactory {
                 metresPerPixel = draft.pixelsPerMetre,
             ),
             unitTemplates = draft.unitTemplates,
+            initialLedgerEntries = draft.seededUnitTemplateEntries(),
+            mapImage = mapImage,
         )
     }
 }
+
+private fun NewOperationDraft.seededUnitTemplateEntries(): List<LedgerEntry> =
+    unitTemplates.mapIndexed { index, template ->
+        CreateUnitTemplateAction(
+            UnitTemplateSnapshot(
+                id = UnitTemplateId(index + 1L),
+                template = template,
+                index = index,
+            ),
+        )
+    }

@@ -1,30 +1,31 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import com.fasterxml.jackson.databind.JsonNode
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingState
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
+import java.util.*
 
 internal class MapObjectController(
     private val unitManager: MapPlacedUnitManager,
     private val drawingStore: MapDrawingStore,
     private val onDrawingsChanged: (MapDrawingState) -> Unit = {},
     private val clearTransientState: () -> Unit = {},
+    private val uuidGenerator: () -> UUID = UUID::randomUUID,
 ) {
-    private var nextObjectId = 1L
-
     fun createUnit(
         template: MapViewerUnitTemplate,
         mapCoordinate: MapCoordinate,
         instanceName: String = template.name,
     ) = unitManager.buildSnapshot(
-        id = MapPlacedObjectId(nextObjectId++),
+        id = MapPlacedObjectId(uuidGenerator()),
         template = template,
         instanceName = instanceName,
         mapCoordinate = mapCoordinate,
     ).also(::createObject)
 
     fun createDrawing(drawing: MapDrawing) = DrawingSnapshot(
-        id = MapPlacedObjectId(nextObjectId++),
+        id = MapPlacedObjectId(uuidGenerator()),
         drawing = drawing,
     ).also(::createObject)
 
@@ -48,6 +49,12 @@ internal class MapObjectController(
             }
         }
         clearTransientState()
+    }
+
+    fun applyObjectEdit(id: MapPlacedObjectId, changes: Map<String, JsonNode?>) {
+        snapshot(id)
+            ?.let { MapPlacedObjectPatch.apply(it, changes) }
+            ?.let(::updateObject)
     }
 
     fun deleteObject(id: MapPlacedObjectId): MapPlacedObjectSnapshot? {

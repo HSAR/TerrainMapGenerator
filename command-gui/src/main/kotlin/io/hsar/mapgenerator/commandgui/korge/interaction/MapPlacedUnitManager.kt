@@ -29,7 +29,7 @@ internal class MapPlacedUnitManager(
     private val mapHeight: Int,
     private val gridLayer: GridLayer? = null,
     private val viewportProvider: () -> CameraViewport,
-    private val contextMenuManager: MapPlacedObjectContextMenuManager,
+    private val contextMenuManager: ContextMenuManager,
     private val canInteractWithUnits: () -> Boolean = { true },
     private val onObjectMoved: (MapPlacedObjectSnapshot, MapPlacedObjectSnapshot) -> Unit = { _, _ -> },
     private val onObjectDeleted: (MapPlacedObjectSnapshot) -> Unit = {},
@@ -256,9 +256,18 @@ internal class MapPlacedUnitManager(
             initialDestroyed = unit.destroyed,
             onSave = save@{ newName, newPositionX, newPositionY, newDestroyed ->
                 val before = unit.snapshot()
-                val updatedCoordinate = referenceToMapCoordinate(newPositionX, newPositionY) ?: return@save
                 val nameChanged = newName != unit.instanceName
-                val positionChanged = updatedCoordinate != unit.mapCoordinate
+                val positionChanged = newPositionX.trim() != position.easting.trim() ||
+                        newPositionY.trim() != position.northing.trim()
+                val updatedCoordinate = UnitEditPositionResolver.resolve(
+                    currentCoordinate = unit.mapCoordinate,
+                    initialPositionX = position.easting,
+                    initialPositionY = position.northing,
+                    newPositionX = newPositionX,
+                    newPositionY = newPositionY,
+                ) { easting, northing ->
+                    referenceToMapCoordinate(easting, northing)
+                } ?: return@save
                 val destroyedChanged = newDestroyed != unit.destroyed
                 if (nameChanged || positionChanged || destroyedChanged) {
                     unit.instanceName = newName
@@ -508,4 +517,20 @@ internal class MapPlacedUnitManager(
         const val UNIT_ICON_WIDTH_METRES = 250.0
         const val DRAG_PREVIEW_Z_INDEX = 15_000.0
     }
+}
+
+internal object UnitEditPositionResolver {
+    fun resolve(
+        currentCoordinate: MapCoordinate,
+        initialPositionX: String,
+        initialPositionY: String,
+        newPositionX: String,
+        newPositionY: String,
+        parse: (String, String) -> MapCoordinate?,
+    ): MapCoordinate? =
+        if (newPositionX.trim() == initialPositionX.trim() && newPositionY.trim() == initialPositionY.trim()) {
+            currentCoordinate
+        } else {
+            parse(newPositionX, newPositionY)
+        }
 }

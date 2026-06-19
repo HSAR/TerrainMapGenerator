@@ -1,6 +1,11 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.ContextMenuManager
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapContextMenuTarget
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectMenuAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.image.color.RGBA
@@ -23,6 +28,9 @@ internal class MapViewerSidebar(
     viewportWidth: Int,
     viewportHeight: Int,
     private val onUnitDropped: (MapViewerUnitTemplate, Vector2D) -> Unit,
+    private val contextMenuManager: ContextMenuManager? = null,
+    private val onUnitTemplateCreated: (UnitTemplateSnapshot) -> Unit = {},
+    private val onUnitTemplateDeleted: (UnitTemplateSnapshot) -> Unit = {},
     private val canStartUnitDrag: () -> Boolean = { true },
     initialUnitTemplates: List<MapViewerUnitTemplate> = MapViewerUnitTemplateFactory.defaults(),
 ) {
@@ -34,11 +42,15 @@ internal class MapViewerSidebar(
     private val toggleButton = overlay.container()
     private val dragLayer = overlay.container()
     private val labelRenderer = MapViewerTextBitmapRenderer
-    private val unitTemplates = initialUnitTemplates.toMutableList()
+    private val unitTemplates = initialUnitTemplates.mapIndexed { index, template ->
+        UnitTemplateRow(UnitTemplateId((index + 1).toLong()), template)
+    }.toMutableList()
     private var collapsed = false
     private var dragState: DragState? = null
+    private var lastDragPointer: Vector2D? = null
     private var createUnitDialog: MapViewerUnitCreateDialog? = null
     private var layout = MapViewerSidebarLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
+    private var nextUnitTemplateId = unitTemplates.size.toLong() + 1
 
     internal val isUnitDragging: Boolean
         get() = dragState != null
@@ -82,9 +94,47 @@ internal class MapViewerSidebar(
     fun blocksScreenPoint(point: Vector2D): Boolean =
         isUnitDialogOpen || layout.blocks(point)
 
-    fun addUnitTemplate(template: MapViewerUnitTemplate) {
-        unitTemplates += template
+    fun addUnitTemplate(template: MapViewerUnitTemplate, index: Int = unitTemplates.size, notify: Boolean = true): UnitTemplateSnapshot {
+        val insertionIndex = index.coerceIn(0, unitTemplates.size)
+        return addUnitTemplate(
+            snapshot = UnitTemplateSnapshot(
+                id = UnitTemplateId(nextUnitTemplateId++),
+                template = template,
+                index = insertionIndex,
+            ),
+            notify = notify,
+        )
+    }
+
+    fun addUnitTemplate(snapshot: UnitTemplateSnapshot, notify: Boolean = true): UnitTemplateSnapshot {
+        val insertionIndex = snapshot.index.coerceIn(0, unitTemplates.size)
+        val row = UnitTemplateRow(snapshot.id, snapshot.template)
+        unitTemplates.add(insertionIndex, row)
         relayout(layoutViewportWidth(), layoutViewportHeight())
+        return row.snapshot(insertionIndex).also {
+            nextUnitTemplateId = maxOf(nextUnitTemplateId, snapshot.id.value + 1)
+            if (notify) onUnitTemplateCreated(it)
+        }
+    }
+
+    fun removeUnitTemplate(id: UnitTemplateId, notify: Boolean = true): UnitTemplateSnapshot? {
+        val index = unitTemplates.indexOfFirst { it.id == id }
+        if (index < 0) {
+            return null
+        }
+
+        val removed = unitTemplates.removeAt(index)
+        relayout(layoutViewportWidth(), layoutViewportHeight())
+        return removed.snapshot(index).also { if (notify) onUnitTemplateDeleted(it) }
+    }
+
+    fun snapshotUnitTemplate(id: UnitTemplateId): UnitTemplateSnapshot? {
+        val index = unitTemplates.indexOfFirst { it.id == id }
+        return unitTemplates.getOrNull(index)?.snapshot(index)
+    }
+
+    fun seedNextUnitTemplateId(nextId: Long) {
+        nextUnitTemplateId = maxOf(nextUnitTemplateId, nextId)
     }
 
     private fun relayout(viewportWidth: Int, viewportHeight: Int) {
@@ -127,14 +177,14 @@ internal class MapViewerSidebar(
 
             unitList.removeChildren()
             unitList.xy(0.0, HEADER_HEIGHT + HEADER_GAP)
-            unitTemplates.forEachIndexed { index, template ->
-                addUnitSource(unitList, template, index)
+            unitTemplates.forEachIndexed { index, row ->
+                addUnitSource(unitList, row, index)
             }
         }
 
     }
 
-    private fun addUnitSource(parent: Container, template: MapViewerUnitTemplate, index: Int) {
+    private fun addUnitSource(parent: Container, row: UnitTemplateRow, index: Int) {
         val itemWidth = MapViewerSidebarLayoutBuilder.PANEL_WIDTH - (CONTENT_PADDING * 2)
         val itemTop = index * (UNIT_ITEM_HEIGHT + UNIT_ITEM_GAP)
         val iconSlotWidth = 40.0
@@ -142,10 +192,13 @@ internal class MapViewerSidebar(
         val item = parent.container()
 
         item.xy(0.0, itemTop.toDouble())
-        item.mouse {
+        val hitbox = item.solidRect(itemWidth, UNIT_ITEM_HEIGHT, RGBA(0, 0, 0, 0))
+        hitbox.mouse {
             onDown {
                 if (button == MouseButton.LEFT) {
-                    beginDrag(template)
+                    beginDrag(row.template)
+                } else if (button == MouseButton.RIGHT) {
+                    openContextMenu(row, currentPosGlobal)
                 }
             }
         }
@@ -160,13 +213,13 @@ internal class MapViewerSidebar(
         val iconFrame = item.container()
         iconFrame.xy(iconInset, (UNIT_ITEM_HEIGHT - iconSize) * 0.5)
         iconFrame.solidRect(iconSlotWidth, iconSize, RGBA(0, 0, 0, 0))
-        val fittedIcon = MapViewerIconFit.inside(template.bitmap, iconSlotWidth, iconSize)
-        iconFrame.image(template.bitmap) {
+        val fittedIcon = MapViewerIconFit.inside(row.template.bitmap, iconSlotWidth, iconSize)
+        iconFrame.image(row.template.bitmap) {
             scale = fittedIcon.scale
             x = fittedIcon.x
             y = fittedIcon.y
         }
-        item.image(labelRenderer.render(template.name, Palette.Fonts.MAIN.first, Palette.Colours.WHITE)) {
+        item.image(labelRenderer.render(row.template.name, Palette.Fonts.MAIN.first, Palette.Colours.WHITE)) {
             x = iconInset + iconSlotWidth + 4.0
             y = (UNIT_ITEM_HEIGHT - height) * 0.5
         }
@@ -210,24 +263,24 @@ internal class MapViewerSidebar(
         }
 
         dragState = DragState(template = template, preview = preview)
+        lastDragPointer = null
     }
 
     private fun updateDrag(input: korlibs.korge.input.Input?) {
         val state = dragState ?: return
-        val mouse = input?.mousePos ?: return
+        val mouse = input?.mousePos?.also { lastDragPointer = it } ?: lastDragPointer ?: return
 
         state.preview.xy(mouse.x + PREVIEW_OFFSET_X, mouse.y + PREVIEW_OFFSET_Y)
 
-        if (input.mouseButtonPressed(MouseButton.LEFT)) {
+        if (input?.mouseButtonPressed(MouseButton.LEFT) == true) {
             return
         }
 
-        if (mouse.x >= 0.0 && mouse.y >= 0.0) {
-            onUnitDropped(state.template, mouse)
-        }
+        onUnitDropped(state.template, mouse)
 
         state.preview.removeFromParent()
         dragState = null
+        lastDragPointer = null
     }
 
     private fun openCreateUnitDialog() {
@@ -238,13 +291,76 @@ internal class MapViewerSidebar(
         val stage = overlay.stage ?: return
         createUnitDialog = MapViewerUnitCreateDialog(
             root = overlay,
-            onCreated = ::addUnitTemplate,
+            dialogTitle = "Create Unit Type",
+            confirmLabel = "Create",
+            onCreated = { template ->
+                addUnitTemplate(template)
+                Unit
+            },
             onDismiss = {
                 createUnitDialog = null
             },
         ).also {
             it.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
         }
+    }
+
+    private fun openEditUnitDialog(row: UnitTemplateRow) {
+        if (createUnitDialog != null) {
+            return
+        }
+
+        val stage = overlay.stage ?: return
+        createUnitDialog = MapViewerUnitCreateDialog(
+            root = overlay,
+            dialogTitle = "Edit Unit Type",
+            confirmLabel = "Save",
+            initialTemplate = row.template,
+            onCreated = { template ->
+                replaceUnitTemplate(row.id, template)
+                Unit
+            },
+            onDismiss = {
+                createUnitDialog = null
+            },
+        ).also {
+            it.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
+        }
+    }
+
+    private fun replaceUnitTemplate(id: UnitTemplateId, template: MapViewerUnitTemplate) {
+        val index = unitTemplates.indexOfFirst { it.id == id }
+        if (index < 0) {
+            return
+        }
+
+        unitTemplates[index] = unitTemplates[index].copy(template = template)
+        relayout(layoutViewportWidth(), layoutViewportHeight())
+    }
+
+    private fun openContextMenu(row: UnitTemplateRow, screenPoint: Vector2D) {
+        val manager = contextMenuManager ?: return
+        val index = unitTemplates.indexOfFirst { it.id == row.id }
+        if (index < 0) {
+            return
+        }
+
+        manager.open(
+            target = object : MapContextMenuTarget {
+                override fun contextMenuActions(): List<MapPlacedObjectMenuAction> =
+                    listOf(
+                        MapPlacedObjectMenuAction(
+                            label = "Edit Unit Type",
+                            onSelected = { openEditUnitDialog(row) },
+                        ),
+                        MapPlacedObjectMenuAction(
+                            label = "Delete Unit Type",
+                            onSelected = { removeUnitTemplate(row.id) },
+                        ),
+                    )
+            },
+            screenPoint = screenPoint,
+        )
     }
 
     private fun layoutViewportWidth(): Int =
@@ -257,6 +373,14 @@ internal class MapViewerSidebar(
         val template: MapViewerUnitTemplate,
         val preview: Container,
     )
+
+    private data class UnitTemplateRow(
+        val id: UnitTemplateId,
+        val template: MapViewerUnitTemplate,
+    ) {
+        fun snapshot(index: Int): UnitTemplateSnapshot =
+            UnitTemplateSnapshot(id = id, template = template, index = index)
+    }
 
     private companion object {
         const val CONTENT_PADDING = 20.0

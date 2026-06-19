@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
@@ -25,12 +26,16 @@ import javax.swing.filechooser.FileNameExtensionFilter
 @OptIn(KorgeExperimental::class)
 internal class MapViewerUnitCreateDialog(
     private val root: Container,
+    private val dialogTitle: String = "Create Unit Type",
+    private val confirmLabel: String = "Create",
+    private val initialTemplate: MapViewerUnitTemplate? = null,
     private val onCreated: (MapViewerUnitTemplate) -> Unit,
     private val onDismiss: () -> Unit,
 ) {
     private val layer = root.container()
     private val labelRenderer = MapViewerTextBitmapRenderer
     private var selectedBitmap: Bitmap32? = null
+    private var selectedAssetSource: AssetSource? = null
     private var previewImage: Image? = null
     private var isOpen = false
 
@@ -65,13 +70,13 @@ internal class MapViewerUnitCreateDialog(
         val content = panel.container()
         content.xy(20.0, 18.0)
 
-        content.image(labelRenderer.render("Create Unit Type", Palette.Fonts.STRONG.first, Palette.Colours.WHITE))
+        content.image(labelRenderer.render(dialogTitle, Palette.Fonts.STRONG.first, Palette.Colours.WHITE))
 
         val nameLabel = content.container()
         nameLabel.xy(0.0, 42.0)
         nameLabel.image(labelRenderer.render("Name", Palette.Fonts.MAIN.first, Palette.Colours.WHITE))
 
-        val nameInput = content.uiTextInput("Unit Type Name", Size2D(260.0, 32.0)).apply {
+        val nameInput = content.uiTextInput(initialTemplate?.name ?: "Unit Type Name", Size2D(260.0, 32.0)).apply {
             xy(0.0, 68.0)
             skin = ViewRenderer { }
             padding = Margin(4f, 3f, 3f, 3f)
@@ -96,6 +101,24 @@ internal class MapViewerUnitCreateDialog(
             y = (PREVIEW_HEIGHT - height) * 0.5
         }
 
+        initialTemplate?.let { template ->
+            selectedBitmap = template.bitmap
+            selectedAssetSource = template.assetSource
+            previewFrame.removeChildren()
+            previewFrame.solidRect(PREVIEW_WIDTH, PREVIEW_HEIGHT, RGBA(255, 255, 255, 255))
+            previewFrame.solidRect(PREVIEW_WIDTH - 4.0, PREVIEW_HEIGHT - 4.0, toRgba(Palette.Colours.DARK)) {
+                x = 2.0
+                y = 2.0
+            }
+            val fittedIcon = MapViewerIconFit.inside(template.bitmap, PREVIEW_WIDTH - 12.0, PREVIEW_HEIGHT - 12.0)
+            previewImage = previewFrame.image(template.bitmap) {
+                scale = fittedIcon.scale
+                x = 6.0 + fittedIcon.x
+                y = 6.0 + fittedIcon.y
+            }
+            previewPlaceholder.removeFromParent()
+        }
+
         val statusLabel = content.container()
         statusLabel.xy(0.0, 196.0)
 
@@ -109,6 +132,7 @@ internal class MapViewerUnitCreateDialog(
             }
 
             selectedBitmap = bitmap
+            selectedAssetSource = AssetSource.fromFile(file)
             previewFrame.removeChildren()
             previewFrame.solidRect(PREVIEW_WIDTH, PREVIEW_HEIGHT, RGBA(255, 255, 255, 255))
             previewFrame.solidRect(PREVIEW_WIDTH - 4.0, PREVIEW_HEIGHT - 4.0, toRgba(Palette.Colours.DARK)) {
@@ -127,14 +151,14 @@ internal class MapViewerUnitCreateDialog(
 
         val createButton = content.container()
         createButton.xy(160.0, 228.0)
-        buildButton(createButton, 120.0, 40.0, "Create") {
+        buildButton(createButton, 120.0, 40.0, confirmLabel) {
             val name = nameInput.text.trim()
             val bitmap = selectedBitmap
             when {
                 name.isBlank() -> showStatus(statusLabel, "Enter a type name")
                 bitmap == null -> showStatus(statusLabel, "Choose an image")
                 else -> {
-                    onCreated(MapViewerUnitTemplate(name = name, bitmap = bitmap))
+                    onCreated(MapViewerUnitTemplate(name = name, bitmap = bitmap, assetSource = selectedAssetSource))
                     close()
                 }
             }

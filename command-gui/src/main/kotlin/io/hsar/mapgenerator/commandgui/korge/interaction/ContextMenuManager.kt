@@ -15,7 +15,7 @@ import korlibs.korge.view.xy
 import korlibs.math.geom.Vector2D
 
 @OptIn(KorgeInternal::class)
-internal class MapPlacedObjectContextMenuManager(
+internal class ContextMenuManager(
     private val root: Container,
 ) {
     private val layer = root.container()
@@ -49,7 +49,7 @@ internal class MapPlacedObjectContextMenuManager(
         state?.let { true } ?: false
 
     fun open(
-        target: MapPlacedObject,
+        target: MapContextMenuTarget,
         screenPoint: Vector2D,
         actions: List<MapPlacedObjectMenuAction> = target.contextMenuActions(),
         onActionSelected: () -> Unit = {},

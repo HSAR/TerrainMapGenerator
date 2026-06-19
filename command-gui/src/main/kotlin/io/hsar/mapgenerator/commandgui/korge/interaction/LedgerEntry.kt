@@ -1,0 +1,156 @@
+package io.hsar.mapgenerator.commandgui.korge.interaction
+
+import com.fasterxml.jackson.databind.JsonNode
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
+import java.util.UUID
+import kotlin.collections.ArrayDeque
+import kotlin.collections.List
+import kotlin.collections.Map
+import kotlin.collections.isNotEmpty
+import kotlin.collections.toList
+
+internal data class MapPlacedObjectId(
+    val value: UUID,
+)
+
+internal sealed interface MapPlacedObjectSnapshot {
+    val id: MapPlacedObjectId
+}
+
+internal data class UnitSnapshot(
+    override val id: MapPlacedObjectId,
+    val template: MapViewerUnitTemplate,
+    val instanceName: String,
+    val destroyed: Boolean,
+    val mapCoordinate: MapCoordinate,
+    val normalizedWidth: Double,
+    val normalizedHeight: Double,
+) : MapPlacedObjectSnapshot
+
+internal data class DrawingSnapshot(
+    override val id: MapPlacedObjectId,
+    val drawing: MapDrawing,
+) : MapPlacedObjectSnapshot
+
+internal data class UnitTemplateId(
+    val value: Long,
+)
+
+internal data class UnitTemplateSnapshot(
+    val id: UnitTemplateId,
+    val template: MapViewerUnitTemplate,
+    val index: Int,
+)
+
+internal interface LedgerController {
+    fun createObject(snapshot: MapPlacedObjectSnapshot)
+
+    fun applyObjectEdit(id: MapPlacedObjectId, changes: Map<String, JsonNode?>)
+
+    fun deleteObject(id: MapPlacedObjectId): MapPlacedObjectSnapshot?
+
+    fun createUnitTemplate(snapshot: UnitTemplateSnapshot)
+
+    fun deleteUnitTemplate(id: UnitTemplateId): UnitTemplateSnapshot?
+}
+
+internal interface LedgerEntry {
+    fun undo(controller: LedgerController)
+
+    fun redo(controller: LedgerController)
+}
+
+internal data class CreateObjectAction(
+    val snapshot: MapPlacedObjectSnapshot,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) {
+        controller.deleteObject(snapshot.id)
+    }
+
+    override fun redo(controller: LedgerController) {
+        controller.createObject(snapshot)
+    }
+}
+
+internal data class DeleteObjectAction(
+    val snapshot: MapPlacedObjectSnapshot,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) {
+        controller.createObject(snapshot)
+    }
+
+    override fun redo(controller: LedgerController) {
+        controller.deleteObject(snapshot.id)
+    }
+}
+
+internal data class EditObjectAction(
+    val objectId: MapPlacedObjectId,
+    val forward: Map<String, JsonNode?>,
+    val backward: Map<String, JsonNode?>,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) {
+        controller.applyObjectEdit(objectId, backward)
+    }
+
+    override fun redo(controller: LedgerController) {
+        controller.applyObjectEdit(objectId, forward)
+    }
+}
+
+internal data class CreateUnitTemplateAction(
+    val snapshot: UnitTemplateSnapshot,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) {
+        controller.deleteUnitTemplate(snapshot.id)
+    }
+
+    override fun redo(controller: LedgerController) {
+        controller.createUnitTemplate(snapshot)
+    }
+}
+
+internal data class DeleteUnitTemplateAction(
+    val snapshot: UnitTemplateSnapshot,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) {
+        controller.createUnitTemplate(snapshot)
+    }
+
+    override fun redo(controller: LedgerController) {
+        controller.deleteUnitTemplate(snapshot.id)
+    }
+}
+
+internal class MapActionHistory {
+    private val undoStack = ArrayDeque<LedgerEntry>()
+    private val redoStack = ArrayDeque<LedgerEntry>()
+
+    val canUndo: Boolean
+        get() = undoStack.isNotEmpty()
+
+    val canRedo: Boolean
+        get() = redoStack.isNotEmpty()
+
+    val appliedEntries: List<LedgerEntry>
+        get() = undoStack.toList()
+
+    fun record(action: LedgerEntry) {
+        undoStack.addLast(action)
+        redoStack.clear()
+    }
+
+    fun undo(controller: LedgerController): Boolean {
+        val action = undoStack.removeLastOrNull() ?: return false
+        action.undo(controller)
+        redoStack.addLast(action)
+        return true
+    }
+
+    fun redo(controller: LedgerController): Boolean {
+        val action = redoStack.removeLastOrNull() ?: return false
+        action.redo(controller)
+        undoStack.addLast(action)
+        return true
+    }
+}

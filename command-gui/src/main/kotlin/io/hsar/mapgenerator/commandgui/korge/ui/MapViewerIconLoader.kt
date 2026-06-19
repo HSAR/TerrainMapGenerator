@@ -4,7 +4,9 @@ import korlibs.image.awt.toBMP32
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import korlibs.image.vector.format.SVG
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.nio.charset.StandardCharsets
 import javax.imageio.ImageIO
 import kotlin.math.roundToInt
 
@@ -15,13 +17,38 @@ internal object MapViewerIconLoader {
             else -> loadRaster(file)
         }
 
+    fun load(bytes: ByteArray, fileName: String): Bitmap32? =
+        when (fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()) {
+            "svg" -> loadSvg(bytes)
+            else -> loadRaster(bytes)
+        }
+
     private fun loadRaster(file: File): Bitmap32? {
         val image = ImageIO.read(file) ?: return null
         return image.toBMP32().premultipliedIfRequired().trimTransparentBounds()
     }
 
+    private fun loadRaster(bytes: ByteArray): Bitmap32? {
+        val image = ImageIO.read(ByteArrayInputStream(bytes)) ?: return null
+        return image.toBMP32().premultipliedIfRequired().trimTransparentBounds()
+    }
+
     private fun loadSvg(file: File): Bitmap32? = runCatching {
         val svg = SVG(file.readText())
+        val width = renderDimension(svg.width, svg.dwidth)
+        val height = renderDimension(svg.height, svg.dheight)
+        val bitmap = Bitmap32(width, height) { _: Int, _: Int -> RGBA(0, 0, 0, 0) }
+        val ctx = bitmap.getContext2d(true)
+        try {
+            ctx.draw(svg)
+        } finally {
+            ctx.close()
+        }
+        bitmap.premultipliedIfRequired().trimTransparentBounds()
+    }.getOrNull()
+
+    private fun loadSvg(bytes: ByteArray): Bitmap32? = runCatching {
+        val svg = SVG(String(bytes, StandardCharsets.UTF_8))
         val width = renderDimension(svg.width, svg.dwidth)
         val height = renderDimension(svg.height, svg.dheight)
         val bitmap = Bitmap32(width, height) { _: Int, _: Int -> RGBA(0, 0, 0, 0) }
