@@ -144,6 +144,12 @@ class OperationSaveRoundTripTest {
 
         ZipFile(secondSave.toFile()).use { zip ->
             assertThat(zip.getEntry("assets/$operationId.jpg") != null, equalTo(true))
+            assertThat(
+                zip.entries().asSequence().any { entry ->
+                    !entry.isDirectory && entry.name.startsWith("assets/") && entry.name.endsWith(".svg")
+                },
+                equalTo(true),
+            )
         }
     }
 

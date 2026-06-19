@@ -7,6 +7,7 @@ internal data class AssetSource(
     val originalFilename: String,
     val extension: String,
     val mediaType: String,
+    val embeddedBytes: ByteArray? = null,
 ) {
     fun file(): File = File(path)
 
@@ -18,6 +19,20 @@ internal data class AssetSource(
                 extension = file.extension.lowercase(),
                 mediaType = mediaTypeForExtension(file.extension),
             )
+
+        fun fromEmbeddedBytes(
+            fileName: String,
+            bytes: ByteArray,
+        ): AssetSource {
+            val extension = fileName.substringAfterLast('.', "").lowercase()
+            return AssetSource(
+                path = "",
+                originalFilename = fileName,
+                extension = extension,
+                mediaType = mediaTypeForExtension(extension),
+                embeddedBytes = bytes,
+            )
+        }
 
         fun mediaTypeForExtension(extension: String): String =
             when (extension.lowercase()) {

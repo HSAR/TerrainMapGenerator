@@ -138,16 +138,17 @@ internal class OperationAssetRegistry(
         ).also(registeredAssets::add)
 
     private fun AssetSource.existingFileAsset(role: String): RegisteredAsset? {
-        val file = file().takeIf { it.isFile } ?: return null
+        val file = file().takeIf { path.isNotBlank() && it.isFile }
+        val extension = extension.ifBlank { file?.extension?.lowercase().orEmpty() }.ifBlank { "bin" }
+        val bytes = embeddedBytes ?: file?.toPath()?.let(Files::readAllBytes) ?: return null
         val id = uuidGenerator()
-        val extension = extension.ifBlank { file.extension.lowercase() }.ifBlank { "bin" }
         return RegisteredAsset(
             id = id,
             path = "assets/$id.$extension",
             mediaType = mediaType,
             role = role,
             originalFilename = originalFilename,
-            bytes = Files.readAllBytes(file.toPath()),
+            bytes = bytes,
         ).also(registeredAssets::add)
     }
 

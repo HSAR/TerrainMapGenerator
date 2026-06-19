@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.save
 
+import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
 import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
@@ -204,7 +205,14 @@ private class RuntimeLedgerReplayer(
             val bytes = zip.getInputStream(entry).use { it.readBytes() }
             val bitmap = MapViewerIconLoader.load(bytes, entry.name)
                 ?: error("Unable to load template asset ${entry.name}")
-            MapViewerUnitTemplate(name = name, bitmap = bitmap)
+            MapViewerUnitTemplate(
+                name = name,
+                bitmap = bitmap,
+                assetSource = AssetSource.fromEmbeddedBytes(
+                    fileName = entry.name.substringAfterLast('/'),
+                    bytes = bytes,
+                ),
+            )
         }
 
     private fun resolveAssetEntry(zip: ZipFile, assetId: String): ZipEntry {

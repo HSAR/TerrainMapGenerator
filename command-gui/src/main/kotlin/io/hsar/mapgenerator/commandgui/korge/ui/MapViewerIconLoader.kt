@@ -34,9 +34,10 @@ internal object MapViewerIconLoader {
     }
 
     private fun loadSvg(file: File): Bitmap32? = runCatching {
-        val svg = SVG(file.readText())
-        val width = renderDimension(svg.width, svg.dwidth)
-        val height = renderDimension(svg.height, svg.dheight)
+        val source = file.readText()
+        val svg = SVG(source)
+        val width = source.explicitSvgDimension("width") ?: renderDimension(svg.width, svg.dwidth)
+        val height = source.explicitSvgDimension("height") ?: renderDimension(svg.height, svg.dheight)
         val bitmap = Bitmap32(width, height) { _: Int, _: Int -> RGBA(0, 0, 0, 0) }
         val ctx = bitmap.getContext2d(true)
         try {
@@ -44,13 +45,14 @@ internal object MapViewerIconLoader {
         } finally {
             ctx.close()
         }
-        bitmap.premultipliedIfRequired().trimTransparentBounds()
+        bitmap.premultipliedIfRequired().trimTransparentBounds(padding = svgTrimPadding(bitmap.width, bitmap.height))
     }.getOrNull()
 
     private fun loadSvg(bytes: ByteArray): Bitmap32? = runCatching {
-        val svg = SVG(String(bytes, StandardCharsets.UTF_8))
-        val width = renderDimension(svg.width, svg.dwidth)
-        val height = renderDimension(svg.height, svg.dheight)
+        val source = String(bytes, StandardCharsets.UTF_8)
+        val svg = SVG(source)
+        val width = source.explicitSvgDimension("width") ?: renderDimension(svg.width, svg.dwidth)
+        val height = source.explicitSvgDimension("height") ?: renderDimension(svg.height, svg.dheight)
         val bitmap = Bitmap32(width, height) { _: Int, _: Int -> RGBA(0, 0, 0, 0) }
         val ctx = bitmap.getContext2d(true)
         try {
@@ -58,7 +60,7 @@ internal object MapViewerIconLoader {
         } finally {
             ctx.close()
         }
-        bitmap.premultipliedIfRequired().trimTransparentBounds()
+        bitmap.premultipliedIfRequired().trimTransparentBounds(padding = svgTrimPadding(bitmap.width, bitmap.height))
     }.getOrNull()
 
     private fun renderDimension(intValue: Int, doubleValue: Double): Int {
@@ -66,7 +68,19 @@ internal object MapViewerIconLoader {
         return preferred.coerceAtLeast(1)
     }
 
-    private fun Bitmap32.trimTransparentBounds(): Bitmap32 {
+    private fun String.explicitSvgDimension(attribute: String): Int? =
+        Regex("\\b$attribute\\s*=\\s*\"([0-9]+(?:\\.[0-9]+)?)(?:px)?\"")
+            .find(this)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toDoubleOrNull()
+            ?.roundToInt()
+            ?.coerceAtLeast(1)
+
+    private fun svgTrimPadding(width: Int, height: Int): Int =
+        (maxOf(width, height) * SVG_TRIM_PADDING_RATIO).roundToInt().coerceIn(SVG_TRIM_MIN_PADDING_PX, SVG_TRIM_MAX_PADDING_PX)
+
+    private fun Bitmap32.trimTransparentBounds(padding: Int = 0): Bitmap32 {
         var left = width
         var top = height
         var right = -1
@@ -88,7 +102,12 @@ internal object MapViewerIconLoader {
         return if (right < left || bottom < top) {
             this
         } else {
-            copySliceWithBounds(left, top, right + 1, bottom + 1)
+            copySliceWithBounds(
+                (left - padding).coerceAtLeast(0),
+                (top - padding).coerceAtLeast(0),
+                (right + padding + 1).coerceAtMost(width),
+                (bottom + padding + 1).coerceAtMost(height),
+            )
         }
     }
 
@@ -102,4 +121,8 @@ internal object MapViewerIconLoader {
                 (argb ushr 24) and 0xFF,
             )
         }
+
+    private const val SVG_TRIM_PADDING_RATIO = 0.04
+    private const val SVG_TRIM_MIN_PADDING_PX = 2
+    private const val SVG_TRIM_MAX_PADDING_PX = 12
 }

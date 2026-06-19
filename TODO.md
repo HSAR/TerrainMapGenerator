@@ -12,5 +12,4 @@
 
 ## Bugs
 
-- SVGs don't import correctly
 - Fonts are currently bitmap images
