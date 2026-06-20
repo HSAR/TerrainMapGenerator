@@ -73,7 +73,7 @@ internal class OperationSaveCatalogue {
                 argb and 0xFF,
                 (argb ushr 24) and 0xFF,
             )
-        }
+        }.premultipliedIfRequired()
 
     private companion object {
         const val GAME_JSON = "game.json"

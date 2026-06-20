@@ -39,25 +39,25 @@ class MapViewerSettingsTest {
     }
 
     @Test
-    fun `window title includes dimensions and zoom`() {
+    fun `window title uses the launchpad title when no operation name is present`() {
         val settings = MapViewerSettings(
             width = 800,
             height = 600,
             zoom = 1.5,
         )
 
-        assertThat(settings.windowTitle(), equalTo("Operational Command Tool - 800x600px - 150%"))
+        assertThat(settings.windowTitle(), equalTo("Operational Command Tool - Launchpad"))
     }
 
     @Test
-    fun `window title can be formatted for an explicit zoom`() {
+    fun `window title ignores explicit zoom values`() {
         val settings = MapViewerSettings(
             width = 800,
             height = 600,
             zoom = 1.0,
         )
 
-        assertThat(settings.windowTitle(2.0), equalTo("Operational Command Tool - 800x600px - 200%"))
+        assertThat(settings.windowTitle(), equalTo("Operational Command Tool - Launchpad"))
     }
 
     @Test
@@ -68,6 +68,6 @@ class MapViewerSettingsTest {
             height = 600,
         )
 
-        assertThat(settings.windowTitle(), equalTo("Operation Copperhead - Operational Command Tool - 800x600px - 100%"))
+        assertThat(settings.windowTitle(), equalTo("Operational Command Tool - Operation Copperhead"))
     }
 }

@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.scene
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
+import io.hsar.mapgenerator.commandgui.MapViewerWindowTitle
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingManager
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
@@ -57,6 +58,7 @@ import korlibs.korge.view.image
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Size2D
+import korlibs.render.awt.AwtGameWindow
 import kotlinx.coroutines.runBlocking
 import java.awt.Toolkit
 import java.nio.file.Files
@@ -64,6 +66,7 @@ import java.nio.file.Path
 import java.time.Instant
 import java.util.*
 import javax.swing.JFileChooser
+import javax.swing.JFrame
 import javax.swing.filechooser.FileNameExtensionFilter
 import kotlin.concurrent.thread
 
@@ -83,14 +86,19 @@ internal class MapViewerScene(
                 Korge(
                     windowWidth = screenSize.width,
                     windowHeight = screenSize.height,
-                    title = "Operational Command Tool - Launchpad",
+                    fullscreen = false,
+                    title = MapViewerWindowTitle.format("Launchpad"),
                     displayMode = KorgeDisplayMode.TOP_LEFT_NO_CLIP,
                 ) {
+                    (gameWindow as? AwtGameWindow)?.frame?.extendedState = JFrame.MAXIMIZED_BOTH
                     val launchFlow = MapViewerLaunchFlow()
                     var launchpadView: MapViewerLaunchpadView? = null
                     var newOperationView: MapViewerNewOperationView? = null
                     lateinit var showLaunchpad: () -> Unit
                     lateinit var showNewOperation: () -> Unit
+                    val exitProgram = {
+                        gameWindow.exit(0)
+                    }
 
                     fun showViewer(
                         settings: MapViewerSettings,
@@ -121,7 +129,7 @@ internal class MapViewerScene(
                                 viewportHeight = gameWindow.height,
                             ),
                         )
-                        gameWindow.title = settings.windowTitle(currentViewport.zoom)
+                        gameWindow.title = settings.windowTitle()
 
                         var currentTool = MapViewerTool.SELECT
                         var currentDrawingMode = MapDrawingMode.FREEFORM
@@ -372,6 +380,7 @@ internal class MapViewerScene(
                                 sceneLayers.destroy()
                                 showLaunchpad()
                             },
+                            onExitProgram = exitProgram,
                         )
 
                         val startupLedgerEntries = loadedOperation?.ledgerEntries ?: initialLedgerEntries
@@ -468,7 +477,7 @@ internal class MapViewerScene(
                                 currentViewport = it
                                 drawingView.update(drawingStore.state, it.zoom)
                             },
-                            onTitleChanged = { gameWindow.title = settings.operationTitle(it) },
+                            onTitleChanged = {},
                             onOverlayStateChanged = { state ->
                                 gridLinesOverlay?.update(state)
                                 gridLabelsOverlay?.update(state)
@@ -524,6 +533,7 @@ internal class MapViewerScene(
                         launchFlow.createNewOperation()
                         launchpadView?.close()
                         launchpadView = null
+                        gameWindow.title = MapViewerWindowTitle.format("New Operation")
                         newOperationView = MapViewerNewOperationView(
                             root = views.stage,
                             viewportWidth = gameWindow.width,
@@ -532,6 +542,7 @@ internal class MapViewerScene(
                             initialPixelsPerMetre = initialSettings.metresPerPixel,
                             onLaunch = ::launchDraft,
                             onBack = { showLaunchpad() },
+                            onTitleChanged = { title -> gameWindow.title = MapViewerWindowTitle.format(title) },
                         )
                     }
 
@@ -539,6 +550,7 @@ internal class MapViewerScene(
                         launchFlow.returnToLaunchpad()
                         newOperationView?.close()
                         newOperationView = null
+                        gameWindow.title = MapViewerWindowTitle.format("Launchpad")
                         val saveDirectory = OperationSaveWriter().defaultSaveDirectory()
                         Files.createDirectories(saveDirectory)
                         val savedOperations = OperationSaveCatalogue().list(saveDirectory)
@@ -550,6 +562,8 @@ internal class MapViewerScene(
                             onCreateNewOperation = { showNewOperation() },
                             onLoadSavedOperation = { summary -> loadExistingOperation(summary.path) },
                             onOpenSavePicker = { browseForExistingOperation() },
+                            onExitProgram = exitProgram,
+                            onTitleChanged = { title -> gameWindow.title = MapViewerWindowTitle.format(title) },
                         )
                     }
 

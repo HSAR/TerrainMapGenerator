@@ -28,10 +28,11 @@ class MapViewerLaunchLayoutTest {
         val layout = MapViewerNewOperationLayoutBuilder.build(1600, 900)
 
         assertThat(layout.mapPanelBounds.left < layout.unitsPanelBounds.left, equalTo(true))
-        assertThat(layout.screenHeaderBounds.left, equalTo(36.0))
-        assertThat(layout.titleBounds.left, equalTo(580.0))
+        assertThat(layout.screenHeaderBounds.left, equalTo(280.0))
+        assertThat(layout.titleBounds.left, equalTo(280.0))
         assertThat(layout.operationNameBounds.left < layout.mapPanelBounds.right, equalTo(true))
         assertThat(layout.backButtonBounds.left < layout.launchButtonBounds.left, equalTo(true))
         assertThat(layout.launchButtonBounds.left > layout.unitsPanelBounds.left, equalTo(true))
+        assertThat(layout.launchButtonBounds.top, equalTo(132.0))
     }
 }

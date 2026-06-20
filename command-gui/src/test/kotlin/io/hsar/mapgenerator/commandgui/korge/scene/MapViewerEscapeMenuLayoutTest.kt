@@ -12,11 +12,12 @@ class MapViewerEscapeMenuLayoutTest {
         val layout = MapViewerEscapeMenuLayoutBuilder.build(1920, 1080)
 
         assertThat(layout.returnButtonBounds.width, equalTo(layout.closeButtonBounds.width))
+        assertThat(layout.returnButtonBounds.width, equalTo(layout.exitButtonBounds.width))
         assertThat(
-            layout.closeButtonBounds.top - (layout.returnButtonBounds.top + layout.returnButtonBounds.height),
+            layout.exitButtonBounds.top - (layout.returnButtonBounds.top + layout.returnButtonBounds.height),
             greaterThan(0.0),
         )
         assertThat(layout.panelBounds.left, closeTo(790.0, 0.1))
-        assertThat(layout.panelBounds.top, closeTo(448.0, 0.1))
+        assertThat(layout.panelBounds.top, closeTo(418.0, 0.1))
     }
 }

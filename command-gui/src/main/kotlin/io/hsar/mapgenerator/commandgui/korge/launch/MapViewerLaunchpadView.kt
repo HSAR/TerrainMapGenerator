@@ -27,6 +27,8 @@ internal class MapViewerLaunchpadView(
     private val onCreateNewOperation: () -> Unit,
     private val onLoadSavedOperation: (SavedOperationSummary) -> Unit,
     private val onOpenSavePicker: () -> Unit,
+    private val onExitProgram: () -> Unit,
+    private val onTitleChanged: (String) -> Unit = {},
 ) {
     private val layer = root.container()
     private var layout = MapViewerLaunchpadLayoutBuilder.build(viewportWidth, viewportHeight)
@@ -67,9 +69,19 @@ internal class MapViewerLaunchpadView(
         MapViewerLaunchpadTemplate.renderHeader(layer, layout.headerBounds)
 
         when (mode) {
-            LaunchpadMode.HOME -> renderHome(MapViewerLaunchUi.panel(layer, layout.homePanelBounds))
-            LaunchpadMode.EXISTING_OPERATIONS -> renderExistingOperations(MapViewerLaunchUi.panel(layer, layout.savePanelBounds))
+            LaunchpadMode.HOME -> renderHome(
+                MapViewerLaunchpadTemplate.renderScreenShell(layer, layout.homePanelBounds, screenTitle()),
+            )
+
+            LaunchpadMode.EXISTING_OPERATIONS -> renderExistingOperations(
+                MapViewerLaunchpadTemplate.renderScreenShell(layer, layout.savePanelBounds, screenTitle(), onBack = {
+                    mode = LaunchpadMode.HOME
+                    scrollOffset = 0.0
+                    rerender()
+                }),
+            )
         }
+        onTitleChanged(screenTitle())
     }
 
     private fun renderHome(panel: Container) {
@@ -91,18 +103,12 @@ internal class MapViewerLaunchpadView(
                 rerender()
             },
         ).xy(buttonLeft, 188.0)
+        MapViewerLaunchUi.button(panel, BUTTON_WIDTH, BUTTON_HEIGHT, "Exit", onClick = onExitProgram)
+            .xy(buttonLeft, 250.0)
     }
 
     private fun renderExistingOperations(panel: Container) {
         val bounds = layout.savePanelBounds
-        MapViewerTextViews.box(panel, "Ongoing Operations", bounds.width, 28.0, role = MapViewerFontRole.STRONG)
-            .xy(0.0, 34.0)
-
-        MapViewerLaunchUi.button(panel, 96.0, 36.0, "Back") {
-            mode = LaunchpadMode.HOME
-            rerender()
-        }.xy(24.0, 28.0)
-
         val listBounds = layout.saveListBounds
 
         val content = panel.container().also {
@@ -125,6 +131,7 @@ internal class MapViewerLaunchpadView(
             label = "Browse For Save File",
             onClick = onOpenSavePicker,
         ).xy((bounds.width - 280.0) * 0.5, bounds.height - BUTTON_HEIGHT - 24.0)
+
     }
 
     private fun renderSaveRow(parent: Container, summary: SavedOperationSummary, index: Int) {
@@ -214,6 +221,12 @@ internal class MapViewerLaunchpadView(
             layer.stage?.views?.gameWindow?.height ?: layout.viewportHeight.toInt(),
         )
     }
+
+    private fun screenTitle(): String =
+        when (mode) {
+            LaunchpadMode.HOME -> "Launchpad"
+            LaunchpadMode.EXISTING_OPERATIONS -> "Ongoing Operations"
+        }
 
     private fun formatTimestamp(instant: java.time.Instant): String =
         TIMESTAMP_FORMATTER.format(instant.atZone(ZoneId.systemDefault()))

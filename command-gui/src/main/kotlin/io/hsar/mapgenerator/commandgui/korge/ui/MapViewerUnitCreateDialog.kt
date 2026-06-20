@@ -7,16 +7,12 @@ import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
-import korlibs.korge.ui.uiTextInput
 import korlibs.korge.view.Container
 import korlibs.korge.view.Image
-import korlibs.korge.view.ViewRenderer
 import korlibs.korge.view.container
 import korlibs.korge.view.image
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
-import korlibs.math.geom.Margin
-import korlibs.math.geom.Size2D
 import java.awt.Color
 import java.io.File
 import javax.swing.JFileChooser
@@ -74,13 +70,7 @@ internal class MapViewerUnitCreateDialog(
         nameLabel.xy(0.0, 42.0)
         MapViewerTextViews.label(nameLabel, "Name", color = Palette.Colours.WHITE)
 
-        val nameInput = content.uiTextInput(initialTemplate?.name ?: "Unit Type Name", Size2D(260.0, 32.0)).apply {
-            xy(0.0, 68.0)
-            skin = ViewRenderer { }
-            padding = Margin(4f, 3f, 3f, 3f)
-            controller.textColor = RGBA(255, 255, 255, 255)
-            font = MapViewerKorgeFonts.font(MapViewerFontRole.MAIN)
-        }
+        val nameInput = MapViewerTextInputs.input(content, initialTemplate?.name ?: "Unit Type Name", 260.0, 32.0, 0.0, 68.0)
 
         val imageLabel = content.container()
         imageLabel.xy(0.0, 114.0)

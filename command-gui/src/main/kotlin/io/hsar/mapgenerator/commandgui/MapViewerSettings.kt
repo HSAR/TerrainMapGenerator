@@ -14,11 +14,8 @@ data class MapViewerSettings(
     val height: Int = 1080,
     val seed: Long = System.currentTimeMillis(),
 ) {
-    fun windowTitle(zoom: Double = this.zoom): String =
-        listOfNotNull(
-            operationName?.takeIf { it.isNotBlank() },
-            "Operational Command Tool - ${width}x${height}px - ${formatZoom(zoom)}",
-        ).joinToString(" - ")
+    fun windowTitle(): String =
+        MapViewerWindowTitle.format(operationName?.takeIf { it.isNotBlank() } ?: "Launchpad")
 
     fun withZoom(factor: Double): MapViewerSettings =
         copy(zoom = (zoom * factor).coerceIn(MIN_ZOOM, MAX_ZOOM))
@@ -26,7 +23,5 @@ data class MapViewerSettings(
     companion object {
         const val MIN_ZOOM = 0.5
         const val MAX_ZOOM = 4.0
-
-        private fun formatZoom(value: Double) = "${(value * 100).toInt()}%"
     }
 }

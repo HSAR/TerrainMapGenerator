@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
+import korlibs.image.text.TextAlignment
 import korlibs.korge.view.Container
 import korlibs.korge.view.xy
 
@@ -20,30 +21,34 @@ internal object MapViewerLaunchpadTemplate {
             width = headerBounds.width,
             height = headerBounds.height,
             role = MapViewerFontRole.STRONG,
-            size = 20.0 * HEADER_TITLE_SCALE,
+            size = 34.0,
+            color = java.awt.Color.WHITE,
+            alignment = TextAlignment.MIDDLE_CENTER,
         )
     }
 
-    fun renderScreenHeader(
+    fun renderScreenShell(
         parent: Container,
         bounds: ScreenBounds,
         title: String,
-        onBack: () -> Unit,
-    ) {
+        onBack: (() -> Unit)? = null,
+    ): Container {
         val header = MapViewerLaunchUi.panel(parent, bounds)
         MapViewerTextViews.box(
             parent = header,
             text = title,
             width = bounds.width,
-            height = bounds.height,
+            height = 56.0,
             role = MapViewerFontRole.STRONG,
-            size = 20.0 * SCREEN_TITLE_SCALE,
-        )
-        MapViewerLaunchUi.button(header, 120.0, 42.0, "Back") {
-            onBack()
-        }.xy(20.0, (bounds.height - 42.0) * 0.5)
+            size = 34.0,
+            color = java.awt.Color.WHITE,
+            alignment = TextAlignment.TOP_CENTER,
+        ).xy(0.0, 10.0)
+        onBack?.let {
+            MapViewerLaunchUi.backButton(header) {
+                it()
+            }.xy(20.0, 16.0)
+        }
+        return header
     }
-
-    private const val HEADER_TITLE_SCALE = 1.9
-    private const val SCREEN_TITLE_SCALE = 1.55
 }

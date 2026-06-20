@@ -3,10 +3,9 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconFit
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerKorgeFonts
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputs
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
@@ -16,17 +15,13 @@ import korlibs.image.color.RGBA
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
 import korlibs.korge.ui.UITextInput
-import korlibs.korge.ui.uiTextInput
 import korlibs.korge.view.Container
-import korlibs.korge.view.ViewRenderer
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
 import korlibs.korge.view.image
 import korlibs.korge.view.onStageResized
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
-import korlibs.math.geom.Margin
-import korlibs.math.geom.Size2D
 import korlibs.math.geom.Vector2D
 import java.awt.image.BufferedImage
 import java.io.File
@@ -43,6 +38,7 @@ internal class MapViewerNewOperationView(
     initialPixelsPerMetre: Double = 20.0,
     private val onLaunch: (NewOperationDraft) -> Unit,
     private val onBack: () -> Unit,
+    private val onTitleChanged: (String) -> Unit = {},
 ) {
     private val layer = root.container()
     private val unitRows = mutableListOf<UnitRow>()
@@ -95,11 +91,12 @@ internal class MapViewerNewOperationView(
         renderMapSection()
         renderUnitTypes()
         renderButtons()
+        onTitleChanged(screenTitle())
     }
 
     private fun renderHeader() {
         MapViewerLaunchpadTemplate.renderHeader(layer, layout.headerBounds)
-        MapViewerLaunchpadTemplate.renderScreenHeader(layer, layout.screenHeaderBounds, "New Operation", onBack)
+        MapViewerLaunchpadTemplate.renderScreenShell(layer, layout.screenHeaderBounds, screenTitle(), onBack)
     }
 
     private fun renderMapSection() {
@@ -358,14 +355,11 @@ internal class MapViewerNewOperationView(
         statusContainer?.let { MapViewerLaunchUi.label(it, text, color = Palette.Colours.RED) }
     }
 
+    private fun screenTitle(): String =
+        "New Operation"
+
     private fun textInput(parent: Container, text: String, bounds: ScreenBounds): UITextInput =
-        parent.uiTextInput(text, Size2D(bounds.width, bounds.height)).apply {
-            xy(bounds.left, bounds.top)
-            skin = ViewRenderer { }
-            padding = Margin(4f, 3f, 3f, 3f)
-            controller.textColor = RGBA(255, 255, 255, 255)
-            font = MapViewerKorgeFonts.font(MapViewerFontRole.MAIN)
-        }
+        MapViewerTextInputs.input(parent, text, bounds.width, bounds.height, bounds.left, bounds.top)
 
     private fun chooseRasterImageFile(): File? =
         chooseImageFile("Map image files", "png", "jpg", "jpeg", "gif", "bmp", "webp")
@@ -409,7 +403,7 @@ internal class MapViewerNewOperationView(
 
     private companion object {
         const val Z_INDEX = 60_000.0
-        const val CONTENT_PADDING = 20.0
+        const val CONTENT_PADDING = 24.0
         const val LIST_TOP = 72.0
         const val ROW_HEIGHT = 44.0
         const val PREVIEW_WIDTH = 64.0
@@ -443,26 +437,31 @@ internal object MapViewerNewOperationLayoutBuilder {
     fun build(viewportWidth: Int, viewportHeight: Int): MapViewerNewOperationLayout {
         val margin = 36.0
         val top = 20.0
-        val columnGap = 28.0
-        val screenHeaderTop = 108.0
-        val panelTop = 210.0
-        val panelWidth = (viewportWidth - margin * 2.0 - columnGap) * 0.5
-        val panelHeight = viewportHeight - panelTop - margin
-        val operationWidth = 440.0
-        val bodyWidth = viewportWidth - margin * 2.0
+        val shellTop = 108.0
+        val shellHeight = (viewportHeight - shellTop - margin).coerceAtLeast(560.0)
+        val shellWidth = minOf(1040.0, viewportWidth - margin * 2.0)
+        val shellLeft = (viewportWidth - shellWidth) * 0.5
+        val shellPadding = 24.0
+        val shellContentTop = shellTop + 86.0
+        val shellContentHeight = shellHeight - 86.0 - shellPadding
+        val sidebarWidth = 300.0
+        val columnGap = 24.0
+        val detailsWidth = shellWidth - (shellPadding * 2.0) - sidebarWidth - columnGap
+        val detailsLeft = shellLeft + shellPadding
+        val sidebarLeft = detailsLeft + detailsWidth + columnGap
         val headerWidth = 540.0
 
         return MapViewerNewOperationLayout(
             viewportWidth = viewportWidth,
             viewportHeight = viewportHeight,
             headerBounds = ScreenBounds((viewportWidth - headerWidth) * 0.5, top, headerWidth, 78.0),
-            screenHeaderBounds = ScreenBounds((viewportWidth - bodyWidth) * 0.5, screenHeaderTop, bodyWidth, 86.0),
-            titleBounds = ScreenBounds((viewportWidth - operationWidth) * 0.5, screenHeaderTop + 16.0, operationWidth, 34.0),
-            operationNameBounds = ScreenBounds(20.0, 62.0, panelWidth - 40.0, 38.0),
-            mapPanelBounds = ScreenBounds(margin, panelTop, panelWidth, panelHeight),
-            unitsPanelBounds = ScreenBounds(margin + panelWidth + columnGap, panelTop, panelWidth, panelHeight),
-            backButtonBounds = ScreenBounds(margin, screenHeaderTop + 22.0, 120.0, 42.0),
-            launchButtonBounds = ScreenBounds(viewportWidth - margin - 190.0, screenHeaderTop + 22.0, 190.0, 42.0),
+            screenHeaderBounds = ScreenBounds(shellLeft, shellTop, shellWidth, shellHeight),
+            titleBounds = ScreenBounds(shellLeft, shellTop, shellWidth, 56.0),
+            operationNameBounds = ScreenBounds(20.0, 62.0, detailsWidth - 40.0, 38.0),
+            mapPanelBounds = ScreenBounds(detailsLeft, shellContentTop, detailsWidth, shellContentHeight),
+            unitsPanelBounds = ScreenBounds(sidebarLeft, shellContentTop, sidebarWidth, shellContentHeight),
+            backButtonBounds = ScreenBounds(shellLeft + shellPadding, shellTop + shellPadding, 120.0, 42.0),
+            launchButtonBounds = ScreenBounds(shellLeft + shellWidth - shellPadding - 190.0, shellTop + shellPadding, 190.0, 42.0),
         )
     }
 }

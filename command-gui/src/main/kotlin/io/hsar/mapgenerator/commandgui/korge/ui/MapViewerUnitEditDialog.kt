@@ -5,14 +5,11 @@ import io.hsar.mapgenerator.image.Palette
 import korlibs.image.color.RGBA
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
-import korlibs.korge.ui.uiTextInput
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.image
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
-import korlibs.math.geom.Margin
-import korlibs.math.geom.Size2D
 import java.awt.Color
 
 @OptIn(KorgeExperimental::class)
@@ -93,12 +90,7 @@ internal class MapViewerUnitEditDialog(
         nameLabel.xy(0.0, 130.0)
         MapViewerTextViews.label(nameLabel, "Instance Name", color = Palette.Colours.WHITE)
 
-        val nameInput = content.uiTextInput(initialName, Size2D(260.0, 32.0)).apply {
-            xy(0.0, 156.0)
-            padding = Margin(4f, 3f, 3f, 3f)
-            controller.textColor = RGBA(255, 255, 255, 255)
-            font = MapViewerKorgeFonts.font(MapViewerFontRole.MAIN)
-        }
+        val nameInput = MapViewerTextInputs.input(content, initialName, 260.0, 32.0, 0.0, 156.0)
 
         val positionLabel = content.container()
         positionLabel.xy(0.0, 198.0)
@@ -112,19 +104,9 @@ internal class MapViewerUnitEditDialog(
         positionYLabel.xy(150.0, 224.0)
         MapViewerTextViews.label(positionYLabel, "Y", color = Palette.Colours.WHITE)
 
-        val positionXInput = content.uiTextInput(initialPositionX, Size2D(120.0, 32.0)).apply {
-            xy(0.0, 250.0)
-            padding = Margin(4f, 3f, 3f, 3f)
-            controller.textColor = RGBA(255, 255, 255, 255)
-            font = MapViewerKorgeFonts.font(MapViewerFontRole.MAIN)
-        }
+        val positionXInput = MapViewerTextInputs.input(content, initialPositionX, 120.0, 32.0, 0.0, 250.0)
 
-        val positionYInput = content.uiTextInput(initialPositionY, Size2D(120.0, 32.0)).apply {
-            xy(150.0, 250.0)
-            padding = Margin(4f, 3f, 3f, 3f)
-            controller.textColor = RGBA(255, 255, 255, 255)
-            font = MapViewerKorgeFonts.font(MapViewerFontRole.MAIN)
-        }
+        val positionYInput = MapViewerTextInputs.input(content, initialPositionY, 120.0, 32.0, 150.0, 250.0)
 
         val destroyedLabel = content.container()
         destroyedLabel.xy(0.0, 292.0)

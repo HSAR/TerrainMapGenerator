@@ -15,6 +15,7 @@ internal class MapViewerEscapeMenu(
     private val viewportWidth: () -> Int,
     private val viewportHeight: () -> Int,
     private val onReturnToLaunchpad: () -> Unit,
+    private val onExitProgram: () -> Unit,
 ) {
     private var layer: Container? = null
     private var layout = MapViewerEscapeMenuLayoutBuilder.build(viewportWidth(), viewportHeight())
@@ -56,6 +57,10 @@ internal class MapViewerEscapeMenu(
             close()
             onReturnToLaunchpad()
         }.xy(layout.returnButtonBounds.left, layout.returnButtonBounds.top)
+        MapViewerLaunchUi.button(panel, layout.exitButtonBounds.width, layout.exitButtonBounds.height, "Exit") {
+            close()
+            onExitProgram()
+        }.xy(layout.exitButtonBounds.left, layout.exitButtonBounds.top)
         MapViewerLaunchUi.button(panel, layout.closeButtonBounds.width, layout.closeButtonBounds.height, "Close") {
             close()
         }.xy(layout.closeButtonBounds.left, layout.closeButtonBounds.top)

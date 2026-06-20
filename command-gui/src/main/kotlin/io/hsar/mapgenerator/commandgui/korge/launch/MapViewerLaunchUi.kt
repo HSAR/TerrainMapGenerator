@@ -56,8 +56,22 @@ internal object MapViewerLaunchUi {
             }
         }
 
+    fun backButton(parent: Container, onClick: () -> Unit = {}): Container =
+        button(parent, 120.0, 42.0, "Back", onClick = onClick)
+
     fun label(parent: Container, text: String, strong: Boolean = false, color: Color = Palette.Colours.WHITE): Text =
         label(parent, text, strong, color, scale = 1.0)
+
+    fun screenTitle(parent: Container, text: String, width: Double, height: Double, color: Color = Palette.Colours.WHITE): Text =
+        MapViewerTextViews.box(
+            parent = parent,
+            text = text,
+            width = width,
+            height = height,
+            role = MapViewerFontRole.STRONG,
+            size = SCREEN_TITLE_TEXT_SIZE,
+            color = color,
+        )
 
     fun label(
         parent: Container,
@@ -76,4 +90,6 @@ internal object MapViewerLaunchUi {
 
     fun toRgba(color: Color, alpha: Int = color.alpha): RGBA =
         RGBA(color.red, color.green, color.blue, alpha)
+
+    private const val SCREEN_TITLE_TEXT_SIZE = 34.0
 }
