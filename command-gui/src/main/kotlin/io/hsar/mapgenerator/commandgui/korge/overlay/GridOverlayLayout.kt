@@ -1,4 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.overlay
+
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.grid.GridLayer
@@ -6,8 +9,6 @@ import io.hsar.mapgenerator.grid.GridStyles
 import io.hsar.mapgenerator.image.Palette
 import io.hsar.mapgenerator.random.GridGenerator.padZeroes
 import java.awt.Color
-import java.awt.Font
-import java.awt.image.BufferedImage
 import kotlin.math.absoluteValue
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -41,9 +42,14 @@ internal data class GridLabel(
     val text: String,
     val x: Double,
     val y: Double,
-    val font: Font,
-    val color: Color,
+    val style: GridLabelStyle,
     val shadows: List<GridLabelShadow> = emptyList(),
+)
+
+internal data class GridLabelStyle(
+    val role: MapViewerFontRole,
+    val size: Double,
+    val color: Color,
 )
 
 internal data class GridLabelShadow(
@@ -55,15 +61,19 @@ internal data class GridLabelShadow(
 internal object GridOverlayLayoutBuilder {
     fun build(
         state: GridOverlayState,
-        measureText: (String, Font) -> Rectangle = AwtGridTextMeasurer::measure,
+        measureText: (String, GridLabelStyle) -> Rectangle = ::measureText,
     ): GridOverlayLayout {
         val layer = displayLayer(state)
         val mapLeft = state.mapOffsetX
         val mapTop = state.mapOffsetY
         val mapRight = mapLeft + state.pixelWidth * state.scale
         val mapBottom = mapTop + state.pixelHeight * state.scale
-        val mapIdBounds = measureText(layer.mapId, GridStyles.MAP_ID_FONT.first)
-        val axisBounds = measureText("0".repeat(layer.detailLevel), GridStyles.GRID_LINE_ID_FONT.first)
+        val mapIdStyle = GridLabelStyle(MapViewerFontRole.STRONG, GridStyles.MAP_ID_FONT.first.size2D.toDouble(), GridStyles.MAP_ID_FONT.second)
+        val minorAxisStyle = GridLabelStyle(MapViewerFontRole.MAIN, GridStyles.GRID_LINE_ID_FONT.first.size2D.toDouble(), GridStyles.GRID_LINE_ID_FONT.second)
+        val majorAxisStyle = GridLabelStyle(MapViewerFontRole.STRONG, GridStyles.MAJOR_GRID_LINE_ID_FONT.first.size2D.toDouble(), GridStyles.MAJOR_GRID_LINE_ID_FONT.second)
+        val referenceStyle = GridLabelStyle(MapViewerFontRole.MAIN, GridStyles.GRID_LINE_ID_FONT.first.size2D.toDouble(), Palette.Colours.RED)
+        val mapIdBounds = measureText(layer.mapId, mapIdStyle)
+        val axisBounds = measureText("0".repeat(layer.detailLevel), minorAxisStyle)
 
         val topGutterY = max(state.visibleCanvasTop + GridStyles.MAP_ID_PADDING.y, mapTop + GridStyles.MAP_ID_PADDING.y)
         val leftGutterX = max(state.visibleCanvasLeft + GridStyles.GRID_LINE_ID_PADDING.x, mapLeft + GridStyles.GRID_LINE_ID_PADDING.x)
@@ -84,8 +94,7 @@ internal object GridOverlayLayoutBuilder {
             text = layer.mapId,
             x = mapIdX,
             y = mapIdY,
-            font = GridStyles.MAP_ID_FONT.first,
-            color = GridStyles.MAP_ID_FONT.second,
+            style = mapIdStyle,
         )
 
         verticalLineIndices(state.viewport, layer).forEach { lineIndex ->
@@ -98,15 +107,13 @@ internal object GridOverlayLayoutBuilder {
             val isMajorLine = lineId % MAJOR_LINE_DIVISOR == 0
 
             if (shouldRenderVerticalLabel(fineMode, lineIndex, isMajorLine)) {
-                val labelFont = if (isMajorLine) GridStyles.MAJOR_GRID_LINE_ID_FONT.first else GridStyles.GRID_LINE_ID_FONT.first
-                val labelColour = if (isMajorLine) GridStyles.MAJOR_GRID_LINE_ID_FONT.second else GridStyles.GRID_LINE_ID_FONT.second
-                val labelBounds = measureText(lineText, labelFont)
+                val labelStyle = if (isMajorLine) majorAxisStyle else minorAxisStyle
+                val labelBounds = measureText(lineText, labelStyle)
                 labels += GridLabel(
                     text = lineText,
                     x = lineCanvasX - labelBounds.width / 2,
                     y = labelCenterY - labelBounds.height / 2,
-                    font = labelFont,
-                    color = labelColour.withAlpha(labelAlpha),
+                    style = labelStyle.copy(color = labelStyle.color.withAlpha(labelAlpha)),
                 )
             }
 
@@ -129,16 +136,14 @@ internal object GridOverlayLayoutBuilder {
             val labelAlpha = edgeOpacity(lineCanvasY - yLabelFadeStart)
             val lineAlpha = edgeOpacity(lineCanvasY - xAxisBottomEdge)
             val isMajorLine = lineId % MAJOR_LINE_DIVISOR == 0
-            val labelFont = if (isMajorLine) GridStyles.MAJOR_GRID_LINE_ID_FONT.first else GridStyles.GRID_LINE_ID_FONT.first
-            val labelColour = if (isMajorLine) GridStyles.MAJOR_GRID_LINE_ID_FONT.second else GridStyles.GRID_LINE_ID_FONT.second
-            val labelBounds = measureText(lineText, labelFont)
+            val labelStyle = if (isMajorLine) majorAxisStyle else minorAxisStyle
+            val labelBounds = measureText(lineText, labelStyle)
 
             labels += GridLabel(
                 text = lineText,
                 x = leftGutterX - labelBounds.width / 2,
                 y = lineCanvasY - labelBounds.height / 2,
-                font = labelFont,
-                color = labelColour.withAlpha(labelAlpha),
+                style = labelStyle.copy(color = labelStyle.color.withAlpha(labelAlpha)),
             )
 
             lineRects += buildHorizontalLineRects(
@@ -155,7 +160,7 @@ internal object GridOverlayLayoutBuilder {
         state.activeReference?.let { reference ->
             val lineAlpha = edgeOpacity(reference.screenX - yAxisRightEdge)
             val rowAlpha = edgeOpacity(reference.screenY - xAxisBottomEdge)
-            val referenceBounds = measureText(reference.text, GridStyles.GRID_LINE_ID_FONT.first)
+            val referenceBounds = measureText(reference.text, referenceStyle)
 
             lineRects += buildVerticalLineRects(
                 mapX = (reference.screenX - mapLeft) / state.scale,
@@ -179,8 +184,7 @@ internal object GridOverlayLayoutBuilder {
                 text = reference.text,
                 x = reference.screenX + ACTIVE_REFERENCE_LABEL_OFFSET_X,
                 y = reference.screenY - referenceBounds.height - ACTIVE_REFERENCE_LABEL_OFFSET_Y,
-                font = GridStyles.GRID_LINE_ID_FONT.first,
-                color = Palette.Colours.RED,
+                style = referenceStyle,
                 shadows = accentLabelShadows(),
             )
 
@@ -196,24 +200,22 @@ internal object GridOverlayLayoutBuilder {
                     y2 = destinationScreenY,
                     color = Palette.Colours.RED,
                 )
-                val distanceBounds = measureText(measurement.distanceText, GridStyles.GRID_LINE_ID_FONT.first)
-                val bearingBounds = measureText(measurement.bearingText, GridStyles.GRID_LINE_ID_FONT.first)
+                val distanceBounds = measureText(measurement.distanceText, referenceStyle)
+                val bearingBounds = measureText(measurement.bearingText, referenceStyle)
                 val tooltipX = reference.screenX + ACTIVE_REFERENCE_LABEL_OFFSET_X
                 val tooltipY = reference.screenY + ACTIVE_REFERENCE_LABEL_OFFSET_Y
                 labels += GridLabel(
                     text = measurement.distanceText,
                     x = tooltipX,
                     y = tooltipY,
-                    font = GridStyles.GRID_LINE_ID_FONT.first,
-                    color = Palette.Colours.RED,
+                    style = referenceStyle,
                     shadows = accentLabelShadows(),
                 )
                 labels += GridLabel(
                     text = measurement.bearingText,
                     x = tooltipX,
                     y = tooltipY + distanceBounds.height.absoluteValue + bearingBounds.height.absoluteValue + MEASUREMENT_TOOLTIP_LINE_GAP,
-                    font = GridStyles.GRID_LINE_ID_FONT.first,
-                    color = Palette.Colours.RED,
+                    style = referenceStyle,
                     shadows = accentLabelShadows(),
                 )
             }
@@ -380,6 +382,11 @@ internal object GridOverlayLayoutBuilder {
             GridLabelShadow(1.0, 1.0, Palette.Colours.MAIN),
         )
 
+    private fun measureText(text: String, style: GridLabelStyle): Rectangle =
+        MapViewerTextViews.measure(text, style.role, style.size).let { bounds ->
+            Rectangle(Point.ORIGIN, Point(bounds.width, bounds.height))
+        }
+
     private const val EDGE_FADE_DISTANCE = 60.0
     private const val LINE_SEGMENT_LENGTH = 6.0
     private const val FINE_GRID_SUBDIVISIONS = 10
@@ -391,17 +398,4 @@ internal object GridOverlayLayoutBuilder {
     private const val ACTIVE_REFERENCE_LABEL_OFFSET_X = 12.0
     private const val ACTIVE_REFERENCE_LABEL_OFFSET_Y = 12.0
     private const val MEASUREMENT_TOOLTIP_LINE_GAP = 4.0
-}
-
-internal object AwtGridTextMeasurer {
-    fun measure(text: String, font: Font): Rectangle {
-        val graphics = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB).createGraphics()
-        return try {
-            graphics.font = font
-            graphics.getFontMetrics(font)
-                .let { Rectangle(Point.ORIGIN, Point(it.getStringBounds(text, graphics).width, -it.ascent.toDouble())) }
-        } finally {
-            graphics.dispose()
-        }
-    }
 }

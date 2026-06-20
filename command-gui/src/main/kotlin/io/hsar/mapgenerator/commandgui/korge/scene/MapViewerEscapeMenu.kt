@@ -1,6 +1,8 @@
 package io.hsar.mapgenerator.commandgui.korge.scene
 
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchUi
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.onStageResized
@@ -46,10 +48,10 @@ internal class MapViewerEscapeMenu(
         overlay.removeChildren()
         overlay.solidRect(width.toDouble(), height.toDouble(), korlibs.image.color.RGBA(0, 0, 0, 140))
         val panel = MapViewerLaunchUi.panel(overlay, layout.panelBounds)
-        val title = MapViewerLaunchUi.label(panel, "Menu", strong = true)
-        title.xy(layout.titleX - (title.width * 0.5), layout.titleY)
-        val subtitle = MapViewerLaunchUi.label(panel, "Return to the launchpad after saving.")
-        subtitle.xy(layout.subtitleX - (subtitle.width * 0.5), layout.subtitleY)
+        MapViewerTextViews.box(panel, "Menu", layout.panelBounds.width, 44.0, role = MapViewerFontRole.STRONG)
+            .xy(0.0, layout.titleY)
+        MapViewerTextViews.box(panel, "Return to the launchpad after saving.", layout.panelBounds.width, 34.0)
+            .xy(0.0, layout.subtitleY)
         MapViewerLaunchUi.button(panel, layout.returnButtonBounds.width, layout.returnButtonBounds.height, "Return To Launchpad") {
             close()
             onReturnToLaunchpad()

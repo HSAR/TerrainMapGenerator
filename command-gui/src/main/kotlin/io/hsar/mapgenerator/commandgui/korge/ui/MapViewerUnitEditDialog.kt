@@ -27,7 +27,6 @@ internal class MapViewerUnitEditDialog(
     private val onDismiss: () -> Unit,
 ) {
     private val layer = root.container()
-    private val labelRenderer = MapViewerTextBitmapRenderer
     private var isOpen = false
 
     fun show(viewportWidth: Int, viewportHeight: Int) {
@@ -61,11 +60,11 @@ internal class MapViewerUnitEditDialog(
         val content = panel.container()
         content.xy(20.0, 18.0)
 
-        content.image(labelRenderer.render("Edit Unit", Palette.Fonts.STRONG.first, Palette.Colours.WHITE))
+        MapViewerTextViews.label(content, "Edit Unit", role = MapViewerFontRole.STRONG, color = Palette.Colours.WHITE)
 
         val typeLabel = content.container()
         typeLabel.xy(0.0, 42.0)
-        typeLabel.image(labelRenderer.render("Type", Palette.Fonts.MAIN.first, Palette.Colours.WHITE))
+        MapViewerTextViews.label(typeLabel, "Type", color = Palette.Colours.WHITE)
 
         val typePreview = content.container()
         typePreview.xy(0.0, 68.0)
@@ -80,48 +79,56 @@ internal class MapViewerUnitEditDialog(
             x = 6.0 + fittedIcon.x
             y = 6.0 + fittedIcon.y
         }
-        typePreview.image(labelRenderer.render(unitType.name, Palette.Fonts.MAIN.first, Palette.Colours.WHITE)) {
+        MapViewerTextViews.leftBox(
+            parent = typePreview,
+            text = unitType.name,
+            width = PREVIEW_WIDTH - 20.0 - fittedIcon.width,
+            height = PREVIEW_HEIGHT,
+            color = Palette.Colours.WHITE,
+        ) {
             x = 20.0 + fittedIcon.width
-            y = (PREVIEW_HEIGHT - height) * 0.5
         }
 
         val nameLabel = content.container()
         nameLabel.xy(0.0, 130.0)
-        nameLabel.image(labelRenderer.render("Instance Name", Palette.Fonts.MAIN.first, Palette.Colours.WHITE))
+        MapViewerTextViews.label(nameLabel, "Instance Name", color = Palette.Colours.WHITE)
 
         val nameInput = content.uiTextInput(initialName, Size2D(260.0, 32.0)).apply {
             xy(0.0, 156.0)
             padding = Margin(4f, 3f, 3f, 3f)
             controller.textColor = RGBA(255, 255, 255, 255)
+            font = MapViewerKorgeFonts.font(MapViewerFontRole.MAIN)
         }
 
         val positionLabel = content.container()
         positionLabel.xy(0.0, 198.0)
-        positionLabel.image(labelRenderer.render("Position", Palette.Fonts.MAIN.first, Palette.Colours.WHITE))
+        MapViewerTextViews.label(positionLabel, "Position", color = Palette.Colours.WHITE)
 
         val positionXLabel = content.container()
         positionXLabel.xy(0.0, 224.0)
-        positionXLabel.image(labelRenderer.render("X", Palette.Fonts.MAIN.first, Palette.Colours.WHITE))
+        MapViewerTextViews.label(positionXLabel, "X", color = Palette.Colours.WHITE)
 
         val positionYLabel = content.container()
         positionYLabel.xy(150.0, 224.0)
-        positionYLabel.image(labelRenderer.render("Y", Palette.Fonts.MAIN.first, Palette.Colours.WHITE))
+        MapViewerTextViews.label(positionYLabel, "Y", color = Palette.Colours.WHITE)
 
         val positionXInput = content.uiTextInput(initialPositionX, Size2D(120.0, 32.0)).apply {
             xy(0.0, 250.0)
             padding = Margin(4f, 3f, 3f, 3f)
             controller.textColor = RGBA(255, 255, 255, 255)
+            font = MapViewerKorgeFonts.font(MapViewerFontRole.MAIN)
         }
 
         val positionYInput = content.uiTextInput(initialPositionY, Size2D(120.0, 32.0)).apply {
             xy(150.0, 250.0)
             padding = Margin(4f, 3f, 3f, 3f)
             controller.textColor = RGBA(255, 255, 255, 255)
+            font = MapViewerKorgeFonts.font(MapViewerFontRole.MAIN)
         }
 
         val destroyedLabel = content.container()
         destroyedLabel.xy(0.0, 292.0)
-        destroyedLabel.image(labelRenderer.render("Destroyed", Palette.Fonts.MAIN.first, Palette.Colours.WHITE))
+        MapViewerTextViews.label(destroyedLabel, "Destroyed", color = Palette.Colours.WHITE)
 
         var destroyedValue = initialDestroyed
         val destroyedToggle = content.container()
@@ -143,10 +150,8 @@ internal class MapViewerUnitEditDialog(
                 y = 2.0
             }
             if (destroyedValue) {
-                box.image(labelRenderer.render("X", Palette.Fonts.STRONG.first, Palette.Colours.RED)) {
-                    x = 2.0
-                    y = -3.0
-                }
+                MapViewerTextViews.box(box, "X", 20.0, 20.0, role = MapViewerFontRole.STRONG, color = Palette.Colours.RED)
+                    .xy(0.0, 0.0)
             }
         }
 
@@ -200,10 +205,7 @@ internal class MapViewerUnitEditDialog(
             x = 2.0
             y = 2.0
         }
-        parent.image(labelRenderer.render(label, Palette.Fonts.MAIN.first, Palette.Colours.WHITE)) {
-            x = (width - this.width) * 0.5
-            y = (height - this.height) * 0.5
-        }
+        MapViewerTextViews.box(parent, label, width, height, color = Palette.Colours.WHITE)
         parent.mouse {
             onClick {
                 onActivate()

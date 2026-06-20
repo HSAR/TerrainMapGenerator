@@ -9,7 +9,8 @@
 - Universal UI model and switch to corner-only white borders for better aesthetics
 - Destroyed units can be hidden or shown with reduced opacity
 - Support arbitrary states which are independently toggleable instead of mutually exclusive
+- Map ID and coordinate grid X/Y start should be filled in by user at start and loaded from save thereafter
 
 ## Bugs
 
-- Fonts are currently bitmap images
+- Too many callbacks warning in game log.

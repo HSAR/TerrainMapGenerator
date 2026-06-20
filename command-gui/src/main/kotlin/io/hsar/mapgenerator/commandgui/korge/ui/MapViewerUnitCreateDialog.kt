@@ -5,7 +5,6 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
-import korlibs.image.font.DefaultTtfFontAsBitmap
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
 import korlibs.korge.ui.uiTextInput
@@ -33,7 +32,6 @@ internal class MapViewerUnitCreateDialog(
     private val onDismiss: () -> Unit,
 ) {
     private val layer = root.container()
-    private val labelRenderer = MapViewerTextBitmapRenderer
     private var selectedBitmap: Bitmap32? = null
     private var selectedAssetSource: AssetSource? = null
     private var previewImage: Image? = null
@@ -70,23 +68,23 @@ internal class MapViewerUnitCreateDialog(
         val content = panel.container()
         content.xy(20.0, 18.0)
 
-        content.image(labelRenderer.render(dialogTitle, Palette.Fonts.STRONG.first, Palette.Colours.WHITE))
+        MapViewerTextViews.label(content, dialogTitle, role = MapViewerFontRole.STRONG, color = Palette.Colours.WHITE)
 
         val nameLabel = content.container()
         nameLabel.xy(0.0, 42.0)
-        nameLabel.image(labelRenderer.render("Name", Palette.Fonts.MAIN.first, Palette.Colours.WHITE))
+        MapViewerTextViews.label(nameLabel, "Name", color = Palette.Colours.WHITE)
 
         val nameInput = content.uiTextInput(initialTemplate?.name ?: "Unit Type Name", Size2D(260.0, 32.0)).apply {
             xy(0.0, 68.0)
             skin = ViewRenderer { }
             padding = Margin(4f, 3f, 3f, 3f)
             controller.textColor = RGBA(255, 255, 255, 255)
-            font = DefaultTtfFontAsBitmap
+            font = MapViewerKorgeFonts.font(MapViewerFontRole.MAIN)
         }
 
         val imageLabel = content.container()
         imageLabel.xy(0.0, 114.0)
-        imageLabel.image(labelRenderer.render("Image", Palette.Fonts.MAIN.first, Palette.Colours.WHITE))
+        MapViewerTextViews.label(imageLabel, "Image", color = Palette.Colours.WHITE)
 
         val previewFrame = content.container()
         previewFrame.xy(0.0, 140.0)
@@ -96,10 +94,7 @@ internal class MapViewerUnitCreateDialog(
             y = 2.0
         }
 
-        val previewPlaceholder = previewFrame.image(labelRenderer.render("No image selected", Palette.Fonts.MAIN.first, Palette.Colours.WHITE)) {
-            x = 16.0
-            y = (PREVIEW_HEIGHT - height) * 0.5
-        }
+        val previewPlaceholder = MapViewerTextViews.box(previewFrame, "No image selected", PREVIEW_WIDTH, PREVIEW_HEIGHT, color = Palette.Colours.WHITE)
 
         initialTemplate?.let { template ->
             selectedBitmap = template.bitmap
@@ -189,10 +184,7 @@ internal class MapViewerUnitCreateDialog(
             x = 2.0
             y = 2.0
         }
-        parent.image(labelRenderer.render(label, Palette.Fonts.MAIN.first, Palette.Colours.WHITE)) {
-            x = (width - this.width) * 0.5
-            y = (height - this.height) * 0.5
-        }
+        MapViewerTextViews.box(parent, label, width, height, color = Palette.Colours.WHITE)
         parent.mouse {
             onClick {
                 onActivate()
@@ -202,7 +194,7 @@ internal class MapViewerUnitCreateDialog(
 
     private fun showStatus(parent: Container, text: String) {
         parent.removeChildren()
-        parent.image(labelRenderer.render(text, Palette.Fonts.MAIN.first, Palette.Colours.WHITE))
+        MapViewerTextViews.leftBox(parent, text, 360.0, 28.0, color = Palette.Colours.WHITE)
     }
 
     private fun chooseImageFile(): File? {

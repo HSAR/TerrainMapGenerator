@@ -41,7 +41,6 @@ internal class MapViewerSidebar(
     private val unitList = content.container()
     private val toggleButton = overlay.container()
     private val dragLayer = overlay.container()
-    private val labelRenderer = MapViewerTextBitmapRenderer
     private val unitTemplates = initialUnitTemplates.mapIndexed { index, template ->
         UnitTemplateRow(UnitTemplateId((index + 1).toLong()), template)
     }.toMutableList()
@@ -164,9 +163,14 @@ internal class MapViewerSidebar(
 
             header.removeChildren()
             header.xy(0.0, 0.0)
-            header.image(labelRenderer.render("Unit Types", Palette.Fonts.STRONG.first, Palette.Colours.WHITE)) {
-                y = (HEADER_HEIGHT - height) * 0.5
-            }
+            MapViewerTextViews.leftBox(
+                parent = header,
+                text = "Unit Types",
+                width = MapViewerSidebarLayoutBuilder.PANEL_WIDTH,
+                height = HEADER_HEIGHT,
+                role = MapViewerFontRole.STRONG,
+                color = Palette.Colours.WHITE,
+            )
 
             val buttonWidth = 120.0
             val addButton = header.container()
@@ -219,9 +223,14 @@ internal class MapViewerSidebar(
             x = fittedIcon.x
             y = fittedIcon.y
         }
-        item.image(labelRenderer.render(row.template.name, Palette.Fonts.MAIN.first, Palette.Colours.WHITE)) {
+        MapViewerTextViews.leftBox(
+            parent = item,
+            text = row.template.name,
+            width = itemWidth - (iconInset + iconSlotWidth + 4.0),
+            height = UNIT_ITEM_HEIGHT,
+            color = Palette.Colours.WHITE,
+        ) {
             x = iconInset + iconSlotWidth + 4.0
-            y = (UNIT_ITEM_HEIGHT - height) * 0.5
         }
     }
 
@@ -231,10 +240,7 @@ internal class MapViewerSidebar(
             x = 2.0
             y = 2.0
         }
-        parent.image(labelRenderer.render(label, Palette.Fonts.MAIN.first, Palette.Colours.WHITE)) {
-            x = (width - this.width) * 0.5
-            y = (height - this.height) * 0.5
-        }
+        MapViewerTextViews.box(parent, label, width, height, color = Palette.Colours.WHITE)
         parent.mouse {
             this.onClick {
                 onClick()

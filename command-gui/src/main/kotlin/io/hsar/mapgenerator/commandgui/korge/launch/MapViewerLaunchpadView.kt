@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.commandgui.save.SavedOperationSummary
 import io.hsar.mapgenerator.image.Palette
@@ -72,8 +74,8 @@ internal class MapViewerLaunchpadView(
 
     private fun renderHome(panel: Container) {
         val bounds = layout.homePanelBounds
-        val welcome = MapViewerLaunchUi.label(panel, "Welcome, Commander.")
-        welcome.xy((bounds.width - welcome.width) * 0.5, 62.0)
+        MapViewerTextViews.box(panel, "Welcome, Commander.", bounds.width, 28.0)
+            .xy(0.0, 62.0)
 
         val buttonLeft = (bounds.width - BUTTON_WIDTH) * 0.5
         MapViewerLaunchUi.button(panel, BUTTON_WIDTH, BUTTON_HEIGHT, "New Operation", onClick = onCreateNewOperation)
@@ -93,8 +95,8 @@ internal class MapViewerLaunchpadView(
 
     private fun renderExistingOperations(panel: Container) {
         val bounds = layout.savePanelBounds
-        val title = MapViewerLaunchUi.label(panel, "Ongoing Operations", strong = true)
-        title.xy((bounds.width - title.width) * 0.5, 34.0)
+        MapViewerTextViews.box(panel, "Ongoing Operations", bounds.width, 28.0, role = MapViewerFontRole.STRONG)
+            .xy(0.0, 34.0)
 
         MapViewerLaunchUi.button(panel, 96.0, 36.0, "Back") {
             mode = LaunchpadMode.HOME
@@ -159,10 +161,21 @@ internal class MapViewerLaunchpadView(
         }
 
         val textLeft = previewFrameLeft + previewFrameWidth + 18.0
-        val name = MapViewerLaunchUi.label(row, summary.operationName, strong = true)
-        name.xy(textLeft, 18.0)
-        val updated = MapViewerLaunchUi.label(row, formatTimestamp(summary.updatedAt), color = Palette.Colours.LIGHT)
-        updated.xy(textLeft, 50.0)
+        MapViewerTextViews.leftBox(
+            parent = row,
+            text = summary.operationName,
+            width = layout.savePanelBounds.width - textLeft,
+            height = 28.0,
+            role = MapViewerFontRole.STRONG,
+            color = Palette.Colours.WHITE,
+        ).xy(textLeft, 12.0)
+        MapViewerTextViews.leftBox(
+            parent = row,
+            text = formatTimestamp(summary.updatedAt),
+            width = layout.savePanelBounds.width - textLeft,
+            height = 28.0,
+            color = Palette.Colours.LIGHT,
+        ).xy(textLeft, 44.0)
     }
 
     private fun renderScrollbar(panel: Container) {

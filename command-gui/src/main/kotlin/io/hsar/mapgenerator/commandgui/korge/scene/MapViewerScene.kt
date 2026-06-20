@@ -33,7 +33,7 @@ import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
 import io.hsar.mapgenerator.commandgui.korge.render.MapViewerRenderer
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSidebar
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextBitmapRenderer
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerToolbar
 import io.hsar.mapgenerator.commandgui.save.LoadedOperation
 import io.hsar.mapgenerator.commandgui.save.OperationSaveCatalogue
@@ -165,22 +165,18 @@ internal class MapViewerScene(
                             saveNoticeMessage = "$noticePrefix ${target.fileName}"
                             saveNoticeExpiresAtMs = System.currentTimeMillis() + 10_000L
                             saveNoticeLayer.removeChildren()
-                            val noticeText = MapViewerTextBitmapRenderer.render(
-                                text = saveNoticeMessage!!,
-                                font = io.hsar.mapgenerator.image.Palette.Fonts.MAIN.first,
-                                color = io.hsar.mapgenerator.image.Palette.Colours.WHITE,
-                            )
+                            val noticeBounds = MapViewerTextViews.bounds(saveNoticeMessage!!)
                             saveNoticeLayer.solidRect(
-                                width = (noticeText.width + 24).toDouble(),
-                                height = (noticeText.height + 16).toDouble(),
+                                width = noticeBounds.width + 24.0,
+                                height = noticeBounds.height + 16.0,
                                 color = korlibs.image.color.RGBA(0, 0, 0, 180),
                             )
-                            saveNoticeLayer.image(noticeText) {
+                            MapViewerTextViews.label(saveNoticeLayer, saveNoticeMessage!!, color = io.hsar.mapgenerator.image.Palette.Colours.WHITE) {
                                 x = 12.0
                                 y = 8.0
                             }
                             saveNoticeLayer.visible = true
-                            saveNoticeLayer.xy(16.0, gameWindow.height - (noticeText.height + 16) - 16.0)
+                            saveNoticeLayer.xy(16.0, gameWindow.height - (noticeBounds.height + 16) - 16.0)
                         }
 
                         val autosaveController = MapViewerAutosaveController {

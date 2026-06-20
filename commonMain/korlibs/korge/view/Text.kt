@@ -74,11 +74,9 @@ open class Text(
             invalidateRender()
         }
     }
-
     private fun updateLineCount() {
         lineCount = text.count { it == '\n' } + 1
     }
-
     init {
         updateLineCount()
     }
@@ -90,7 +88,6 @@ open class Text(
             field = value; invalidate()
         }
     }
-
     var stroke: Stroke? = stroke;
     set(value )
     {
@@ -121,7 +118,6 @@ open class Text(
             field = value; invalidate()
         }
     }
-
     var fontSize: Double by ::textSize
 
     override fun invalidate() {
@@ -137,7 +133,6 @@ open class Text(
             field = value; invalidate()
         }
     }
-
     @ViewProperty(min = 0.0, max = 10.0, clampMin = true)
     var textRangeEnd: Int = Int.MAX_VALUE;
     set(value )
@@ -174,7 +169,6 @@ open class Text(
             field = value; invalidate()
         }
     }
-
     @ViewProperty
     @ViewPropertyProvider(provider = HorizontalAlignProvider::class)
     var horizontalAlign: HorizontalAlign
@@ -401,7 +395,6 @@ open class Text(
                     //setContainerPosition(0.0, 0.0, font.base)
                 }
             }
-
             else -> {
                 if (lastSmoothing != smoothing || lastNativeRendering != useNativeRendering) {
                     version++

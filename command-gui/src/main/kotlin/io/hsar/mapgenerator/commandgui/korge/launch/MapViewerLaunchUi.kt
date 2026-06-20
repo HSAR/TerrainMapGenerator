@@ -1,13 +1,14 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextBitmapRenderer
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.color.RGBA
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
+import korlibs.korge.view.Text
 import korlibs.korge.view.container
-import korlibs.korge.view.image
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import java.awt.Color
@@ -39,9 +40,13 @@ internal object MapViewerLaunchUi {
                 x = 2.0
                 y = 2.0
             }
-            button.image(MapViewerTextBitmapRenderer.render(label, Palette.Fonts.MAIN.first, textColor)) {
-                x = (width - this.width) * 0.5
-                y = (height - this.height) * 0.5
+            MapViewerTextViews.box(
+                parent = button,
+                text = label,
+                width = width,
+                height = height,
+                color = textColor,
+            ) {
                 alpha = if (disabled) 0.55 else 1.0
             }
             if (!disabled) {
@@ -51,7 +56,7 @@ internal object MapViewerLaunchUi {
             }
         }
 
-    fun label(parent: Container, text: String, strong: Boolean = false, color: Color = Palette.Colours.WHITE): Container =
+    fun label(parent: Container, text: String, strong: Boolean = false, color: Color = Palette.Colours.WHITE): Text =
         label(parent, text, strong, color, scale = 1.0)
 
     fun label(
@@ -60,17 +65,14 @@ internal object MapViewerLaunchUi {
         strong: Boolean = false,
         color: Color = Palette.Colours.WHITE,
         scale: Double,
-    ): Container =
-        parent.container().also { label ->
-            label.image(
-                MapViewerTextBitmapRenderer.render(
-                    text = text,
-                    font = if (strong) Palette.Fonts.STRONG.first else Palette.Fonts.MAIN.first,
-                    color = color,
-                ),
-            )
-            label.scale = scale
-        }
+    ): Text =
+        MapViewerTextViews.label(
+            parent = parent,
+            text = text,
+            role = if (strong) MapViewerFontRole.STRONG else MapViewerFontRole.MAIN,
+            size = MapViewerTextViews.DEFAULT_TEXT_SIZE * scale,
+            color = color,
+        )
 
     fun toRgba(color: Color, alpha: Int = color.alpha): RGBA =
         RGBA(color.red, color.green, color.blue, alpha)

@@ -10,7 +10,6 @@ import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.lessThan
 import org.junit.jupiter.api.Test
-import java.awt.Font
 
 class GridOverlayLayoutBuilderTest {
 
@@ -73,8 +72,9 @@ class GridOverlayLayoutBuilderTest {
 
         assertThat(mapId.x, equalTo(GridStyles.MAP_ID_PADDING.x))
         assertThat(mapId.y, equalTo(42.0))
-        assertThat(mapId.font, equalTo(GridStyles.MAP_ID_FONT.first))
-        assertThat(mapId.color, equalTo(GridStyles.MAP_ID_FONT.second))
+        assertThat(mapId.style.role, equalTo(io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole.STRONG))
+        assertThat(mapId.style.size, equalTo(26.0))
+        assertThat(mapId.style.color, equalTo(GridStyles.MAP_ID_FONT.second))
         assertThat(mapId.shadows.size, equalTo(0))
     }
 
@@ -111,10 +111,11 @@ class GridOverlayLayoutBuilderTest {
 
         val majorLabel = layout.labels.first { it.text == "10" }
 
-        assertThat(majorLabel.font, equalTo(GridStyles.MAJOR_GRID_LINE_ID_FONT.first))
-        assertThat(majorLabel.color.red, equalTo(GridStyles.MAJOR_GRID_LINE_ID_FONT.second.red))
-        assertThat(majorLabel.color.green, equalTo(GridStyles.MAJOR_GRID_LINE_ID_FONT.second.green))
-        assertThat(majorLabel.color.blue, equalTo(GridStyles.MAJOR_GRID_LINE_ID_FONT.second.blue))
+        assertThat(majorLabel.style.role, equalTo(io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole.STRONG))
+        assertThat(majorLabel.style.size, equalTo(22.0))
+        assertThat(majorLabel.style.color.red, equalTo(GridStyles.MAJOR_GRID_LINE_ID_FONT.second.red))
+        assertThat(majorLabel.style.color.green, equalTo(GridStyles.MAJOR_GRID_LINE_ID_FONT.second.green))
+        assertThat(majorLabel.style.color.blue, equalTo(GridStyles.MAJOR_GRID_LINE_ID_FONT.second.blue))
     }
 
     @Test
@@ -185,7 +186,7 @@ class GridOverlayLayoutBuilderTest {
             }
             .sortedBy { it.y }
 
-        assertThat(referenceLabel.color, equalTo(Palette.Colours.RED))
+        assertThat(referenceLabel.style.color, equalTo(Palette.Colours.RED))
         assertThat(referenceLabel.x, equalTo(272.0))
         assertThat(referenceLabel.y, equalTo(258.0))
         assertThat(referenceLabel.shadows.size, equalTo(1))
@@ -225,10 +226,10 @@ class GridOverlayLayoutBuilderTest {
 
         assertThat(distance.x, equalTo(272.0))
         assertThat(distance.y, equalTo(292.0))
-        assertThat(distance.color, equalTo(Palette.Colours.RED))
+        assertThat(distance.style.color, equalTo(Palette.Colours.RED))
         assertThat(bearing.x, equalTo(272.0))
         assertThat(bearing.y, equalTo(316.0))
-        assertThat(bearing.color, equalTo(Palette.Colours.RED))
+        assertThat(bearing.style.color, equalTo(Palette.Colours.RED))
         assertThat(arrow.x1, equalTo(120.0))
         assertThat(arrow.y1, equalTo(180.0))
         assertThat(arrow.x2, equalTo(260.0))
@@ -306,9 +307,10 @@ class GridOverlayLayoutBuilderTest {
         ),
     )
 
-    private fun measureText(text: String, font: Font): Rectangle =
-        when (font.name) {
-            GridStyles.MAP_ID_FONT.first.name -> Rectangle(Point.ORIGIN, Point(60.0, 16.0))
+    private fun measureText(text: String, style: GridLabelStyle): Rectangle =
+        when (style.role) {
+            io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole.STRONG ->
+                if (style.size > 24.0) Rectangle(Point.ORIGIN, Point(60.0, 16.0)) else Rectangle(Point.ORIGIN, Point(24.0, 10.0))
             else -> Rectangle(Point.ORIGIN, Point(20.0, 10.0))
         }
 }

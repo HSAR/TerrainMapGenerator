@@ -1,6 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextBitmapRenderer
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.image.color.RGBA
@@ -9,7 +9,6 @@ import korlibs.korge.internal.KorgeInternal
 import korlibs.korge.view.Container
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
-import korlibs.korge.view.image
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Vector2D
@@ -104,9 +103,14 @@ internal class ContextMenuManager(
                     }
                 }
             }
-            option.image(MapViewerTextBitmapRenderer.render(action.label, Palette.Fonts.MAIN.first, Palette.Colours.WHITE)) {
+            MapViewerTextViews.leftBox(
+                parent = option,
+                text = action.label,
+                width = menuWidth - PADDING * 2,
+                height = ACTION_HEIGHT - 4.0,
+                color = Palette.Colours.WHITE,
+            ) {
                 x = 12.0
-                y = ((ACTION_HEIGHT - height) * 0.5)
             }
         }
 

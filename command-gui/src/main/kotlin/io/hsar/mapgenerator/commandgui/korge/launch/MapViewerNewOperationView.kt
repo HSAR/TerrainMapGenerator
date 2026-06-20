@@ -3,15 +3,16 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconFit
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerKorgeFonts
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.image.awt.toBMP32
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
-import korlibs.image.font.DefaultTtfFontAsBitmap
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
 import korlibs.korge.ui.UITextInput
@@ -363,7 +364,7 @@ internal class MapViewerNewOperationView(
             skin = ViewRenderer { }
             padding = Margin(4f, 3f, 3f, 3f)
             controller.textColor = RGBA(255, 255, 255, 255)
-            font = DefaultTtfFontAsBitmap
+            font = MapViewerKorgeFonts.font(MapViewerFontRole.MAIN)
         }
 
     private fun chooseRasterImageFile(): File? =

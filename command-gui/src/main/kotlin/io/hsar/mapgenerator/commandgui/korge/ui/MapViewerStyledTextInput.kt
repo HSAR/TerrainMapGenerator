@@ -2,7 +2,6 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.color.RGBA
-import korlibs.image.font.DefaultTtfFontAsBitmap
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
 import korlibs.korge.ui.UITextInput
@@ -42,7 +41,7 @@ internal class MapViewerStyledTextInput(
         input.skin = ViewRenderer { }
         input.padding = Margin(4f, 3f, 3f, 3f)
         input.controller.textColor = RGBA(255, 255, 255, 255)
-        input.font = DefaultTtfFontAsBitmap
+        input.font = MapViewerKorgeFonts.font(MapViewerFontRole.MAIN)
     }
 
     var text: String

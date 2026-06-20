@@ -7,7 +7,6 @@ import korlibs.image.color.RGBA
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
-import korlibs.korge.view.image
 import korlibs.korge.view.onStageResized
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
@@ -85,10 +84,7 @@ internal class MapViewerToolbar(
             x = 2.0
             y = 2.0
         }
-        button.image(MapViewerTextBitmapRenderer.render(label, Palette.Fonts.MAIN.first, Palette.Colours.WHITE)) {
-            x = (BUTTON_WIDTH - width) * 0.5
-            y = (BUTTON_HEIGHT - height) * 0.5
-        }
+        MapViewerTextViews.box(button, label, BUTTON_WIDTH, BUTTON_HEIGHT, color = Palette.Colours.WHITE)
         button.mouse {
             onClick {
                 onToolSelected(tool)
@@ -106,10 +102,7 @@ internal class MapViewerToolbar(
             x = 2.0
             y = 2.0
         }
-        button.image(MapViewerTextBitmapRenderer.render(mode.label, Palette.Fonts.MAIN.first, Palette.Colours.WHITE)) {
-            x = (DRAW_MODE_WIDTH - width) * 0.5
-            y = (DRAW_MODE_HEIGHT - height) * 0.5
-        }
+        MapViewerTextViews.box(button, mode.label, DRAW_MODE_WIDTH, DRAW_MODE_HEIGHT, color = Palette.Colours.WHITE)
         button.mouse {
             onClick {
                 onDrawingModeSelected(mode)

@@ -1,8 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.scene
 
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextBitmapRenderer
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
-import io.hsar.mapgenerator.image.Palette
 
 internal data class MapViewerEscapeMenuLayout(
     val panelBounds: ScreenBounds,
@@ -58,9 +57,5 @@ internal object MapViewerEscapeMenuLayoutBuilder {
         listOf("Return To Launchpad", "Close")
 
     private fun labelWidth(text: String): Double =
-        MapViewerTextBitmapRenderer.render(
-            text = text,
-            font = Palette.Fonts.MAIN.first,
-            color = Palette.Colours.WHITE,
-        ).width.toDouble()
+        MapViewerTextViews.bounds(text).width
 }
