@@ -8,8 +8,10 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
+import io.hsar.mapgenerator.grid.GridLayerBuilder
 import java.awt.image.BufferedImage
 import java.io.File
+import java.util.*
 
 internal enum class MapViewerLaunchState {
     LAUNCHPAD,
@@ -28,7 +30,14 @@ internal data class NewOperationDraft(
     val operationName: String = "",
     val mapImage: OperationMapImage? = null,
     val pixelsPerMetre: Double = 20.0,
+    val gridConfiguration: GridConfiguration? = null,
     val unitTemplates: List<MapViewerUnitTemplate> = emptyList(),
+)
+
+internal data class GridConfiguration(
+    val mapId: String,
+    val startX: Int,
+    val startY: Int,
 )
 
 internal data class OperationLaunchConfiguration(
@@ -64,6 +73,25 @@ internal class MapViewerLaunchFlow {
 internal fun NewOperationDraft.isLaunchable(): Boolean =
     operationName.isNotBlank() && mapImage != null && pixelsPerMetre > 0.0
 
+internal fun defaultGridConfiguration(
+    mapImage: BufferedImage,
+    metresPerPixel: Double,
+    seed: Long,
+): GridConfiguration =
+    GridLayerBuilder.build(
+        width = mapImage.width,
+        height = mapImage.height,
+        gridScale = 1_000,
+        metresPerPixel = metresPerPixel,
+        random = Random(seed),
+    ).let { gridLayer ->
+        GridConfiguration(
+            mapId = gridLayer.mapId,
+            startX = gridLayer.verticalLineNumberStart,
+            startY = gridLayer.horizontalLineNumberStart,
+        )
+    }
+
 internal object OperationLaunchConfigurationFactory {
     fun create(
         draft: NewOperationDraft,
@@ -83,6 +111,8 @@ internal object OperationLaunchConfigurationFactory {
         ) to mapImage.image
         val availableLayers = baseSettings.availableLayers + staticLayer.first
         val layerImages = baseSettings.staticLayerImages + (staticLayer.first.id to staticLayer.second)
+        val gridConfiguration = draft.gridConfiguration
+            ?: defaultGridConfiguration(mapImage.image, draft.pixelsPerMetre, baseSettings.seed)
 
         return OperationLaunchConfiguration(
             settings = baseSettings.copy(
@@ -93,6 +123,9 @@ internal object OperationLaunchConfigurationFactory {
                 width = mapImage.image.width,
                 height = mapImage.image.height,
                 metresPerPixel = draft.pixelsPerMetre,
+                mapId = gridConfiguration.mapId,
+                gridStartX = gridConfiguration.startX,
+                gridStartY = gridConfiguration.startY,
             ),
             unitTemplates = draft.unitTemplates,
             initialLedgerEntries = draft.seededUnitTemplateEntries(),

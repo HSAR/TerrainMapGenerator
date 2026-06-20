@@ -103,5 +103,5 @@ internal object MapViewerTextViews {
     fun Color.toRgba(alpha: Int = this.alpha): RGBA =
         RGBA(red, green, blue, alpha)
 
-    const val DEFAULT_TEXT_SIZE = 20.0
+    const val DEFAULT_TEXT_SIZE = 24.0
 }

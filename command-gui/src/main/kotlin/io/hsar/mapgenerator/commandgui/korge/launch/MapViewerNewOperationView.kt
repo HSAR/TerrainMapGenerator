@@ -3,10 +3,15 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
+import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconFit
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputs
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
+import io.hsar.mapgenerator.graph.Point
+import io.hsar.mapgenerator.graph.Rectangle
+import io.hsar.mapgenerator.grid.GridLayerBuilder
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.image.awt.toBMP32
@@ -28,6 +33,7 @@ import java.io.File
 import javax.imageio.ImageIO
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
+import kotlin.math.roundToInt
 
 @OptIn(KorgeExperimental::class)
 internal class MapViewerNewOperationView(
@@ -35,7 +41,8 @@ internal class MapViewerNewOperationView(
     viewportWidth: Int,
     viewportHeight: Int,
     initialSetupInputs: MapViewerSetupInputs = MapViewerSetupInputs(),
-    initialPixelsPerMetre: Double = 20.0,
+    private val initialPixelsPerMetre: Double = 20.0,
+    private val initialSeed: Long = System.currentTimeMillis(),
     private val onLaunch: (NewOperationDraft) -> Unit,
     private val onBack: () -> Unit,
     private val onTitleChanged: (String) -> Unit = {},
@@ -44,8 +51,18 @@ internal class MapViewerNewOperationView(
     private val unitRows = mutableListOf<UnitRow>()
     private var operationName = ""
     private var pixelsPerMetreText = initialPixelsPerMetre.toString()
+    private var mapIdText = ""
+    private var gridStartXText = ""
+    private var gridStartYText = ""
     private var operationNameInput: UITextInput? = null
     private var pixelsPerMetreInput: UITextInput? = null
+    private var mapIdInput: UITextInput? = null
+    private var gridStartXInput: UITextInput? = null
+    private var gridStartYInput: UITextInput? = null
+    private var mapPreviewContainer: Container? = null
+    private var mapPreviewBounds: ScreenBounds? = null
+    private var mapPreviewSignature: String? = null
+    private var mapPreviewDirty = true
     private var mapImage: MapImageRow? = initialSetupInputs.mapImagePath?.let { path ->
         val image = initialSetupInputs.mapImage
         if (image == null) {
@@ -64,6 +81,7 @@ internal class MapViewerNewOperationView(
     private var layout = MapViewerNewOperationLayoutBuilder.build(viewportWidth, viewportHeight)
     private var dragState: ReorderDragState? = null
     private var nextRowId = 1L
+    private var reseedGridDefaults = mapImage != null
 
     init {
         layer.zIndex = Z_INDEX
@@ -73,7 +91,9 @@ internal class MapViewerNewOperationView(
         }
         layer.addUpdater {
             updateDrag(layer.stage?.views?.input?.mousePos, layer.stage?.views?.input?.mouseButtonPressed(MouseButton.LEFT) == true)
+            updatePreviewIfNeeded()
         }
+        mapImage?.let { applyGridDefaults(it) }
         render(viewportWidth, viewportHeight)
     }
 
@@ -83,6 +103,10 @@ internal class MapViewerNewOperationView(
 
     private fun render(viewportWidth: Int, viewportHeight: Int) {
         captureInputs()
+        if (reseedGridDefaults) {
+            mapImage?.let(::applyGridDefaults)
+            reseedGridDefaults = false
+        }
         layout = MapViewerNewOperationLayoutBuilder.build(viewportWidth, viewportHeight)
         layer.removeChildren()
         layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 255))
@@ -101,46 +125,95 @@ internal class MapViewerNewOperationView(
 
     private fun renderMapSection() {
         val panel = MapViewerLaunchUi.panel(layer, layout.mapPanelBounds)
-        MapViewerLaunchUi.label(panel, "Operational Details", strong = true).xy(CONTENT_PADDING, CONTENT_PADDING)
+        val panelWidth = layout.mapPanelBounds.width
+        val halfFieldWidth = (panelWidth - (CONTENT_PADDING * 2.0) - FIELD_GAP) / 2.0
+        val imageButtonTop = 128.0
 
-        MapViewerLaunchUi.label(panel, "Operation Name").xy(CONTENT_PADDING, 34.0)
+        MapViewerLaunchUi.label(panel, "Operational Details", strong = true).xy(CONTENT_PADDING, CONTENT_PADDING)
+        MapViewerLaunchUi.label(panel, "Operation Name").xy(CONTENT_PADDING, 60.0)
         operationNameInput = textInput(
             parent = panel,
             text = operationName,
-            bounds = layout.operationNameBounds,
+            bounds = ScreenBounds(
+                left = CONTENT_PADDING,
+                top = 84.0,
+                width = panelWidth - CONTENT_PADDING * 2.0,
+                height = INPUT_HEIGHT,
+            ),
         )
-
-        statusContainer = panel.container().also {
-            it.xy(layout.operationNameBounds.left, layout.operationNameBounds.bottom + 10.0)
-        }
+        wirePreviewRefresh(operationNameInput)
 
         MapViewerLaunchUi.button(panel, 160.0, 36.0, if (mapImage == null) "Choose Image" else "Change Image") {
             chooseMapImage()
-        }.xy(layout.mapPanelBounds.width - CONTENT_PADDING - 160.0, CONTENT_PADDING - 4.0)
+        }.xy(CONTENT_PADDING, imageButtonTop)
 
-        val previewBounds = ScreenBounds(
-            left = CONTENT_PADDING,
-            top = 104.0,
-            width = layout.mapPanelBounds.width - CONTENT_PADDING * 2.0,
-            height = 164.0,
+        mapImage?.let { image ->
+            MapViewerLaunchUi.label(panel, image.name, color = Palette.Colours.LIGHT).xy(208.0, 132.0)
+        }
+
+        MapViewerLaunchUi.label(panel, "Map ID").xy(CONTENT_PADDING, 186.0)
+        mapIdInput = textInput(
+            parent = panel,
+            text = mapIdText,
+            bounds = ScreenBounds(
+                left = CONTENT_PADDING,
+                top = 210.0,
+                width = panelWidth - CONTENT_PADDING * 2.0,
+                height = INPUT_HEIGHT,
+            ),
         )
-        renderMapPreview(panel, mapImage, previewBounds)
+        wirePreviewRefresh(mapIdInput)
 
-        MapViewerLaunchUi.label(panel, "Pixels per metre").xy(CONTENT_PADDING, 292.0)
+        MapViewerLaunchUi.label(panel, "Starting X").xy(CONTENT_PADDING, 258.0)
+        MapViewerLaunchUi.label(panel, "Starting Y").xy(CONTENT_PADDING + halfFieldWidth + FIELD_GAP, 258.0)
+        gridStartXInput = textInput(
+            parent = panel,
+            text = gridStartXText,
+            bounds = ScreenBounds(
+                left = CONTENT_PADDING,
+                top = 282.0,
+                width = halfFieldWidth,
+                height = INPUT_HEIGHT,
+            ),
+        )
+        wirePreviewRefresh(gridStartXInput)
+        gridStartYInput = textInput(
+            parent = panel,
+            text = gridStartYText,
+            bounds = ScreenBounds(
+                left = CONTENT_PADDING + halfFieldWidth + FIELD_GAP,
+                top = 282.0,
+                width = halfFieldWidth,
+                height = INPUT_HEIGHT,
+            ),
+        )
+        wirePreviewRefresh(gridStartYInput)
+
+        MapViewerLaunchUi.label(panel, "Pixels per metre").xy(CONTENT_PADDING, 330.0)
         pixelsPerMetreInput = textInput(
             parent = panel,
             text = pixelsPerMetreText,
             bounds = ScreenBounds(
                 left = CONTENT_PADDING,
-                top = 314.0,
-                width = 200.0,
+                top = 354.0,
+                width = 220.0,
                 height = INPUT_HEIGHT,
             ),
         )
+        wirePreviewRefresh(pixelsPerMetreInput)
 
-        mapImage?.let { image ->
-            MapViewerLaunchUi.label(panel, image.name).xy(CONTENT_PADDING, 356.0)
-        } ?: MapViewerLaunchUi.label(panel, "No map image selected", color = Palette.Colours.LIGHT).xy(CONTENT_PADDING, 356.0)
+        mapPreviewBounds = ScreenBounds(
+            left = CONTENT_PADDING,
+            top = 410.0,
+            width = panelWidth - CONTENT_PADDING * 2.0,
+            height = layout.mapPanelBounds.height - 410.0 - CONTENT_PADDING,
+        )
+        mapPreviewContainer = panel.container().also {
+            it.xy(mapPreviewBounds!!.left, mapPreviewBounds!!.top)
+        }
+        renderMapPreview(mapPreviewContainer!!, mapPreviewBounds!!, mapImage)
+        mapPreviewSignature = previewSignature()
+        mapPreviewDirty = false
     }
 
     private fun renderUnitTypes() {
@@ -199,30 +272,6 @@ internal class MapViewerNewOperationView(
         )
     }
 
-    private fun renderMapPreview(parent: Container, mapImage: MapImageRow?, bounds: ScreenBounds) {
-        val preview = parent.container()
-        preview.xy(bounds.left, bounds.top)
-        preview.solidRect(bounds.width, bounds.height, RGBA(255, 255, 255, 255))
-        preview.solidRect(bounds.width - 4.0, bounds.height - 4.0, MapViewerLaunchUi.toRgba(Palette.Colours.DARK)) {
-            this.x = 2.0
-            this.y = 2.0
-        }
-
-        val bitmap = mapImage?.previewBitmap
-        if (bitmap == null) {
-            MapViewerLaunchUi.label(preview, "Map preview appears here", color = Palette.Colours.LIGHT)
-                .xy(16.0, (bounds.height - 18.0) * 0.5)
-            return
-        }
-
-        val fittedIcon = MapViewerIconFit.inside(bitmap, bounds.width - 16.0, bounds.height - 16.0)
-        preview.image(bitmap) {
-            scale = fittedIcon.scale
-            this.x = 8.0 + fittedIcon.x
-            this.y = 8.0 + fittedIcon.y
-        }
-    }
-
     private fun renderPreviewFrame(parent: Container, bitmap: Bitmap32, left: Double, top: Double) {
         val frame = parent.container()
         frame.xy(left, top)
@@ -275,6 +324,8 @@ internal class MapViewerNewOperationView(
             previewBitmap = image.toBMP32().premultipliedIfRequired(),
             assetSource = AssetSource.fromFile(file),
         )
+        reseedGridDefaults = true
+        mapPreviewDirty = true
         render(layout.viewportWidth, layout.viewportHeight)
     }
 
@@ -292,6 +343,7 @@ internal class MapViewerNewOperationView(
 
     private fun launch() {
         captureInputs()
+        val gridConfiguration = parseGridConfiguration()
         val draft = NewOperationDraft(
             operationName = operationName,
             mapImage = mapImage?.let { image ->
@@ -303,6 +355,7 @@ internal class MapViewerNewOperationView(
                 )
             },
             pixelsPerMetre = pixelsPerMetreText.toDoubleOrNull() ?: -1.0,
+            gridConfiguration = gridConfiguration,
             unitTemplates = unitRows.map { row ->
                 MapViewerUnitTemplate(
                     name = row.name,
@@ -315,17 +368,136 @@ internal class MapViewerNewOperationView(
             draft.operationName.isBlank() -> showStatus("Enter an operation name")
             draft.mapImage == null -> showStatus("Choose a map image")
             draft.pixelsPerMetre <= 0.0 -> showStatus("Enter a pixels-per-metre value")
+            draft.gridConfiguration == null -> showStatus("Enter a map ID and starting coordinates")
             else -> onLaunch(draft)
         }
     }
 
     private fun captureInputs() {
-        operationName = operationNameInput?.text?.trim().orEmpty()
-        pixelsPerMetreText = pixelsPerMetreInput?.text?.trim().orEmpty()
+        operationNameInput?.text?.trim()?.let { operationName = it }
+        pixelsPerMetreInput?.text?.trim()?.let { pixelsPerMetreText = it }
+        mapIdInput?.text?.trim()?.let { mapIdText = it }
+        gridStartXInput?.text?.trim()?.let { gridStartXText = it }
+        gridStartYInput?.text?.trim()?.let { gridStartYText = it }
         unitRows.forEach { row ->
             row.name = row.input?.text?.trim().orEmpty().ifBlank { row.name }
         }
     }
+
+    private fun applyGridDefaults(image: MapImageRow) {
+        val metresPerPixel = pixelsPerMetreText.toDoubleOrNull() ?: initialPixelsPerMetre
+        val defaults = defaultGridConfiguration(image.image, metresPerPixel, initialSeed)
+        mapIdText = defaults.mapId
+        gridStartXText = defaults.startX.toString()
+        gridStartYText = defaults.startY.toString()
+        mapPreviewDirty = true
+    }
+
+    private fun parseGridConfiguration(): GridConfiguration? {
+        val mapId = mapIdText.trim()
+        val startX = gridStartXText.trim().toIntOrNull()
+        val startY = gridStartYText.trim().toIntOrNull()
+        return if (mapId.isNotBlank() && startX != null && startY != null) {
+            GridConfiguration(
+                mapId = mapId,
+                startX = startX,
+                startY = startY,
+            )
+        } else {
+            null
+        }
+    }
+
+    private fun renderMapPreview(parent: Container, bounds: ScreenBounds, mapImage: MapImageRow?) {
+        parent.removeChildren()
+        parent.solidRect(bounds.width, bounds.height, RGBA(255, 255, 255, 255))
+        parent.solidRect(bounds.width - 4.0, bounds.height - 4.0, MapViewerLaunchUi.toRgba(Palette.Colours.DARK)) {
+            this.x = 2.0
+            this.y = 2.0
+        }
+
+        val bitmap = mapImage?.previewBitmap
+        if (bitmap == null) {
+            MapViewerLaunchUi.label(parent, "Map preview appears here", color = Palette.Colours.LIGHT)
+                .xy(16.0, (bounds.height - 18.0) * 0.5)
+            return
+        }
+
+        val fittedIcon = MapViewerIconFit.inside(bitmap, bounds.width - 16.0, bounds.height - 16.0)
+        val image = parent.image(bitmap) {
+            scale = fittedIcon.scale
+            x = 8.0 + fittedIcon.x
+            y = 8.0 + fittedIcon.y
+        }
+        val previewWidth = fittedIcon.width.roundToInt().coerceAtLeast(1)
+        val previewHeight = fittedIcon.height.roundToInt().coerceAtLeast(1)
+
+        val gridConfiguration = resolvedGridConfiguration() ?: return
+        val gridLayer = GridLayerBuilder.build(
+            width = previewWidth,
+            height = previewHeight,
+            gridScale = 1_000,
+            metresPerPixel = pixelsPerMetreText.toDoubleOrNull() ?: initialPixelsPerMetre,
+            mapId = gridConfiguration.mapId,
+            verticalLineNumberStart = gridConfiguration.startX,
+            horizontalLineNumberStart = gridConfiguration.startY,
+        )
+        val overlay = GridOverlayView(gridLayer)
+        parent.addChild(overlay)
+        overlay.update(
+            GridOverlayState(
+                viewport = Rectangle(Point.ORIGIN, Point(bounds.width, bounds.height)),
+                mapWorldX = 0.0,
+                mapWorldY = 0.0,
+                mapOffsetX = image.x,
+                mapOffsetY = image.y,
+                scale = 1.0,
+                pixelWidth = previewWidth,
+                pixelHeight = previewHeight,
+                backgroundWidth = bounds.width.toInt(),
+                backgroundHeight = bounds.height.toInt(),
+                visibleCanvasLeft = 0.0,
+                visibleCanvasTop = 0.0,
+                visibleCanvasRight = bounds.width,
+                visibleCanvasBottom = bounds.height,
+                activeReference = null,
+                measurement = null,
+                gridLayer = gridLayer,
+            ),
+        )
+    }
+
+    private fun resolvedGridConfiguration(): GridConfiguration? {
+        parseGridConfiguration()?.let { return it }
+        val image = mapImage ?: return null
+        return defaultGridConfiguration(
+            mapImage = image.image,
+            metresPerPixel = pixelsPerMetreText.toDoubleOrNull() ?: initialPixelsPerMetre,
+            seed = initialSeed,
+        )
+    }
+
+    private fun updatePreviewIfNeeded() {
+        captureInputs()
+        val preview = mapPreviewContainer ?: return
+        val bounds = mapPreviewBounds ?: return
+        val signature = previewSignature()
+        if (!mapPreviewDirty && signature == mapPreviewSignature) {
+            return
+        }
+        mapPreviewSignature = signature
+        mapPreviewDirty = false
+        renderMapPreview(preview, bounds, mapImage)
+    }
+
+    private fun previewSignature(): String =
+        buildString {
+            append(mapImage?.imagePath.orEmpty()).append('|')
+            append(pixelsPerMetreInput?.text?.trim().orEmpty()).append('|')
+            append(mapIdInput?.text?.trim().orEmpty()).append('|')
+            append(gridStartXInput?.text?.trim().orEmpty()).append('|')
+            append(gridStartYInput?.text?.trim().orEmpty())
+        }
 
     private fun updateDrag(mousePos: Vector2D?, leftHeld: Boolean) {
         val drag = dragState ?: return
@@ -360,6 +532,14 @@ internal class MapViewerNewOperationView(
 
     private fun textInput(parent: Container, text: String, bounds: ScreenBounds): UITextInput =
         MapViewerTextInputs.input(parent, text, bounds.width, bounds.height, bounds.left, bounds.top)
+
+    private fun wirePreviewRefresh(input: UITextInput?) {
+        input ?: return
+        input.controller.onTextUpdated.add {
+            captureInputs()
+            mapPreviewDirty = true
+        }
+    }
 
     private fun chooseRasterImageFile(): File? =
         chooseImageFile("Map image files", "png", "jpg", "jpeg", "gif", "bmp", "webp")
@@ -409,9 +589,10 @@ internal class MapViewerNewOperationView(
         const val PREVIEW_WIDTH = 64.0
         const val PREVIEW_HEIGHT = 36.0
         const val PREVIEW_LEFT = 0.0
-        const val INPUT_HEIGHT = 32.0
+        const val INPUT_HEIGHT = 40.0
         const val HANDLE_WIDTH = 28.0
         const val HANDLE_HEIGHT = 28.0
+        const val FIELD_GAP = 12.0
         private fun <T> MutableList<T>.move(fromIndex: Int, toIndex: Int) {
             if (fromIndex == toIndex) return
             val item = removeAt(fromIndex)
@@ -439,7 +620,7 @@ internal object MapViewerNewOperationLayoutBuilder {
         val top = 20.0
         val shellTop = 108.0
         val shellHeight = (viewportHeight - shellTop - margin).coerceAtLeast(560.0)
-        val shellWidth = minOf(1040.0, viewportWidth - margin * 2.0)
+        val shellWidth = minOf(viewportWidth * 0.75, viewportWidth - margin * 2.0)
         val shellLeft = (viewportWidth - shellWidth) * 0.5
         val shellPadding = 24.0
         val shellContentTop = shellTop + 86.0

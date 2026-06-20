@@ -139,6 +139,9 @@ class OperationSaveRoundTripTest {
         assertThat(reread.game.name, equalTo("Round Trip"))
         assertThat(reread.game.map.metresPerPixel, equalTo(20.0))
         assertThat(reread.game.map.assetId.isNotBlank(), equalTo(true))
+        assertThat(reread.game.map.mapId.isNullOrBlank(), equalTo(false))
+        assertThat(reread.game.map.gridStartX != null, equalTo(true))
+        assertThat(reread.game.map.gridStartY != null, equalTo(true))
         assertThat(reread.ledger.entries.size, equalTo(5))
         assertThat(reread.ledger.entries[2] is EditObjectEntrySaveDto, equalTo(true))
 

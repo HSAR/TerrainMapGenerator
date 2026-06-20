@@ -540,6 +540,7 @@ internal class MapViewerScene(
                             viewportHeight = gameWindow.height,
                             initialSetupInputs = initialSetupInputs,
                             initialPixelsPerMetre = initialSettings.metresPerPixel,
+                            initialSeed = initialSettings.seed,
                             onLaunch = ::launchDraft,
                             onBack = { showLaunchpad() },
                             onTitleChanged = { title -> gameWindow.title = MapViewerWindowTitle.format(title) },

@@ -6,12 +6,23 @@ import io.hsar.mapgenerator.image.Palette
 object GridStyles {
     val GRID_PALETTE = GridPalettes.DEFAULT
 
-    val MAP_ID_PADDING = Point(25.0, 50.0)
-    val MAP_ID_FONT = Palette.Fonts.STRONG.first.deriveFont(26f) to Palette.Colours.DARK
+    fun mapIdPadding(mapWidth: Int, mapHeight: Int): Point =
+        GridLayoutScale.mapIdPadding(mapWidth, mapHeight)
 
-    val GRID_LINE_ID_PADDING = Point(55.0, 40.0)
-    val GRID_LINE_ID_FONT = Palette.Fonts.BASE.first.deriveFont(22f) to Palette.Colours.MAIN
-    val MAJOR_GRID_LINE_ID_FONT = Palette.Fonts.STRONG.first.deriveFont(22f) to Palette.Fonts.STRONG.second
+    fun gridLineIdPadding(mapWidth: Int, mapHeight: Int): Point =
+        GridLayoutScale.gridLinePadding(mapWidth, mapHeight)
+
+    fun mapIdFont(mapWidth: Int, mapHeight: Int) =
+        Palette.Fonts.STRONG.first.deriveFont((GridLayoutScale.MAP_ID_FONT_SCALE * labelScale(mapWidth, mapHeight)).toFloat()) to Palette.Colours.DARK
+
+    fun gridLineIdFont(mapWidth: Int, mapHeight: Int) =
+        Palette.Fonts.BASE.first.deriveFont((GridLayoutScale.GRID_LINE_FONT_SCALE * labelScale(mapWidth, mapHeight)).toFloat()) to Palette.Colours.MAIN
+
+    fun majorGridLineIdFont(mapWidth: Int, mapHeight: Int) =
+        Palette.Fonts.STRONG.first.deriveFont((GridLayoutScale.GRID_LINE_FONT_SCALE * labelScale(mapWidth, mapHeight)).toFloat()) to Palette.Fonts.STRONG.second
 
     val GRID_LINE_COLOUR = GRID_PALETTE.lineColour
+
+    fun labelScale(mapWidth: Int, mapHeight: Int): Double =
+        GridLayoutScale.labelScale(mapWidth, mapHeight)
 }

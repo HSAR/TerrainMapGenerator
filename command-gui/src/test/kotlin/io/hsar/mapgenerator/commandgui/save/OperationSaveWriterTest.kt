@@ -8,6 +8,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateActio
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
+import io.hsar.mapgenerator.commandgui.korge.launch.defaultGridConfiguration
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import org.hamcrest.MatcherAssert.assertThat
@@ -65,11 +66,18 @@ class OperationSaveWriterTest {
         assertThat(save.game.formatVersion, equalTo(2))
         assertThat(save.game.thumbnailAssetId, equalTo(operationId.toString()))
         assertThat(save.game.map.assetId, equalTo("00000000-0000-0000-0000-000000000001"))
+        val expectedGrid = defaultGridConfiguration(mapImage, 20.0, 1234L)
+        assertThat(save.game.map.mapId, equalTo(expectedGrid.mapId))
+        assertThat(save.game.map.gridStartX, equalTo(expectedGrid.startX))
+        assertThat(save.game.map.gridStartY, equalTo(expectedGrid.startY))
         ZipFile(savePath.toFile()).use { zip ->
             val gameJson = OperationSaveJson.objectMapper.readTree(zip.getInputStream(zip.getEntry("game.json")))
             assertThat(gameJson["map"].has("name"), equalTo(false))
             assertThat(gameJson["map"].has("width"), equalTo(false))
             assertThat(gameJson["map"].has("height"), equalTo(false))
+            assertThat(gameJson["map"]["mapId"].asText(), equalTo(expectedGrid.mapId))
+            assertThat(gameJson["map"]["gridStartX"].asInt(), equalTo(expectedGrid.startX))
+            assertThat(gameJson["map"]["gridStartY"].asInt(), equalTo(expectedGrid.startY))
         }
         assertThat((save.ledger.entries.single() as CreateUnitTemplateEntrySaveDto).unitTemplate.template.assetId, equalTo("00000000-0000-0000-0000-000000000002"))
 
@@ -198,6 +206,7 @@ class OperationSaveWriterTest {
             width = mapImage.width,
             height = mapImage.height,
             metresPerPixel = 20.0,
+            seed = 1234L,
         ),
         mapImage = mapImage,
         thumbnailImage = thumbnailImage,

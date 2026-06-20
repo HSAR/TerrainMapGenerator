@@ -13,6 +13,8 @@ class GridReferenceFormatterFieldsTest {
     fun `formats separate easting and northing fields from map coordinates`() {
         val fields = GridReferenceFormatter.formatFields(
             layer = layer(),
+            mapWidth = 2560,
+            mapHeight = 1440,
             mapX = 170.0,
             mapY = 340.0,
         )
@@ -25,6 +27,8 @@ class GridReferenceFormatterFieldsTest {
     fun `parses separate easting and northing fields back to map pixels`() {
         val pixels = GridReferenceFormatter.parseFields(
             layer = layer(),
+            mapWidth = 2560,
+            mapHeight = 1440,
             easting = "0730",
             northing = "3900",
         )
@@ -37,6 +41,8 @@ class GridReferenceFormatterFieldsTest {
     fun `parses separate fields with negative coordinates`() {
         val pixels = GridReferenceFormatter.parseFields(
             layer = layer(verticalLineNumberStart = -1, horizontalLineNumberStart = -2),
+            mapWidth = 2560,
+            mapHeight = 1440,
             easting = "0130",
             northing = "-0800",
         )

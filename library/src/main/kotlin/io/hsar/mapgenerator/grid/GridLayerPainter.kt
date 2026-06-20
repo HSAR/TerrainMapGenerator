@@ -26,17 +26,43 @@ object GridLayerPainter {
         ),
         textMode: TextMode = TextMode.IMAGE,
     ) {
-        surface.drawString(
+        val mapIdPadding = GridStyles.mapIdPadding(surface.width, surface.height)
+        val gridLinePadding = GridStyles.gridLineIdPadding(surface.width, surface.height)
+        val mapIdFont = GridStyles.mapIdFont(surface.width, surface.height)
+        val gridLineFont = GridStyles.gridLineIdFont(surface.width, surface.height)
+        val majorGridLineFont = GridStyles.majorGridLineIdFont(surface.width, surface.height)
+
+        surface.drawCenteredString(
             Point(
-                textX(GridStyles.MAP_ID_PADDING.x, viewport.topLeft.x, textMode),
-                textY(GridStyles.MAP_ID_PADDING.y, viewport.topLeft.y, textMode),
+                textX(gridLinePadding.x, viewport.topLeft.x, textMode),
+                textY(mapIdPadding.y, viewport.topLeft.y, textMode),
             ),
             layer.mapId,
-            GridStyles.MAP_ID_FONT,
+            mapIdFont,
         )
 
-        drawGridLines(surface, layer, viewport, textMode, GridAxis.VERTICAL)
-        drawGridLines(surface, layer, viewport, textMode, GridAxis.HORIZONTAL)
+        drawGridLines(
+            surface = surface,
+            layer = layer,
+            viewport = viewport,
+            textMode = textMode,
+            axis = GridAxis.VERTICAL,
+            mapIdPadding = mapIdPadding,
+            gridLinePadding = gridLinePadding,
+            gridLineFont = gridLineFont,
+            majorGridLineFont = majorGridLineFont,
+        )
+        drawGridLines(
+            surface = surface,
+            layer = layer,
+            viewport = viewport,
+            textMode = textMode,
+            axis = GridAxis.HORIZONTAL,
+            mapIdPadding = mapIdPadding,
+            gridLinePadding = gridLinePadding,
+            gridLineFont = gridLineFont,
+            majorGridLineFont = majorGridLineFont,
+        )
     }
 
     internal fun textX(baseX: Double, viewportLeftX: Double, textMode: TextMode): Double =
@@ -57,8 +83,12 @@ object GridLayerPainter {
         viewport: Rectangle,
         textMode: TextMode,
         axis: GridAxis,
+        mapIdPadding: Point,
+        gridLinePadding: Point,
+        gridLineFont: Pair<java.awt.Font, Color>,
+        majorGridLineFont: Pair<java.awt.Font, Color>,
     ) {
-        val (startIndex, endIndex) = axis.lineIndexRange(viewport, layer)
+        val (startIndex, endIndex) = axis.lineIndexRange(viewport, layer, gridLinePadding)
 
         if (startIndex > endIndex) {
             return
@@ -67,18 +97,52 @@ object GridLayerPainter {
         (startIndex..endIndex).forEach { lineIndex ->
             val lineID = axis.lineId(layer, lineIndex)
             val lineIDString = lineID.padZeroes(layer.detailLevel)
-            val linePosition = axis.linePosition(layer, lineIndex)
-            val labelLayout = labelLayout(surface, viewport, textMode, axis, linePosition, lineIDString)
-            val labelColour = axis.labelColour(linePosition, viewport, textMode)
-            val lineBounds = axis.lineBounds(surface, viewport, linePosition, lineIDString)
-            val width = if ((lineID % 10) == 0) 1.0f else 0.5f
-            val lineNormalFadeStart = axis.normalFadeStart(surface, viewport, textMode, linePosition, lineIDString)
+            val linePosition = axis.linePosition(layer, lineIndex, gridLinePadding)
+            val isMajorLine = (lineID % 10) == 0
+            val fontAndColour = if (isMajorLine) majorGridLineFont else gridLineFont
+            val labelLayout = labelLayout(
+                surface = surface,
+                viewport = viewport,
+                textMode = textMode,
+                axis = axis,
+                linePosition = linePosition,
+                lineIDString = lineIDString,
+                mapIdPadding = mapIdPadding,
+                gridLinePadding = gridLinePadding,
+                labelFont = fontAndColour.first,
+            )
+            val labelColour = axis.labelColour(
+                linePosition = linePosition,
+                viewport = viewport,
+                textMode = textMode,
+                gridLinePadding = gridLinePadding,
+                color = fontAndColour.second,
+            )
+            val lineBounds = axis.lineBounds(
+                surface = surface,
+                viewport = viewport,
+                linePosition = linePosition,
+                lineIDString = lineIDString,
+                gridLinePadding = gridLinePadding,
+                labelFont = fontAndColour.first,
+            )
+            val width = if (isMajorLine) 1.0f else 0.5f
+            val lineNormalFadeStart = axis.normalFadeStart(
+                surface = surface,
+                viewport = viewport,
+                textMode = textMode,
+                linePosition = linePosition,
+                lineIDString = lineIDString,
+                mapIdPadding = mapIdPadding,
+                gridLinePadding = gridLinePadding,
+                labelFont = fontAndColour.first,
+            )
 
             if (lineBounds.isVisible(axis)) {
                 surface.drawCenteredString(
                     point = labelLayout.point,
                     text = lineIDString,
-                    fontAndColour = GridStyles.GRID_LINE_ID_FONT.first to labelColour,
+                    fontAndColour = fontAndColour.first to labelColour,
                 )
                 drawLineWithOptionalFade(
                     surface = surface,
@@ -112,6 +176,7 @@ object GridLayerPainter {
             TextMode.IMAGE -> {
                 surface.drawLine(start, end, width = width, color = color)
             }
+
             TextMode.STICKY_AXES -> {
                 val (lineStart, lineEnd) = when (axis) {
                     GridAxis.VERTICAL -> fadeStart to end.y
@@ -182,12 +247,15 @@ object GridLayerPainter {
         axis: GridAxis,
         linePosition: Double,
         lineIDString: String,
+        mapIdPadding: Point,
+        gridLinePadding: Point,
+        labelFont: java.awt.Font,
     ): LabelLayout {
-        val textSize = surface.getTextSize(lineIDString, GridStyles.GRID_LINE_ID_FONT.first)
+        val textSize = surface.getTextSize(lineIDString, labelFont)
         return when (axis) {
             GridAxis.VERTICAL -> {
                 val labelY = textY(
-                    GridStyles.MAP_ID_PADDING.y,
+                    mapIdPadding.y,
                     viewport.topLeft.y,
                     textMode,
                 )
@@ -198,7 +266,7 @@ object GridLayerPainter {
             }
 
             GridAxis.HORIZONTAL -> {
-                val labelX = textX(GridStyles.GRID_LINE_ID_PADDING.x, viewport.topLeft.x, textMode)
+                val labelX = textX(gridLinePadding.x, viewport.topLeft.x, textMode)
                 LabelLayout(
                     point = Point(labelX, linePosition),
                     gutterEdge = labelX + textSize.width / 2,
@@ -228,28 +296,28 @@ object GridLayerPainter {
             GridAxis.HORIZONTAL -> GridAxis.VERTICAL
         }
 
-    private fun GridAxis.lineIndexRange(viewport: Rectangle, layer: GridLayer): Pair<Int, Int> =
+    private fun GridAxis.lineIndexRange(viewport: Rectangle, layer: GridLayer, gridLinePadding: Point): Pair<Int, Int> =
         when (this) {
             GridAxis.VERTICAL -> startIndexRange(
                 viewportPosition = viewport.topLeft.x,
                 pixelsPerLine = layer.pixelsPerLine,
-                padding = GridStyles.GRID_LINE_ID_PADDING.x,
+                padding = gridLinePadding.x,
             ) to endIndexRange(
                 viewportPosition = viewport.topRight.x,
                 count = layer.verticalLineCount,
                 pixelsPerLine = layer.pixelsPerLine,
-                padding = GridStyles.GRID_LINE_ID_PADDING.x,
+                padding = gridLinePadding.x,
             )
 
             GridAxis.HORIZONTAL -> startIndexRange(
                 viewportPosition = viewport.topLeft.y,
                 pixelsPerLine = layer.pixelsPerLine,
-                padding = GridStyles.GRID_LINE_ID_PADDING.y,
+                padding = gridLinePadding.y,
             ) to endIndexRange(
                 viewportPosition = viewport.bottomRight.y,
                 count = layer.horizontalLineCount,
                 pixelsPerLine = layer.pixelsPerLine,
-                padding = GridStyles.GRID_LINE_ID_PADDING.y,
+                padding = gridLinePadding.y,
             )
         }
 
@@ -259,10 +327,10 @@ object GridLayerPainter {
             GridAxis.HORIZONTAL -> layer.horizontalLineNumberStart - lineIndex
         }
 
-    private fun GridAxis.linePosition(layer: GridLayer, lineIndex: Int): Double =
+    private fun GridAxis.linePosition(layer: GridLayer, lineIndex: Int, gridLinePadding: Point): Double =
         when (this) {
-            GridAxis.VERTICAL -> GridStyles.GRID_LINE_ID_PADDING.x + lineIndex * layer.pixelsPerLine
-            GridAxis.HORIZONTAL -> GridStyles.GRID_LINE_ID_PADDING.y + lineIndex * layer.pixelsPerLine
+            GridAxis.VERTICAL -> gridLinePadding.x + lineIndex * layer.pixelsPerLine
+            GridAxis.HORIZONTAL -> gridLinePadding.y + lineIndex * layer.pixelsPerLine
         }
 
     private fun GridAxis.lineBounds(
@@ -270,6 +338,8 @@ object GridLayerPainter {
         viewport: Rectangle,
         linePosition: Double,
         lineIDString: String,
+        gridLinePadding: Point,
+        labelFont: java.awt.Font,
     ): LineBounds =
         when (this) {
             GridAxis.VERTICAL -> LineBounds(
@@ -277,7 +347,7 @@ object GridLayerPainter {
                     linePosition,
                     max(
                         viewport.topLeft.y,
-                        GridStyles.GRID_LINE_ID_PADDING.y + surface.getTextSize(lineIDString, GridStyles.GRID_LINE_ID_FONT.first).height,
+                        gridLinePadding.y + surface.getTextSize(lineIDString, labelFont).height,
                     ),
                 ),
                 end = Point(
@@ -290,7 +360,7 @@ object GridLayerPainter {
                 start = Point(
                     max(
                         viewport.topLeft.x,
-                        GridStyles.GRID_LINE_ID_PADDING.x + surface.getTextSize(lineIDString, GridStyles.GRID_LINE_ID_FONT.first).width,
+                        gridLinePadding.x + surface.getTextSize(lineIDString, labelFont).width,
                     ),
                     linePosition,
                 ),
@@ -307,34 +377,55 @@ object GridLayerPainter {
         textMode: TextMode,
         linePosition: Double,
         lineIDString: String,
+        mapIdPadding: Point,
+        gridLinePadding: Point,
+        labelFont: java.awt.Font,
     ): Double =
-        labelLayout(surface, viewport, textMode, opposite(), linePosition, lineIDString).gutterEdge
+        labelLayout(
+            surface = surface,
+            viewport = viewport,
+            textMode = textMode,
+            axis = opposite(),
+            linePosition = linePosition,
+            lineIDString = lineIDString,
+            mapIdPadding = mapIdPadding,
+            gridLinePadding = gridLinePadding,
+            labelFont = labelFont,
+        ).gutterEdge
 
-    internal fun GridAxis.labelColour(linePosition: Double, viewport: Rectangle, textMode: TextMode): Color =
+    internal fun GridAxis.labelColour(
+        linePosition: Double,
+        viewport: Rectangle,
+        textMode: TextMode,
+        gridLinePadding: Point,
+        color: Color,
+    ): Color =
         when (this) {
             GridAxis.VERTICAL -> verticalLabelColour(
-                color = GridStyles.GRID_LINE_ID_FONT.second,
+                color = color,
                 screenX = linePosition - viewport.topLeft.x,
                 textMode = textMode,
+                gridLinePadding = gridLinePadding,
             )
 
             GridAxis.HORIZONTAL -> horizontalLabelColour(
-                color = GridStyles.GRID_LINE_ID_FONT.second,
+                color = color,
                 screenY = linePosition - viewport.topLeft.y,
                 textMode = textMode,
+                gridLinePadding = gridLinePadding,
             )
         }
 
-    private fun verticalLabelColour(color: Color, screenX: Double, textMode: TextMode): Color =
+    private fun verticalLabelColour(color: Color, screenX: Double, textMode: TextMode, gridLinePadding: Point): Color =
         when (textMode) {
             TextMode.IMAGE -> color
-            TextMode.STICKY_AXES -> color.withAlpha(axisOpacity(screenX, GridStyles.GRID_LINE_ID_PADDING.x))
+            TextMode.STICKY_AXES -> color.withAlpha(axisOpacity(screenX, gridLinePadding.x))
         }
 
-    private fun horizontalLabelColour(color: Color, screenY: Double, textMode: TextMode): Color =
+    private fun horizontalLabelColour(color: Color, screenY: Double, textMode: TextMode, gridLinePadding: Point): Color =
         when (textMode) {
             TextMode.IMAGE -> color
-            TextMode.STICKY_AXES -> color.withAlpha(axisOpacity(screenY, GridStyles.GRID_LINE_ID_PADDING.y))
+            TextMode.STICKY_AXES -> color.withAlpha(axisOpacity(screenY, gridLinePadding.y))
         }
 
     private fun Color.withAlpha(opacity: Double): Color =

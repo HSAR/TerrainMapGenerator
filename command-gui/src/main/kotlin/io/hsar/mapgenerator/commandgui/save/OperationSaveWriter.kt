@@ -3,6 +3,8 @@ package io.hsar.mapgenerator.commandgui.save
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.geometryFor
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.launch.GridConfiguration
+import io.hsar.mapgenerator.commandgui.korge.launch.defaultGridConfiguration
 import korlibs.image.bitmap.Bitmap32
 import java.awt.Graphics2D
 import java.awt.RenderingHints
@@ -41,6 +43,17 @@ internal class OperationSaveWriter(
         val ledger = request.ledgerEntries.map(ledgerMapper::toDto)
         val updatedAt = request.updatedAt.takeIf { !it.isBefore(request.createdAt) } ?: clock.instant()
         val geometry = geometryFor(request.mapImage)
+        val gridConfiguration = request.settings.mapId
+            ?.takeIf { it.isNotBlank() }
+            ?.let { mapId ->
+                val startX = request.settings.gridStartX
+                val startY = request.settings.gridStartY
+                if (startX != null && startY != null) {
+                    GridConfiguration(mapId = mapId, startX = startX, startY = startY)
+                } else {
+                    null
+                }
+            } ?: defaultGridConfiguration(request.mapImage, request.settings.metresPerPixel, request.settings.seed)
         val game = GameSaveDto(
             formatVersion = FORMAT_VERSION,
             id = request.operationId.toString(),
@@ -52,6 +65,9 @@ internal class OperationSaveWriter(
             map = MapSaveDto(
                 metresPerPixel = request.settings.metresPerPixel,
                 assetId = mapAsset.id.toString(),
+                mapId = gridConfiguration.mapId,
+                gridStartX = gridConfiguration.startX,
+                gridStartY = gridConfiguration.startY,
             ),
         )
         val ledgerFile = LedgerFileDto(entries = ledger)

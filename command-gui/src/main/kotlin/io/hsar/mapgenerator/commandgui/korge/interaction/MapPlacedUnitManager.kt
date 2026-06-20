@@ -290,7 +290,7 @@ internal class MapPlacedUnitManager(
     private fun initialReferenceFields(unit: PlacedUnit): GridReferenceFields {
         val mapPixels = coordinateSpace.toMapPixels(unit.mapCoordinate)
         return gridLayer?.let { layer ->
-            GridReferenceFormatter.formatFields(layer, mapPixels.x, mapPixels.y)
+            GridReferenceFormatter.formatFields(layer, mapWidth, mapHeight, mapPixels.x, mapPixels.y)
         } ?: GridReferenceFields(
             easting = fallbackReference(mapCoordinate = unit.mapCoordinate.x),
             northing = fallbackReference(mapCoordinate = unit.mapCoordinate.y),
@@ -300,7 +300,7 @@ internal class MapPlacedUnitManager(
     private fun referenceToMapCoordinate(easting: String, northing: String): MapCoordinate? {
         val layer = gridLayer
         return if (layer != null) {
-            GridReferenceFormatter.parseFields(layer, easting, northing)?.let { mapPixels ->
+            GridReferenceFormatter.parseFields(layer, mapWidth, mapHeight, easting, northing)?.let { mapPixels ->
                 coordinateSpace.fromMapPixels(Vector2D(mapPixels.x, mapPixels.y))
             }
         } else {

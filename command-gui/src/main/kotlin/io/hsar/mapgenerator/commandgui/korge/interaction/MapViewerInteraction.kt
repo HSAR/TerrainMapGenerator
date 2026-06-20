@@ -368,6 +368,8 @@ internal class MapViewerInteraction(
                     ),
                     text = GridReferenceFormatter.format(
                         layer = gridLayer ?: return null,
+                        mapWidth = mapWidth,
+                        mapHeight = mapHeight,
                         mapX = reference.mapPixelX,
                         mapY = reference.mapPixelY,
                     ),

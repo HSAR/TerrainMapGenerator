@@ -1,29 +1,29 @@
 package io.hsar.mapgenerator
 
 import com.raylabz.opensimplex.Range
+import io.hsar.mapgenerator.graph.Cell
 import io.hsar.mapgenerator.graph.GraphUtils
 import io.hsar.mapgenerator.graph.GraphUtils.relax
 import io.hsar.mapgenerator.graph.GraphUtils.toAdjacentMap
-import io.hsar.mapgenerator.graph.Cell
 import io.hsar.mapgenerator.graph.Line
+import io.hsar.mapgenerator.graph.scale
 import io.hsar.mapgenerator.graph.toLine
 import io.hsar.mapgenerator.graph.toPoint
 import io.hsar.mapgenerator.graph.toPointD
-import io.hsar.mapgenerator.graph.scale
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.GridLayerBuilder
 import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
 import io.hsar.mapgenerator.image.PathRenderer
 import io.hsar.mapgenerator.image.TerrainGenerator
 import io.hsar.mapgenerator.random.PointGenerator
-import java.awt.image.BufferedImage
-import java.util.Random
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import org.kynosarges.tektosyne.geometry.RectD
 import org.kynosarges.tektosyne.geometry.Voronoi
-import kotlin.math.roundToInt
+import java.awt.image.BufferedImage
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.roundToInt
 
 
 class TerrainMapGenerator(
@@ -101,6 +101,21 @@ class TerrainMapGenerator(
         gridScale = io.hsar.mapgenerator.image.GridRenderer.ONE_KM_GRID_SQUARES,
         metresPerPixel = metresPerPixel,
         random = Random(gridSeed),
+    )
+
+    fun generateGridLayer(
+        mapId: String?,
+        verticalLineNumberStart: Int?,
+        horizontalLineNumberStart: Int?,
+    ): GridLayer = GridLayerBuilder.build(
+        width = width,
+        height = height,
+        gridScale = io.hsar.mapgenerator.image.GridRenderer.ONE_KM_GRID_SQUARES,
+        metresPerPixel = metresPerPixel,
+        random = Random(gridSeed),
+        mapId = mapId,
+        verticalLineNumberStart = verticalLineNumberStart,
+        horizontalLineNumberStart = horizontalLineNumberStart,
     )
 
     companion object {

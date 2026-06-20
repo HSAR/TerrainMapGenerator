@@ -37,13 +37,15 @@ internal class GridOverlayView(
         layout.labels.forEach { label ->
             label.shadows.forEach { shadow ->
                 renderLabel(label.text, label.style, shadow.color) {
-                    x = label.x + shadow.offsetX
-                    y = label.y + shadow.offsetY
+                    val bounds = MapViewerTextViews.measure(label.text, label.style.role, label.style.size)
+                    x = label.x - bounds.width / 2 + shadow.offsetX
+                    y = label.y - bounds.height / 2 + shadow.offsetY
                 }
             }
             renderLabel(label.text, label.style, label.style.color) {
-                x = label.x
-                y = label.y
+                val bounds = MapViewerTextViews.measure(label.text, label.style.role, label.style.size)
+                x = label.x - bounds.width / 2
+                y = label.y - bounds.height / 2
             }
         }
     }

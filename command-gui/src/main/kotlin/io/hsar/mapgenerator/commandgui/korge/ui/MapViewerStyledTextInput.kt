@@ -39,9 +39,10 @@ internal class MapViewerStyledTextInput(
 
         content.xy(4.0, 4.0)
         input.skin = ViewRenderer { }
-        input.padding = Margin(4f, 3f, 3f, 3f)
+        input.padding = Margin(4f, 4f, 4f, 4f)
         input.controller.textColor = RGBA(255, 255, 255, 255)
         input.font = MapViewerKorgeFonts.font(MapViewerFontRole.MAIN)
+        input.textSize = MapViewerTextViews.DEFAULT_TEXT_SIZE + 2.0
     }
 
     var text: String

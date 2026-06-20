@@ -30,6 +30,9 @@ internal data class CameraSaveDto(
 internal data class MapSaveDto(
     val metresPerPixel: Double,
     val assetId: String,
+    val mapId: String? = null,
+    val gridStartX: Int? = null,
+    val gridStartY: Int? = null,
 )
 
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")

@@ -45,6 +45,25 @@ class OperationLaunchConfigurationFactoryTest {
     }
 
     @Test
+    fun `setup grid configuration is preserved into runtime settings`() {
+        val draft = NewOperationDraft(
+            operationName = "Operation Copperhead",
+            mapImage = OperationMapImage("Satellite", "satellite.png", image(100, 50)),
+            gridConfiguration = GridConfiguration(
+                mapId = "29UPA",
+                startX = 123,
+                startY = 456,
+            ),
+        )
+
+        val configuration = OperationLaunchConfigurationFactory.create(draft, MapViewerSettings())
+
+        assertThat(configuration.settings.mapId, equalTo("29UPA"))
+        assertThat(configuration.settings.gridStartX, equalTo(123))
+        assertThat(configuration.settings.gridStartY, equalTo(456))
+    }
+
+    @Test
     fun `unit templates from setup are seeded into the initial ledger`() {
         val draft = NewOperationDraft(
             operationName = "Operation Copperhead",

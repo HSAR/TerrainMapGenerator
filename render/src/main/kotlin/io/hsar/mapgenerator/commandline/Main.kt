@@ -277,6 +277,9 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewe
         height = renderHeight,
         metresPerPixel = renderMetresPerPixel,
         metresPerContour = settings.metresPerContour,
+        mapId = settings.mapId,
+        gridStartX = settings.gridStartX,
+        gridStartY = settings.gridStartY,
     )
 
     val terrainMapGenerator by lazy {
@@ -319,7 +322,11 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewe
 
     val gridLayer = if (MapLayer.GRID.id in settings.enabledLayerIds) {
         RenderCache.gridLayers.getOrPut(gridKey) {
-            terrainMapGenerator.generateGridLayer()
+            terrainMapGenerator.generateGridLayer(
+                mapId = settings.mapId,
+                verticalLineNumberStart = settings.gridStartX,
+                horizontalLineNumberStart = settings.gridStartY,
+            )
         }
     } else {
         null
@@ -356,6 +363,9 @@ private data class GridRenderKey(
     val height: Int,
     val metresPerPixel: Double,
     val metresPerContour: Double,
+    val mapId: String?,
+    val gridStartX: Int?,
+    val gridStartY: Int?,
 )
 
 private object RenderCache {

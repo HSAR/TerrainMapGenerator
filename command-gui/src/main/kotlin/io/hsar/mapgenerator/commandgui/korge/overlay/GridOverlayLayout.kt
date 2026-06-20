@@ -68,22 +68,26 @@ internal object GridOverlayLayoutBuilder {
         val mapTop = state.mapOffsetY
         val mapRight = mapLeft + state.pixelWidth * state.scale
         val mapBottom = mapTop + state.pixelHeight * state.scale
-        val mapIdStyle = GridLabelStyle(MapViewerFontRole.STRONG, GridStyles.MAP_ID_FONT.first.size2D.toDouble(), GridStyles.MAP_ID_FONT.second)
-        val minorAxisStyle = GridLabelStyle(MapViewerFontRole.MAIN, GridStyles.GRID_LINE_ID_FONT.first.size2D.toDouble(), GridStyles.GRID_LINE_ID_FONT.second)
-        val majorAxisStyle = GridLabelStyle(MapViewerFontRole.STRONG, GridStyles.MAJOR_GRID_LINE_ID_FONT.first.size2D.toDouble(), GridStyles.MAJOR_GRID_LINE_ID_FONT.second)
-        val referenceStyle = GridLabelStyle(MapViewerFontRole.MAIN, GridStyles.GRID_LINE_ID_FONT.first.size2D.toDouble(), Palette.Colours.RED)
+        val mapIdPadding = GridStyles.mapIdPadding(state.pixelWidth, state.pixelHeight)
+        val gridLinePadding = GridStyles.gridLineIdPadding(state.pixelWidth, state.pixelHeight)
+        val mapIdFont = GridStyles.mapIdFont(state.pixelWidth, state.pixelHeight)
+        val minorAxisFont = GridStyles.gridLineIdFont(state.pixelWidth, state.pixelHeight)
+        val majorAxisFont = GridStyles.majorGridLineIdFont(state.pixelWidth, state.pixelHeight)
+        val mapIdStyle = GridLabelStyle(MapViewerFontRole.STRONG, mapIdFont.first.size2D.toDouble(), mapIdFont.second)
+        val minorAxisStyle = GridLabelStyle(MapViewerFontRole.MAIN, minorAxisFont.first.size2D.toDouble(), minorAxisFont.second)
+        val majorAxisStyle = GridLabelStyle(MapViewerFontRole.STRONG, majorAxisFont.first.size2D.toDouble(), majorAxisFont.second)
+        val referenceStyle = GridLabelStyle(MapViewerFontRole.MAIN, minorAxisFont.first.size2D.toDouble(), Palette.Colours.RED)
         val mapIdBounds = measureText(layer.mapId, mapIdStyle)
         val axisBounds = measureText("0".repeat(layer.detailLevel), minorAxisStyle)
 
-        val topGutterY = max(state.visibleCanvasTop + GridStyles.MAP_ID_PADDING.y, mapTop + GridStyles.MAP_ID_PADDING.y)
-        val leftGutterX = max(state.visibleCanvasLeft + GridStyles.GRID_LINE_ID_PADDING.x, mapLeft + GridStyles.GRID_LINE_ID_PADDING.x)
-        val mapIdX = max(state.visibleCanvasLeft + GridStyles.MAP_ID_PADDING.x, mapLeft + GridStyles.MAP_ID_PADDING.x)
-        val labelCenterY = topGutterY
-        val mapIdY = labelCenterY - mapIdBounds.height / 2
+        val topGutterY = max(state.visibleCanvasTop + mapIdPadding.y, mapTop + mapIdPadding.y)
+        val leftGutterX = max(state.visibleCanvasLeft + gridLinePadding.x, mapLeft + gridLinePadding.x)
+        val mapIdCenterX = leftGutterX
+        val mapIdCenterY = topGutterY
         val yAxisRightEdge = leftGutterX + axisBounds.width / 2
         val xAxisBottomEdge = topGutterY + axisBounds.height / 2
-        val xLabelFadeStart = max(yAxisRightEdge, mapIdX + mapIdBounds.width)
-        val yLabelFadeStart = max(xAxisBottomEdge, mapIdY + mapIdBounds.height)
+        val xLabelFadeStart = max(yAxisRightEdge, mapIdCenterX + mapIdBounds.width / 2)
+        val yLabelFadeStart = max(xAxisBottomEdge, mapIdCenterY + mapIdBounds.height / 2)
         val fineMode = isFineMode(state, layer)
 
         val labels = mutableListOf<GridLabel>()
@@ -92,15 +96,15 @@ internal object GridOverlayLayoutBuilder {
 
         labels += GridLabel(
             text = layer.mapId,
-            x = mapIdX,
-            y = mapIdY,
+            x = mapIdCenterX,
+            y = mapIdCenterY,
             style = mapIdStyle,
         )
 
-        verticalLineIndices(state.viewport, layer).forEach { lineIndex ->
+        verticalLineIndices(state.viewport, layer, gridLinePadding).forEach { lineIndex ->
             val lineId = layer.verticalLineNumberStart + lineIndex
             val lineText = lineId.padZeroes(layer.detailLevel)
-            val lineMapX = GridStyles.GRID_LINE_ID_PADDING.x + lineIndex * layer.pixelsPerLine
+            val lineMapX = gridLinePadding.x + lineIndex * layer.pixelsPerLine
             val lineCanvasX = mapLeft + lineMapX * state.scale
             val labelAlpha = edgeOpacity(lineCanvasX - xLabelFadeStart)
             val lineAlpha = edgeOpacity(lineCanvasX - yAxisRightEdge)
@@ -108,11 +112,10 @@ internal object GridOverlayLayoutBuilder {
 
             if (shouldRenderVerticalLabel(fineMode, lineIndex, isMajorLine)) {
                 val labelStyle = if (isMajorLine) majorAxisStyle else minorAxisStyle
-                val labelBounds = measureText(lineText, labelStyle)
                 labels += GridLabel(
                     text = lineText,
-                    x = lineCanvasX - labelBounds.width / 2,
-                    y = labelCenterY - labelBounds.height / 2,
+                    x = lineCanvasX,
+                    y = mapIdCenterY,
                     style = labelStyle.copy(color = labelStyle.color.withAlpha(labelAlpha)),
                 )
             }
@@ -128,21 +131,20 @@ internal object GridOverlayLayoutBuilder {
             )
         }
 
-        horizontalLineIndices(state.viewport, layer).forEach { lineIndex ->
+        horizontalLineIndices(state.viewport, layer, gridLinePadding).forEach { lineIndex ->
             val lineId = layer.horizontalLineNumberStart - lineIndex
             val lineText = lineId.padZeroes(layer.detailLevel)
-            val lineMapY = GridStyles.GRID_LINE_ID_PADDING.y + lineIndex * layer.pixelsPerLine
+            val lineMapY = gridLinePadding.y + lineIndex * layer.pixelsPerLine
             val lineCanvasY = mapTop + lineMapY * state.scale
             val labelAlpha = edgeOpacity(lineCanvasY - yLabelFadeStart)
             val lineAlpha = edgeOpacity(lineCanvasY - xAxisBottomEdge)
             val isMajorLine = lineId % MAJOR_LINE_DIVISOR == 0
             val labelStyle = if (isMajorLine) majorAxisStyle else minorAxisStyle
-            val labelBounds = measureText(lineText, labelStyle)
 
             labels += GridLabel(
                 text = lineText,
-                x = leftGutterX - labelBounds.width / 2,
-                y = lineCanvasY - labelBounds.height / 2,
+                x = leftGutterX,
+                y = lineCanvasY,
                 style = labelStyle.copy(color = labelStyle.color.withAlpha(labelAlpha)),
             )
 
@@ -182,8 +184,8 @@ internal object GridOverlayLayoutBuilder {
             )
             labels += GridLabel(
                 text = reference.text,
-                x = reference.screenX + ACTIVE_REFERENCE_LABEL_OFFSET_X,
-                y = reference.screenY - referenceBounds.height - ACTIVE_REFERENCE_LABEL_OFFSET_Y,
+                x = reference.screenX + ACTIVE_REFERENCE_LABEL_OFFSET_X + referenceBounds.width / 2,
+                y = reference.screenY - ACTIVE_REFERENCE_LABEL_OFFSET_Y - referenceBounds.height / 2,
                 style = referenceStyle,
                 shadows = accentLabelShadows(),
             )
@@ -206,15 +208,15 @@ internal object GridOverlayLayoutBuilder {
                 val tooltipY = reference.screenY + ACTIVE_REFERENCE_LABEL_OFFSET_Y
                 labels += GridLabel(
                     text = measurement.distanceText,
-                    x = tooltipX,
-                    y = tooltipY,
+                    x = tooltipX + distanceBounds.width / 2,
+                    y = tooltipY + distanceBounds.height / 2,
                     style = referenceStyle,
                     shadows = accentLabelShadows(),
                 )
                 labels += GridLabel(
                     text = measurement.bearingText,
-                    x = tooltipX,
-                    y = tooltipY + distanceBounds.height.absoluteValue + bearingBounds.height.absoluteValue + MEASUREMENT_TOOLTIP_LINE_GAP,
+                    x = tooltipX + bearingBounds.width / 2,
+                    y = tooltipY + distanceBounds.height.absoluteValue + MEASUREMENT_TOOLTIP_LINE_GAP + bearingBounds.height / 2,
                     style = referenceStyle,
                     shadows = accentLabelShadows(),
                 )
@@ -328,15 +330,15 @@ internal object GridOverlayLayoutBuilder {
         }
     }
 
-    private fun verticalLineIndices(viewport: Rectangle, layer: GridLayer): IntRange {
-        val start = max(1, ceil((viewport.topLeft.x - GridStyles.GRID_LINE_ID_PADDING.x) / layer.pixelsPerLine).toInt())
-        val end = min(layer.verticalLineCount, floor((viewport.topRight.x - GridStyles.GRID_LINE_ID_PADDING.x) / layer.pixelsPerLine).toInt())
+    private fun verticalLineIndices(viewport: Rectangle, layer: GridLayer, gridLinePadding: Point): IntRange {
+        val start = max(1, ceil((viewport.topLeft.x - gridLinePadding.x) / layer.pixelsPerLine).toInt())
+        val end = min(layer.verticalLineCount, floor((viewport.topRight.x - gridLinePadding.x) / layer.pixelsPerLine).toInt())
         return if (start <= end) start..end else IntRange.EMPTY
     }
 
-    private fun horizontalLineIndices(viewport: Rectangle, layer: GridLayer): IntRange {
-        val start = max(1, ceil((viewport.topLeft.y - GridStyles.GRID_LINE_ID_PADDING.y) / layer.pixelsPerLine).toInt())
-        val end = min(layer.horizontalLineCount, floor((viewport.bottomRight.y - GridStyles.GRID_LINE_ID_PADDING.y) / layer.pixelsPerLine).toInt())
+    private fun horizontalLineIndices(viewport: Rectangle, layer: GridLayer, gridLinePadding: Point): IntRange {
+        val start = max(1, ceil((viewport.topLeft.y - gridLinePadding.y) / layer.pixelsPerLine).toInt())
+        val end = min(layer.horizontalLineCount, floor((viewport.bottomRight.y - gridLinePadding.y) / layer.pixelsPerLine).toInt())
         return if (start <= end) start..end else IntRange.EMPTY
     }
 

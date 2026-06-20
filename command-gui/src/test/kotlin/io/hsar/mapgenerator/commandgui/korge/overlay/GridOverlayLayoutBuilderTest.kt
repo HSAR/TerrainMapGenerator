@@ -22,7 +22,7 @@ class GridOverlayLayoutBuilderTest {
 
         val xAxisLabel = layout.labels.first { it.text == "06" }
 
-        assertThat(xAxisLabel.y, closeTo(GridStyles.MAP_ID_PADDING.y - 5.0, 0.0001))
+        assertThat(xAxisLabel.y, closeTo(GridStyles.mapIdPadding(1000, 800).y, 0.0001))
     }
 
     @Test
@@ -34,7 +34,7 @@ class GridOverlayLayoutBuilderTest {
 
         val xAxisLabel = layout.labels.first { it.text == "06" }
 
-        assertThat(xAxisLabel.y, closeTo(221.0, 0.0001))
+        assertThat(xAxisLabel.y, closeTo(176.0 + GridStyles.mapIdPadding(1000, 800).y, 0.0001))
     }
 
     @Test
@@ -46,7 +46,7 @@ class GridOverlayLayoutBuilderTest {
 
         val xAxisLabel = layout.labels.first { it.text == "06" }
 
-        assertThat(xAxisLabel.y, closeTo(125.0, 0.0001))
+        assertThat(xAxisLabel.y, closeTo(80.0 + GridStyles.mapIdPadding(1000, 800).y, 0.0001))
     }
 
     @Test
@@ -58,7 +58,7 @@ class GridOverlayLayoutBuilderTest {
 
         val yAxisLabel = layout.labels.first { it.text == "44" }
 
-        assertThat(yAxisLabel.x, closeTo(GridStyles.GRID_LINE_ID_PADDING.x - 10.0, 0.0001))
+        assertThat(yAxisLabel.x, closeTo(GridStyles.gridLineIdPadding(1000, 800).x, 0.0001))
     }
 
     @Test
@@ -70,11 +70,11 @@ class GridOverlayLayoutBuilderTest {
 
         val mapId = layout.labels.first { it.text == "25F XK" }
 
-        assertThat(mapId.x, equalTo(GridStyles.MAP_ID_PADDING.x))
-        assertThat(mapId.y, equalTo(42.0))
+        assertThat(mapId.x, equalTo(GridStyles.gridLineIdPadding(1000, 800).x))
+        assertThat(mapId.y, equalTo(GridStyles.mapIdPadding(1000, 800).y))
         assertThat(mapId.style.role, equalTo(io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole.STRONG))
-        assertThat(mapId.style.size, equalTo(26.0))
-        assertThat(mapId.style.color, equalTo(GridStyles.MAP_ID_FONT.second))
+        assertThat(mapId.style.size, equalTo(GridStyles.mapIdFont(1000, 800).first.size2D.toDouble()))
+        assertThat(mapId.style.color, equalTo(GridStyles.mapIdFont(1000, 800).second))
         assertThat(mapId.shadows.size, equalTo(0))
     }
 
@@ -112,10 +112,10 @@ class GridOverlayLayoutBuilderTest {
         val majorLabel = layout.labels.first { it.text == "10" }
 
         assertThat(majorLabel.style.role, equalTo(io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole.STRONG))
-        assertThat(majorLabel.style.size, equalTo(22.0))
-        assertThat(majorLabel.style.color.red, equalTo(GridStyles.MAJOR_GRID_LINE_ID_FONT.second.red))
-        assertThat(majorLabel.style.color.green, equalTo(GridStyles.MAJOR_GRID_LINE_ID_FONT.second.green))
-        assertThat(majorLabel.style.color.blue, equalTo(GridStyles.MAJOR_GRID_LINE_ID_FONT.second.blue))
+        assertThat(majorLabel.style.size, equalTo(GridStyles.majorGridLineIdFont(1000, 800).first.size2D.toDouble()))
+        assertThat(majorLabel.style.color.red, equalTo(GridStyles.majorGridLineIdFont(1000, 800).second.red))
+        assertThat(majorLabel.style.color.green, equalTo(GridStyles.majorGridLineIdFont(1000, 800).second.green))
+        assertThat(majorLabel.style.color.blue, equalTo(GridStyles.majorGridLineIdFont(1000, 800).second.blue))
     }
 
     @Test
@@ -187,8 +187,8 @@ class GridOverlayLayoutBuilderTest {
             .sortedBy { it.y }
 
         assertThat(referenceLabel.style.color, equalTo(Palette.Colours.RED))
-        assertThat(referenceLabel.x, equalTo(272.0))
-        assertThat(referenceLabel.y, equalTo(258.0))
+        assertThat(referenceLabel.x, equalTo(282.0))
+        assertThat(referenceLabel.y, equalTo(263.0))
         assertThat(referenceLabel.shadows.size, equalTo(1))
         assertThat(referenceLabel.shadows.first().color, equalTo(Palette.Colours.MAIN))
         assertThat(referenceLabel.shadows.first().offsetX, equalTo(1.0))
@@ -224,11 +224,11 @@ class GridOverlayLayoutBuilderTest {
         val bearing = layout.labels.first { it.text == "125\u00b0" }
         val arrow = layout.overlayArrows.single()
 
-        assertThat(distance.x, equalTo(272.0))
-        assertThat(distance.y, equalTo(292.0))
+        assertThat(distance.x, equalTo(282.0))
+        assertThat(distance.y, equalTo(297.0))
         assertThat(distance.style.color, equalTo(Palette.Colours.RED))
-        assertThat(bearing.x, equalTo(272.0))
-        assertThat(bearing.y, equalTo(316.0))
+        assertThat(bearing.x, equalTo(282.0))
+        assertThat(bearing.y, equalTo(311.0))
         assertThat(bearing.style.color, equalTo(Palette.Colours.RED))
         assertThat(arrow.x1, equalTo(120.0))
         assertThat(arrow.y1, equalTo(180.0))

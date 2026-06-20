@@ -40,9 +40,10 @@ internal object MapViewerTextInputs {
 
             content.uiTextInput(text, Size2D(width - 8.0, height - 8.0)).apply {
                 skin = ViewRenderer { }
-                padding = Margin(4f, 3f, 3f, 3f)
+                padding = Margin(4f, 4f, 4f, 4f)
                 controller.textColor = RGBA(255, 255, 255, 255)
                 font = MapViewerKorgeFonts.font(role)
+                textSize = MapViewerTextViews.DEFAULT_TEXT_SIZE + 2.0
                 mouse {
                     onClick {
                         focus()

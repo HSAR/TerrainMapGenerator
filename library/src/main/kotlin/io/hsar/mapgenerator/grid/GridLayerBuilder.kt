@@ -2,7 +2,7 @@ package io.hsar.mapgenerator.grid
 
 import io.hsar.mapgenerator.random.GridGenerator
 import io.hsar.mapgenerator.random.RandomGenerator
-import java.util.Random
+import java.util.*
 import kotlin.math.log
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -16,6 +16,8 @@ object GridLayerBuilder {
         metresPerPixel: Double,
         random: Random = Random(),
         mapId: String? = null,
+        verticalLineNumberStart: Int? = null,
+        horizontalLineNumberStart: Int? = null,
     ): GridLayer {
         val pixelsPerLine = gridScale / metresPerPixel
         val detailLevel = getDetailLevel(gridScale)
@@ -28,8 +30,8 @@ object GridLayerBuilder {
             metresPerPixel = metresPerPixel,
             detailLevel = detailLevel,
             pixelsPerLine = pixelsPerLine,
-            verticalLineNumberStart = generateLineNumberStart(detailLevel, verticalLineCount, random),
-            horizontalLineNumberStart = generateLineNumberStart(detailLevel, horizontalLineCount, random),
+            verticalLineNumberStart = verticalLineNumberStart ?: generateLineNumberStart(detailLevel, verticalLineCount, random),
+            horizontalLineNumberStart = horizontalLineNumberStart ?: generateLineNumberStart(detailLevel, horizontalLineCount, random),
             verticalLineCount = verticalLineCount,
             horizontalLineCount = horizontalLineCount,
         )

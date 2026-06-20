@@ -23,6 +23,8 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
+import io.hsar.mapgenerator.commandgui.korge.launch.GridConfiguration
+import io.hsar.mapgenerator.commandgui.korge.launch.defaultGridConfiguration
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
 import java.awt.Color
 import java.awt.image.BufferedImage
@@ -44,6 +46,22 @@ internal class OperationSaveLoader {
             val mapAsset = loadAsset(zip, save.game.map.assetId)
             val mapImage = decodeBufferedImage(mapAsset.bytes, mapAsset.entry.name)
                 ?: error("Unable to decode map asset ${mapAsset.entry.name}")
+            val operationUuid = UUID.fromString(save.game.id)
+            val gridConfiguration = save.game.map.mapId
+                ?.takeIf { it.isNotBlank() }
+                ?.let { mapId ->
+                    val startX = save.game.map.gridStartX
+                    val startY = save.game.map.gridStartY
+                    if (startX != null && startY != null) {
+                        GridConfiguration(mapId = mapId, startX = startX, startY = startY)
+                    } else {
+                        null
+                    }
+                } ?: defaultGridConfiguration(
+                mapImage = mapImage,
+                metresPerPixel = save.game.map.metresPerPixel,
+                seed = operationUuid.mostSignificantBits xor operationUuid.leastSignificantBits,
+            )
 
             val settings = MapViewerSettings(
                 operationName = save.game.name,
@@ -53,11 +71,15 @@ internal class OperationSaveLoader {
                 width = mapImage.width,
                 height = mapImage.height,
                 metresPerPixel = save.game.map.metresPerPixel,
+                mapId = gridConfiguration.mapId,
+                gridStartX = gridConfiguration.startX,
+                gridStartY = gridConfiguration.startY,
+                seed = operationUuid.mostSignificantBits xor operationUuid.leastSignificantBits,
             )
 
             val replayed = RuntimeLedgerReplayer(zip).replay(save.ledger.entries)
             LoadedOperation(
-                operationId = UUID.fromString(save.game.id),
+                operationId = operationUuid,
                 operationName = save.game.name,
                 createdAt = Instant.parse(save.game.createdAt),
                 updatedAt = Instant.parse(save.game.updatedAt),
