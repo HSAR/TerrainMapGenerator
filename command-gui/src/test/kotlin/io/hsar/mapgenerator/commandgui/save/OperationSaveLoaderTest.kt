@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.save
 
+import io.hsar.mapgenerator.commandgui.MapLayer
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.containsString
@@ -103,5 +104,49 @@ class OperationSaveLoaderTest {
             ),
         )
         assertThat(fallback.zoom, closeTo(0.95, 0.0001))
+    }
+
+    @Test
+    fun `loaded operations enable the grid layer`() {
+        val mapImage = BufferedImage(32, 32, BufferedImage.TYPE_INT_RGB)
+        val mapPath = tempDir.resolve("map.png")
+        ImageIO.write(mapImage, "png", mapPath.toFile())
+        val savePath = tempDir.resolve("grid-enabled.oct.zip")
+        val operationId = "00000000-0000-0000-0000-000000000020"
+        val assetId = "00000000-0000-0000-0000-000000000021"
+
+        ZipOutputStream(Files.newOutputStream(savePath)).use { zip ->
+            zip.putNextEntry(ZipEntry("game.json"))
+            zip.write(
+                """
+                {
+                  "formatVersion": 2,
+                  "id": "$operationId",
+                  "name": "Grid Enabled",
+                  "createdAt": "2026-06-19T10:00:00Z",
+                  "updatedAt": "2026-06-19T10:00:00Z",
+                  "map": {
+                    "metresPerPixel": 20.0,
+                    "assetId": "$assetId",
+                    "mapId": "25F XK",
+                    "gridStartX": 10,
+                    "gridStartY": 20
+                  }
+                }
+                """.trimIndent().toByteArray(),
+            )
+            zip.closeEntry()
+            zip.putNextEntry(ZipEntry("ledger.json"))
+            zip.write("""{"entries": []}""".toByteArray())
+            zip.closeEntry()
+            zip.putNextEntry(ZipEntry("assets/$assetId.png"))
+            zip.write(Files.readAllBytes(mapPath))
+            zip.closeEntry()
+        }
+
+        val loaded = OperationSaveLoader().load(savePath)
+
+        assertThat(MapLayer.GRID.id in loaded.settings.enabledLayerIds, equalTo(true))
+        assertThat(loaded.settings.availableLayers.any { it.id == MapLayer.GRID.id }, equalTo(true))
     }
 }

@@ -227,6 +227,41 @@ class OperationSaveRoundTripTest {
         assertThat(secondTemplate.bitmap.getRgba(1, 0), equalTo(RGBA(0, 0, 255, 255)))
     }
 
+    @Test
+    fun `unit templates that share an asset still round trip with distinct names`() {
+        val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000ce")
+        val iconSource = AssetSource(
+            path = tempDir.resolve("shared-icon.png").toString(),
+            originalFilename = "shared-icon.png",
+            extension = "png",
+            mediaType = "image/png",
+        )
+        val bitmap = Bitmap32(2, 2) { _, _ -> RGBA(255, 0, 0, 255) }
+        val alpha = MapViewerUnitTemplate(name = "Alpha", bitmap = bitmap, assetSource = iconSource)
+        val bravo = MapViewerUnitTemplate(name = "Bravo", bitmap = bitmap, assetSource = iconSource)
+
+        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = operationId,
+                mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                ledgerEntries = listOf(
+                    CreateUnitTemplateAction(UnitTemplateSnapshot(UnitTemplateId(1), alpha, 0)),
+                    CreateUnitTemplateAction(UnitTemplateSnapshot(UnitTemplateId(2), bravo, 1)),
+                ),
+            ),
+            tempDir.resolve("shared-icon-save.oct.zip"),
+        )
+
+        val loaded = OperationSaveLoader().load(savePath)
+        val loadedNames = loaded.ledgerEntries
+            .filterIsInstance<CreateUnitTemplateAction>()
+            .map { it.snapshot.template.name }
+
+        assertThat(loadedNames, equalTo(listOf("Alpha", "Bravo")))
+        assertThat(loaded.ledgerEntries.filterIsInstance<CreateUnitTemplateAction>().size, equalTo(2))
+    }
+
     private fun request(
         operationId: UUID,
         operationName: String = "Round Trip",

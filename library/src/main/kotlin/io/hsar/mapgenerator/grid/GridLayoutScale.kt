@@ -32,6 +32,9 @@ object GridLayoutScale {
             GRID_LINE_TOP_GUTTER_PERCENT_OF_HEIGHT * mapHeight,
         )
 
+    fun fontScale(mapWidth: Int, mapHeight: Int): Double =
+        labelScale(mapWidth, mapHeight)
+
     fun labelScale(mapWidth: Int, mapHeight: Int): Double =
         sqrt(
             min(mapWidth / BASELINE_MAP_WIDTH, mapHeight / BASELINE_MAP_HEIGHT)

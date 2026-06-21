@@ -12,6 +12,7 @@ class GridLayoutScaleTest {
     @Test
     fun `baseline dimensions keep the original scale`() {
         assertThat(GridLayoutScale.labelScale(2560, 1440), closeTo(1.0, 0.0001))
+        assertThat(GridLayoutScale.fontScale(2560, 1440), closeTo(1.0, 0.0001))
         assertThat(GridLayoutScale.mapIdPadding(2560, 1440), equalTo(Point(60.0, 40.0)))
         assertThat(GridLayoutScale.gridLinePadding(2560, 1440), equalTo(Point(60.0, 40.0)))
     }

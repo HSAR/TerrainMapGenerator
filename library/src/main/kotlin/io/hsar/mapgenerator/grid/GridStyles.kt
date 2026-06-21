@@ -13,16 +13,16 @@ object GridStyles {
         GridLayoutScale.gridLinePadding(mapWidth, mapHeight)
 
     fun mapIdFont(mapWidth: Int, mapHeight: Int) =
-        Palette.Fonts.STRONG.first.deriveFont((GridLayoutScale.MAP_ID_FONT_SIZE * labelScale(mapWidth, mapHeight)).toFloat()) to Palette.Colours.DARK
+        Palette.Fonts.STRONG.first.deriveFont((GridLayoutScale.MAP_ID_FONT_SIZE * fontScale(mapWidth, mapHeight)).toFloat()) to Palette.Colours.DARK
 
     fun gridLineIdFont(mapWidth: Int, mapHeight: Int) =
-        Palette.Fonts.BASE.first.deriveFont((GridLayoutScale.GRID_LINE_FONT_SIZE * labelScale(mapWidth, mapHeight)).toFloat()) to Palette.Colours.MAIN
+        Palette.Fonts.BASE.first.deriveFont((GridLayoutScale.GRID_LINE_FONT_SIZE * fontScale(mapWidth, mapHeight)).toFloat()) to Palette.Colours.MAIN
 
     fun majorGridLineIdFont(mapWidth: Int, mapHeight: Int) =
-        Palette.Fonts.STRONG.first.deriveFont((GridLayoutScale.GRID_LINE_FONT_SIZE * labelScale(mapWidth, mapHeight)).toFloat()) to Palette.Fonts.STRONG.second
+        Palette.Fonts.STRONG.first.deriveFont((GridLayoutScale.GRID_LINE_FONT_SIZE * fontScale(mapWidth, mapHeight)).toFloat()) to Palette.Fonts.STRONG.second
 
     val GRID_LINE_COLOUR = GRID_PALETTE.lineColour
 
-    fun labelScale(mapWidth: Int, mapHeight: Int): Double =
+    fun fontScale(mapWidth: Int, mapHeight: Int): Double =
         GridLayoutScale.labelScale(mapWidth, mapHeight)
 }

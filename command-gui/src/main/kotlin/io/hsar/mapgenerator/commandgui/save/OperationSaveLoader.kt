@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.save
 
 import io.hsar.mapgenerator.commandgui.AssetSource
+import io.hsar.mapgenerator.commandgui.MapLayer
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
 import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
@@ -65,8 +66,11 @@ internal class OperationSaveLoader {
 
             val settings = MapViewerSettings(
                 operationName = save.game.name,
-                availableLayers = listOf(StaticImageLayer(id = save.game.map.assetId, displayName = "Map")),
-                enabledLayerIds = setOf(save.game.map.assetId),
+                availableLayers = listOf(
+                    StaticImageLayer(id = save.game.map.assetId, displayName = "Map"),
+                    MapLayer.GRID,
+                ),
+                enabledLayerIds = setOf(save.game.map.assetId, MapLayer.GRID.id),
                 staticLayerImages = mapOf(save.game.map.assetId to mapImage),
                 width = mapImage.width,
                 height = mapImage.height,
@@ -160,7 +164,7 @@ private data class ReplayedLedger(
 private class RuntimeLedgerReplayer(
     private val zip: ZipFile,
 ) {
-    private val templatesByAssetId = mutableMapOf<String, MapViewerUnitTemplate>()
+    private val templateAssetsByAssetId = mutableMapOf<String, LoadedTemplateAsset>()
     private var nextUnitTemplateId = 1L
 
     fun replay(entries: List<LedgerEntrySaveDto>): ReplayedLedger {
@@ -222,18 +226,23 @@ private class RuntimeLedgerReplayer(
         )
 
     private fun UnitTemplateSaveDto.toRuntimeTemplate() =
-        templatesByAssetId.getOrPut(assetId) {
+        templateAssetsByAssetId.getOrPut(assetId) {
             val entry = resolveAssetEntry(zip, assetId)
             val bytes = zip.getInputStream(entry).use { it.readBytes() }
             val bitmap = MapViewerIconLoader.load(bytes, entry.name)
                 ?: error("Unable to load template asset ${entry.name}")
-            MapViewerUnitTemplate(
-                name = name,
+            LoadedTemplateAsset(
                 bitmap = bitmap,
                 assetSource = AssetSource.fromEmbeddedBytes(
                     fileName = entry.name.substringAfterLast('/'),
                     bytes = bytes,
                 ),
+            )
+        }.let { asset ->
+            MapViewerUnitTemplate(
+                name = name,
+                bitmap = asset.bitmap,
+                assetSource = asset.assetSource,
             )
         }
 
@@ -275,3 +284,8 @@ private class RuntimeLedgerReplayer(
         return Color(red, green, blue, alpha)
     }
 }
+
+private data class LoadedTemplateAsset(
+    val bitmap: korlibs.image.bitmap.Bitmap32,
+    val assetSource: AssetSource,
+)
