@@ -26,7 +26,7 @@ internal data class AssetSource(
         ): AssetSource {
             val extension = fileName.substringAfterLast('.', "").lowercase()
             return AssetSource(
-                path = "",
+                path = "embedded/$fileName",
                 originalFilename = fileName,
                 extension = extension,
                 mediaType = mediaTypeForExtension(extension),

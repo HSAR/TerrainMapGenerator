@@ -262,6 +262,87 @@ class OperationSaveRoundTripTest {
         assertThat(loaded.ledgerEntries.filterIsInstance<CreateUnitTemplateAction>().size, equalTo(2))
     }
 
+    @Test
+    fun `distinct unit template icons stay distinct after a save load save cycle`() {
+        val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000cf")
+        val firstSource = AssetSource(
+            path = tempDir.resolve("alpha-icon.png").toString(),
+            originalFilename = "alpha-icon.png",
+            extension = "png",
+            mediaType = "image/png",
+        )
+        val secondSource = AssetSource(
+            path = tempDir.resolve("bravo-icon.png").toString(),
+            originalFilename = "bravo-icon.png",
+            extension = "png",
+            mediaType = "image/png",
+        )
+        val alpha = MapViewerUnitTemplate(
+            name = "Alpha",
+            bitmap = Bitmap32(2, 2) { x, _ -> if (x == 0) RGBA(255, 0, 0, 255) else RGBA(255, 255, 0, 255) },
+            assetSource = firstSource,
+        )
+        val bravo = MapViewerUnitTemplate(
+            name = "Bravo",
+            bitmap = Bitmap32(2, 2) { x, _ -> if (x == 0) RGBA(0, 0, 255, 255) else RGBA(0, 255, 0, 255) },
+            assetSource = secondSource,
+        )
+
+        val firstSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = operationId,
+                mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                ledgerEntries = listOf(
+                    CreateUnitTemplateAction(UnitTemplateSnapshot(UnitTemplateId(1), alpha, 0)),
+                    CreateUnitTemplateAction(UnitTemplateSnapshot(UnitTemplateId(2), bravo, 1)),
+                ),
+            ),
+            tempDir.resolve("distinct-icons-first.oct.zip"),
+        )
+
+        val loaded = OperationSaveLoader().load(firstSave)
+        val secondSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = loaded.operationId,
+                operationName = loaded.operationName,
+                createdAt = loaded.createdAt,
+                updatedAt = loaded.updatedAt,
+                camera = loaded.camera?.toViewport(
+                    geometry = geometryFor(loaded.mapImage),
+                    mapWidth = loaded.settings.width,
+                    mapHeight = loaded.settings.height,
+                    viewportWidth = loaded.settings.width,
+                    viewportHeight = loaded.settings.height,
+                ) ?: CameraViewport.centeredOnMap(
+                    geometry = geometryFor(loaded.mapImage),
+                    mapWidth = loaded.settings.width,
+                    mapHeight = loaded.settings.height,
+                    viewportWidth = loaded.settings.width,
+                    viewportHeight = loaded.settings.height,
+                    zoom = CameraViewport.fitZoomToViewport(
+                        mapWidth = loaded.settings.width,
+                        mapHeight = loaded.settings.height,
+                        viewportWidth = loaded.settings.width,
+                        viewportHeight = loaded.settings.height,
+                    ),
+                ),
+                settings = loaded.settings,
+                mapImage = loaded.mapImage,
+                mapSource = null,
+                ledgerEntries = loaded.ledgerEntries,
+            ),
+            tempDir.resolve("distinct-icons-second.oct.zip"),
+        )
+
+        val reread = OperationSaveReader().read(secondSave)
+        val assetIds = reread.ledger.entries
+            .filterIsInstance<CreateUnitTemplateEntrySaveDto>()
+            .map { it.unitTemplate.template.assetId }
+
+        assertThat(assetIds.distinct().size, equalTo(2))
+    }
+
     private fun request(
         operationId: UUID,
         operationName: String = "Round Trip",

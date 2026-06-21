@@ -64,15 +64,17 @@ internal object GridOverlayLayoutBuilder {
         measureText: (String, GridLabelStyle) -> Rectangle = ::measureText,
     ): GridOverlayLayout {
         val layer = displayLayer(state)
+        val viewportWidth = (state.visibleCanvasRight - state.visibleCanvasLeft).coerceAtLeast(1.0)
+        val viewportHeight = (state.visibleCanvasBottom - state.visibleCanvasTop).coerceAtLeast(1.0)
         val mapLeft = state.mapOffsetX
         val mapTop = state.mapOffsetY
         val mapRight = mapLeft + state.pixelWidth * state.scale
         val mapBottom = mapTop + state.pixelHeight * state.scale
-        val mapIdPadding = GridStyles.mapIdPadding(state.pixelWidth, state.pixelHeight)
-        val gridLinePadding = GridStyles.gridLineIdPadding(state.pixelWidth, state.pixelHeight)
-        val mapIdFont = GridStyles.mapIdFont(state.pixelWidth, state.pixelHeight)
-        val minorAxisFont = GridStyles.gridLineIdFont(state.pixelWidth, state.pixelHeight)
-        val majorAxisFont = GridStyles.majorGridLineIdFont(state.pixelWidth, state.pixelHeight)
+        val mapIdPadding = GridStyles.mapIdPadding(viewportWidth.toInt(), viewportHeight.toInt())
+        val gridLinePadding = GridStyles.gridLineIdPadding(viewportWidth.toInt(), viewportHeight.toInt())
+        val mapIdFont = GridStyles.mapIdFont(viewportWidth.toInt(), viewportHeight.toInt())
+        val minorAxisFont = GridStyles.gridLineIdFont(viewportWidth.toInt(), viewportHeight.toInt())
+        val majorAxisFont = GridStyles.majorGridLineIdFont(viewportWidth.toInt(), viewportHeight.toInt())
         val mapIdStyle = GridLabelStyle(MapViewerFontRole.STRONG, mapIdFont.first.size2D.toDouble(), mapIdFont.second)
         val minorAxisStyle = GridLabelStyle(MapViewerFontRole.MAIN, minorAxisFont.first.size2D.toDouble(), minorAxisFont.second)
         val majorAxisStyle = GridLabelStyle(MapViewerFontRole.STRONG, majorAxisFont.first.size2D.toDouble(), majorAxisFont.second)

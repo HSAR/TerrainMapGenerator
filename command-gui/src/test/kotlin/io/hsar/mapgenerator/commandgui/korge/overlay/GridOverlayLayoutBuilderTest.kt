@@ -22,7 +22,7 @@ class GridOverlayLayoutBuilderTest {
 
         val xAxisLabel = layout.labels.first { it.text == "06" }
 
-        assertThat(xAxisLabel.y, closeTo(GridStyles.mapIdPadding(1000, 800).y, 0.0001))
+        assertThat(xAxisLabel.y, closeTo(GridStyles.mapIdPadding(1200, 900).y, 0.0001))
     }
 
     @Test
@@ -34,7 +34,7 @@ class GridOverlayLayoutBuilderTest {
 
         val xAxisLabel = layout.labels.first { it.text == "06" }
 
-        assertThat(xAxisLabel.y, closeTo(176.0 + GridStyles.mapIdPadding(1000, 800).y, 0.0001))
+        assertThat(xAxisLabel.y, closeTo(176.0 + GridStyles.mapIdPadding(1200, 724).y, 0.0001))
     }
 
     @Test
@@ -46,7 +46,7 @@ class GridOverlayLayoutBuilderTest {
 
         val xAxisLabel = layout.labels.first { it.text == "06" }
 
-        assertThat(xAxisLabel.y, closeTo(80.0 + GridStyles.mapIdPadding(1000, 800).y, 0.0001))
+        assertThat(xAxisLabel.y, closeTo(80.0 + GridStyles.mapIdPadding(1200, 900).y, 0.0001))
     }
 
     @Test
@@ -58,7 +58,7 @@ class GridOverlayLayoutBuilderTest {
 
         val yAxisLabel = layout.labels.first { it.text == "44" }
 
-        assertThat(yAxisLabel.x, closeTo(GridStyles.gridLineIdPadding(1000, 800).x, 0.0001))
+        assertThat(yAxisLabel.x, closeTo(GridStyles.gridLineIdPadding(1200, 900).x, 0.0001))
     }
 
     @Test
@@ -70,11 +70,11 @@ class GridOverlayLayoutBuilderTest {
 
         val mapId = layout.labels.first { it.text == "25F XK" }
 
-        assertThat(mapId.x, equalTo(GridStyles.gridLineIdPadding(1000, 800).x))
-        assertThat(mapId.y, equalTo(GridStyles.mapIdPadding(1000, 800).y))
+        assertThat(mapId.x, equalTo(GridStyles.gridLineIdPadding(1200, 900).x))
+        assertThat(mapId.y, equalTo(GridStyles.mapIdPadding(1200, 900).y))
         assertThat(mapId.style.role, equalTo(io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole.STRONG))
-        assertThat(mapId.style.size, equalTo(GridStyles.mapIdFont(1000, 800).first.size2D.toDouble()))
-        assertThat(mapId.style.color, equalTo(GridStyles.mapIdFont(1000, 800).second))
+        assertThat(mapId.style.size, equalTo(GridStyles.mapIdFont(1200, 900).first.size2D.toDouble()))
+        assertThat(mapId.style.color, equalTo(GridStyles.mapIdFont(1200, 900).second))
         assertThat(mapId.shadows.size, equalTo(0))
     }
 
@@ -112,10 +112,10 @@ class GridOverlayLayoutBuilderTest {
         val majorLabel = layout.labels.first { it.text == "10" }
 
         assertThat(majorLabel.style.role, equalTo(io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole.STRONG))
-        assertThat(majorLabel.style.size, equalTo(GridStyles.majorGridLineIdFont(1000, 800).first.size2D.toDouble()))
-        assertThat(majorLabel.style.color.red, equalTo(GridStyles.majorGridLineIdFont(1000, 800).second.red))
-        assertThat(majorLabel.style.color.green, equalTo(GridStyles.majorGridLineIdFont(1000, 800).second.green))
-        assertThat(majorLabel.style.color.blue, equalTo(GridStyles.majorGridLineIdFont(1000, 800).second.blue))
+        assertThat(majorLabel.style.size, equalTo(GridStyles.majorGridLineIdFont(1200, 900).first.size2D.toDouble()))
+        assertThat(majorLabel.style.color.red, equalTo(GridStyles.majorGridLineIdFont(1200, 900).second.red))
+        assertThat(majorLabel.style.color.green, equalTo(GridStyles.majorGridLineIdFont(1200, 900).second.green))
+        assertThat(majorLabel.style.color.blue, equalTo(GridStyles.majorGridLineIdFont(1200, 900).second.blue))
     }
 
     @Test
