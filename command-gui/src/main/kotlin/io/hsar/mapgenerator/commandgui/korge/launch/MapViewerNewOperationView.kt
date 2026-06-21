@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconFit
@@ -126,8 +127,11 @@ internal class MapViewerNewOperationView(
     private fun renderMapSection() {
         val panel = MapViewerLaunchUi.panel(layer, layout.mapPanelBounds)
         val panelWidth = layout.mapPanelBounds.width
-        val halfFieldWidth = (panelWidth - (CONTENT_PADDING * 2.0) - FIELD_GAP) / 2.0
+        val fieldWidth = (panelWidth - (CONTENT_PADDING * 2.0) - (FIELD_GAP * 3.0)) / 4.0
         val imageButtonTop = 128.0
+        val fieldsTop = 186.0
+        val inputsTop = 210.0
+        val previewTop = 292.0
 
         MapViewerLaunchUi.label(panel, "Operational Details", strong = true).xy(CONTENT_PADDING, CONTENT_PADDING)
         MapViewerLaunchUi.label(panel, "Operation Name").xy(CONTENT_PADDING, 60.0)
@@ -143,7 +147,7 @@ internal class MapViewerNewOperationView(
         )
         wirePreviewRefresh(operationNameInput)
 
-        MapViewerLaunchUi.button(panel, 160.0, 36.0, if (mapImage == null) "Choose Image" else "Change Image") {
+        MapViewerLaunchUi.button(panel, 160.0, 36.0, "Choose Map Image") {
             chooseMapImage()
         }.xy(CONTENT_PADDING, imageButtonTop)
 
@@ -151,28 +155,29 @@ internal class MapViewerNewOperationView(
             MapViewerLaunchUi.label(panel, image.name, color = Palette.Colours.LIGHT).xy(208.0, 132.0)
         }
 
-        MapViewerLaunchUi.label(panel, "Map ID").xy(CONTENT_PADDING, 186.0)
+        MapViewerLaunchUi.label(panel, "Map ID").xy(CONTENT_PADDING, fieldsTop)
         mapIdInput = textInput(
             parent = panel,
             text = mapIdText,
             bounds = ScreenBounds(
                 left = CONTENT_PADDING,
-                top = 210.0,
-                width = panelWidth - CONTENT_PADDING * 2.0,
+                top = inputsTop,
+                width = fieldWidth,
                 height = INPUT_HEIGHT,
             ),
         )
         wirePreviewRefresh(mapIdInput)
 
-        MapViewerLaunchUi.label(panel, "Starting X").xy(CONTENT_PADDING, 258.0)
-        MapViewerLaunchUi.label(panel, "Starting Y").xy(CONTENT_PADDING + halfFieldWidth + FIELD_GAP, 258.0)
+        MapViewerLaunchUi.label(panel, "Starting X").xy(CONTENT_PADDING + fieldWidth + FIELD_GAP, fieldsTop)
+        MapViewerLaunchUi.label(panel, "Starting Y").xy(CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 2, fieldsTop)
+        MapViewerLaunchUi.label(panel, "Pixels Per Metre").xy(CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 3, fieldsTop)
         gridStartXInput = textInput(
             parent = panel,
             text = gridStartXText,
             bounds = ScreenBounds(
-                left = CONTENT_PADDING,
-                top = 282.0,
-                width = halfFieldWidth,
+                left = CONTENT_PADDING + fieldWidth + FIELD_GAP,
+                top = inputsTop,
+                width = fieldWidth,
                 height = INPUT_HEIGHT,
             ),
         )
@@ -181,22 +186,21 @@ internal class MapViewerNewOperationView(
             parent = panel,
             text = gridStartYText,
             bounds = ScreenBounds(
-                left = CONTENT_PADDING + halfFieldWidth + FIELD_GAP,
-                top = 282.0,
-                width = halfFieldWidth,
+                left = CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 2,
+                top = inputsTop,
+                width = fieldWidth,
                 height = INPUT_HEIGHT,
             ),
         )
         wirePreviewRefresh(gridStartYInput)
 
-        MapViewerLaunchUi.label(panel, "Pixels per metre").xy(CONTENT_PADDING, 330.0)
         pixelsPerMetreInput = textInput(
             parent = panel,
             text = pixelsPerMetreText,
             bounds = ScreenBounds(
-                left = CONTENT_PADDING,
-                top = 354.0,
-                width = 220.0,
+                left = CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 3,
+                top = inputsTop,
+                width = fieldWidth,
                 height = INPUT_HEIGHT,
             ),
         )
@@ -204,9 +208,9 @@ internal class MapViewerNewOperationView(
 
         mapPreviewBounds = ScreenBounds(
             left = CONTENT_PADDING,
-            top = 410.0,
+            top = previewTop,
             width = panelWidth - CONTENT_PADDING * 2.0,
-            height = layout.mapPanelBounds.height - 410.0 - CONTENT_PADDING,
+            height = layout.mapPanelBounds.height - previewTop - CONTENT_PADDING,
         )
         mapPreviewContainer = panel.container().also {
             it.xy(mapPreviewBounds!!.left, mapPreviewBounds!!.top)
@@ -424,13 +428,14 @@ internal class MapViewerNewOperationView(
         }
 
         val fittedIcon = MapViewerIconFit.inside(bitmap, bounds.width - 16.0, bounds.height - 16.0)
-        val image = parent.image(bitmap) {
-            scale = fittedIcon.scale
-            x = 8.0 + fittedIcon.x
-            y = 8.0 + fittedIcon.y
-        }
         val previewWidth = fittedIcon.width.roundToInt().coerceAtLeast(1)
         val previewHeight = fittedIcon.height.roundToInt().coerceAtLeast(1)
+        val imageContainer = parent.container().also {
+            it.xy(8.0 + fittedIcon.x, 8.0 + fittedIcon.y)
+        }
+        imageContainer.image(bitmap) {
+            scale = fittedIcon.scale
+        }
 
         val gridConfiguration = resolvedGridConfiguration() ?: return
         val gridLayer = GridLayerBuilder.build(
@@ -442,29 +447,31 @@ internal class MapViewerNewOperationView(
             verticalLineNumberStart = gridConfiguration.startX,
             horizontalLineNumberStart = gridConfiguration.startY,
         )
-        val overlay = GridOverlayView(gridLayer)
-        parent.addChild(overlay)
-        overlay.update(
-            GridOverlayState(
-                viewport = Rectangle(Point.ORIGIN, Point(bounds.width, bounds.height)),
-                mapWorldX = 0.0,
-                mapWorldY = 0.0,
-                mapOffsetX = image.x,
-                mapOffsetY = image.y,
-                scale = 1.0,
-                pixelWidth = previewWidth,
-                pixelHeight = previewHeight,
-                backgroundWidth = bounds.width.toInt(),
-                backgroundHeight = bounds.height.toInt(),
-                visibleCanvasLeft = 0.0,
-                visibleCanvasTop = 0.0,
-                visibleCanvasRight = bounds.width,
-                visibleCanvasBottom = bounds.height,
-                activeReference = null,
-                measurement = null,
-                gridLayer = gridLayer,
-            ),
+        val lineOverlay = GridOverlayLinesView(gridLayer)
+        val labelOverlay = GridOverlayView(gridLayer)
+        imageContainer.addChild(lineOverlay)
+        imageContainer.addChild(labelOverlay)
+        val state = GridOverlayState(
+            viewport = Rectangle(Point.ORIGIN, Point(previewWidth.toDouble(), previewHeight.toDouble())),
+            mapWorldX = 0.0,
+            mapWorldY = 0.0,
+            mapOffsetX = 0.0,
+            mapOffsetY = 0.0,
+            scale = 1.0,
+            pixelWidth = previewWidth,
+            pixelHeight = previewHeight,
+            backgroundWidth = previewWidth,
+            backgroundHeight = previewHeight,
+            visibleCanvasLeft = 0.0,
+            visibleCanvasTop = 0.0,
+            visibleCanvasRight = previewWidth.toDouble(),
+            visibleCanvasBottom = previewHeight.toDouble(),
+            activeReference = null,
+            measurement = null,
+            gridLayer = gridLayer,
         )
+        lineOverlay.update(state)
+        labelOverlay.update(state)
     }
 
     private fun resolvedGridConfiguration(): GridConfiguration? {

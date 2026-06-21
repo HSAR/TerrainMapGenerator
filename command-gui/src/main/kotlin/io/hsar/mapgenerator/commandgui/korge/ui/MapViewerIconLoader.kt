@@ -25,12 +25,12 @@ internal object MapViewerIconLoader {
 
     private fun loadRaster(file: File): Bitmap32? {
         val image = ImageIO.read(file) ?: return null
-        return image.toBitmap32().trimTransparentBounds()
+        return image.toBitmap32().trimTransparentBounds().premultipliedIfRequired()
     }
 
     private fun loadRaster(bytes: ByteArray): Bitmap32? {
         val image = ImageIO.read(ByteArrayInputStream(bytes)) ?: return null
-        return image.toBitmap32().trimTransparentBounds()
+        return image.toBitmap32().trimTransparentBounds().premultipliedIfRequired()
     }
 
     private fun loadSvg(file: File): Bitmap32? = runCatching {
@@ -45,7 +45,7 @@ internal object MapViewerIconLoader {
         } finally {
             ctx.close()
         }
-        bitmap.premultipliedIfRequired().trimTransparentBounds(padding = svgTrimPadding(bitmap.width, bitmap.height))
+        bitmap.trimTransparentBounds(padding = svgTrimPadding(bitmap.width, bitmap.height)).premultipliedIfRequired()
     }.getOrNull()
 
     private fun loadSvg(bytes: ByteArray): Bitmap32? = runCatching {
@@ -60,7 +60,7 @@ internal object MapViewerIconLoader {
         } finally {
             ctx.close()
         }
-        bitmap.premultipliedIfRequired().trimTransparentBounds(padding = svgTrimPadding(bitmap.width, bitmap.height))
+        bitmap.trimTransparentBounds(padding = svgTrimPadding(bitmap.width, bitmap.height)).premultipliedIfRequired()
     }.getOrNull()
 
     private fun renderDimension(intValue: Int, doubleValue: Double): Int {

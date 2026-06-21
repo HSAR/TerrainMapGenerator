@@ -320,12 +320,24 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewe
         }
     }
 
+    val gridConfiguration = resolveGridConfiguration(settings, baseImage, seed)
+
     val gridLayer = if (MapLayer.GRID.id in settings.enabledLayerIds) {
+        val gridKey = GridRenderKey(
+            seed = seed,
+            width = renderWidth,
+            height = renderHeight,
+            metresPerPixel = renderMetresPerPixel,
+            metresPerContour = settings.metresPerContour,
+            mapId = gridConfiguration.mapId,
+            gridStartX = gridConfiguration.startX,
+            gridStartY = gridConfiguration.startY,
+        )
         RenderCache.gridLayers.getOrPut(gridKey) {
             terrainMapGenerator.generateGridLayer(
-                mapId = settings.mapId,
-                verticalLineNumberStart = settings.gridStartX,
-                horizontalLineNumberStart = settings.gridStartY,
+                mapId = gridConfiguration.mapId,
+                verticalLineNumberStart = gridConfiguration.startX,
+                horizontalLineNumberStart = gridConfiguration.startY,
             )
         }
     } else {
@@ -340,6 +352,23 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewe
 
 private fun renderViewerImage(settings: MapViewerSettings): MapViewerRenderData =
     renderViewerImage(settings, settings.seed)
+
+internal fun resolveGridConfiguration(
+    settings: MapViewerSettings,
+    fallbackImage: BufferedImage,
+    seed: Long,
+): RenderGridConfiguration =
+    settings.mapId
+        ?.takeIf { it.isNotBlank() }
+        ?.let { mapId ->
+            val startX = settings.gridStartX
+            val startY = settings.gridStartY
+            if (startX != null && startY != null) {
+                RenderGridConfiguration(mapId = mapId, startX = startX, startY = startY)
+            } else {
+                null
+            }
+        } ?: fallbackGridConfiguration(fallbackImage, settings.metresPerPixel, seed)
 
 internal fun renderSelectedLayers(
     selectedLayers: List<MapViewerLayer>,
@@ -368,10 +397,37 @@ private data class GridRenderKey(
     val gridStartY: Int?,
 )
 
+internal data class RenderGridConfiguration(
+    val mapId: String,
+    val startX: Int,
+    val startY: Int,
+)
+
 private object RenderCache {
     val baseImages = ConcurrentHashMap<BaseRenderKey, BufferedImage>()
     val gridLayers = ConcurrentHashMap<GridRenderKey, io.hsar.mapgenerator.grid.GridLayer>()
 }
+
+private fun fallbackGridConfiguration(
+    mapImage: BufferedImage,
+    metresPerPixel: Double,
+    seed: Long,
+): RenderGridConfiguration =
+    TerrainMapGenerator(
+        metresPerPixel = metresPerPixel,
+        metresPerContour = 10.0,
+        width = mapImage.width,
+        height = mapImage.height,
+        graphMapWidthMetres = mapImage.width * metresPerPixel,
+        graphMapHeightMetres = mapImage.height * metresPerPixel,
+        seed = seed,
+    ).generateGridLayer().let { gridLayer ->
+        RenderGridConfiguration(
+            mapId = gridLayer.mapId,
+            startX = gridLayer.verticalLineNumberStart,
+            startY = gridLayer.horizontalLineNumberStart,
+        )
+    }
 
 internal data class LoadedStaticImageLayer(
     val layer: StaticImageLayer,

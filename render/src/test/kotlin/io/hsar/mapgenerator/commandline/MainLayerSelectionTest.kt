@@ -1,9 +1,12 @@
 package io.hsar.mapgenerator.commandline
 
 import io.hsar.mapgenerator.commandgui.MapLayer
+import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.not
+import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Test
 import java.awt.image.BufferedImage
 
@@ -51,6 +54,35 @@ class MainLayerSelectionTest {
 
         assertThat(calls, equalTo(listOf(MapLayer.GRAPH.id, staticLayer.id, MapLayer.CONTOUR.id)))
         assertThat(rendered.size, equalTo(3))
+    }
+
+    @Test
+    fun `resolveGridConfiguration preserves explicit values when present`() {
+        val settings = MapViewerSettings(
+            mapId = "25F XK",
+            gridStartX = 7,
+            gridStartY = 30,
+        )
+        val image = BufferedImage(8, 6, BufferedImage.TYPE_INT_ARGB)
+
+        val configuration = resolveGridConfiguration(settings, image, seed = 1234L)
+
+        assertThat(configuration.mapId, equalTo("25F XK"))
+        assertThat(configuration.startX, equalTo(7))
+        assertThat(configuration.startY, equalTo(30))
+    }
+
+    @Test
+    fun `resolveGridConfiguration falls back when map id or starts are missing`() {
+        val settings = MapViewerSettings()
+        val image = BufferedImage(8, 6, BufferedImage.TYPE_INT_ARGB)
+
+        val configuration = resolveGridConfiguration(settings, image, seed = 1234L)
+
+        assertThat(configuration.mapId, not(nullValue()))
+        assertThat(configuration.mapId.isNotBlank(), equalTo(true))
+        assertThat(configuration.startX >= 0, equalTo(true))
+        assertThat(configuration.startY >= 0, equalTo(true))
     }
 
     private fun imageFor(layer: MapLayer): BufferedImage =

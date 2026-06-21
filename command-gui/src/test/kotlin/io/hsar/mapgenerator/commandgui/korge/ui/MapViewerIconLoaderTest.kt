@@ -105,6 +105,7 @@ class MapViewerIconLoaderTest {
             assertThat(bitmap, notNullValue())
             assertThat(bitmap!!.getRgba(0, 0), equalTo(RGBA(255, 0, 0, 255)))
             assertThat(bitmap.getRgba(1, 0), equalTo(RGBA(0, 0, 255, 255)))
+            assertThat(bitmap.premultiplied, equalTo(true))
         } finally {
             file.delete()
         }

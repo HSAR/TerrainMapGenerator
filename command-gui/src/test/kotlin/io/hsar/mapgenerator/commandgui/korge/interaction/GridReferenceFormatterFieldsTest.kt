@@ -19,7 +19,7 @@ class GridReferenceFormatterFieldsTest {
             mapY = 340.0,
         )
 
-        assertThat(fields.easting, equalTo("0730"))
+        assertThat(fields.easting, equalTo("0720"))
         assertThat(fields.northing, equalTo("3900"))
     }
 
@@ -29,7 +29,7 @@ class GridReferenceFormatterFieldsTest {
             layer = layer(),
             mapWidth = 2560,
             mapHeight = 1440,
-            easting = "0730",
+            easting = "0720",
             northing = "3900",
         )
 
@@ -43,7 +43,7 @@ class GridReferenceFormatterFieldsTest {
             layer = layer(verticalLineNumberStart = -1, horizontalLineNumberStart = -2),
             mapWidth = 2560,
             mapHeight = 1440,
-            easting = "0130",
+            easting = "0120",
             northing = "-0800",
         )
 
