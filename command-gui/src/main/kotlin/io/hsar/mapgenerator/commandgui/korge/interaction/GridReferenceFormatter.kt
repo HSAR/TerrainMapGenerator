@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.GridStyles
 import kotlin.math.absoluteValue
+import kotlin.math.roundToInt
 
 internal object GridReferenceFormatter {
     fun format(layer: GridLayer, mapWidth: Int, mapHeight: Int, mapX: Double, mapY: Double): String {
@@ -31,13 +32,15 @@ internal object GridReferenceFormatter {
         val padding = GridStyles.gridLineIdPadding(mapWidth, mapHeight)
         val eastingMetres = (
             layer.verticalLineNumberStart * layer.gridScale +
-                    ((mapX - padding.x) * layer.metresPerPixel).toInt()
+                    ((mapX - padding.x) * layer.metresPerPixel)
             )
+            .roundToInt()
             .coerceIn(MIN_REFERENCE_METRES, MAX_REFERENCE_METRES)
         val northingMetres = (
             layer.horizontalLineNumberStart * layer.gridScale -
-                    ((mapY - padding.y) * layer.metresPerPixel).toInt()
+                    ((mapY - padding.y) * layer.metresPerPixel)
             )
+            .roundToInt()
             .coerceIn(MIN_REFERENCE_METRES, MAX_REFERENCE_METRES)
         return GridReferenceFields(
             easting = formatCoordinate(eastingMetres / METRES_PER_REFERENCE_DIGIT),

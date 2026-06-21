@@ -3,7 +3,7 @@ package io.hsar.mapgenerator.grid
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
-import java.util.Random
+import java.util.*
 
 class GridLayerBuilderTest {
 
@@ -39,9 +39,9 @@ class GridLayerBuilderTest {
             random = Random(42L),
         )
 
-        assertThat(layer.verticalLineNumberStart >= layer.verticalLineCount, equalTo(true))
-        assertThat(layer.horizontalLineNumberStart >= layer.horizontalLineCount, equalTo(true))
-        assertThat(layer.verticalLineNumberStart + layer.verticalLineCount <= 99, equalTo(true))
-        assertThat(layer.horizontalLineNumberStart - layer.horizontalLineCount >= 0, equalTo(true))
+        assertThat(layer.verticalLineNumberStart >= layer.verticalLineCount.toDouble(), equalTo(true))
+        assertThat(layer.horizontalLineNumberStart >= layer.horizontalLineCount.toDouble(), equalTo(true))
+        assertThat(layer.verticalLineNumberStart + layer.verticalLineCount <= 99.0, equalTo(true))
+        assertThat(layer.horizontalLineNumberStart - layer.horizontalLineCount >= 0.0, equalTo(true))
     }
 }

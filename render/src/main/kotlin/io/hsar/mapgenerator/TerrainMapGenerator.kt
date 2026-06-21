@@ -105,8 +105,8 @@ class TerrainMapGenerator(
 
     fun generateGridLayer(
         mapId: String?,
-        verticalLineNumberStart: Int?,
-        horizontalLineNumberStart: Int?,
+        verticalLineNumberStart: Double?,
+        horizontalLineNumberStart: Double?,
     ): GridLayer = GridLayerBuilder.build(
         width = width,
         height = height,

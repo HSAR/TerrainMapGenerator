@@ -4,6 +4,7 @@ import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.random.GridGenerator.padZeroes
 import java.awt.Color
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
@@ -31,6 +32,7 @@ object GridLayerPainter {
         val mapIdFont = GridStyles.mapIdFont(surface.width, surface.height)
         val gridLineFont = GridStyles.gridLineIdFont(surface.width, surface.height)
         val majorGridLineFont = GridStyles.majorGridLineIdFont(surface.width, surface.height)
+        val edgeFadeDistance = GridStyles.fadeDistance(surface.width, surface.height)
 
         surface.drawCenteredString(
             Point(
@@ -51,6 +53,7 @@ object GridLayerPainter {
             gridLinePadding = gridLinePadding,
             gridLineFont = gridLineFont,
             majorGridLineFont = majorGridLineFont,
+            edgeFadeDistance = edgeFadeDistance,
         )
         drawGridLines(
             surface = surface,
@@ -62,6 +65,7 @@ object GridLayerPainter {
             gridLinePadding = gridLinePadding,
             gridLineFont = gridLineFont,
             majorGridLineFont = majorGridLineFont,
+            edgeFadeDistance = edgeFadeDistance,
         )
     }
 
@@ -87,6 +91,7 @@ object GridLayerPainter {
         gridLinePadding: Point,
         gridLineFont: Pair<java.awt.Font, Color>,
         majorGridLineFont: Pair<java.awt.Font, Color>,
+        edgeFadeDistance: Double,
     ) {
         val (startIndex, endIndex) = axis.lineIndexRange(viewport, layer, gridLinePadding)
 
@@ -98,7 +103,7 @@ object GridLayerPainter {
             val lineID = axis.lineId(layer, lineIndex)
             val lineIDString = lineID.padZeroes(layer.detailLevel)
             val linePosition = axis.linePosition(layer, lineIndex, gridLinePadding)
-            val isMajorLine = (lineID % 10) == 0
+            val isMajorLine = axis.isMajorLine(lineID)
             val fontAndColour = if (isMajorLine) majorGridLineFont else gridLineFont
             val labelLayout = labelLayout(
                 surface = surface,
@@ -117,6 +122,7 @@ object GridLayerPainter {
                 textMode = textMode,
                 gridLinePadding = gridLinePadding,
                 color = fontAndColour.second,
+                edgeFadeDistance = edgeFadeDistance,
             )
             val lineBounds = axis.lineBounds(
                 surface = surface,
@@ -155,6 +161,7 @@ object GridLayerPainter {
                     lineNormal = linePosition,
                     lineNormalFadeStart = lineNormalFadeStart,
                     axis = axis,
+                    edgeFadeDistance = edgeFadeDistance,
                 )
             }
         }
@@ -171,6 +178,7 @@ object GridLayerPainter {
         lineNormal: Double,
         lineNormalFadeStart: Double,
         axis: GridAxis,
+        edgeFadeDistance: Double,
     ) {
         when (textMode) {
             TextMode.IMAGE -> {
@@ -182,7 +190,7 @@ object GridLayerPainter {
                     GridAxis.VERTICAL -> fadeStart to end.y
                     GridAxis.HORIZONTAL -> fadeStart to end.x
                 }
-                val normalOpacity = lineNormalOpacity(lineNormal, lineNormalFadeStart)
+                val normalOpacity = lineNormalOpacity(lineNormal, lineNormalFadeStart, edgeFadeDistance)
 
                 val length = lineEnd - lineStart
                 val segmentCount = max(1, (length / LINE_SEGMENT_LENGTH).roundToInt())
@@ -192,7 +200,7 @@ object GridLayerPainter {
                     val segmentStart = lineStart + segmentIndex * step
                     val segmentEnd = if (segmentIndex == segmentCount - 1) lineEnd else segmentStart + step
                     val segmentCenter = (segmentStart + segmentEnd) / 2
-                    val opacity = lineSegmentOpacity(segmentCenter, lineStart, lineEnd) * normalOpacity
+                    val opacity = lineSegmentOpacity(segmentCenter, lineStart, lineEnd, edgeFadeDistance) * normalOpacity
 
                     if (opacity > 0.0) {
                         when (axis) {
@@ -235,7 +243,7 @@ object GridLayerPainter {
         }
 
     private fun startIndexRange(viewportPosition: Double, pixelsPerLine: Double, padding: Double): Int =
-        max(1, ceil((viewportPosition - padding) / pixelsPerLine).toInt())
+        max(0, ceil((viewportPosition - padding) / pixelsPerLine).toInt())
 
     private fun endIndexRange(viewportPosition: Double, count: Int, pixelsPerLine: Double, padding: Double): Int =
         min(count, floor((viewportPosition - padding) / pixelsPerLine).toInt())
@@ -275,20 +283,20 @@ object GridLayerPainter {
         }
     }
 
-    private fun axisOpacity(value: Double, stickyEdge: Double): Double =
-        edgeOpacity(value - stickyEdge)
+    private fun axisOpacity(value: Double, stickyEdge: Double, edgeFadeDistance: Double): Double =
+        edgeOpacity(value - stickyEdge, edgeFadeDistance)
 
-    internal fun edgeOpacity(distanceFromEdge: Double): Double =
-        1.0 - (1.0 - (distanceFromEdge / EDGE_FADE_DISTANCE).coerceIn(0.0, 1.0)).let { it * it }
+    internal fun edgeOpacity(distanceFromEdge: Double, edgeFadeDistance: Double = EDGE_FADE_DISTANCE): Double =
+        1.0 - (1.0 - (distanceFromEdge / edgeFadeDistance).coerceIn(0.0, 1.0)).let { it * it }
 
-    private fun lineSegmentOpacity(position: Double, start: Double, end: Double): Double {
+    private fun lineSegmentOpacity(position: Double, start: Double, end: Double, edgeFadeDistance: Double): Double {
         val distanceFromStart = position - start
         val distanceFromEnd = end - position
-        return min(edgeOpacity(distanceFromStart), edgeOpacity(distanceFromEnd))
+        return min(edgeOpacity(distanceFromStart, edgeFadeDistance), edgeOpacity(distanceFromEnd, edgeFadeDistance))
     }
 
-    internal fun lineNormalOpacity(lineNormal: Double, lineNormalFadeStart: Double): Double =
-        edgeOpacity(lineNormal - lineNormalFadeStart)
+    internal fun lineNormalOpacity(lineNormal: Double, lineNormalFadeStart: Double, edgeFadeDistance: Double = EDGE_FADE_DISTANCE): Double =
+        edgeOpacity(lineNormal - lineNormalFadeStart, edgeFadeDistance)
 
     private fun GridAxis.opposite(): GridAxis =
         when (this) {
@@ -301,37 +309,52 @@ object GridLayerPainter {
             GridAxis.VERTICAL -> startIndexRange(
                 viewportPosition = viewport.topLeft.x,
                 pixelsPerLine = layer.pixelsPerLine,
-                padding = gridLinePadding.x,
+                padding = lineBasePosition(layer, gridLinePadding),
             ) to endIndexRange(
                 viewportPosition = viewport.topRight.x,
                 count = layer.verticalLineCount,
                 pixelsPerLine = layer.pixelsPerLine,
-                padding = gridLinePadding.x,
+                padding = lineBasePosition(layer, gridLinePadding),
             )
 
             GridAxis.HORIZONTAL -> startIndexRange(
                 viewportPosition = viewport.topLeft.y,
                 pixelsPerLine = layer.pixelsPerLine,
-                padding = gridLinePadding.y,
+                padding = lineBasePosition(layer, gridLinePadding),
             ) to endIndexRange(
                 viewportPosition = viewport.bottomRight.y,
                 count = layer.horizontalLineCount,
                 pixelsPerLine = layer.pixelsPerLine,
-                padding = gridLinePadding.y,
+                padding = lineBasePosition(layer, gridLinePadding),
             )
         }
 
-    private fun GridAxis.lineId(layer: GridLayer, lineIndex: Int): Int =
+    private fun GridAxis.lineId(layer: GridLayer, lineIndex: Int): Double =
         when (this) {
-            GridAxis.VERTICAL -> layer.verticalLineNumberStart + lineIndex
-            GridAxis.HORIZONTAL -> layer.horizontalLineNumberStart - lineIndex
+            GridAxis.VERTICAL -> layer.verticalLineNumberStart.ceilWhole() + lineIndex
+            GridAxis.HORIZONTAL -> layer.horizontalLineNumberStart.floorWhole() - lineIndex
         }
 
     private fun GridAxis.linePosition(layer: GridLayer, lineIndex: Int, gridLinePadding: Point): Double =
         when (this) {
-            GridAxis.VERTICAL -> gridLinePadding.x + lineIndex * layer.pixelsPerLine
-            GridAxis.HORIZONTAL -> gridLinePadding.y + lineIndex * layer.pixelsPerLine
+            GridAxis.VERTICAL -> lineBasePosition(layer, gridLinePadding) + lineIndex * layer.pixelsPerLine
+            GridAxis.HORIZONTAL -> lineBasePosition(layer, gridLinePadding) + lineIndex * layer.pixelsPerLine
         }
+
+    private fun GridAxis.lineBasePosition(layer: GridLayer, gridLinePadding: Point): Double =
+        when (this) {
+            GridAxis.VERTICAL -> gridLinePadding.x + (layer.verticalLineNumberStart.ceilWhole() - layer.verticalLineNumberStart) * layer.pixelsPerLine
+            GridAxis.HORIZONTAL -> gridLinePadding.y + (layer.horizontalLineNumberStart - layer.horizontalLineNumberStart.floorWhole()) * layer.pixelsPerLine
+        }
+
+    private fun GridAxis.isMajorLine(lineId: Double): Boolean =
+        abs(lineId % 10.0) < 1e-6
+
+    private fun Double.ceilWhole(): Double =
+        kotlin.math.ceil(this)
+
+    private fun Double.floorWhole(): Double =
+        kotlin.math.floor(this)
 
     private fun GridAxis.lineBounds(
         surface: GridRenderSurface,
@@ -399,6 +422,7 @@ object GridLayerPainter {
         textMode: TextMode,
         gridLinePadding: Point,
         color: Color,
+        edgeFadeDistance: Double,
     ): Color =
         when (this) {
             GridAxis.VERTICAL -> verticalLabelColour(
@@ -406,6 +430,7 @@ object GridLayerPainter {
                 screenX = linePosition - viewport.topLeft.x,
                 textMode = textMode,
                 gridLinePadding = gridLinePadding,
+                edgeFadeDistance = edgeFadeDistance,
             )
 
             GridAxis.HORIZONTAL -> horizontalLabelColour(
@@ -413,19 +438,32 @@ object GridLayerPainter {
                 screenY = linePosition - viewport.topLeft.y,
                 textMode = textMode,
                 gridLinePadding = gridLinePadding,
+                edgeFadeDistance = edgeFadeDistance,
             )
         }
 
-    private fun verticalLabelColour(color: Color, screenX: Double, textMode: TextMode, gridLinePadding: Point): Color =
+    private fun verticalLabelColour(
+        color: Color,
+        screenX: Double,
+        textMode: TextMode,
+        gridLinePadding: Point,
+        edgeFadeDistance: Double,
+    ): Color =
         when (textMode) {
             TextMode.IMAGE -> color
-            TextMode.STICKY_AXES -> color.withAlpha(axisOpacity(screenX, gridLinePadding.x))
+            TextMode.STICKY_AXES -> color.withAlpha(axisOpacity(screenX, gridLinePadding.x, edgeFadeDistance))
         }
 
-    private fun horizontalLabelColour(color: Color, screenY: Double, textMode: TextMode, gridLinePadding: Point): Color =
+    private fun horizontalLabelColour(
+        color: Color,
+        screenY: Double,
+        textMode: TextMode,
+        gridLinePadding: Point,
+        edgeFadeDistance: Double,
+    ): Color =
         when (textMode) {
             TextMode.IMAGE -> color
-            TextMode.STICKY_AXES -> color.withAlpha(axisOpacity(screenY, gridLinePadding.y))
+            TextMode.STICKY_AXES -> color.withAlpha(axisOpacity(screenY, gridLinePadding.y, edgeFadeDistance))
         }
 
     private fun Color.withAlpha(opacity: Double): Color =

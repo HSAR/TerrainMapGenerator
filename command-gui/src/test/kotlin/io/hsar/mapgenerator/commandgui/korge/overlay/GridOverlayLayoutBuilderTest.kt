@@ -119,6 +119,71 @@ class GridOverlayLayoutBuilderTest {
     }
 
     @Test
+    fun `first visible vertical line can render at the gutter edge`() {
+        val layout = GridOverlayLayoutBuilder.build(
+            state = state(mapOffsetX = 0.0, mapOffsetY = 0.0),
+            measureText = ::measureText,
+        )
+
+        val firstVerticalLine = layout.lineRects
+            .filter { it.height > it.width }
+            .minBy { it.x }
+
+        assertThat(
+            firstVerticalLine.x,
+            closeTo(GridStyles.gridLineIdPadding(1200, 900).x + 20.0 - 0.5, 0.0001),
+        )
+    }
+
+    @Test
+    fun `fractional grid starts shift line positions by the fractional remainder`() {
+        val integerLayout = GridOverlayLayoutBuilder.build(
+            state = state(
+                mapOffsetX = 200.0,
+                mapOffsetY = 100.0,
+                gridStartX = 5.0,
+                gridStartY = 45.0,
+            ),
+            measureText = ::measureText,
+        )
+
+        val fractionalLayout = GridOverlayLayoutBuilder.build(
+            state = state(
+                mapOffsetX = 200.0,
+                mapOffsetY = 100.0,
+                gridStartX = 5.5,
+                gridStartY = 45.25,
+            ),
+            measureText = ::measureText,
+        )
+
+        val integerFirstVerticalLine = integerLayout.lineRects
+            .filter { it.height > it.width }
+            .minBy { it.x }
+        val fractionalFirstVerticalLine = fractionalLayout.lineRects
+            .filter { it.height > it.width }
+            .minBy { it.x }
+
+        val integerFirstHorizontalLine = integerLayout.lineRects
+            .filter { it.width > it.height }
+            .minBy { it.y }
+        val fractionalFirstHorizontalLine = fractionalLayout.lineRects
+            .filter { it.width > it.height }
+            .minBy { it.y }
+
+        assertThat(
+            fractionalFirstVerticalLine.x - integerFirstVerticalLine.x,
+            closeTo(-5.0, 0.0001),
+        )
+        assertThat(
+            fractionalFirstHorizontalLine.y - integerFirstHorizontalLine.y,
+            closeTo(2.5, 0.0001),
+        )
+        assertThat(fractionalLayout.labels.any { it.text == "06" }, equalTo(true))
+        assertThat(fractionalLayout.labels.any { it.text == "45" }, equalTo(true))
+    }
+
+    @Test
     fun `grid lines stay solid toward the bottom and right edges`() {
         val layout = GridOverlayLayoutBuilder.build(
             state = state(mapOffsetX = 0.0, mapOffsetY = 0.0),
@@ -155,7 +220,7 @@ class GridOverlayLayoutBuilderTest {
             .values
             .first { it.first().height > it.first().width && it.first().x > 200.0 }
 
-        assertThat(verticalLineSegments.size, equalTo(11))
+        assertThat(verticalLineSegments.size, equalTo(8))
     }
 
     @Test
@@ -275,6 +340,8 @@ class GridOverlayLayoutBuilderTest {
         visibleCanvasTop: Double = 0.0,
         pixelsPerLine: Double = 10.0,
         scale: Double = 1.0,
+        gridStartX: Double = 5.0,
+        gridStartY: Double = 45.0,
         activeReference: GridCursorReference? = null,
         measurement: GridMeasurement? = null,
     ) = GridOverlayState(
@@ -300,8 +367,8 @@ class GridOverlayLayoutBuilderTest {
             metresPerPixel = 20.0,
             detailLevel = 2,
             pixelsPerLine = pixelsPerLine,
-            verticalLineNumberStart = 5,
-            horizontalLineNumberStart = 45,
+            verticalLineNumberStart = gridStartX,
+            horizontalLineNumberStart = gridStartY,
             verticalLineCount = 20,
             horizontalLineCount = 20,
         ),

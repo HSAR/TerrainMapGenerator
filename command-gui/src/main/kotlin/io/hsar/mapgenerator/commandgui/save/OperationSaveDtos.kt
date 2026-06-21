@@ -31,8 +31,8 @@ internal data class MapSaveDto(
     val metresPerPixel: Double,
     val assetId: String,
     val mapId: String? = null,
-    val gridStartX: Int? = null,
-    val gridStartY: Int? = null,
+    val gridStartX: Double? = null,
+    val gridStartY: Double? = null,
 )
 
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")

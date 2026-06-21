@@ -40,7 +40,7 @@ class GridReferenceFormatterFieldsTest {
     @Test
     fun `parses separate fields with negative coordinates`() {
         val pixels = GridReferenceFormatter.parseFields(
-            layer = layer(verticalLineNumberStart = -1, horizontalLineNumberStart = -2),
+            layer = layer(verticalLineNumberStart = -1.0, horizontalLineNumberStart = -2.0),
             mapWidth = 2560,
             mapHeight = 1440,
             easting = "0120",
@@ -74,8 +74,8 @@ class GridReferenceFormatterFieldsTest {
     }
 
     private fun layer(
-        verticalLineNumberStart: Int = 5,
-        horizontalLineNumberStart: Int = 45,
+        verticalLineNumberStart: Double = 5.0,
+        horizontalLineNumberStart: Double = 45.0,
     ) = GridLayer(
         mapId = "25F XK",
         gridScale = 1000,

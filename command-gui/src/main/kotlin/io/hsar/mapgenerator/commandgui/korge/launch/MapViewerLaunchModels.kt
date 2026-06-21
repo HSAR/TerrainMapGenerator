@@ -36,8 +36,8 @@ internal data class NewOperationDraft(
 
 internal data class GridConfiguration(
     val mapId: String,
-    val startX: Int,
-    val startY: Int,
+    val startX: Double,
+    val startY: Double,
 )
 
 internal data class OperationLaunchConfiguration(

@@ -60,16 +60,16 @@ class MainLayerSelectionTest {
     fun `resolveGridConfiguration preserves explicit values when present`() {
         val settings = MapViewerSettings(
             mapId = "25F XK",
-            gridStartX = 7,
-            gridStartY = 30,
+            gridStartX = 7.5,
+            gridStartY = 30.25,
         )
         val image = BufferedImage(8, 6, BufferedImage.TYPE_INT_ARGB)
 
         val configuration = resolveGridConfiguration(settings, image, seed = 1234L)
 
         assertThat(configuration.mapId, equalTo("25F XK"))
-        assertThat(configuration.startX, equalTo(7))
-        assertThat(configuration.startY, equalTo(30))
+        assertThat(configuration.startX, equalTo(7.5))
+        assertThat(configuration.startY, equalTo(30.25))
     }
 
     @Test

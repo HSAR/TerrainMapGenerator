@@ -393,14 +393,14 @@ private data class GridRenderKey(
     val metresPerPixel: Double,
     val metresPerContour: Double,
     val mapId: String?,
-    val gridStartX: Int?,
-    val gridStartY: Int?,
+    val gridStartX: Double?,
+    val gridStartY: Double?,
 )
 
 internal data class RenderGridConfiguration(
     val mapId: String,
-    val startX: Int,
-    val startY: Int,
+    val startX: Double,
+    val startY: Double,
 )
 
 private object RenderCache {

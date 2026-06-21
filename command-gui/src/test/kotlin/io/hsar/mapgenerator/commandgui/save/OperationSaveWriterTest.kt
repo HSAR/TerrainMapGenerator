@@ -76,8 +76,8 @@ class OperationSaveWriterTest {
             assertThat(gameJson["map"].has("width"), equalTo(false))
             assertThat(gameJson["map"].has("height"), equalTo(false))
             assertThat(gameJson["map"]["mapId"].asText(), equalTo(expectedGrid.mapId))
-            assertThat(gameJson["map"]["gridStartX"].asInt(), equalTo(expectedGrid.startX))
-            assertThat(gameJson["map"]["gridStartY"].asInt(), equalTo(expectedGrid.startY))
+            assertThat(gameJson["map"]["gridStartX"].asDouble(), equalTo(expectedGrid.startX))
+            assertThat(gameJson["map"]["gridStartY"].asDouble(), equalTo(expectedGrid.startY))
         }
         assertThat((save.ledger.entries.single() as CreateUnitTemplateEntrySaveDto).unitTemplate.template.assetId, equalTo("00000000-0000-0000-0000-000000000002"))
 

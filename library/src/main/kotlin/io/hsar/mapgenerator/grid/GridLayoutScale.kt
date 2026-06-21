@@ -35,6 +35,9 @@ object GridLayoutScale {
     fun fontScale(mapWidth: Int, mapHeight: Int): Double =
         labelScale(mapWidth, mapHeight)
 
+    fun fadeDistance(mapWidth: Int, mapHeight: Int): Double =
+        BASE_EDGE_FADE_DISTANCE * labelScale(mapWidth, mapHeight)
+
     fun labelScale(mapWidth: Int, mapHeight: Int): Double =
         sqrt(
             min(mapWidth / BASELINE_VIEWPORT_WIDTH, mapHeight / BASELINE_VIEWPORT_HEIGHT)
@@ -49,4 +52,5 @@ object GridLayoutScale {
     private const val BASE_GRID_GUTTER_Y = BASE_MAP_ID_GUTTER_Y
     private const val BASE_MAP_ID_FONT_SIZE = 30.0
     private const val BASE_GRID_LINE_ID_FONT_SIZE = 24.0
+    private const val BASE_EDGE_FADE_DISTANCE = 60.0
 }

@@ -25,4 +25,7 @@ object GridStyles {
 
     fun fontScale(mapWidth: Int, mapHeight: Int): Double =
         GridLayoutScale.labelScale(mapWidth, mapHeight)
+
+    fun fadeDistance(mapWidth: Int, mapHeight: Int): Double =
+        GridLayoutScale.fadeDistance(mapWidth, mapHeight)
 }

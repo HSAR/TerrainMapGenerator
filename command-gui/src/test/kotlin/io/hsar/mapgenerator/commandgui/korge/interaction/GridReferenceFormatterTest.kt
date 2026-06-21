@@ -23,7 +23,7 @@ class GridReferenceFormatterTest {
     @Test
     fun `formats a mixed sign grid reference when one axis is negative`() {
         val reference = GridReferenceFormatter.format(
-            layer = layer(verticalLineNumberStart = -1, horizontalLineNumberStart = 2),
+            layer = layer(verticalLineNumberStart = -1.0, horizontalLineNumberStart = 2.0),
             mapWidth = 2560,
             mapHeight = 1440,
             mapX = 170.0,
@@ -36,7 +36,7 @@ class GridReferenceFormatterTest {
     @Test
     fun `formats a fully negative grid reference when both axes are negative`() {
         val reference = GridReferenceFormatter.format(
-            layer = layer(verticalLineNumberStart = -1, horizontalLineNumberStart = -2),
+            layer = layer(verticalLineNumberStart = -1.0, horizontalLineNumberStart = -2.0),
             mapWidth = 2560,
             mapHeight = 1440,
             mapX = 170.0,
@@ -47,8 +47,8 @@ class GridReferenceFormatterTest {
     }
 
     private fun layer(
-        verticalLineNumberStart: Int = 5,
-        horizontalLineNumberStart: Int = 45,
+        verticalLineNumberStart: Double = 5.0,
+        horizontalLineNumberStart: Double = 45.0,
     ) = GridLayer(
         mapId = "25F XK",
         gridScale = 1000,

@@ -9,6 +9,7 @@ import io.hsar.mapgenerator.grid.GridStyles
 import io.hsar.mapgenerator.image.Palette
 import io.hsar.mapgenerator.random.GridGenerator.padZeroes
 import java.awt.Color
+import kotlin.math.abs
 import kotlin.math.absoluteValue
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -66,6 +67,7 @@ internal object GridOverlayLayoutBuilder {
         val layer = displayLayer(state)
         val viewportWidth = (state.visibleCanvasRight - state.visibleCanvasLeft).coerceAtLeast(1.0)
         val viewportHeight = (state.visibleCanvasBottom - state.visibleCanvasTop).coerceAtLeast(1.0)
+        val edgeFadeDistance = GridStyles.fadeDistance(viewportWidth.toInt(), viewportHeight.toInt())
         val mapLeft = state.mapOffsetX
         val mapTop = state.mapOffsetY
         val mapRight = mapLeft + state.pixelWidth * state.scale
@@ -104,13 +106,14 @@ internal object GridOverlayLayoutBuilder {
         )
 
         verticalLineIndices(state.viewport, layer, gridLinePadding).forEach { lineIndex ->
-            val lineId = layer.verticalLineNumberStart + lineIndex
+            val lineId = layer.verticalLineNumberStart.ceilWhole() + lineIndex
             val lineText = lineId.padZeroes(layer.detailLevel)
-            val lineMapX = gridLinePadding.x + lineIndex * layer.pixelsPerLine
+            val lineMapX = lineBasePositionVertical(layer.verticalLineNumberStart, gridLinePadding.x, layer.pixelsPerLine) +
+                    lineIndex * layer.pixelsPerLine
             val lineCanvasX = mapLeft + lineMapX * state.scale
-            val labelAlpha = edgeOpacity(lineCanvasX - xLabelFadeStart)
-            val lineAlpha = edgeOpacity(lineCanvasX - yAxisRightEdge)
-            val isMajorLine = lineId % MAJOR_LINE_DIVISOR == 0
+            val labelAlpha = edgeOpacity(lineCanvasX - xLabelFadeStart, edgeFadeDistance)
+            val lineAlpha = edgeOpacity(lineCanvasX - yAxisRightEdge, edgeFadeDistance)
+            val isMajorLine = isMajorLine(lineId)
 
             if (shouldRenderVerticalLabel(fineMode, lineIndex, isMajorLine)) {
                 val labelStyle = if (isMajorLine) majorAxisStyle else minorAxisStyle
@@ -123,24 +126,26 @@ internal object GridOverlayLayoutBuilder {
             }
 
             lineRects += buildVerticalLineRects(
-                mapX = lineMapX,
+                screenX = lineCanvasX,
                 mapTop = mapTop,
                 mapBottom = mapBottom,
                 gutterBottom = xAxisBottomEdge,
                 color = GridStyles.GRID_LINE_COLOUR.withAlpha(lineAlpha),
                 width = if (isMajorLine) MAJOR_LINE_THICKNESS else MINOR_LINE_THICKNESS,
                 scale = state.scale,
+                edgeFadeDistance = edgeFadeDistance,
             )
         }
 
         horizontalLineIndices(state.viewport, layer, gridLinePadding).forEach { lineIndex ->
-            val lineId = layer.horizontalLineNumberStart - lineIndex
+            val lineId = layer.horizontalLineNumberStart.floorWhole() - lineIndex
             val lineText = lineId.padZeroes(layer.detailLevel)
-            val lineMapY = gridLinePadding.y + lineIndex * layer.pixelsPerLine
+            val lineMapY = lineBasePositionHorizontal(layer.horizontalLineNumberStart, gridLinePadding.y, layer.pixelsPerLine) +
+                    lineIndex * layer.pixelsPerLine
             val lineCanvasY = mapTop + lineMapY * state.scale
-            val labelAlpha = edgeOpacity(lineCanvasY - yLabelFadeStart)
-            val lineAlpha = edgeOpacity(lineCanvasY - xAxisBottomEdge)
-            val isMajorLine = lineId % MAJOR_LINE_DIVISOR == 0
+            val labelAlpha = edgeOpacity(lineCanvasY - yLabelFadeStart, edgeFadeDistance)
+            val lineAlpha = edgeOpacity(lineCanvasY - xAxisBottomEdge, edgeFadeDistance)
+            val isMajorLine = isMajorLine(lineId)
             val labelStyle = if (isMajorLine) majorAxisStyle else minorAxisStyle
 
             labels += GridLabel(
@@ -151,38 +156,41 @@ internal object GridOverlayLayoutBuilder {
             )
 
             lineRects += buildHorizontalLineRects(
-                mapY = lineMapY,
+                screenY = lineCanvasY,
                 mapLeft = mapLeft,
                 mapRight = mapRight,
                 gutterRight = yAxisRightEdge,
                 color = GridStyles.GRID_LINE_COLOUR.withAlpha(lineAlpha),
                 width = if (isMajorLine) MAJOR_LINE_THICKNESS else MINOR_LINE_THICKNESS,
                 scale = state.scale,
+                edgeFadeDistance = edgeFadeDistance,
             )
         }
 
         state.activeReference?.let { reference ->
-            val lineAlpha = edgeOpacity(reference.screenX - yAxisRightEdge)
-            val rowAlpha = edgeOpacity(reference.screenY - xAxisBottomEdge)
+            val lineAlpha = edgeOpacity(reference.screenX - yAxisRightEdge, edgeFadeDistance)
+            val rowAlpha = edgeOpacity(reference.screenY - xAxisBottomEdge, edgeFadeDistance)
             val referenceBounds = measureText(reference.text, referenceStyle)
 
             lineRects += buildVerticalLineRects(
-                mapX = (reference.screenX - mapLeft) / state.scale,
+                screenX = reference.screenX,
                 mapTop = mapTop,
                 mapBottom = mapBottom,
                 gutterBottom = xAxisBottomEdge,
                 color = Palette.Colours.RED.withAlpha(lineAlpha),
                 width = ACTIVE_REFERENCE_LINE_THICKNESS,
                 scale = state.scale,
+                edgeFadeDistance = edgeFadeDistance,
             )
             lineRects += buildHorizontalLineRects(
-                mapY = (reference.screenY - mapTop) / state.scale,
+                screenY = reference.screenY,
                 mapLeft = mapLeft,
                 mapRight = mapRight,
                 gutterRight = yAxisRightEdge,
                 color = Palette.Colours.RED.withAlpha(rowAlpha),
                 width = ACTIVE_REFERENCE_LINE_THICKNESS,
                 scale = state.scale,
+                edgeFadeDistance = edgeFadeDistance,
             )
             labels += GridLabel(
                 text = reference.text,
@@ -233,13 +241,14 @@ internal object GridOverlayLayoutBuilder {
     }
 
     private fun buildVerticalLineRects(
-        mapX: Double,
+        screenX: Double,
         mapTop: Double,
         mapBottom: Double,
         gutterBottom: Double,
         color: Color,
         width: Double,
         scale: Double,
+        edgeFadeDistance: Double,
     ): List<GridRect> {
         val start = max(mapTop, gutterBottom)
         val end = mapBottom
@@ -252,26 +261,28 @@ internal object GridOverlayLayoutBuilder {
             lineEnd = end,
             color = color,
             normalAlpha = color.alpha / 255.0,
+            edgeFadeDistance = edgeFadeDistance,
         ) { segmentStart, segmentEnd, segmentAlpha ->
-            val lineWidth = width.coerceAtLeast(1.0) / scale
+            val lineWidth = width.coerceAtLeast(1.0)
             GridRect(
-                x = mapX - lineWidth / 2,
-                y = (segmentStart - mapTop) / scale,
+                x = screenX - lineWidth / 2,
+                y = segmentStart,
                 width = lineWidth,
-                height = (segmentEnd - segmentStart) / scale,
+                height = segmentEnd - segmentStart,
                 color = color.withAlpha(segmentAlpha),
             )
         }
     }
 
     private fun buildHorizontalLineRects(
-        mapY: Double,
+        screenY: Double,
         mapLeft: Double,
         mapRight: Double,
         gutterRight: Double,
         color: Color,
         width: Double,
         scale: Double,
+        edgeFadeDistance: Double,
     ): List<GridRect> {
         val start = max(mapLeft, gutterRight)
         val end = mapRight
@@ -284,12 +295,13 @@ internal object GridOverlayLayoutBuilder {
             lineEnd = end,
             color = color,
             normalAlpha = color.alpha / 255.0,
+            edgeFadeDistance = edgeFadeDistance,
         ) { segmentStart, segmentEnd, segmentAlpha ->
-            val lineHeight = width.coerceAtLeast(1.0) / scale
+            val lineHeight = width.coerceAtLeast(1.0)
             GridRect(
-                x = (segmentStart - mapLeft) / scale,
-                y = mapY - lineHeight / 2,
-                width = (segmentEnd - segmentStart) / scale,
+                x = segmentStart,
+                y = screenY - lineHeight / 2,
+                width = segmentEnd - segmentStart,
                 height = lineHeight,
                 color = color.withAlpha(segmentAlpha),
             )
@@ -301,6 +313,7 @@ internal object GridOverlayLayoutBuilder {
         lineEnd: Double,
         color: Color,
         normalAlpha: Double,
+        edgeFadeDistance: Double,
         create: (Double, Double, Double) -> GridRect,
     ): List<GridRect> {
         val length = lineEnd - lineStart
@@ -308,7 +321,7 @@ internal object GridOverlayLayoutBuilder {
             return emptyList()
         }
 
-        val fadeEnd = min(lineEnd, lineStart + EDGE_FADE_DISTANCE)
+        val fadeEnd = min(lineEnd, lineStart + edgeFadeDistance)
         val fadeLength = fadeEnd - lineStart
         val fadeSegmentCount = max(1, (fadeLength / LINE_SEGMENT_LENGTH).roundToInt())
         val fadeStep = fadeLength / fadeSegmentCount
@@ -316,7 +329,7 @@ internal object GridOverlayLayoutBuilder {
             val segmentStart = lineStart + segmentIndex * fadeStep
             val segmentEnd = if (segmentIndex == fadeSegmentCount - 1) fadeEnd else segmentStart + fadeStep
             val segmentCenter = (segmentStart + segmentEnd) / 2
-            val alpha = lineSegmentOpacity(segmentCenter, lineStart) * normalAlpha
+            val alpha = lineSegmentOpacity(segmentCenter, lineStart, edgeFadeDistance) * normalAlpha
 
             if (alpha <= 0.0) {
                 null
@@ -333,22 +346,39 @@ internal object GridOverlayLayoutBuilder {
     }
 
     private fun verticalLineIndices(viewport: Rectangle, layer: GridLayer, gridLinePadding: Point): IntRange {
-        val start = max(1, ceil((viewport.topLeft.x - gridLinePadding.x) / layer.pixelsPerLine).toInt())
-        val end = min(layer.verticalLineCount, floor((viewport.topRight.x - gridLinePadding.x) / layer.pixelsPerLine).toInt())
+        val lineStart = lineBasePositionVertical(layer.verticalLineNumberStart, gridLinePadding.x, layer.pixelsPerLine)
+        val start = max(0, ceil((viewport.topLeft.x - lineStart) / layer.pixelsPerLine).toInt())
+        val end = min(layer.verticalLineCount, floor((viewport.topRight.x - lineStart) / layer.pixelsPerLine).toInt())
         return if (start <= end) start..end else IntRange.EMPTY
     }
 
     private fun horizontalLineIndices(viewport: Rectangle, layer: GridLayer, gridLinePadding: Point): IntRange {
-        val start = max(1, ceil((viewport.topLeft.y - gridLinePadding.y) / layer.pixelsPerLine).toInt())
-        val end = min(layer.horizontalLineCount, floor((viewport.bottomRight.y - gridLinePadding.y) / layer.pixelsPerLine).toInt())
+        val lineStart = lineBasePositionHorizontal(layer.horizontalLineNumberStart, gridLinePadding.y, layer.pixelsPerLine)
+        val start = max(0, ceil((viewport.topLeft.y - lineStart) / layer.pixelsPerLine).toInt())
+        val end = min(layer.horizontalLineCount, floor((viewport.bottomRight.y - lineStart) / layer.pixelsPerLine).toInt())
         return if (start <= end) start..end else IntRange.EMPTY
     }
 
-    internal fun edgeOpacity(distanceFromEdge: Double): Double =
-        1.0 - (1.0 - (distanceFromEdge / EDGE_FADE_DISTANCE).coerceIn(0.0, 1.0)).let { it * it }
+    private fun Double.ceilWhole(): Double =
+        kotlin.math.ceil(this)
 
-    private fun lineSegmentOpacity(position: Double, start: Double): Double =
-        edgeOpacity(position - start)
+    private fun Double.floorWhole(): Double =
+        kotlin.math.floor(this)
+
+    private fun lineBasePositionVertical(lineStart: Double, gutterStart: Double, pixelsPerLine: Double): Double =
+        gutterStart + (lineStart.ceilWhole() - lineStart) * pixelsPerLine
+
+    private fun lineBasePositionHorizontal(lineStart: Double, gutterStart: Double, pixelsPerLine: Double): Double =
+        gutterStart + (lineStart - lineStart.floorWhole()) * pixelsPerLine
+
+    private fun isMajorLine(lineId: Double): Boolean =
+        abs(lineId % MAJOR_LINE_DIVISOR) < 1e-6
+
+    internal fun edgeOpacity(distanceFromEdge: Double, edgeFadeDistance: Double): Double =
+        1.0 - (1.0 - (distanceFromEdge / edgeFadeDistance).coerceIn(0.0, 1.0)).let { it * it }
+
+    private fun lineSegmentOpacity(position: Double, start: Double, edgeFadeDistance: Double): Double =
+        edgeOpacity(position - start, edgeFadeDistance)
 
     private fun Color.withAlpha(opacity: Double): Color =
         Color(red, green, blue, (alpha * opacity).roundToInt().coerceIn(0, 255))
@@ -391,7 +421,6 @@ internal object GridOverlayLayoutBuilder {
             Rectangle(Point.ORIGIN, Point(bounds.width, bounds.height))
         }
 
-    private const val EDGE_FADE_DISTANCE = 60.0
     private const val LINE_SEGMENT_LENGTH = 6.0
     private const val FINE_GRID_SUBDIVISIONS = 10
     private const val FINE_GRID_THRESHOLD_PX = 300.0

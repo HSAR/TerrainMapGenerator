@@ -392,15 +392,15 @@ internal class MapViewerNewOperationView(
         val metresPerPixel = pixelsPerMetreText.toDoubleOrNull() ?: initialPixelsPerMetre
         val defaults = defaultGridConfiguration(image.image, metresPerPixel, initialSeed)
         mapIdText = defaults.mapId
-        gridStartXText = defaults.startX.toString()
-        gridStartYText = defaults.startY.toString()
+        gridStartXText = defaults.startX.formatGridCoordinate()
+        gridStartYText = defaults.startY.formatGridCoordinate()
         mapPreviewDirty = true
     }
 
     private fun parseGridConfiguration(): GridConfiguration? {
         val mapId = mapIdText.trim()
-        val startX = gridStartXText.trim().toIntOrNull()
-        val startY = gridStartYText.trim().toIntOrNull()
+        val startX = gridStartXText.trim().toDoubleOrNull()
+        val startY = gridStartYText.trim().toDoubleOrNull()
         return if (mapId.isNotBlank() && startX != null && startY != null) {
             GridConfiguration(
                 mapId = mapId,
@@ -536,6 +536,9 @@ internal class MapViewerNewOperationView(
 
     private fun screenTitle(): String =
         "New Operation"
+
+    private fun Double.formatGridCoordinate(): String =
+        toString().removeSuffix(".0")
 
     private fun textInput(parent: Container, text: String, bounds: ScreenBounds): UITextInput =
         MapViewerTextInputs.input(parent, text, bounds.width, bounds.height, bounds.left, bounds.top)

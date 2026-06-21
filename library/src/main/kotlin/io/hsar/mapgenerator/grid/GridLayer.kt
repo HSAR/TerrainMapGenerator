@@ -6,8 +6,8 @@ data class GridLayer(
     val metresPerPixel: Double,
     val detailLevel: Int,
     val pixelsPerLine: Double,
-    val verticalLineNumberStart: Int,
-    val horizontalLineNumberStart: Int,
+    val verticalLineNumberStart: Double,
+    val horizontalLineNumberStart: Double,
     val verticalLineCount: Int,
     val horizontalLineCount: Int,
 )

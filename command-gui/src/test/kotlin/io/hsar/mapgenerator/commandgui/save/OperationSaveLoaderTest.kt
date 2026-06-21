@@ -129,8 +129,8 @@ class OperationSaveLoaderTest {
                     "metresPerPixel": 20.0,
                     "assetId": "$assetId",
                     "mapId": "25F XK",
-                    "gridStartX": 10,
-                    "gridStartY": 20
+                    "gridStartX": 10.5,
+                    "gridStartY": 20.25
                   }
                 }
                 """.trimIndent().toByteArray(),

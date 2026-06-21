@@ -51,16 +51,16 @@ class OperationLaunchConfigurationFactoryTest {
             mapImage = OperationMapImage("Satellite", "satellite.png", image(100, 50)),
             gridConfiguration = GridConfiguration(
                 mapId = "29UPA",
-                startX = 123,
-                startY = 456,
+                startX = 123.0,
+                startY = 456.0,
             ),
         )
 
         val configuration = OperationLaunchConfigurationFactory.create(draft, MapViewerSettings())
 
         assertThat(configuration.settings.mapId, equalTo("29UPA"))
-        assertThat(configuration.settings.gridStartX, equalTo(123))
-        assertThat(configuration.settings.gridStartY, equalTo(456))
+        assertThat(configuration.settings.gridStartX, equalTo(123.0))
+        assertThat(configuration.settings.gridStartY, equalTo(456.0))
     }
 
     @Test
