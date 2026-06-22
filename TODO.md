@@ -9,6 +9,11 @@
 - Universal UI model and switch to corner-only white borders for better aesthetics
 - Destroyed units can be hidden or shown with reduced opacity
 - Support arbitrary states which are independently toggleable instead of mutually exclusive
+- Grid supports changing colour to maximise contrast
+- Draw tool supports multiple colours
+- Select and multi-select allows moving or deleting multiple units at once
+- Moving units and multiple units shows how far the move has gone
+- Unit types have move limits
 
 ## Bugs
 

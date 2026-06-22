@@ -27,3 +27,4 @@ This repo contains a Kotlin-based program built using multiple Maven modules.
 # Code Style
 
 - Always prefer highly functional Kotlin, with single-lambda declarations, implied return and function chains to using braces.
+- Always make the smallest change possible to fulfil a given request, unless explicitly told to carry out a wider refactor.
