@@ -20,6 +20,8 @@ internal class MapViewerUnitEditDialog(
     private val initialPositionX: String,
     private val initialPositionY: String,
     private val initialDestroyed: Boolean,
+    private val onPositionPreviewChanged: (String, String) -> Unit,
+    private val onDestroyedPreviewChanged: (Boolean) -> Unit,
     private val onSave: (String, String, String, Boolean) -> Unit,
     private val onDismiss: () -> Unit,
 ) {
@@ -70,20 +72,22 @@ internal class MapViewerUnitEditDialog(
             x = 2.0
             y = 2.0
         }
-        val fittedIcon = MapViewerIconFit.inside(unitType.bitmap, PREVIEW_WIDTH - 12.0, PREVIEW_HEIGHT - 12.0)
-        typePreview.image(unitType.bitmap) {
+        val iconSlot = typePreview.container()
+        iconSlot.xy(6.0, 6.0)
+        val fittedIcon = MapViewerIconFit.inside(unitType.bitmap, ICON_SLOT_WIDTH, ICON_SLOT_HEIGHT)
+        iconSlot.image(unitType.bitmap) {
             scale = fittedIcon.scale
-            x = 6.0 + fittedIcon.x
-            y = 6.0 + fittedIcon.y
+            x = fittedIcon.x
+            y = fittedIcon.y
         }
         MapViewerTextViews.leftBox(
             parent = typePreview,
             text = unitType.name,
-            width = PREVIEW_WIDTH - 20.0 - fittedIcon.width,
+            width = PREVIEW_WIDTH - ICON_SLOT_WIDTH - 24.0,
             height = PREVIEW_HEIGHT,
             color = Palette.Colours.WHITE,
         ) {
-            x = 20.0 + fittedIcon.width
+            x = ICON_SLOT_WIDTH + 12.0
         }
 
         val nameLabel = content.container()
@@ -108,6 +112,17 @@ internal class MapViewerUnitEditDialog(
 
         val positionYInput = MapViewerTextInputs.input(content, initialPositionY, 120.0, 32.0, 150.0, 250.0)
 
+        fun refreshPositionPreview() {
+            onPositionPreviewChanged(positionXInput.text, positionYInput.text)
+        }
+
+        positionXInput.controller.onTextUpdated.add {
+            refreshPositionPreview()
+        }
+        positionYInput.controller.onTextUpdated.add {
+            refreshPositionPreview()
+        }
+
         val destroyedLabel = content.container()
         destroyedLabel.xy(0.0, 292.0)
         MapViewerTextViews.label(destroyedLabel, "Destroyed", color = Palette.Colours.WHITE)
@@ -117,6 +132,7 @@ internal class MapViewerUnitEditDialog(
         destroyedToggle.xy(0.0, 318.0)
 
         fun refreshDestroyedToggle() {
+            onDestroyedPreviewChanged(destroyedValue)
             destroyedToggle.removeChildren()
             destroyedToggle.solidRect(260.0, 32.0, RGBA(255, 255, 255, 255))
             destroyedToggle.solidRect(256.0, 28.0, toRgba(Palette.Colours.DARK)) {
@@ -164,6 +180,7 @@ internal class MapViewerUnitEditDialog(
         cancelButton.xy(130.0, 360.0)
         cancelButton.zIndex = 10.0
         buildButton(cancelButton, 110.0, 40.0, "Cancel") {
+            onDestroyedPreviewChanged(initialDestroyed)
             close()
         }
 
@@ -202,5 +219,7 @@ internal class MapViewerUnitEditDialog(
         const val Z_INDEX = 50_000.0
         const val PREVIEW_WIDTH = 180.0
         const val PREVIEW_HEIGHT = 50.0
+        const val ICON_SLOT_WIDTH = 34.0
+        const val ICON_SLOT_HEIGHT = 26.0
     }
 }

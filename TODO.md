@@ -12,9 +12,9 @@
 - Grid supports changing colour to maximise contrast
 - Draw tool supports multiple colours
 - Select and multi-select allows moving or deleting multiple units at once
-- Moving units and multiple units shows how far the move has gone
 - Unit types have move limits
 
 ## Bugs
 
 - Too many callbacks warning in game log.
+- Edit Unit dialog modal input boxes text clipping.

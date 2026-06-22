@@ -34,6 +34,21 @@ class GridReferenceFormatterTest {
     }
 
     @Test
+    fun `formatting can use viewport gutters independently of map size`() {
+        val reference = GridReferenceFormatter.format(
+            layer = layer(),
+            mapWidth = 2560,
+            mapHeight = 1440,
+            mapX = 170.0,
+            mapY = 340.0,
+            gutterWidth = 1200,
+            gutterHeight = 900,
+        )
+
+        assertThat(reference, equalTo("0783 3870"))
+    }
+
+    @Test
     fun `formats a fully negative grid reference when both axes are negative`() {
         val reference = GridReferenceFormatter.format(
             layer = layer(verticalLineNumberStart = -1.0, horizontalLineNumberStart = -2.0),

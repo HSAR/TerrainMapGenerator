@@ -6,6 +6,8 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.ContextMenuManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateDelta
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelection
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelectionKind
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import korlibs.event.MouseButton
@@ -22,6 +24,8 @@ internal class MapDrawingManager(
     private val currentTool: () -> MapViewerTool,
     private val drawingStore: MapDrawingStore,
     private val contextMenuManager: ContextMenuManager,
+    private val isHigherPriorityDragCandidateUnderPointer: (Vector2D) -> Boolean = { false },
+    private val isHigherPriorityDragInProgress: () -> Boolean = { false },
     private val canInteractWithDrawings: () -> Boolean = { true },
     private val onDrawingsChanged: (MapDrawingState) -> Unit = {},
     private val onObjectMoved: (MapPlacedObjectSnapshot, MapPlacedObjectSnapshot) -> Unit = { _, _ -> },
@@ -29,31 +33,16 @@ internal class MapDrawingManager(
 ) {
     private val coordinateSpace = MapCoordinateSpace(geometry, mapWidth, mapHeight)
     private var dragState: DragState? = null
-    private var previousLeftHeld = false
-    private var previousRightHeld = false
 
     fun install() {
         root.addUpdater {
             val input = root.stage?.views?.input ?: return@addUpdater
-            val tool = currentTool()
-            if (tool != MapViewerTool.SELECT) {
+            if (currentTool() != MapViewerTool.SELECT || !canInteractWithDrawings()) {
                 dragState = null
-                previousLeftHeld = false
             }
-            if (!canInteractWithDrawings()) {
-                dragState = null
-                previousLeftHeld = false
-            }
-            if (tool == MapViewerTool.SELECT && canInteractWithDrawings() && updateDrag(input.mousePos, input.mouseButtonPressed(MouseButton.LEFT))) {
+            if (updateDrag(input.mousePos, input.mouseButtonPressed(MouseButton.LEFT))) {
                 onDrawingsChanged(drawingStore.state)
             }
-            if (tool == MapViewerTool.SELECT && canInteractWithDrawings() && updateContextMenu(input.mousePos, input.mouseButtonPressed(MouseButton.RIGHT))) {
-                onDrawingsChanged(drawingStore.state)
-            }
-            if (!input.mouseButtonPressed(MouseButton.LEFT)) {
-                previousLeftHeld = false
-            }
-            previousRightHeld = input.mouseButtonPressed(MouseButton.RIGHT)
         }
     }
 
@@ -75,14 +64,56 @@ internal class MapDrawingManager(
         return drawingStore.state.drawings.any { it.containsMapCoordinate(mapCoordinate, tolerance, coordinateSpace) }
     }
 
-    private fun updateContextMenu(pointer: Vector2D, rightHeld: Boolean): Boolean {
-        if (!rightHeld || previousRightHeld) {
+    fun selectionAt(point: Vector2D): MapPlacedObjectSelection? {
+        if (!canInteractWithDrawings()) {
+            return null
+        }
+
+        val viewport = viewportProvider()
+        val mapCoordinate = coordinateSpace.resolveScreenPoint(
+            screenPoint = point,
+            viewport = viewport,
+            bounds = coordinateSpace.backgroundBounds,
+        ) ?: return null
+        val tolerance = coordinateSpace.screenToleranceToMapTolerance(HIT_TOLERANCE, viewport)
+        val drawing = drawingStore.findAt(mapCoordinate, tolerance, coordinateSpace) ?: return null
+        return MapPlacedObjectSelection(
+            kind = MapPlacedObjectSelectionKind.DRAWING,
+            id = drawing.id,
+            distanceToPointer = 0.0,
+        )
+    }
+
+    fun beginDragAt(point: Vector2D): Boolean {
+        if (dragState != null || !canInteractWithDrawings() || currentTool() != MapViewerTool.SELECT || isHigherPriorityDragCandidateUnderPointer(point) || isHigherPriorityDragInProgress()) {
             return false
         }
 
         val viewport = viewportProvider()
         val mapCoordinate = coordinateSpace.resolveScreenPoint(
-            screenPoint = pointer,
+            screenPoint = point,
+            viewport = viewport,
+            bounds = coordinateSpace.backgroundBounds,
+        ) ?: return false
+        val tolerance = coordinateSpace.screenToleranceToMapTolerance(HIT_TOLERANCE, viewport)
+        val target = drawingStore.findAt(mapCoordinate, tolerance, coordinateSpace) ?: return false
+        dragState = DragState(
+            drawing = target,
+            startMapCoordinate = mapCoordinate,
+            lastDelta = MapCoordinateDelta(0.0, 0.0),
+            originalSnapshot = target.snapshot(),
+        )
+        return true
+    }
+
+    fun openContextMenuAt(point: Vector2D): Boolean {
+        if (!canInteractWithDrawings() || currentTool() != MapViewerTool.SELECT) {
+            return false
+        }
+
+        val viewport = viewportProvider()
+        val mapCoordinate = coordinateSpace.resolveScreenPoint(
+            screenPoint = point,
             viewport = viewport,
             bounds = coordinateSpace.backgroundBounds,
         ) ?: return false
@@ -90,7 +121,7 @@ internal class MapDrawingManager(
         val drawing = drawingStore.findAt(mapCoordinate, tolerance, coordinateSpace) ?: return false
         contextMenuManager.open(
             target = drawing,
-            screenPoint = pointer,
+            screenPoint = point,
             actions = listOf(
                 io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectMenuAction(
                     label = "Delete",
@@ -105,32 +136,6 @@ internal class MapDrawingManager(
     private fun updateDrag(pointer: Vector2D, leftHeld: Boolean): Boolean {
         val state = dragState
         if (state == null) {
-            if (!leftHeld || previousLeftHeld || contextMenuManager.isOpen) {
-                previousLeftHeld = leftHeld
-                return false
-            }
-
-            val viewport = viewportProvider()
-            val mapCoordinate = coordinateSpace.resolveScreenPoint(
-                screenPoint = pointer,
-                viewport = viewport,
-                bounds = coordinateSpace.backgroundBounds,
-            ) ?: run {
-                previousLeftHeld = leftHeld
-                return false
-            }
-            val tolerance = coordinateSpace.screenToleranceToMapTolerance(HIT_TOLERANCE, viewport)
-            val target = drawingStore.findAt(mapCoordinate, tolerance, coordinateSpace) ?: run {
-                previousLeftHeld = leftHeld
-                return false
-            }
-            dragState = DragState(
-                drawing = target,
-                startMapCoordinate = mapCoordinate,
-                lastDelta = MapCoordinateDelta(0.0, 0.0),
-                originalSnapshot = target.snapshot(),
-            )
-            previousLeftHeld = leftHeld
             return false
         }
 
@@ -140,7 +145,6 @@ internal class MapDrawingManager(
                 onObjectMoved(state.originalSnapshot, updatedSnapshot)
             }
             dragState = null
-            previousLeftHeld = false
             return false
         }
 
@@ -160,7 +164,6 @@ internal class MapDrawingManager(
         )
         state.drawing.moveBy(incrementalDelta)
         state.lastDelta = delta
-        previousLeftHeld = leftHeld
         return true
     }
 

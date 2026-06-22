@@ -49,6 +49,7 @@ internal class MapViewerInteraction(
     private val isScreenOverlayBlocking: (Vector2D) -> Boolean = { false },
     private val isMovableObjectUnderPointer: (Vector2D) -> Boolean = { false },
     private val isMapPlacementDragging: () -> Boolean = { false },
+    private val objectMovePreviewProvider: () -> MapObjectMovePreview? = { null },
     private val canUseUndoRedo: () -> Boolean = { true },
     private val onDrawingCommitted: (MapDrawing) -> Unit = {},
     private val onUndoRequested: () -> Unit = {},
@@ -65,6 +66,7 @@ internal class MapViewerInteraction(
     private var activeMeasurement: GridMeasurement? = null
     private var measurementOrigin: MapPointerReference? = null
     private var activeDrawing: ActiveDrawing? = null
+    private var lastMovePreview: MapObjectMovePreview? = null
     private var previousLeftHeld = false
     private var previousTool = MapViewerTool.SELECT
     private var previousDrawingMode = MapDrawingMode.FREEFORM
@@ -92,6 +94,11 @@ internal class MapViewerInteraction(
         root.addUpdater {
             val pointer = input.mousePos
             val placementDragging = isMapPlacementDragging()
+            val movePreview = objectMovePreviewProvider()
+            if (movePreview != lastMovePreview) {
+                lastMovePreview = movePreview
+                markOverlayDirty()
+            }
             val tool = currentTool()
             val drawingMode = currentDrawingMode()
             val pointerBlocked = isScreenOverlayBlocking(pointer)
@@ -126,9 +133,14 @@ internal class MapViewerInteraction(
             if (updateDrawingState(pointer, toolGesture.leftToolActive, tool, drawingMode)) {
                 notifyDrawingChanged()
             }
-            if (updateActiveReference(
+            if (placementDragging || movePreview != null) {
+                if (activeReference != null) {
+                    activeReference = null
+                    markOverlayDirty()
+                }
+            } else if (updateActiveReference(
                     pointer = pointer,
-                    leftHeld = if (placementDragging) input.mouseButtonPressed(MouseButton.LEFT) else toolGesture.leftToolActive,
+                    leftHeld = toolGesture.leftToolActive,
                     tool = tool,
                 )
             ) {
@@ -186,6 +198,10 @@ internal class MapViewerInteraction(
         val viewport = cameraPanner.viewport
         val mapLeft = viewport.screenX(geometry.mapOffsetX.toDouble())
         val mapTop = viewport.screenY(geometry.mapOffsetY.toDouble())
+        val movePreview = lastMovePreview
+        val overlayReference = activeReference ?: movePreview?.let { preview ->
+            movePreviewReference(preview, viewport)
+        }
         val state = GridOverlayState(
             viewport = currentViewport(viewport),
             mapWorldX = geometry.mapOffsetX.toDouble(),
@@ -201,8 +217,22 @@ internal class MapViewerInteraction(
             visibleCanvasTop = 0.0,
             visibleCanvasRight = viewportWidth.toDouble(),
             visibleCanvasBottom = viewportHeight.toDouble(),
-            activeReference = activeReference,
-            measurement = activeMeasurement,
+            activeReference = overlayReference,
+            measurement = activeMeasurement ?: movePreview?.let { preview ->
+                val origin = coordinateSpace.toMapPixels(preview.origin)
+                val destination = coordinateSpace.toMapPixels(preview.destination)
+                if (gridLayer == null) {
+                    null
+                } else {
+                    GridMeasurementCalculator.calculate(
+                        layer = gridLayer,
+                        originMapX = origin.x,
+                        originMapY = origin.y,
+                        destinationMapX = destination.x,
+                        destinationMapY = destination.y,
+                    )
+                }
+            },
             gridLayer = layer,
         )
 
@@ -372,6 +402,8 @@ internal class MapViewerInteraction(
                         mapHeight = mapHeight,
                         mapX = reference.mapPixelX,
                         mapY = reference.mapPixelY,
+                        gutterWidth = viewportWidth,
+                        gutterHeight = viewportHeight,
                     ),
                 )
             }
@@ -394,6 +426,25 @@ internal class MapViewerInteraction(
                 )
             }
         }
+
+    private fun movePreviewReference(preview: MapObjectMovePreview, viewport: CameraViewport): GridCursorReference? {
+        val layer = gridLayer ?: return null
+        val mapPixels = coordinateSpace.toMapPixels(preview.destination)
+        val worldPoint = coordinateSpace.toWorld(preview.destination)
+        return GridCursorReference(
+            screenX = viewport.screenX(worldPoint.x),
+            screenY = viewport.screenY(worldPoint.y),
+            text = preview.referenceText ?: GridReferenceFormatter.format(
+                layer = layer,
+                mapWidth = mapWidth,
+                mapHeight = mapHeight,
+                mapX = mapPixels.x,
+                mapY = mapPixels.y,
+                gutterWidth = viewportWidth,
+                gutterHeight = viewportHeight,
+            ),
+        )
+    }
 
     private fun MapCoordinate.toDrawingPoint() = MapDrawingPoint(x, y)
 

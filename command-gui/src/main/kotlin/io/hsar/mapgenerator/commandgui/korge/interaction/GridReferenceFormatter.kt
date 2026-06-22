@@ -6,18 +6,42 @@ import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 
 internal object GridReferenceFormatter {
-    fun format(layer: GridLayer, mapWidth: Int, mapHeight: Int, mapX: Double, mapY: Double): String {
-        val reference = formatReference(layer, mapWidth, mapHeight, mapX, mapY)
+    fun format(
+        layer: GridLayer,
+        mapWidth: Int,
+        mapHeight: Int,
+        mapX: Double,
+        mapY: Double,
+        gutterWidth: Int = mapWidth,
+        gutterHeight: Int = mapHeight,
+    ): String {
+        val reference = formatReference(layer, gutterWidth, gutterHeight, mapX, mapY)
         return "${reference.easting} ${reference.northing}"
     }
 
-    fun formatFields(layer: GridLayer, mapWidth: Int, mapHeight: Int, mapX: Double, mapY: Double): GridReferenceFields =
-        formatReference(layer, mapWidth, mapHeight, mapX, mapY)
+    fun formatFields(
+        layer: GridLayer,
+        mapWidth: Int,
+        mapHeight: Int,
+        mapX: Double,
+        mapY: Double,
+        gutterWidth: Int = mapWidth,
+        gutterHeight: Int = mapHeight,
+    ): GridReferenceFields =
+        formatReference(layer, gutterWidth, gutterHeight, mapX, mapY)
 
-    fun parseFields(layer: GridLayer, mapWidth: Int, mapHeight: Int, easting: String, northing: String): MapReferencePixels? {
+    fun parseFields(
+        layer: GridLayer,
+        mapWidth: Int,
+        mapHeight: Int,
+        easting: String,
+        northing: String,
+        gutterWidth: Int = mapWidth,
+        gutterHeight: Int = mapHeight,
+    ): MapReferencePixels? {
         val parsedEasting = parseCoordinate(easting) ?: return null
         val parsedNorthing = parseCoordinate(northing) ?: return null
-        val padding = GridStyles.gridLineIdPadding(mapWidth, mapHeight)
+        val padding = GridStyles.gridLineIdPadding(gutterWidth, gutterHeight)
         val eastingMetres = parsedEasting * METRES_PER_REFERENCE_DIGIT
         val northingMetres = parsedNorthing * METRES_PER_REFERENCE_DIGIT
         return MapReferencePixels(
@@ -28,8 +52,8 @@ internal object GridReferenceFormatter {
         )
     }
 
-    private fun formatReference(layer: GridLayer, mapWidth: Int, mapHeight: Int, mapX: Double, mapY: Double): GridReferenceFields {
-        val padding = GridStyles.gridLineIdPadding(mapWidth, mapHeight)
+    private fun formatReference(layer: GridLayer, gutterWidth: Int, gutterHeight: Int, mapX: Double, mapY: Double): GridReferenceFields {
+        val padding = GridStyles.gridLineIdPadding(gutterWidth, gutterHeight)
         val eastingMetres = (
             layer.verticalLineNumberStart * layer.gridScale +
                     ((mapX - padding.x) * layer.metresPerPixel)

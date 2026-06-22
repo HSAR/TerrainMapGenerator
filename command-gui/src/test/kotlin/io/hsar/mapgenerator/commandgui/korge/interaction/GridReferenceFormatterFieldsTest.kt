@@ -52,6 +52,22 @@ class GridReferenceFormatterFieldsTest {
     }
 
     @Test
+    fun `parses fields using viewport gutters when provided`() {
+        val pixels = GridReferenceFormatter.parseFields(
+            layer = layer(),
+            mapWidth = 2560,
+            mapHeight = 1440,
+            easting = "0720",
+            northing = "3900",
+            gutterWidth = 1200,
+            gutterHeight = 900,
+        )
+
+        assertThat(pixels?.x, closeTo(138.125, 0.0001))
+        assertThat(pixels?.y, closeTo(325.0, 0.0001))
+    }
+
+    @Test
     fun `map pixels round trip through normalized coordinates without offset drift`() {
         val space = MapCoordinateSpace(
             geometry = ViewerGeometry(

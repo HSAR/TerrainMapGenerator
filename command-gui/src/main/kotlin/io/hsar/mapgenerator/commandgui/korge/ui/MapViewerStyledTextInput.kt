@@ -8,7 +8,6 @@ import korlibs.korge.ui.UITextInput
 import korlibs.korge.view.Container
 import korlibs.korge.view.ViewRenderer
 import korlibs.korge.view.addTo
-import korlibs.korge.view.clipContainer
 import korlibs.korge.view.container
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
@@ -26,8 +25,8 @@ internal class MapViewerStyledTextInput(
     initialText: String = "",
 ) {
     private val frame = parent.container()
-    private val content = frame.clipContainer(Size2D(width - 8.0, height - 8.0))
-    private val input: UITextInput = UITextInput(initialText, Size2D(width - 8.0, height - 8.0)).addTo(content)
+    private val content = frame.container()
+    private val input: UITextInput = UITextInput(initialText, Size2D(width - 4.0, height - 4.0)).addTo(content)
 
     init {
         frame.xy(x, y)
@@ -37,12 +36,12 @@ internal class MapViewerStyledTextInput(
             this.y = 2.0
         }
 
-        content.xy(4.0, 4.0)
+        content.xy(2.0, 2.0)
         input.skin = ViewRenderer { }
-        input.padding = Margin(4f, 4f, 4f, 4f)
+        input.padding = Margin(4f, 6f, 4f, 6f)
         input.controller.textColor = RGBA(255, 255, 255, 255)
         input.font = MapViewerKorgeFonts.font(MapViewerFontRole.MAIN)
-        input.textSize = MapViewerTextViews.DEFAULT_TEXT_SIZE + 2.0
+        input.textSize = MapViewerTextViews.DEFAULT_TEXT_SIZE
     }
 
     var text: String

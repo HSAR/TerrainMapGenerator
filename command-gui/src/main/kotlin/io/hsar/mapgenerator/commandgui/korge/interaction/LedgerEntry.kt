@@ -13,6 +13,12 @@ internal sealed interface MapPlacedObjectSnapshot {
     val id: MapPlacedObjectId
 }
 
+internal data class MapObjectMovePreview(
+    val origin: MapCoordinate,
+    val destination: MapCoordinate,
+    val referenceText: String? = null,
+)
+
 internal data class UnitSnapshot(
     override val id: MapPlacedObjectId,
     val template: MapViewerUnitTemplate,

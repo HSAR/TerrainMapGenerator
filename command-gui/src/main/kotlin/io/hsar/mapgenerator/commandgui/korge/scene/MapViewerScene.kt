@@ -21,6 +21,8 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapActionHistory
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapObjectController
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectPatch
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelectionKind
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelectionResolver
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedUnitManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
@@ -151,8 +153,11 @@ internal class MapViewerScene(
                         val saveWriter = OperationSaveWriter()
                         var gridLabelsOverlay: GridOverlayView? = null
                         val coordinateSpace = MapCoordinateSpace(renderedMap.geometry, renderedMap.bitmap.width, renderedMap.bitmap.height)
+                        var objectMovePreview: io.hsar.mapgenerator.commandgui.korge.interaction.MapObjectMovePreview? = null
                         var saveNoticeMessage: String? = null
                         var saveNoticeExpiresAtMs = 0L
+                        var previousLeftHeld = false
+                        var previousRightHeld = false
 
                         fun saveOperation(noticePrefix: String = "Saved") {
                             val thumbnailImage = renderedMap.bitmap.toBufferedImage()
@@ -193,6 +198,7 @@ internal class MapViewerScene(
 
                         fun clearTransientInteractionState() {
                             contextMenuManager.close()
+                            objectMovePreview = null
                             unitManager.cancelTransientState()
                             drawingManager.cancelTransientState()
                             drawingStore.clearPreview()
@@ -245,6 +251,10 @@ internal class MapViewerScene(
                             viewportProvider = { currentViewport },
                             contextMenuManager = contextMenuManager,
                             canInteractWithUnits = { currentTool == MapViewerTool.SELECT },
+                            isHigherPriorityDragInProgress = { drawingManager.isDragging },
+                            onMovePreviewChanged = { preview ->
+                                objectMovePreview = preview
+                            },
                             onObjectMoved = { before, after ->
                                 MapPlacedObjectPatch.diff(before, after)
                                     .takeIf { it.isNotEmpty() }
@@ -271,6 +281,10 @@ internal class MapViewerScene(
                             currentTool = { currentTool },
                             drawingStore = drawingStore,
                             contextMenuManager = contextMenuManager,
+                            isHigherPriorityDragCandidateUnderPointer = { point ->
+                                unitManager.hasDragCandidate(point)
+                            },
+                            isHigherPriorityDragInProgress = { unitManager.isDragging },
                             canInteractWithDrawings = { currentTool == MapViewerTool.SELECT },
                             onDrawingsChanged = { state ->
                                 drawingView.update(state, currentViewport.zoom)
@@ -391,6 +405,42 @@ internal class MapViewerScene(
 
                         sceneLayers.ui.addUpdater {
                             val now = System.currentTimeMillis()
+                            val input = views.input
+                            val pointer = input.mousePos
+                            val leftHeld = input.mouseButtonPressed(korlibs.event.MouseButton.LEFT)
+                            val rightHeld = input.mouseButtonPressed(korlibs.event.MouseButton.RIGHT)
+                            val uiBlocksPointer = toolbar.blocksScreenPoint(pointer) ||
+                                    sidebar.blocksScreenPoint(pointer) ||
+                                    sidebar.isUnitDragging ||
+                                    sidebar.isUnitDialogOpen ||
+                                    unitManager.isEditDialogOpen ||
+                                    unitManager.isContextMenuOpen ||
+                                    escapeMenu?.isOpen == true ||
+                                    contextMenuManager.blocksScreenPoint(pointer)
+
+                            if (currentTool == MapViewerTool.SELECT && !uiBlocksPointer) {
+                                if (leftHeld && !previousLeftHeld) {
+                                    when (MapPlacedObjectSelectionResolver.choose(
+                                        unitManager.selectionAt(pointer),
+                                        drawingManager.selectionAt(pointer),
+                                    )?.kind) {
+                                        MapPlacedObjectSelectionKind.UNIT -> unitManager.beginDragAt(pointer)
+                                        MapPlacedObjectSelectionKind.DRAWING -> drawingManager.beginDragAt(pointer)
+                                        null -> Unit
+                                    }
+                                }
+                                if (rightHeld && !previousRightHeld) {
+                                    when (MapPlacedObjectSelectionResolver.choose(
+                                        unitManager.selectionAt(pointer),
+                                        drawingManager.selectionAt(pointer),
+                                    )?.kind) {
+                                        MapPlacedObjectSelectionKind.UNIT -> unitManager.openContextMenuAt(pointer)
+                                        MapPlacedObjectSelectionKind.DRAWING -> drawingManager.openContextMenuAt(pointer)
+                                        null -> Unit
+                                    }
+                                }
+                            }
+
                             if (saveNoticeMessage != null) {
                                 if (now <= saveNoticeExpiresAtMs) {
                                     saveNoticeLayer.visible = true
@@ -401,7 +451,6 @@ internal class MapViewerScene(
                                 }
                             }
                             autosaveController.update(now)
-                            val input = views.input
                             if (input.keys.justPressed(Key.S) &&
                                 input.keys[Key.CONTROL] &&
                                 !sidebar.isUnitDialogOpen &&
@@ -421,6 +470,9 @@ internal class MapViewerScene(
                             ) {
                                 escapeMenu?.toggle()
                             }
+
+                            previousLeftHeld = leftHeld
+                            previousRightHeld = rightHeld
                         }
 
                         loadedOperation?.let { loaded ->
@@ -447,6 +499,7 @@ internal class MapViewerScene(
                                         !unitManager.isEditDialogOpen &&
                                         !drawingManager.isDragging
                             },
+                            objectMovePreviewProvider = { objectMovePreview },
                             onDrawingCommitted = { drawing ->
                                 objectController.createDrawing(drawing)
                                     .also { recordLedgerEntry(CreateObjectAction(it)) }
@@ -459,18 +512,26 @@ internal class MapViewerScene(
                             },
                             isMovableObjectUnderPointer = { point ->
                                 currentTool == MapViewerTool.SELECT &&
-                                        (unitManager.blocksScreenPoint(point) || drawingManager.blocksScreenPoint(point))
+                                        MapPlacedObjectSelectionResolver.choose(
+                                            unitManager.selectionAt(point),
+                                            drawingManager.selectionAt(point),
+                                        ) != null
                             },
                             isScreenOverlayBlocking = { point ->
                                 toolbar.blocksScreenPoint(point) ||
                                         sidebar.blocksScreenPoint(point) ||
                                         sidebar.isUnitDragging ||
                                         sidebar.isUnitDialogOpen ||
+                                        unitManager.isEditDialogOpen ||
                                         unitManager.isContextMenuOpen ||
                                         drawingManager.blocksScreenPoint(point) ||
                                         escapeMenu?.isOpen == true ||
                                         contextMenuManager.blocksScreenPoint(point) ||
-                                        (currentTool == MapViewerTool.SELECT && unitManager.blocksScreenPoint(point))
+                                        (currentTool == MapViewerTool.SELECT &&
+                                                MapPlacedObjectSelectionResolver.choose(
+                                                    unitManager.selectionAt(point),
+                                                    drawingManager.selectionAt(point),
+                                                ) != null)
                             },
                             isMapPlacementDragging = unitManager::isDragging,
                             onViewportChanged = {
