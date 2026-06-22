@@ -1,6 +1,7 @@
 # TODO
 
 - Turns can be saved as points in the ledger
+    - Turns have thumbnails
 - Save and reload system
     - Unit custom properties can be created, saved and reloaded as key-value pairs
 - Icons should scale independent of map size
@@ -12,10 +13,14 @@
 - Grid supports changing colour to maximise contrast
 - Draw tool supports multiple colours
 - Select and multi-select allows moving or deleting multiple units at once
-- Unit types have move limits
+    - Pivot multiple units in formation
+- Unit types additional semantic properties
+    - Move limits
+    - Unit facing
 - Randomly generated operation names
 
 ## Bugs
 
 - Too many callbacks warning in game log.
 - Edit Unit dialog modal input boxes text clipping.
+- Fix thumbnails
