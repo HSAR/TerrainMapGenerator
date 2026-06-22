@@ -86,7 +86,7 @@ class GridOverlayLayoutBuilderTest {
         )
 
         assertThat(layout.labels.any { it.text.length == 3 }, equalTo(true))
-        assertThat(layout.lineRects.any { it.width > 1.0 }, equalTo(true))
+        assertThat(layout.lineRects.maxOf { it.width } > layout.lineRects.minOf { it.width }, equalTo(true))
     }
 
     @Test

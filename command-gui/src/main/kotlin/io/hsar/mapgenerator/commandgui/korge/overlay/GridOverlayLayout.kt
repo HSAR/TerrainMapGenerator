@@ -127,6 +127,7 @@ internal object GridOverlayLayoutBuilder {
 
             lineRects += buildVerticalLineRects(
                 screenX = lineCanvasX,
+                mapLeft = mapLeft,
                 mapTop = mapTop,
                 mapBottom = mapBottom,
                 gutterBottom = xAxisBottomEdge,
@@ -158,6 +159,7 @@ internal object GridOverlayLayoutBuilder {
             lineRects += buildHorizontalLineRects(
                 screenY = lineCanvasY,
                 mapLeft = mapLeft,
+                mapTop = mapTop,
                 mapRight = mapRight,
                 gutterRight = yAxisRightEdge,
                 color = GridStyles.GRID_LINE_COLOUR.withAlpha(lineAlpha),
@@ -174,6 +176,7 @@ internal object GridOverlayLayoutBuilder {
 
             lineRects += buildVerticalLineRects(
                 screenX = reference.screenX,
+                mapLeft = mapLeft,
                 mapTop = mapTop,
                 mapBottom = mapBottom,
                 gutterBottom = xAxisBottomEdge,
@@ -185,6 +188,7 @@ internal object GridOverlayLayoutBuilder {
             lineRects += buildHorizontalLineRects(
                 screenY = reference.screenY,
                 mapLeft = mapLeft,
+                mapTop = mapTop,
                 mapRight = mapRight,
                 gutterRight = yAxisRightEdge,
                 color = Palette.Colours.RED.withAlpha(rowAlpha),
@@ -242,6 +246,7 @@ internal object GridOverlayLayoutBuilder {
 
     private fun buildVerticalLineRects(
         screenX: Double,
+        mapLeft: Double,
         mapTop: Double,
         mapBottom: Double,
         gutterBottom: Double,
@@ -262,13 +267,17 @@ internal object GridOverlayLayoutBuilder {
             color = color,
             normalAlpha = color.alpha / 255.0,
             edgeFadeDistance = edgeFadeDistance,
+            mapLeft = mapLeft,
+            mapTop = mapTop,
+            scale = scale,
         ) { segmentStart, segmentEnd, segmentAlpha ->
-            val lineWidth = width.coerceAtLeast(1.0)
+            val lineWidth = (width / scale).coerceAtLeast(0.25)
+            val localX = (screenX - mapLeft) / scale
             GridRect(
-                x = screenX - lineWidth / 2,
-                y = segmentStart,
+                x = localX - lineWidth / 2,
+                y = (segmentStart - mapTop) / scale,
                 width = lineWidth,
-                height = segmentEnd - segmentStart,
+                height = (segmentEnd - segmentStart) / scale,
                 color = color.withAlpha(segmentAlpha),
             )
         }
@@ -277,6 +286,7 @@ internal object GridOverlayLayoutBuilder {
     private fun buildHorizontalLineRects(
         screenY: Double,
         mapLeft: Double,
+        mapTop: Double,
         mapRight: Double,
         gutterRight: Double,
         color: Color,
@@ -296,12 +306,16 @@ internal object GridOverlayLayoutBuilder {
             color = color,
             normalAlpha = color.alpha / 255.0,
             edgeFadeDistance = edgeFadeDistance,
+            mapLeft = mapLeft,
+            mapTop = mapTop,
+            scale = scale,
         ) { segmentStart, segmentEnd, segmentAlpha ->
-            val lineHeight = width.coerceAtLeast(1.0)
+            val lineHeight = (width / scale).coerceAtLeast(0.25)
+            val localY = (screenY - mapTop) / scale
             GridRect(
-                x = segmentStart,
-                y = screenY - lineHeight / 2,
-                width = segmentEnd - segmentStart,
+                x = (segmentStart - mapLeft) / scale,
+                y = localY - lineHeight / 2,
+                width = (segmentEnd - segmentStart) / scale,
                 height = lineHeight,
                 color = color.withAlpha(segmentAlpha),
             )
@@ -314,6 +328,9 @@ internal object GridOverlayLayoutBuilder {
         color: Color,
         normalAlpha: Double,
         edgeFadeDistance: Double,
+        mapLeft: Double,
+        mapTop: Double,
+        scale: Double,
         create: (Double, Double, Double) -> GridRect,
     ): List<GridRect> {
         val length = lineEnd - lineStart
