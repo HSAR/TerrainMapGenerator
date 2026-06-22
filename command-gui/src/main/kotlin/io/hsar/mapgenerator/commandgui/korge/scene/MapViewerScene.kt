@@ -475,10 +475,6 @@ internal class MapViewerScene(
                             previousRightHeld = rightHeld
                         }
 
-                        loadedOperation?.let { loaded ->
-                            sidebar.seedNextUnitTemplateId(loaded.nextUnitTemplateId)
-                        }
-
                         MapViewerInteraction(
                             root = sceneLayers.ui,
                             camera = world,

@@ -91,7 +91,6 @@ internal class OperationSaveLoader {
                 camera = save.game.camera,
                 mapImage = mapImage,
                 ledgerEntries = replayed.ledgerEntries,
-                nextUnitTemplateId = replayed.nextUnitTemplateId,
             )
         }
 
@@ -158,21 +157,17 @@ private data class AssetBytes(
 
 private data class ReplayedLedger(
     val ledgerEntries: List<LedgerEntry>,
-    val nextUnitTemplateId: Long,
 )
 
 private class RuntimeLedgerReplayer(
     private val zip: ZipFile,
 ) {
+    private val templatesById = mutableMapOf<UUID, MapViewerUnitTemplate>()
     private val templateAssetsByAssetId = mutableMapOf<String, LoadedTemplateAsset>()
-    private var nextUnitTemplateId = 1L
 
     fun replay(entries: List<LedgerEntrySaveDto>): ReplayedLedger {
         val runtimeEntries = entries.mapNotNull(::toRuntimeEntry)
-        return ReplayedLedger(
-            ledgerEntries = runtimeEntries,
-            nextUnitTemplateId = nextUnitTemplateId,
-        )
+        return ReplayedLedger(ledgerEntries = runtimeEntries)
     }
 
     private fun toRuntimeEntry(entry: LedgerEntrySaveDto): LedgerEntry? =
@@ -190,7 +185,7 @@ private class RuntimeLedgerReplayer(
             )
 
             is CreateUnitTemplateEntrySaveDto -> entry.unitTemplate.toRuntimeSnapshot()
-                .also { nextUnitTemplateId = maxOf(nextUnitTemplateId, it.id.value + 1) }
+                .also { templatesById[it.id.value] = it.template }
                 .let(::CreateUnitTemplateAction)
 
             is DeleteUnitTemplateEntrySaveDto -> entry.unitTemplate.toRuntimeSnapshot()
@@ -200,9 +195,11 @@ private class RuntimeLedgerReplayer(
     private fun SavedMapObjectDto.toRuntimeSnapshot(id: UUID): MapPlacedObjectSnapshot =
         when (this) {
             is SavedUnitObjectDto -> {
-                val template = template.toRuntimeTemplate()
+                val template = templatesById[unitTemplateId]
+                    ?: error("Missing unit template for id $unitTemplateId")
                 UnitSnapshot(
                     id = MapPlacedObjectId(id),
+                    unitTemplateId = UnitTemplateId(unitTemplateId),
                     template = template,
                     instanceName = instanceName,
                     destroyed = destroyed,
@@ -221,11 +218,11 @@ private class RuntimeLedgerReplayer(
     private fun UnitTemplateSnapshotSaveDto.toRuntimeSnapshot() =
         UnitTemplateSnapshot(
             id = UnitTemplateId(id),
-            template = template.toRuntimeTemplate(),
+            template = template.toRuntimeTemplate(id),
             index = index,
         )
 
-    private fun UnitTemplateSaveDto.toRuntimeTemplate() =
+    private fun UnitTemplateSaveDto.toRuntimeTemplate(id: UUID) =
         templateAssetsByAssetId.getOrPut(assetId) {
             val entry = resolveAssetEntry(zip, assetId)
             val bytes = zip.getInputStream(entry).use { it.readBytes() }
@@ -240,6 +237,7 @@ private class RuntimeLedgerReplayer(
             )
         }.let { asset ->
             MapViewerUnitTemplate(
+                id = UnitTemplateId(id),
                 name = name,
                 bitmap = asset.bitmap,
                 assetSource = asset.assetSource,

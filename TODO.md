@@ -13,6 +13,7 @@
 - Draw tool supports multiple colours
 - Select and multi-select allows moving or deleting multiple units at once
 - Unit types have move limits
+- Randomly generated operation names
 
 ## Bugs
 

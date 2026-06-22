@@ -4,6 +4,7 @@ import io.hsar.mapgenerator.commandgui.AssetSource
 import korlibs.image.bitmap.Bitmap32
 
 internal data class MapViewerUnitTemplate @JvmOverloads constructor(
+    val id: UnitTemplateId,
     val name: String,
     val bitmap: Bitmap32,
     val assetSource: AssetSource? = null,

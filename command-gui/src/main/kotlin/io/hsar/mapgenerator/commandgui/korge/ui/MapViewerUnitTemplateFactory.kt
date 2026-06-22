@@ -1,8 +1,10 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
+import java.util.*
 
 internal object MapViewerUnitTemplateFactory {
     fun defaults(): List<MapViewerUnitTemplate> =
@@ -13,6 +15,7 @@ internal object MapViewerUnitTemplateFactory {
 
     fun template(name: String, color: RGBA): MapViewerUnitTemplate =
         MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.randomUUID()),
             name = name,
             bitmap = unitMarker(color),
         )

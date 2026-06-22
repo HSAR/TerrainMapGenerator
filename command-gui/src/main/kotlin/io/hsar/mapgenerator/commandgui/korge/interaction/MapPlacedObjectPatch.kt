@@ -8,6 +8,7 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import java.awt.Color
+import java.util.*
 
 internal object MapPlacedObjectPatch {
     private val objectMapper = jacksonObjectMapper()
@@ -28,6 +29,9 @@ internal object MapPlacedObjectPatch {
         }
 
     private fun unitDiff(before: UnitSnapshot, after: UnitSnapshot) = buildMap<String, JsonNode?> {
+        if (before.unitTemplateId != after.unitTemplateId) {
+            put("unitTemplateId", TextNode(after.unitTemplateId.value.toString()))
+        }
         putIfChanged("instanceName", before.instanceName, after.instanceName)
         putIfChanged("destroyed", before.destroyed, after.destroyed)
         putIfChanged("mapCoordinate", before.mapCoordinate, after.mapCoordinate)
@@ -73,6 +77,7 @@ internal object MapPlacedObjectPatch {
             when (key) {
                 "instanceName" -> current.copy(instanceName = value.requireValue().asText())
                 "destroyed" -> current.copy(destroyed = value.requireValue().asBoolean())
+                "unitTemplateId" -> current.copy(unitTemplateId = UnitTemplateId(UUID.fromString(value.requireValue().asText())))
                 "mapCoordinate" -> current.copy(mapCoordinate = fromNode(value.requireValue()))
                 "normalizedWidth" -> current.copy(normalizedWidth = value.requireValue().asDouble())
                 "normalizedHeight" -> current.copy(normalizedHeight = value.requireValue().asDouble())

@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
@@ -15,6 +16,7 @@ import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import java.awt.Color
 import java.io.File
+import java.util.*
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
 
@@ -143,7 +145,14 @@ internal class MapViewerUnitCreateDialog(
                 name.isBlank() -> showStatus(statusLabel, "Enter a type name")
                 bitmap == null -> showStatus(statusLabel, "Choose an image")
                 else -> {
-                    onCreated(MapViewerUnitTemplate(name = name, bitmap = bitmap, assetSource = selectedAssetSource))
+                    onCreated(
+                        MapViewerUnitTemplate(
+                            id = initialTemplate?.id ?: UnitTemplateId(UUID.randomUUID()),
+                            name = name,
+                            bitmap = bitmap,
+                            assetSource = selectedAssetSource,
+                        ),
+                    )
                     close()
                 }
             }

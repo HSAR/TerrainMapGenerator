@@ -8,6 +8,7 @@ import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import java.awt.image.BufferedImage
+import java.util.*
 
 class OperationLaunchConfigurationFactoryTest {
 
@@ -78,8 +79,8 @@ class OperationLaunchConfigurationFactoryTest {
 
         assertThat(configuration.initialLedgerEntries.size, equalTo(2))
         assertThat(configuration.initialLedgerEntries[0] is CreateUnitTemplateAction, equalTo(true))
-        assertThat((configuration.initialLedgerEntries[0] as CreateUnitTemplateAction).snapshot.id, equalTo(UnitTemplateId(1)))
-        assertThat((configuration.initialLedgerEntries[1] as CreateUnitTemplateAction).snapshot.id, equalTo(UnitTemplateId(2)))
+        assertThat((configuration.initialLedgerEntries[0] as CreateUnitTemplateAction).snapshot.id, equalTo(template("Alpha").id))
+        assertThat((configuration.initialLedgerEntries[1] as CreateUnitTemplateAction).snapshot.id, equalTo(template("Bravo").id))
     }
 
     private fun image(width: Int, height: Int): BufferedImage =
@@ -87,6 +88,7 @@ class OperationLaunchConfigurationFactoryTest {
 
     private fun template(name: String) =
         io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.nameUUIDFromBytes(name.toByteArray())),
             name = name,
             bitmap = korlibs.image.bitmap.Bitmap32(4, 4),
         )

@@ -55,7 +55,7 @@ internal class LedgerEntrySaveMapper(
     private fun MapPlacedObjectSnapshot.toDto(): SavedMapObjectDto =
         when (this) {
             is UnitSnapshot -> SavedUnitObjectDto(
-                template = template.toDto(),
+                unitTemplateId = unitTemplateId.value,
                 instanceName = instanceName,
                 destroyed = destroyed,
                 mapCoordinate = mapCoordinate.toDto(),

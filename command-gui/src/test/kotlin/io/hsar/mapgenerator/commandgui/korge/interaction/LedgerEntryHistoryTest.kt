@@ -5,6 +5,7 @@ import korlibs.image.bitmap.Bitmap32
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
+import java.util.*
 
 class LedgerEntryHistoryTest {
 
@@ -37,8 +38,12 @@ class LedgerEntryHistoryTest {
         val history = MapActionHistory()
         val controller = TestLedgerController()
         val snapshot = UnitTemplateSnapshot(
-            id = UnitTemplateId(1),
-            template = MapViewerUnitTemplate("Unit 1", Bitmap32(4, 4)),
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000001")),
+            template = MapViewerUnitTemplate(
+                id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000001")),
+                name = "Unit 1",
+                bitmap = Bitmap32(4, 4),
+            ),
             index = 0,
         )
 

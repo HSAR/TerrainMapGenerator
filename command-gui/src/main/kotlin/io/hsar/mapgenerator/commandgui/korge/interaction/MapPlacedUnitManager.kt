@@ -162,6 +162,7 @@ internal class MapPlacedUnitManager(
 
     fun buildSnapshot(
         id: MapPlacedObjectId,
+        unitTemplateId: UnitTemplateId,
         template: MapViewerUnitTemplate,
         instanceName: String,
         mapCoordinate: MapCoordinate,
@@ -170,6 +171,7 @@ internal class MapPlacedUnitManager(
         val unitSize = worldUnitSize(template.bitmap)
         return UnitSnapshot(
             id = id,
+            unitTemplateId = unitTemplateId,
             template = template,
             instanceName = instanceName,
             destroyed = destroyed,
@@ -182,6 +184,7 @@ internal class MapPlacedUnitManager(
     fun upsert(snapshot: UnitSnapshot) {
         val existing = units.firstOrNull { it.id == snapshot.id }
         if (existing != null) {
+            existing.unitTemplateId = snapshot.unitTemplateId
             existing.template = snapshot.template
             existing.instanceName = snapshot.instanceName
             existing.destroyed = snapshot.destroyed
@@ -201,6 +204,7 @@ internal class MapPlacedUnitManager(
         val placedUnit = PlacedUnit(
             id = snapshot.id,
             view = unitLayer.container(),
+            unitTemplateId = snapshot.unitTemplateId,
             template = snapshot.template,
             instanceName = snapshot.instanceName,
             destroyed = snapshot.destroyed,
@@ -477,6 +481,7 @@ internal class MapPlacedUnitManager(
     private inner class PlacedUnit(
         override val id: MapPlacedObjectId,
         val view: Container,
+        var unitTemplateId: UnitTemplateId,
         var template: MapViewerUnitTemplate,
         var instanceName: String,
         var destroyed: Boolean,
@@ -498,6 +503,7 @@ internal class MapPlacedUnitManager(
         override fun snapshot(): UnitSnapshot =
             UnitSnapshot(
                 id = id,
+                unitTemplateId = unitTemplateId,
                 template = template,
                 instanceName = instanceName,
                 destroyed = destroyed,

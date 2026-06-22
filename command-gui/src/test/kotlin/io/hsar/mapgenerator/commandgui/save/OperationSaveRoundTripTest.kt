@@ -51,12 +51,14 @@ class OperationSaveRoundTripTest {
 
         val unitBitmap = MapViewerIconLoader.load(unitFile.toFile()) ?: error("unit bitmap should load")
         val unitTemplate = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000001")),
             name = "Alpha",
             bitmap = unitBitmap,
             assetSource = AssetSource.fromFile(unitFile.toFile()),
         )
         val createdUnit = UnitSnapshot(
             id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000007")),
+            unitTemplateId = unitTemplate.id,
             template = unitTemplate,
             instanceName = "Alpha 1",
             destroyed = false,
@@ -78,7 +80,7 @@ class OperationSaveRoundTripTest {
             ),
         )
         val ledger = listOf(
-            CreateUnitTemplateAction(UnitTemplateSnapshot(UnitTemplateId(5), unitTemplate, 0)),
+            CreateUnitTemplateAction(UnitTemplateSnapshot(unitTemplate.id, unitTemplate, 0)),
             CreateObjectAction(createdUnit),
             EditObjectAction(
                 objectId = createdUnit.id,
@@ -166,6 +168,7 @@ class OperationSaveRoundTripTest {
             mediaType = "image/png",
         )
         val template = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000011")),
             name = "Alpha",
             bitmap = Bitmap32(2, 1) { x, _ ->
                 if (x == 0) RGBA(255, 0, 0, 255) else RGBA(0, 0, 255, 255)
@@ -178,7 +181,7 @@ class OperationSaveRoundTripTest {
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
                 mapSource = null,
-                ledgerEntries = listOf(CreateUnitTemplateAction(UnitTemplateSnapshot(UnitTemplateId(1), template, 0))),
+                ledgerEntries = listOf(CreateUnitTemplateAction(UnitTemplateSnapshot(template.id, template, 0))),
             ),
             tempDir.resolve("first-icon-save.oct.zip"),
         )
@@ -237,8 +240,18 @@ class OperationSaveRoundTripTest {
             mediaType = "image/png",
         )
         val bitmap = Bitmap32(2, 2) { _, _ -> RGBA(255, 0, 0, 255) }
-        val alpha = MapViewerUnitTemplate(name = "Alpha", bitmap = bitmap, assetSource = iconSource)
-        val bravo = MapViewerUnitTemplate(name = "Bravo", bitmap = bitmap, assetSource = iconSource)
+        val alpha = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000001")),
+            name = "Alpha",
+            bitmap = bitmap,
+            assetSource = iconSource,
+        )
+        val bravo = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000002")),
+            name = "Bravo",
+            bitmap = bitmap,
+            assetSource = iconSource,
+        )
 
         val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
             request(
@@ -246,8 +259,8 @@ class OperationSaveRoundTripTest {
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
                 mapSource = null,
                 ledgerEntries = listOf(
-                    CreateUnitTemplateAction(UnitTemplateSnapshot(UnitTemplateId(1), alpha, 0)),
-                    CreateUnitTemplateAction(UnitTemplateSnapshot(UnitTemplateId(2), bravo, 1)),
+                    CreateUnitTemplateAction(UnitTemplateSnapshot(alpha.id, alpha, 0)),
+                    CreateUnitTemplateAction(UnitTemplateSnapshot(bravo.id, bravo, 1)),
                 ),
             ),
             tempDir.resolve("shared-icon-save.oct.zip"),
@@ -278,11 +291,13 @@ class OperationSaveRoundTripTest {
             mediaType = "image/png",
         )
         val alpha = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000003")),
             name = "Alpha",
             bitmap = Bitmap32(2, 2) { x, _ -> if (x == 0) RGBA(255, 0, 0, 255) else RGBA(255, 255, 0, 255) },
             assetSource = firstSource,
         )
         val bravo = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000004")),
             name = "Bravo",
             bitmap = Bitmap32(2, 2) { x, _ -> if (x == 0) RGBA(0, 0, 255, 255) else RGBA(0, 255, 0, 255) },
             assetSource = secondSource,
@@ -294,8 +309,8 @@ class OperationSaveRoundTripTest {
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
                 mapSource = null,
                 ledgerEntries = listOf(
-                    CreateUnitTemplateAction(UnitTemplateSnapshot(UnitTemplateId(1), alpha, 0)),
-                    CreateUnitTemplateAction(UnitTemplateSnapshot(UnitTemplateId(2), bravo, 1)),
+                    CreateUnitTemplateAction(UnitTemplateSnapshot(alpha.id, alpha, 0)),
+                    CreateUnitTemplateAction(UnitTemplateSnapshot(bravo.id, bravo, 1)),
                 ),
             ),
             tempDir.resolve("distinct-icons-first.oct.zip"),

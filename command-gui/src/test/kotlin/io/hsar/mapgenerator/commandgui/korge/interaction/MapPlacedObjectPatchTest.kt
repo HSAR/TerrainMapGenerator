@@ -15,7 +15,8 @@ class MapPlacedObjectPatchTest {
     fun `unit diff can be applied to recreate updated snapshot`() {
         val before = UnitSnapshot(
             id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000001")),
-            template = MapViewerUnitTemplate("Unit", Bitmap32(4, 4)),
+            unitTemplateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
+            template = MapViewerUnitTemplate(UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")), "Unit", Bitmap32(4, 4)),
             instanceName = "Alpha 1",
             destroyed = false,
             mapCoordinate = MapCoordinate(0.2, 0.3),

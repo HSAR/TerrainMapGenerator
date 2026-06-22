@@ -19,6 +19,7 @@ internal class MapObjectController(
         instanceName: String = template.name,
     ) = unitManager.buildSnapshot(
         id = MapPlacedObjectId(uuidGenerator()),
+        unitTemplateId = template.id,
         template = template,
         instanceName = instanceName,
         mapCoordinate = mapCoordinate,

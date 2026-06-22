@@ -41,6 +41,7 @@ class OperationSaveWriterTest {
         ImageIO.write(mapImage, "png", mapFile.toFile())
         Files.writeString(unitFile, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"4\" height=\"4\"/>")
         val unitTemplate = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000003")),
             name = "Infantry",
             bitmap = Bitmap32(4, 4) { _, _ -> RGBA(255, 0, 0, 255) },
             assetSource = AssetSource.fromFile(unitFile.toFile()),
@@ -56,7 +57,7 @@ class OperationSaveWriterTest {
                 mapImage = mapImage,
                 thumbnailImage = thumbnailImage,
                 mapSource = AssetSource.fromFile(mapFile.toFile()),
-                ledgerEntries = listOf(CreateUnitTemplateAction(UnitTemplateSnapshot(UnitTemplateId(7), unitTemplate, 0))),
+                ledgerEntries = listOf(CreateUnitTemplateAction(UnitTemplateSnapshot(unitTemplate.id, unitTemplate, 0))),
             ),
             tempDir.resolve("operation.oct.zip"),
         )
@@ -102,6 +103,7 @@ class OperationSaveWriterTest {
             mediaType = "image/png",
         )
         val transparentTemplate = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000013")),
             name = "Generated",
             bitmap = Bitmap32(4, 4) { x, _ -> if (x == 0) RGBA(255, 0, 0, 0) else RGBA(255, 0, 0, 255) },
             assetSource = missingSource,
@@ -116,7 +118,7 @@ class OperationSaveWriterTest {
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
                 mapSource = missingSource,
-                ledgerEntries = listOf(CreateUnitTemplateAction(UnitTemplateSnapshot(UnitTemplateId(1), transparentTemplate, 0))),
+                ledgerEntries = listOf(CreateUnitTemplateAction(UnitTemplateSnapshot(transparentTemplate.id, transparentTemplate, 0))),
             ),
             tempDir.resolve("fallback.oct.zip"),
         )

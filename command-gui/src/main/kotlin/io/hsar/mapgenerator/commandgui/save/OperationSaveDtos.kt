@@ -78,7 +78,7 @@ internal data class DeleteUnitTemplateEntrySaveDto(
 internal sealed interface SavedMapObjectDto
 
 internal data class SavedUnitObjectDto(
-    val template: UnitTemplateSaveDto,
+    val unitTemplateId: UUID,
     val instanceName: String,
     val destroyed: Boolean,
     val mapCoordinate: MapCoordinateSaveDto,
@@ -91,7 +91,7 @@ internal data class SavedDrawingObjectDto(
 ) : SavedMapObjectDto
 
 internal data class UnitTemplateSnapshotSaveDto(
-    val id: Long,
+    val id: UUID,
     val template: UnitTemplateSaveDto,
     val index: Int,
 )

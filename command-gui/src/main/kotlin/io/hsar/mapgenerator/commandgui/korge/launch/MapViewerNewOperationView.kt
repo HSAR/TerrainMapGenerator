@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
@@ -31,6 +32,7 @@ import korlibs.korge.view.xy
 import korlibs.math.geom.Vector2D
 import java.awt.image.BufferedImage
 import java.io.File
+import java.util.*
 import javax.imageio.ImageIO
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
@@ -362,6 +364,7 @@ internal class MapViewerNewOperationView(
             gridConfiguration = gridConfiguration,
             unitTemplates = unitRows.map { row ->
                 MapViewerUnitTemplate(
+                    id = UnitTemplateId(UUID.randomUUID()),
                     name = row.name,
                     bitmap = row.bitmap,
                     assetSource = row.assetSource,

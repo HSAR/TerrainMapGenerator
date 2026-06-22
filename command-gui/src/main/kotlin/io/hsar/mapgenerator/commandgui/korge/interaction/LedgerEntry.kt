@@ -21,6 +21,7 @@ internal data class MapObjectMovePreview(
 
 internal data class UnitSnapshot(
     override val id: MapPlacedObjectId,
+    val unitTemplateId: UnitTemplateId,
     val template: MapViewerUnitTemplate,
     val instanceName: String,
     val destroyed: Boolean,
@@ -35,7 +36,7 @@ internal data class DrawingSnapshot(
 ) : MapPlacedObjectSnapshot
 
 internal data class UnitTemplateId(
-    val value: Long,
+    val value: UUID,
 )
 
 internal data class UnitTemplateSnapshot(

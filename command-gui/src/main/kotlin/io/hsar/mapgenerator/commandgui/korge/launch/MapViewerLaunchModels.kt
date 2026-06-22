@@ -6,7 +6,6 @@ import io.hsar.mapgenerator.commandgui.StaticImageLayer
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
-import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.grid.GridLayerBuilder
 import java.awt.image.BufferedImage
@@ -138,7 +137,7 @@ private fun NewOperationDraft.seededUnitTemplateEntries(): List<LedgerEntry> =
     unitTemplates.mapIndexed { index, template ->
         CreateUnitTemplateAction(
             UnitTemplateSnapshot(
-                id = UnitTemplateId(index + 1L),
+                id = template.id,
                 template = template,
                 index = index,
             ),

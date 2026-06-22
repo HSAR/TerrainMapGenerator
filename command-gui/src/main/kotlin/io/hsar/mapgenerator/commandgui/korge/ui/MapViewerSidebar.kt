@@ -42,14 +42,13 @@ internal class MapViewerSidebar(
     private val toggleButton = overlay.container()
     private val dragLayer = overlay.container()
     private val unitTemplates = initialUnitTemplates.mapIndexed { index, template ->
-        UnitTemplateRow(UnitTemplateId((index + 1).toLong()), template)
+        UnitTemplateRow(template.id, template)
     }.toMutableList()
     private var collapsed = false
     private var dragState: DragState? = null
     private var lastDragPointer: Vector2D? = null
     private var createUnitDialog: MapViewerUnitCreateDialog? = null
     private var layout = MapViewerSidebarLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
-    private var nextUnitTemplateId = unitTemplates.size.toLong() + 1
 
     internal val isUnitDragging: Boolean
         get() = dragState != null
@@ -97,7 +96,7 @@ internal class MapViewerSidebar(
         val insertionIndex = index.coerceIn(0, unitTemplates.size)
         return addUnitTemplate(
             snapshot = UnitTemplateSnapshot(
-                id = UnitTemplateId(nextUnitTemplateId++),
+                id = template.id,
                 template = template,
                 index = insertionIndex,
             ),
@@ -111,7 +110,6 @@ internal class MapViewerSidebar(
         unitTemplates.add(insertionIndex, row)
         relayout(layoutViewportWidth(), layoutViewportHeight())
         return row.snapshot(insertionIndex).also {
-            nextUnitTemplateId = maxOf(nextUnitTemplateId, snapshot.id.value + 1)
             if (notify) onUnitTemplateCreated(it)
         }
     }
@@ -130,10 +128,6 @@ internal class MapViewerSidebar(
     fun snapshotUnitTemplate(id: UnitTemplateId): UnitTemplateSnapshot? {
         val index = unitTemplates.indexOfFirst { it.id == id }
         return unitTemplates.getOrNull(index)?.snapshot(index)
-    }
-
-    fun seedNextUnitTemplateId(nextId: Long) {
-        nextUnitTemplateId = maxOf(nextUnitTemplateId, nextId)
     }
 
     private fun relayout(viewportWidth: Int, viewportHeight: Int) {
