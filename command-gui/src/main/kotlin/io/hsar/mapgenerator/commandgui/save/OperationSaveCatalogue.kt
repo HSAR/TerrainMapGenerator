@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.save
 
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
+import org.apache.logging.log4j.LogManager
 import java.awt.image.BufferedImage
 import java.nio.file.Files
 import java.nio.file.Path
@@ -21,6 +22,8 @@ internal data class SavedOperationSummary(
 )
 
 internal class OperationSaveCatalogue {
+    private val logger = LogManager.getLogger(OperationSaveCatalogue::class.java)
+
     fun list(directory: Path): List<SavedOperationSummary> =
         Files.list(directory).use { paths ->
             paths.iterator().asSequence()
@@ -50,6 +53,8 @@ internal class OperationSaveCatalogue {
                     thumbnail = thumbnailId?.let { zip.loadThumbnail(it) },
                 )
             }
+        }.onFailure { throwable ->
+            logger.warn("Failed to read save summary from {}", path, throwable)
         }.getOrNull()
 
     private fun ZipFile.loadThumbnail(assetId: UUID): Bitmap32? =

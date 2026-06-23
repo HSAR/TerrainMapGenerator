@@ -16,6 +16,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
@@ -163,6 +164,7 @@ private class RuntimeLedgerReplayer(
     private val zip: ZipFile,
 ) {
     private val templatesById = mutableMapOf<UUID, MapViewerUnitTemplate>()
+    private val templateOrder = mutableListOf<UUID>()
     private val templateAssetsByAssetId = mutableMapOf<String, LoadedTemplateAsset>()
 
     fun replay(entries: List<LedgerEntrySaveDto>): ReplayedLedger {
@@ -185,11 +187,24 @@ private class RuntimeLedgerReplayer(
             )
 
             is CreateUnitTemplateEntrySaveDto -> entry.unitTemplate.toRuntimeSnapshot()
-                .also { templatesById[it.id.value] = it.template }
+                .also { registerTemplate(it) }
                 .let(::CreateUnitTemplateAction)
 
             is DeleteUnitTemplateEntrySaveDto -> entry.unitTemplate.toRuntimeSnapshot()
+                .also { unregisterTemplate(it.id) }
                 .let(::DeleteUnitTemplateAction)
+
+            is EditUnitTemplateEntrySaveDto -> {
+                val before = snapshotFor(entry.id)
+                val after = applyUnitTemplateEdit(entry.id, entry.forward)
+                EditUnitTemplateAction(
+                    id = UnitTemplateId(entry.id),
+                    forward = entry.forward,
+                    backward = entry.backward,
+                    beforeSnapshot = before,
+                    afterSnapshot = after,
+                )
+            }
         }
 
     private fun SavedMapObjectDto.toRuntimeSnapshot(id: UUID): MapPlacedObjectSnapshot =
@@ -241,6 +256,65 @@ private class RuntimeLedgerReplayer(
                 name = name,
                 bitmap = asset.bitmap,
                 assetSource = asset.assetSource,
+            )
+        }
+
+    private fun registerTemplate(snapshot: UnitTemplateSnapshot) {
+        templateOrder.remove(snapshot.id.value)
+        templateOrder.add(snapshot.index.coerceIn(0, templateOrder.size), snapshot.id.value)
+        templatesById[snapshot.id.value] = snapshot.template
+    }
+
+    private fun unregisterTemplate(id: UnitTemplateId) {
+        templateOrder.remove(id.value)
+        templatesById.remove(id.value)
+    }
+
+    private fun snapshotFor(id: UUID): UnitTemplateSnapshot? {
+        val template = templatesById[id] ?: return null
+        val index = templateOrder.indexOf(id).takeIf { it >= 0 } ?: 0
+        return UnitTemplateSnapshot(
+            id = UnitTemplateId(id),
+            template = template,
+            index = index,
+        )
+    }
+
+    private fun applyUnitTemplateEdit(id: UUID, changes: Map<String, com.fasterxml.jackson.databind.JsonNode?>): UnitTemplateSnapshot? {
+        val current = snapshotFor(id) ?: return null
+        var template = current.template
+        changes["assetId"]
+            ?.takeUnless { node -> node.isNull }
+            ?.asText()
+            ?.let { assetId ->
+                val loadedAsset = loadTemplateAsset(assetId)
+                template = template.copy(
+                    bitmap = loadedAsset.bitmap,
+                    assetSource = loadedAsset.assetSource,
+                )
+            }
+        changes["name"]
+            ?.takeUnless { node -> node.isNull }
+            ?.asText()
+            ?.let { template = template.copy(name = it) }
+
+        val updated = current.copy(template = template)
+        templatesById[id] = template
+        return updated
+    }
+
+    private fun loadTemplateAsset(assetId: String): LoadedTemplateAsset =
+        templateAssetsByAssetId.getOrPut(assetId) {
+            val entry = resolveAssetEntry(zip, assetId)
+            val bytes = zip.getInputStream(entry).use { it.readBytes() }
+            val bitmap = MapViewerIconLoader.load(bytes, entry.name)
+                ?: error("Unable to load template asset ${entry.name}")
+            LoadedTemplateAsset(
+                bitmap = bitmap,
+                assetSource = AssetSource.fromEmbeddedBytes(
+                    fileName = entry.name.substringAfterLast('/'),
+                    bytes = bytes,
+                ),
             )
         }
 

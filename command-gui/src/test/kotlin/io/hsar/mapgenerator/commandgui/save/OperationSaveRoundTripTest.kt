@@ -11,6 +11,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateActio
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectPatch
@@ -356,6 +357,52 @@ class OperationSaveRoundTripTest {
             .map { it.unitTemplate.template.assetId }
 
         assertThat(assetIds.distinct().size, equalTo(2))
+    }
+
+    @Test
+    fun `edit unit template entries round trip through the save file`() {
+        val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000d0")
+        val bitmap = Bitmap32(4, 4) { _, _ -> RGBA(255, 0, 0, 255) }
+        val template = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000020")),
+            name = "SP",
+            bitmap = bitmap,
+            assetSource = AssetSource(
+                path = tempDir.resolve("template.png").toString(),
+                originalFilename = "template.png",
+                extension = "png",
+                mediaType = "image/png",
+            ),
+        )
+        val before = UnitTemplateSnapshot(template.id, template, 0)
+        val after = before.copy(template = before.template.copy(name = "S"))
+
+        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = operationId,
+                mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                ledgerEntries = listOf(
+                    CreateUnitTemplateAction(before),
+                    EditUnitTemplateAction(
+                        id = before.id,
+                        forward = mapOf("name" to com.fasterxml.jackson.databind.node.TextNode("S")),
+                        backward = mapOf("name" to com.fasterxml.jackson.databind.node.TextNode("SP")),
+                        beforeSnapshot = before,
+                        afterSnapshot = after,
+                    ),
+                ),
+            ),
+            tempDir.resolve("edit-template-save.oct.zip"),
+        )
+
+        val reread = OperationSaveReader().read(savePath)
+        assertThat(reread.ledger.entries[1] is EditUnitTemplateEntrySaveDto, equalTo(true))
+
+        val loaded = OperationSaveLoader().load(savePath)
+        val edit = loaded.ledgerEntries.filterIsInstance<EditUnitTemplateAction>().single()
+        assertThat(edit.id, equalTo(before.id))
+        assertThat(edit.afterSnapshot?.template?.name, equalTo("S"))
     }
 
     private fun request(

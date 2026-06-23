@@ -8,6 +8,7 @@ import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.awt.image.BufferedImage
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import java.util.*
@@ -45,6 +46,27 @@ class OperationSaveCatalogueTest {
 
         assertThat(saves.map { it.operationName }, equalTo(listOf("Newer Operation", "Older Operation")))
         assertThat(saves.first().thumbnailAssetId, equalTo(UUID.fromString("00000000-0000-0000-0000-000000000002")))
+    }
+
+    @Test
+    fun `catalogue skips broken saves without failing`() {
+        val writer = OperationSaveWriter()
+        val mapImage = BufferedImage(128, 64, BufferedImage.TYPE_INT_RGB)
+
+        writer.write(
+            request(
+                operationId = UUID.fromString("00000000-0000-0000-0000-000000000003"),
+                operationName = "Valid Operation",
+                updatedAt = Instant.parse("2026-06-18T12:00:00Z"),
+                mapImage = mapImage,
+            ),
+            tempDir.resolve("valid.oct.zip"),
+        )
+        Files.writeString(tempDir.resolve("broken.oct.zip"), "not a zip")
+
+        val saves = OperationSaveCatalogue().list(tempDir)
+
+        assertThat(saves.map { it.operationName }, equalTo(listOf("Valid Operation")))
     }
 
     private fun request(

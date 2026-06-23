@@ -15,6 +15,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateActio
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerController
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapActionHistory
@@ -26,6 +27,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelectio
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedUnitManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplatePatch
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchFlow
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchpadView
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerNewOperationView
@@ -62,6 +64,7 @@ import korlibs.korge.view.xy
 import korlibs.math.geom.Size2D
 import korlibs.render.awt.AwtGameWindow
 import kotlinx.coroutines.runBlocking
+import org.apache.logging.log4j.LogManager
 import java.awt.Toolkit
 import java.nio.file.Files
 import java.nio.file.Path
@@ -78,6 +81,7 @@ internal class MapViewerScene(
     private val initialSetupInputs: MapViewerSetupInputs = MapViewerSetupInputs(),
 ) {
     private val renderer = MapViewerRenderer()
+    private val logger = LogManager.getLogger(MapViewerScene::class.java)
 
     @OptIn(KorgeExperimental::class)
     fun showWindow() {
@@ -339,6 +343,18 @@ internal class MapViewerScene(
                             onUnitTemplateDeleted = { snapshot ->
                                 recordLedgerEntry(DeleteUnitTemplateAction(snapshot))
                             },
+                            onUnitTemplateEdited = { before, after ->
+                                val changes = MapViewerUnitTemplatePatch.diff(before, after)
+                                recordLedgerEntry(
+                                    EditUnitTemplateAction(
+                                        id = before.id,
+                                        forward = changes.forward,
+                                        backward = changes.backward,
+                                        beforeSnapshot = before,
+                                        afterSnapshot = after,
+                                    ),
+                                )
+                            },
                             canStartUnitDrag = { currentTool == MapViewerTool.SELECT },
                             initialUnitTemplates = emptyList(),
                         )
@@ -359,6 +375,21 @@ internal class MapViewerScene(
 
                             override fun createUnitTemplate(snapshot: io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot) {
                                 sidebar.addUnitTemplate(snapshot, notify = false)
+                            }
+
+                            override fun replaceUnitTemplate(snapshot: io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot) {
+                                sidebar.replaceUnitTemplate(snapshot, notify = false)
+                            }
+
+                            override fun applyUnitTemplateEdit(
+                                id: io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId,
+                                changes: Map<String, com.fasterxml.jackson.databind.JsonNode?>,
+                            ): io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot? {
+                                val current = sidebar.snapshotUnitTemplate(id) ?: return null
+                                return sidebar.replaceUnitTemplate(
+                                    MapViewerUnitTemplatePatch.apply(current, changes),
+                                    notify = false,
+                                )
                             }
 
                             override fun deleteUnitTemplate(id: io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId): io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot? =
@@ -546,7 +577,12 @@ internal class MapViewerScene(
                     }
 
                     fun loadExistingOperation(path: Path) {
-                        val loaded = OperationSaveLoader().load(path)
+                        val loaded = runCatching { OperationSaveLoader().load(path) }
+                            .onFailure { throwable ->
+                                logger.error("Failed to load operation from {}", path, throwable)
+                            }
+                            .getOrNull()
+                            ?: return
                         launchpadView?.close()
                         launchpadView = null
                         showViewer(

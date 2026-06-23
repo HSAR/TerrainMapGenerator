@@ -31,6 +31,7 @@ internal class MapViewerSidebar(
     private val contextMenuManager: ContextMenuManager? = null,
     private val onUnitTemplateCreated: (UnitTemplateSnapshot) -> Unit = {},
     private val onUnitTemplateDeleted: (UnitTemplateSnapshot) -> Unit = {},
+    private val onUnitTemplateEdited: (UnitTemplateSnapshot, UnitTemplateSnapshot) -> Unit = { _, _ -> },
     private val canStartUnitDrag: () -> Boolean = { true },
     initialUnitTemplates: List<MapViewerUnitTemplate> = MapViewerUnitTemplateFactory.defaults(),
 ) {
@@ -295,7 +296,6 @@ internal class MapViewerSidebar(
             confirmLabel = "Create",
             onCreated = { template ->
                 addUnitTemplate(template)
-                Unit
             },
             onDismiss = {
                 createUnitDialog = null
@@ -318,7 +318,6 @@ internal class MapViewerSidebar(
             initialTemplate = row.template,
             onCreated = { template ->
                 replaceUnitTemplate(row.id, template)
-                Unit
             },
             onDismiss = {
                 createUnitDialog = null
@@ -328,14 +327,23 @@ internal class MapViewerSidebar(
         }
     }
 
-    private fun replaceUnitTemplate(id: UnitTemplateId, template: MapViewerUnitTemplate) {
+    fun replaceUnitTemplate(snapshot: UnitTemplateSnapshot, notify: Boolean = true): UnitTemplateSnapshot? =
+        replaceUnitTemplate(snapshot.id, snapshot.template, notify)
+
+    fun replaceUnitTemplate(id: UnitTemplateId, template: MapViewerUnitTemplate, notify: Boolean = true): UnitTemplateSnapshot? {
         val index = unitTemplates.indexOfFirst { it.id == id }
         if (index < 0) {
-            return
+            return null
         }
 
+        val before = snapshotUnitTemplate(id)
         unitTemplates[index] = unitTemplates[index].copy(template = template)
         relayout(layoutViewportWidth(), layoutViewportHeight())
+        val after = snapshotUnitTemplate(id)
+        if (notify && before != null && after != null && before != after) {
+            onUnitTemplateEdited(before, after)
+        }
+        return after
     }
 
     private fun openContextMenu(row: UnitTemplateRow, screenPoint: Vector2D) {

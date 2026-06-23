@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.save
 
+import com.fasterxml.jackson.databind.node.TextNode
 import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
@@ -12,6 +13,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
@@ -49,6 +51,12 @@ internal class LedgerEntrySaveMapper(
                 unitTemplate = entry.snapshot.toDto(),
             )
 
+            is EditUnitTemplateAction -> EditUnitTemplateEntrySaveDto(
+                id = entry.id.value,
+                forward = entry.saveForwardPatch(),
+                backward = entry.saveBackwardPatch(),
+            )
+
             else -> error("Unsupported ledger entry type: ${entry::class.qualifiedName}")
         }
 
@@ -80,6 +88,38 @@ internal class LedgerEntrySaveMapper(
             name = name,
             assetId = assets.registerTemplate(this).id.toString(),
         )
+
+    private fun EditUnitTemplateAction.saveForwardPatch(): Map<String, com.fasterxml.jackson.databind.JsonNode?> =
+        if (beforeSnapshot == null || afterSnapshot == null) {
+            forward
+        } else {
+            val beforeAssetId = assets.registerTemplate(beforeSnapshot.template).id.toString()
+            val afterAssetId = assets.registerTemplate(afterSnapshot.template).id.toString()
+            buildMap {
+                if (beforeSnapshot.template.name != afterSnapshot.template.name) {
+                    put("name", TextNode(afterSnapshot.template.name))
+                }
+                if (beforeAssetId != afterAssetId) {
+                    put("assetId", TextNode(afterAssetId))
+                }
+            }
+        }
+
+    private fun EditUnitTemplateAction.saveBackwardPatch(): Map<String, com.fasterxml.jackson.databind.JsonNode?> =
+        if (beforeSnapshot == null || afterSnapshot == null) {
+            backward
+        } else {
+            val beforeAssetId = assets.registerTemplate(beforeSnapshot.template).id.toString()
+            val afterAssetId = assets.registerTemplate(afterSnapshot.template).id.toString()
+            buildMap {
+                if (beforeSnapshot.template.name != afterSnapshot.template.name) {
+                    put("name", TextNode(beforeSnapshot.template.name))
+                }
+                if (beforeAssetId != afterAssetId) {
+                    put("assetId", TextNode(beforeAssetId))
+                }
+            }
+        }
 
     private fun MapDrawing.toDto(): DrawingSaveDto =
         when (this) {

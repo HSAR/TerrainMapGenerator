@@ -54,6 +54,10 @@ internal interface LedgerController {
 
     fun createUnitTemplate(snapshot: UnitTemplateSnapshot)
 
+    fun replaceUnitTemplate(snapshot: UnitTemplateSnapshot)
+
+    fun applyUnitTemplateEdit(id: UnitTemplateId, changes: Map<String, JsonNode?>): UnitTemplateSnapshot?
+
     fun deleteUnitTemplate(id: UnitTemplateId): UnitTemplateSnapshot?
 }
 
@@ -122,6 +126,24 @@ internal data class DeleteUnitTemplateAction(
 
     override fun redo(controller: LedgerController) {
         controller.deleteUnitTemplate(snapshot.id)
+    }
+}
+
+internal data class EditUnitTemplateAction(
+    val id: UnitTemplateId,
+    val forward: Map<String, JsonNode?>,
+    val backward: Map<String, JsonNode?>,
+    val beforeSnapshot: UnitTemplateSnapshot? = null,
+    val afterSnapshot: UnitTemplateSnapshot? = null,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) {
+        beforeSnapshot?.let(controller::replaceUnitTemplate)
+            ?: controller.applyUnitTemplateEdit(id, backward)
+    }
+
+    override fun redo(controller: LedgerController) {
+        afterSnapshot?.let(controller::replaceUnitTemplate)
+            ?: controller.applyUnitTemplateEdit(id, forward)
     }
 }
 

@@ -42,6 +42,7 @@ internal data class MapSaveDto(
     JsonSubTypes.Type(value = EditObjectEntrySaveDto::class, name = "edit-object"),
     JsonSubTypes.Type(value = CreateUnitTemplateEntrySaveDto::class, name = "create-unit-template"),
     JsonSubTypes.Type(value = DeleteUnitTemplateEntrySaveDto::class, name = "delete-unit-template"),
+    JsonSubTypes.Type(value = EditUnitTemplateEntrySaveDto::class, name = "edit-unit-template"),
 )
 internal sealed interface LedgerEntrySaveDto
 
@@ -68,6 +69,13 @@ internal data class CreateUnitTemplateEntrySaveDto(
 
 internal data class DeleteUnitTemplateEntrySaveDto(
     val unitTemplate: UnitTemplateSnapshotSaveDto,
+) : LedgerEntrySaveDto
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
+internal data class EditUnitTemplateEntrySaveDto(
+    val id: UUID,
+    val forward: Map<String, JsonNode?>,
+    val backward: Map<String, JsonNode?>,
 ) : LedgerEntrySaveDto
 
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")

@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.TextNode
 import korlibs.image.bitmap.Bitmap32
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
@@ -62,6 +63,41 @@ class LedgerEntryHistoryTest {
     }
 
     @Test
+    fun `unit template edits participate in undo and redo`() {
+        val history = MapActionHistory()
+        val controller = TestLedgerController()
+        val before = UnitTemplateSnapshot(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
+            template = MapViewerUnitTemplate(
+                id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
+                name = "SP",
+                bitmap = Bitmap32(4, 4),
+            ),
+            index = 0,
+        )
+        val after = before.copy(
+            template = before.template.copy(name = "S"),
+        )
+
+        controller.createUnitTemplate(before)
+        history.record(
+            EditUnitTemplateAction(
+                id = before.id,
+                forward = mapOf("name" to TextNode("S")),
+                backward = mapOf("name" to TextNode("SP")),
+                beforeSnapshot = before,
+                afterSnapshot = after,
+            ),
+        )
+
+        history.undo(controller)
+        assertThat(controller.templates.single().template.name, equalTo("SP"))
+
+        history.redo(controller)
+        assertThat(controller.templates.single().template.name, equalTo("S"))
+    }
+
+    @Test
     fun `undo entry returns the entry that changed state`() {
         val history = MapActionHistory()
         val controller = TestLedgerController()
@@ -101,6 +137,25 @@ class LedgerEntryHistoryTest {
             val index = templates.indexOfFirst { it.id == id }
             if (index < 0) return null
             return templates.removeAt(index)
+        }
+
+        override fun replaceUnitTemplate(snapshot: UnitTemplateSnapshot) {
+            val index = templates.indexOfFirst { it.id == snapshot.id }
+            if (index >= 0) {
+                templates[index] = snapshot
+            }
+        }
+
+        override fun applyUnitTemplateEdit(id: UnitTemplateId, changes: Map<String, JsonNode?>): UnitTemplateSnapshot? {
+            val index = templates.indexOfFirst { it.id == id }
+            if (index < 0) return null
+            val updated = templates[index].copy(
+                template = templates[index].template.copy(
+                    name = changes["name"]?.takeIf { !it.isNull }?.asText() ?: templates[index].template.name,
+                ),
+            )
+            templates[index] = updated
+            return updated
         }
     }
 }
