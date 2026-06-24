@@ -18,7 +18,6 @@ import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.grid.GridLayer
-import io.hsar.mapgenerator.image.Palette
 import korlibs.event.Key
 import korlibs.event.MouseButton
 import korlibs.korge.annotations.KorgeExperimental
@@ -29,6 +28,7 @@ import korlibs.korge.view.View
 import korlibs.korge.view.addUpdater
 import korlibs.math.geom.Vector2D
 import korlibs.render.GameWindow
+import java.awt.Color
 import kotlin.math.hypot
 import kotlin.math.pow
 
@@ -45,6 +45,7 @@ internal class MapViewerInteraction(
     private val initialViewport: CameraViewport? = null,
     private val currentTool: () -> MapViewerTool = { MapViewerTool.SELECT },
     private val currentDrawingMode: () -> MapDrawingMode = { MapDrawingMode.FREEFORM },
+    private val currentDrawingColour: () -> Color = { Color.RED },
     private val drawingStore: MapDrawingStore = MapDrawingStore(),
     private val isScreenOverlayBlocking: (Vector2D) -> Boolean = { false },
     private val isMovableObjectUnderPointer: (Vector2D) -> Boolean = { false },
@@ -310,7 +311,7 @@ internal class MapViewerInteraction(
             point = point,
             minimumFreeformPointDistance = minimumFreeformPointDistance(mapWidth, mapHeight),
             circleAspectRatio = coordinateSpace.aspectRatio,
-        ) ?: mode.startedAt(point)
+        ) ?: mode.startedAt(point, currentDrawingColour())
         if (nextDrawing == activeDrawing) {
             return false
         }
@@ -465,12 +466,12 @@ internal class MapViewerInteraction(
         return true
     }
 
-    private fun MapDrawingMode.startedAt(point: MapDrawingPoint): ActiveDrawing =
+    private fun MapDrawingMode.startedAt(point: MapDrawingPoint, color: Color): ActiveDrawing =
         when (this) {
-            MapDrawingMode.FREEFORM -> ActiveDrawing.Freeform(listOf(point))
-            MapDrawingMode.LINE -> ActiveDrawing.Line(start = point, end = point)
-            MapDrawingMode.RECTANGLE -> ActiveDrawing.Rectangle(start = point, end = point)
-            MapDrawingMode.CIRCLE -> ActiveDrawing.Circle(center = point, radius = 0.0)
+            MapDrawingMode.FREEFORM -> ActiveDrawing.Freeform(points = listOf(point), color = color)
+            MapDrawingMode.LINE -> ActiveDrawing.Line(start = point, end = point, color = color)
+            MapDrawingMode.RECTANGLE -> ActiveDrawing.Rectangle(start = point, end = point, color = color)
+            MapDrawingMode.CIRCLE -> ActiveDrawing.Circle(center = point, radius = 0.0, color = color)
         }
 
     private fun currentViewport(viewport: CameraViewport): Rectangle {
@@ -514,9 +515,10 @@ internal class MapViewerInteraction(
 
         data class Freeform(
             val points: List<MapDrawingPoint>,
+            val color: Color,
         ) : ActiveDrawing {
             override val preview: MapDrawing
-                get() = FreeformDrawing(points.toList(), Palette.Colours.RED)
+                get() = FreeformDrawing(points.toList(), color)
 
             override fun updated(
                 point: MapDrawingPoint,
@@ -532,15 +534,16 @@ internal class MapViewerInteraction(
             }
 
             override fun committedOrNull(): MapDrawing? =
-                points.takeIf { it.size >= 2 }?.let { FreeformDrawing(it.toList(), Palette.Colours.RED) }
+                points.takeIf { it.size >= 2 }?.let { FreeformDrawing(it.toList(), color) }
         }
 
         data class Rectangle(
             val start: MapDrawingPoint,
             val end: MapDrawingPoint,
+            val color: Color,
         ) : ActiveDrawing {
             override val preview: MapDrawing
-                get() = RectangleDrawing(start, end, Palette.Colours.RED)
+                get() = RectangleDrawing(start, end, color)
 
             override fun updated(
                 point: MapDrawingPoint,
@@ -556,9 +559,10 @@ internal class MapViewerInteraction(
         data class Line(
             val start: MapDrawingPoint,
             val end: MapDrawingPoint,
+            val color: Color,
         ) : ActiveDrawing {
             override val preview: MapDrawing
-                get() = LineDrawing(start, end, Palette.Colours.RED)
+                get() = LineDrawing(start, end, color)
 
             override fun updated(
                 point: MapDrawingPoint,
@@ -574,9 +578,10 @@ internal class MapViewerInteraction(
         data class Circle(
             val center: MapDrawingPoint,
             val radius: Double,
+            val color: Color,
         ) : ActiveDrawing {
             override val preview: MapDrawing
-                get() = CircleDrawing(center, radius, Palette.Colours.RED)
+                get() = CircleDrawing(center, radius, color)
 
             override fun updated(
                 point: MapDrawingPoint,

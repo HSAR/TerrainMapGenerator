@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingColour
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.image.Palette
@@ -19,8 +20,10 @@ internal class MapViewerToolbar(
     viewportHeight: Int,
     private val selectedTool: () -> MapViewerTool,
     private val selectedDrawingMode: () -> MapDrawingMode,
+    private val selectedDrawingColour: () -> MapDrawingColour,
     private val onToolSelected: (MapViewerTool) -> Unit,
     private val onDrawingModeSelected: (MapDrawingMode) -> Unit,
+    private val onDrawingColourSelected: (MapDrawingColour) -> Unit,
 ) {
     private val toolButtons = listOf(
         ToolbarButtonSpec(MapViewerTool.SELECT, "Select"),
@@ -28,6 +31,7 @@ internal class MapViewerToolbar(
         ToolbarButtonSpec(MapViewerTool.DRAW, "Draw"),
     )
     private val drawingModeButtons = MapDrawingMode.entries
+    private val drawingColourButtons = MapDrawingColour.entries
     private val overlay = root.container()
     private val content = overlay.container()
     private var currentViewportWidth = viewportWidth
@@ -58,6 +62,7 @@ internal class MapViewerToolbar(
             drawingModesVisible = selectedTool() == MapViewerTool.DRAW,
             toolCount = toolButtons.size,
             drawingModeCount = drawingModeButtons.size,
+            drawingColourCount = drawingColourButtons.size,
         )
         render()
     }
@@ -71,6 +76,9 @@ internal class MapViewerToolbar(
         if (selectedTool() == MapViewerTool.DRAW) {
             drawingModeButtons.forEachIndexed { index, button ->
                 addDrawingModeButton(button, layout.drawingModeRowLeft + index * (DRAW_MODE_WIDTH + BUTTON_GAP))
+            }
+            drawingColourButtons.forEachIndexed { index, colour ->
+                addDrawingColourButton(colour, layout.drawingColourRowLeft + index * (COLOUR_SWATCH_SIZE + COLOUR_SWATCH_GAP))
             }
         }
     }
@@ -111,6 +119,24 @@ internal class MapViewerToolbar(
         }
     }
 
+    private fun addDrawingColourButton(colour: MapDrawingColour, left: Double) {
+        val active = selectedDrawingColour() == colour
+        val button = content.container()
+        val borderSize = if (active) 4.0 else 2.0
+        button.xy(left, BUTTON_HEIGHT + DRAW_MODE_TOP_GAP + DRAW_MODE_HEIGHT + COLOUR_ROW_TOP_GAP)
+        button.solidRect(COLOUR_SWATCH_SIZE, COLOUR_SWATCH_SIZE, RGBA(255, 255, 255, 255))
+        button.solidRect(COLOUR_SWATCH_SIZE - borderSize * 2.0, COLOUR_SWATCH_SIZE - borderSize * 2.0, toRgba(colour.color)) {
+            x = borderSize
+            y = borderSize
+        }
+        button.mouse {
+            onClick {
+                onDrawingColourSelected(colour)
+                refresh()
+            }
+        }
+    }
+
     private companion object {
         const val Z_INDEX = 30_000.0
         const val BUTTON_WIDTH = 120.0
@@ -119,6 +145,9 @@ internal class MapViewerToolbar(
         const val DRAW_MODE_WIDTH = 120.0
         const val DRAW_MODE_HEIGHT = 34.0
         const val DRAW_MODE_TOP_GAP = 8.0
+        const val COLOUR_SWATCH_SIZE = 28.0
+        const val COLOUR_SWATCH_GAP = 10.0
+        const val COLOUR_ROW_TOP_GAP = 8.0
 
         fun toRgba(color: Color, alpha: Int = color.alpha) =
             RGBA(color.red, color.green, color.blue, alpha)
@@ -134,6 +163,7 @@ internal data class MapViewerToolbarLayout(
     val bounds: ScreenBounds,
     val toolRowLeft: Double,
     val drawingModeRowLeft: Double,
+    val drawingColourRowLeft: Double,
 )
 
 internal object MapViewerToolbarLayoutBuilder {
@@ -144,6 +174,9 @@ internal object MapViewerToolbarLayoutBuilder {
     private const val TOP_LEVEL_HEIGHT = 40.0
     private const val DRAW_MODE_HEIGHT = 34.0
     private const val DRAW_MODE_TOP_GAP = 8.0
+    private const val COLOUR_SWATCH_SIZE = 28.0
+    private const val COLOUR_SWATCH_GAP = 10.0
+    private const val COLOUR_ROW_TOP_GAP = 8.0
 
     fun build(
         viewportWidth: Int,
@@ -151,14 +184,21 @@ internal object MapViewerToolbarLayoutBuilder {
         drawingModesVisible: Boolean = false,
         toolCount: Int = 3,
         drawingModeCount: Int = 4,
+        drawingColourCount: Int = 6,
     ): MapViewerToolbarLayout {
         val toolRowWidth = sequenceWidth(toolCount, BUTTON_WIDTH)
         val drawingModeRowWidth = sequenceWidth(drawingModeCount, DRAW_MODE_WIDTH)
-        val visibleDrawingWidth = if (drawingModesVisible) drawingModeRowWidth else 0.0
+        val drawingColourRowWidth = colourSequenceWidth(drawingColourCount)
+        val visibleDrawingWidth = if (drawingModesVisible) {
+            maxOf(drawingModeRowWidth, drawingColourRowWidth)
+        } else {
+            0.0
+        }
         val boundsWidth = maxOf(toolRowWidth, visibleDrawingWidth)
         val boundsLeft = (viewportWidth - boundsWidth) * 0.5
         val toolRowLeft = (viewportWidth - toolRowWidth) * 0.5
         val drawingModeRowLeft = (viewportWidth - drawingModeRowWidth) * 0.5
+        val drawingColourRowLeft = (viewportWidth - drawingColourRowWidth) * 0.5
 
         return MapViewerToolbarLayout(
             bounds = ScreenBounds(
@@ -166,13 +206,14 @@ internal object MapViewerToolbarLayoutBuilder {
                 top = TOP_PADDING,
                 width = boundsWidth,
                 height = if (drawingModesVisible) {
-                    TOP_LEVEL_HEIGHT + DRAW_MODE_TOP_GAP + DRAW_MODE_HEIGHT
+                    TOP_LEVEL_HEIGHT + DRAW_MODE_TOP_GAP + DRAW_MODE_HEIGHT + COLOUR_ROW_TOP_GAP + COLOUR_SWATCH_SIZE
                 } else {
                     TOP_LEVEL_HEIGHT
                 },
             ),
             toolRowLeft = toolRowLeft,
             drawingModeRowLeft = drawingModeRowLeft,
+            drawingColourRowLeft = drawingColourRowLeft,
         )
     }
 
@@ -181,5 +222,12 @@ internal object MapViewerToolbarLayoutBuilder {
             0.0
         } else {
             (count * itemWidth) + ((count - 1) * BUTTON_GAP)
+        }
+
+    private fun colourSequenceWidth(count: Int): Double =
+        if (count <= 0) {
+            0.0
+        } else {
+            (count * COLOUR_SWATCH_SIZE) + ((count - 1) * COLOUR_SWATCH_GAP)
         }
 }

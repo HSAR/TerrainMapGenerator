@@ -35,6 +35,23 @@ class MapViewerToolbarLayoutBuilderTest {
     }
 
     @Test
+    fun `drawing colour row expands click blocking area`() {
+        val collapsed = MapViewerToolbarLayoutBuilder.build(
+            viewportWidth = 1600,
+            viewportHeight = 900,
+            drawingModesVisible = false,
+        )
+        val expanded = MapViewerToolbarLayoutBuilder.build(
+            viewportWidth = 1600,
+            viewportHeight = 900,
+            drawingModesVisible = true,
+        )
+
+        assertThat(collapsed.bounds.contains(Vector2D(800.0, 120.0)), equalTo(false))
+        assertThat(expanded.bounds.contains(Vector2D(800.0, 120.0)), equalTo(true))
+    }
+
+    @Test
     fun `toolbar widens to fit added drawing modes dynamically`() {
         val compact = MapViewerToolbarLayoutBuilder.build(
             viewportWidth = 1600,
@@ -70,5 +87,17 @@ class MapViewerToolbarLayoutBuilderTest {
         )
 
         assertThat(expanded.toolRowLeft, equalTo(collapsed.toolRowLeft))
+    }
+
+    @Test
+    fun `drawing colour row is centered independently`() {
+        val layout = MapViewerToolbarLayoutBuilder.build(
+            viewportWidth = 1600,
+            viewportHeight = 900,
+            drawingModesVisible = true,
+            drawingColourCount = 6,
+        )
+
+        assertThat(layout.drawingColourRowLeft, equalTo((1600.0 - ((6 * 28.0) + (5 * 10.0))) * 0.5))
     }
 }

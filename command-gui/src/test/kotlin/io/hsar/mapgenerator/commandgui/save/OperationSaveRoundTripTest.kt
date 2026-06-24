@@ -26,6 +26,7 @@ import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import java.awt.Color
 import java.awt.image.BufferedImage
 import java.nio.file.Files
 import java.nio.file.Path
@@ -403,6 +404,37 @@ class OperationSaveRoundTripTest {
         val edit = loaded.ledgerEntries.filterIsInstance<EditUnitTemplateAction>().single()
         assertThat(edit.id, equalTo(before.id))
         assertThat(edit.afterSnapshot?.template?.name, equalTo("S"))
+    }
+
+    @Test
+    fun `drawing colour round trips through the save file`() {
+        val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000d1")
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000021")),
+            drawing = CircleDrawing(
+                center = MapDrawingPoint(0.4, 0.6),
+                radius = 0.1,
+                color = Color.BLUE,
+            ),
+        )
+
+        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = operationId,
+                mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                ledgerEntries = listOf(CreateObjectAction(drawing)),
+            ),
+            tempDir.resolve("drawing-colour-save.oct.zip"),
+        )
+
+        val loadedDrawing = OperationSaveLoader().load(savePath)
+            .ledgerEntries
+            .filterIsInstance<CreateObjectAction>()
+            .single()
+            .snapshot as DrawingSnapshot
+
+        assertThat(loadedDrawing.drawing.color, equalTo(Color.BLUE))
     }
 
     private fun request(

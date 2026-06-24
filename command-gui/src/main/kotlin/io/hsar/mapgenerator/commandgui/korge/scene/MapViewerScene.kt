@@ -4,6 +4,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.MapViewerWindowTitle
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingColour
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingManager
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
@@ -139,6 +140,7 @@ internal class MapViewerScene(
 
                         var currentTool = MapViewerTool.SELECT
                         var currentDrawingMode = MapDrawingMode.FREEFORM
+                        var currentDrawingColour = MapDrawingColour.RED
                         lateinit var world: Camera
                         lateinit var sceneLayers: MapViewerSceneLayers
                         var escapeMenu: MapViewerEscapeMenu? = null
@@ -401,6 +403,7 @@ internal class MapViewerScene(
                             viewportHeight = gameWindow.height,
                             selectedTool = { currentTool },
                             selectedDrawingMode = { currentDrawingMode },
+                            selectedDrawingColour = { currentDrawingColour },
                             onToolSelected = {
                                 currentTool = it
                                 if (it != MapViewerTool.DRAW) {
@@ -408,6 +411,7 @@ internal class MapViewerScene(
                                 }
                             },
                             onDrawingModeSelected = { currentDrawingMode = it },
+                            onDrawingColourSelected = { currentDrawingColour = it },
                         )
 
                         saveNoticeLayer = sceneLayers.ui.container().also {
@@ -518,6 +522,7 @@ internal class MapViewerScene(
                             initialViewport = currentViewport,
                             currentTool = { currentTool },
                             currentDrawingMode = { currentDrawingMode },
+                            currentDrawingColour = { currentDrawingColour.color },
                             drawingStore = drawingStore,
                             canUseUndoRedo = {
                                 !sidebar.isUnitDialogOpen &&
