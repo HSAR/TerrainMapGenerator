@@ -122,12 +122,17 @@ internal class MapViewerToolbar(
     private fun addDrawingColourButton(colour: MapDrawingColour, left: Double) {
         val active = selectedDrawingColour() == colour
         val button = content.container()
-        val borderSize = if (active) 4.0 else 2.0
         button.xy(left, BUTTON_HEIGHT + DRAW_MODE_TOP_GAP + DRAW_MODE_HEIGHT + COLOUR_ROW_TOP_GAP)
         button.solidRect(COLOUR_SWATCH_SIZE, COLOUR_SWATCH_SIZE, RGBA(255, 255, 255, 255))
-        button.solidRect(COLOUR_SWATCH_SIZE - borderSize * 2.0, COLOUR_SWATCH_SIZE - borderSize * 2.0, toRgba(colour.color)) {
-            x = borderSize
-            y = borderSize
+        button.solidRect(COLOUR_SWATCH_SIZE - 4.0, COLOUR_SWATCH_SIZE - 4.0, toRgba(colour.color)) {
+            x = 2.0
+            y = 2.0
+        }
+        if (active) {
+            button.solidRect(COLOUR_SWATCH_SIZE - 4.0, COLOUR_SWATCH_SIZE - 4.0, toRgba(Palette.Colours.DARK, 120)) {
+                x = 2.0
+                y = 2.0
+            }
         }
         button.mouse {
             onClick {

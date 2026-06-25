@@ -255,9 +255,9 @@ object GridLayerPainter {
         axis: GridAxis,
         linePosition: Double,
         lineIDString: String,
-        mapIdPadding: Point,
-        gridLinePadding: Point,
-        labelFont: java.awt.Font,
+        mapIdPadding: Point = GridStyles.mapIdPadding(surface.width, surface.height),
+        gridLinePadding: Point = GridStyles.gridLineIdPadding(surface.width, surface.height),
+        labelFont: java.awt.Font = GridStyles.gridLineIdFont(surface.width, surface.height).first,
     ): LabelLayout {
         val textSize = surface.getTextSize(lineIDString, labelFont)
         return when (axis) {

@@ -11,7 +11,6 @@
 - Destroyed units can be hidden or shown with reduced opacity
 - Support arbitrary states which are independently toggleable instead of mutually exclusive
 - Grid supports changing colour to maximise contrast
-- Draw tool supports multiple colours
 - Select and multi-select allows moving or deleting multiple units at once
     - Pivot multiple units in formation
 - Unit types additional semantic properties

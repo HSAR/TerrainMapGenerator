@@ -9,6 +9,10 @@ object Palette {
 
         val RED = Color.decode("#C23E3C")
 
+        val GREEN = Color.decode("#3D7652")
+
+        val YELLOW = Color.decode("#806E29")
+
         val DARK = Color.decode("#120909")
 
         val MAIN = Color.decode("#403A3A")
