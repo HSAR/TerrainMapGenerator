@@ -45,6 +45,9 @@ internal class MapDrawingStore {
     fun snapshot(id: MapPlacedObjectId): DrawingSnapshot? =
         committedDrawings.firstOrNull { it.id == id }?.snapshot()
 
+    fun snapshots(): List<DrawingSnapshot> =
+        committedDrawings.map { it.snapshot() }
+
     fun findAt(mapCoordinate: MapCoordinate, tolerance: Double, coordinateSpace: MapCoordinateSpace): PlacedDrawing? =
         committedDrawings.lastOrNull { it.containsMapCoordinate(mapCoordinate, tolerance, coordinateSpace) }
 

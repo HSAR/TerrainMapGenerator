@@ -40,6 +40,7 @@ internal data class MapSaveDto(
     JsonSubTypes.Type(value = CreateObjectEntrySaveDto::class, name = "create-object"),
     JsonSubTypes.Type(value = DeleteObjectEntrySaveDto::class, name = "delete-object"),
     JsonSubTypes.Type(value = EditObjectEntrySaveDto::class, name = "edit-object"),
+    JsonSubTypes.Type(value = BatchLedgerEntrySaveDto::class, name = "batch"),
     JsonSubTypes.Type(value = CreateUnitTemplateEntrySaveDto::class, name = "create-unit-template"),
     JsonSubTypes.Type(value = DeleteUnitTemplateEntrySaveDto::class, name = "delete-unit-template"),
     JsonSubTypes.Type(value = EditUnitTemplateEntrySaveDto::class, name = "edit-unit-template"),
@@ -61,6 +62,10 @@ internal data class EditObjectEntrySaveDto(
     val objectId: UUID,
     val forward: Map<String, JsonNode?>,
     val backward: Map<String, JsonNode?>,
+) : LedgerEntrySaveDto
+
+internal data class BatchLedgerEntrySaveDto(
+    val entries: List<LedgerEntrySaveDto>,
 ) : LedgerEntrySaveDto
 
 internal data class CreateUnitTemplateEntrySaveDto(

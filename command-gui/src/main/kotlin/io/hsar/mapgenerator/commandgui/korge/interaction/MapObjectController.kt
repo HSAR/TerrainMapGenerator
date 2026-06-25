@@ -68,4 +68,7 @@ internal class MapObjectController(
 
     fun snapshot(id: MapPlacedObjectId): MapPlacedObjectSnapshot? =
         unitManager.snapshot(id) ?: drawingStore.snapshot(id)
+
+    fun snapshots(): List<MapPlacedObjectSnapshot> =
+        unitManager.snapshots() + drawingStore.snapshots()
 }

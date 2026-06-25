@@ -7,6 +7,7 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
+import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
@@ -41,6 +42,10 @@ internal class LedgerEntrySaveMapper(
                 objectId = entry.objectId.value,
                 forward = entry.forward,
                 backward = entry.backward,
+            )
+
+            is BatchLedgerEntry -> BatchLedgerEntrySaveDto(
+                entries = entry.entries.map(::toDto),
             )
 
             is CreateUnitTemplateAction -> CreateUnitTemplateEntrySaveDto(

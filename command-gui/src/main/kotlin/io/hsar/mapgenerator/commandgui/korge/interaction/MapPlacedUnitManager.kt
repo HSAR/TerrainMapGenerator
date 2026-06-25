@@ -240,6 +240,9 @@ internal class MapPlacedUnitManager(
     fun snapshot(id: MapPlacedObjectId): UnitSnapshot? =
         units.firstOrNull { it.id == id }?.snapshot()
 
+    fun snapshots(): List<UnitSnapshot> =
+        units.map { it.snapshot() }
+
     fun cancelTransientState(targetId: MapPlacedObjectId? = null) {
         if (targetId == null || dragState?.unit?.id == targetId) {
             dragState?.let { state ->

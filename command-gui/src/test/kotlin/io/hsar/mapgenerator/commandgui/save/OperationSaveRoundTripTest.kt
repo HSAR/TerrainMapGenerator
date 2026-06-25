@@ -5,6 +5,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.geometryFor
 import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
+import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
@@ -435,6 +436,32 @@ class OperationSaveRoundTripTest {
             .snapshot as DrawingSnapshot
 
         assertThat(loadedDrawing.drawing.color, equalTo(Color.BLUE))
+    }
+
+    @Test
+    fun `batch ledger entries round trip through the save file`() {
+        val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000d2")
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000022")),
+            drawing = CircleDrawing(
+                center = MapDrawingPoint(0.4, 0.6),
+                radius = 0.1,
+                color = Color.RED,
+            ),
+        )
+
+        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = operationId,
+                mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                ledgerEntries = listOf(BatchLedgerEntry(listOf(CreateObjectAction(drawing), DeleteObjectAction(drawing)))),
+            ),
+            tempDir.resolve("batch-ledger-save.oct.zip"),
+        )
+
+        assertThat(OperationSaveReader().read(savePath).ledger.entries.single() is BatchLedgerEntrySaveDto, equalTo(true))
+        assertThat(OperationSaveLoader().load(savePath).ledgerEntries.single() is BatchLedgerEntry, equalTo(true))
     }
 
     private fun request(

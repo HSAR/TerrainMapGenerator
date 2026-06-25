@@ -26,6 +26,8 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectPatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelectionKind
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelectionResolver
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedUnitManager
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapSelectionController
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapSelectionOverlayView
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplatePatch
@@ -152,6 +154,7 @@ internal class MapViewerScene(
                         lateinit var iconLayer: korlibs.korge.view.Container
                         lateinit var unitManager: MapPlacedUnitManager
                         lateinit var objectController: MapObjectController
+                        lateinit var selectionController: MapSelectionController
                         lateinit var saveNoticeLayer: Container
                         val actionHistory = MapActionHistory()
                         val operationId = loadedOperation?.operationId ?: UUID.randomUUID()
@@ -322,6 +325,31 @@ internal class MapViewerScene(
                             },
                         )
 
+                        val selectionOverlay = MapSelectionOverlayView(
+                            coordinateSpace = coordinateSpace,
+                            viewportProvider = { currentViewport },
+                        ).also {
+                            sceneLayers.ui.addChild(it)
+                            it.zIndex = 20_000.0
+                            it.mouseEnabled = false
+                        }
+
+                        fun objectSelectionAt(pointer: korlibs.math.geom.Vector2D) =
+                            MapPlacedObjectSelectionResolver.choose(
+                                unitManager.selectionAt(pointer),
+                                drawingManager.selectionAt(pointer),
+                            )
+                        selectionController = MapSelectionController(
+                            coordinateSpace = coordinateSpace,
+                            viewportProvider = { currentViewport },
+                            objectController = objectController,
+                            contextMenuManager = contextMenuManager,
+                            objectAt = ::objectSelectionAt,
+                            onStateChanged = selectionOverlay::update,
+                            onMovePreviewChanged = { preview -> objectMovePreview = preview },
+                            onLedgerEntry = ::recordLedgerEntry,
+                        )
+
                         gridLabelsOverlay = renderData.gridLayer?.let { layer ->
                             GridOverlayView(layer).also {
                                 sceneLayers.overlay.addChild(it)
@@ -409,6 +437,9 @@ internal class MapViewerScene(
                                 if (it != MapViewerTool.DRAW) {
                                     currentDrawingMode = MapDrawingMode.FREEFORM
                                 }
+                                if (it != MapViewerTool.SELECT) {
+                                    selectionController.clear()
+                                }
                             },
                             onDrawingModeSelected = { currentDrawingMode = it },
                             onDrawingColourSelected = { currentDrawingColour = it },
@@ -455,26 +486,19 @@ internal class MapViewerScene(
 
                             if (currentTool == MapViewerTool.SELECT && !uiBlocksPointer) {
                                 if (leftHeld && !previousLeftHeld) {
-                                    when (MapPlacedObjectSelectionResolver.choose(
-                                        unitManager.selectionAt(pointer),
-                                        drawingManager.selectionAt(pointer),
-                                    )?.kind) {
-                                        MapPlacedObjectSelectionKind.UNIT -> unitManager.beginDragAt(pointer)
-                                        MapPlacedObjectSelectionKind.DRAWING -> drawingManager.beginDragAt(pointer)
-                                        null -> Unit
-                                    }
+                                    selectionController.beginLeftDrag(pointer)
                                 }
                                 if (rightHeld && !previousRightHeld) {
-                                    when (MapPlacedObjectSelectionResolver.choose(
-                                        unitManager.selectionAt(pointer),
-                                        drawingManager.selectionAt(pointer),
-                                    )?.kind) {
-                                        MapPlacedObjectSelectionKind.UNIT -> unitManager.openContextMenuAt(pointer)
-                                        MapPlacedObjectSelectionKind.DRAWING -> drawingManager.openContextMenuAt(pointer)
-                                        null -> Unit
+                                    if (!selectionController.openContextMenu(pointer)) {
+                                        when (objectSelectionAt(pointer)?.kind) {
+                                            MapPlacedObjectSelectionKind.UNIT -> unitManager.openContextMenuAt(pointer)
+                                            MapPlacedObjectSelectionKind.DRAWING -> drawingManager.openContextMenuAt(pointer)
+                                            null -> Unit
+                                        }
                                     }
                                 }
                             }
+                            selectionController.update(pointer, leftHeld)
 
                             if (saveNoticeMessage != null) {
                                 if (now <= saveNoticeExpiresAtMs) {
@@ -492,7 +516,8 @@ internal class MapViewerScene(
                                 !sidebar.isUnitDragging &&
                                 !unitManager.isDragging &&
                                 !unitManager.isEditDialogOpen &&
-                                !drawingManager.isDragging
+                                !drawingManager.isDragging &&
+                                !selectionController.isDragging
                             ) {
                                 saveOperation()
                             }
@@ -501,7 +526,8 @@ internal class MapViewerScene(
                                 !sidebar.isUnitDragging &&
                                 !unitManager.isDragging &&
                                 !unitManager.isEditDialogOpen &&
-                                !drawingManager.isDragging
+                                !drawingManager.isDragging &&
+                                !selectionController.isDragging
                             ) {
                                 escapeMenu?.toggle()
                             }
@@ -529,7 +555,8 @@ internal class MapViewerScene(
                                         !sidebar.isUnitDragging &&
                                         !unitManager.isDragging &&
                                         !unitManager.isEditDialogOpen &&
-                                        !drawingManager.isDragging
+                                        !drawingManager.isDragging &&
+                                        !selectionController.isDragging
                             },
                             objectMovePreviewProvider = { objectMovePreview },
                             onDrawingCommitted = { drawing ->
@@ -565,10 +592,11 @@ internal class MapViewerScene(
                                                     drawingManager.selectionAt(point),
                                                 ) != null)
                             },
-                            isMapPlacementDragging = unitManager::isDragging,
+                            isMapPlacementDragging = { unitManager.isDragging || selectionController.isDragging },
                             onViewportChanged = {
                                 currentViewport = it
                                 drawingView.update(drawingStore.state, it.zoom)
+                                selectionController.refresh()
                             },
                             onTitleChanged = {},
                             onOverlayStateChanged = { state ->

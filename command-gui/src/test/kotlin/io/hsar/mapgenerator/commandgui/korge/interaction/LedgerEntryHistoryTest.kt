@@ -111,16 +111,35 @@ class LedgerEntryHistoryTest {
         assertThat(history.canRedo, equalTo(true))
     }
 
+    @Test
+    fun `batch ledger entries undo and redo children as one action`() {
+        val history = MapActionHistory()
+        val controller = TestLedgerController()
+        val first = TestLedgerEntry("first")
+        val second = TestLedgerEntry("second")
+
+        history.record(BatchLedgerEntry(listOf(first, second)))
+        history.undo(controller)
+        history.redo(controller)
+
+        assertThat(controller.events, equalTo(listOf("undo second", "undo first", "redo first", "redo second")))
+    }
+
     private data class TestLedgerEntry(
         val name: String,
     ) : LedgerEntry {
-        override fun undo(controller: LedgerController) = Unit
+        override fun undo(controller: LedgerController) {
+            (controller as? TestLedgerController)?.events?.add("undo $name")
+        }
 
-        override fun redo(controller: LedgerController) = Unit
+        override fun redo(controller: LedgerController) {
+            (controller as? TestLedgerController)?.events?.add("redo $name")
+        }
     }
 
     private class TestLedgerController : LedgerController {
         val templates = mutableListOf<UnitTemplateSnapshot>()
+        val events = mutableListOf<String>()
 
         override fun createObject(snapshot: MapPlacedObjectSnapshot) = Unit
 

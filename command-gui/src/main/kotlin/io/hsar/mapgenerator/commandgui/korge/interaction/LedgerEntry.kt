@@ -105,6 +105,18 @@ internal data class EditObjectAction(
     }
 }
 
+internal data class BatchLedgerEntry(
+    val entries: List<LedgerEntry>,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) {
+        entries.asReversed().forEach { it.undo(controller) }
+    }
+
+    override fun redo(controller: LedgerController) {
+        entries.forEach { it.redo(controller) }
+    }
+}
+
 internal data class CreateUnitTemplateAction(
     val snapshot: UnitTemplateSnapshot,
 ) : LedgerEntry {
