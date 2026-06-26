@@ -182,7 +182,6 @@ abstract class BaseGraphics(
             field = value
             invalidateLocalBounds()
         }
-
     private fun _getLocalBoundsInternal(strokes: Boolean = this.boundsIncludeStrokes): Rectangle {
         val bounds = boundsUnsafe(strokes = strokes)
         return Rectangle(bounds.x - anchorDispX, bounds.y - anchorDispY, bounds.width, bounds.height)

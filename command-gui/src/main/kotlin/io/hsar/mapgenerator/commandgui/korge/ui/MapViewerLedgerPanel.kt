@@ -80,15 +80,11 @@ internal class MapViewerLedgerPanel(
     private fun relayout(viewportWidth: Int, viewportHeight: Int) {
         layout = MapViewerLedgerPanelLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
 
-        toggleButton.removeChildren()
-        toggleButton.xy(layout.toggleBounds.left, layout.toggleBounds.top)
-        val toggle = MapViewerUiBoxes.button(
+        MapViewerSidePanelChrome.renderToggle(
             parent = toggleButton,
-            width = layout.toggleBounds.width,
-            height = layout.toggleBounds.height,
-            active = true,
+            bounds = layout.toggleBounds,
+            label = if (collapsed) "Show Turns" else "Hide Turns",
         )
-        MapViewerTextViews.box(toggle, if (collapsed) "Show Turns" else "Hide Turns", layout.toggleBounds.width, layout.toggleBounds.height, color = Palette.Colours.WHITE)
 
         val panelBounds = layout.panelBounds
         panel.visible = panelBounds != null

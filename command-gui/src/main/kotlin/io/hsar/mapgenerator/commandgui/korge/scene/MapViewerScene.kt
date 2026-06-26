@@ -66,6 +66,7 @@ import korlibs.korge.view.clipContainer
 import korlibs.korge.view.container
 import korlibs.korge.view.image
 import korlibs.korge.view.onStageResized
+import korlibs.korge.view.size
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Size2D
@@ -175,6 +176,7 @@ internal class MapViewerScene(
                         var turnReadOnly = false
                         var previousLeftHeld = false
                         var previousRightHeld = false
+                        var selectionControllerReady = false
 
                         fun isReadOnly(): Boolean =
                             turnReadOnly
@@ -281,8 +283,7 @@ internal class MapViewerScene(
 
                         sceneLayers = MapViewerSceneLayers.create(views.stage, gameWindow.width, gameWindow.height)
 
-                        sceneLayers.background.solidRect(gameWindow.width, gameWindow.height, Colors.BLACK)
-                        sceneLayers.map.clipContainer(Size2D(gameWindow.width, gameWindow.height)) {
+                        val mapViewport = sceneLayers.map.clipContainer(Size2D(gameWindow.width, gameWindow.height)) {
                             world = camera {
                                 image(renderedMap.bitmap) {
                                     x = renderedMap.geometry.mapOffsetX.toDouble()
@@ -306,6 +307,23 @@ internal class MapViewerScene(
                                 iconLayer = container()
                             }
                         }
+
+                        fun resizeSceneViewport(width: Int, height: Int) {
+                            currentViewport = currentViewport.copy(
+                                viewportWidth = width,
+                                viewportHeight = height,
+                            )
+                            sceneLayers.background.removeChildren()
+                            sceneLayers.background.solidRect(width, height, Colors.BLACK)
+                            mapViewport.size(width, height)
+                            world.setTo(currentViewport.toCameraRectangle())
+                            if (selectionControllerReady) {
+                                selectionController.refresh()
+                            }
+                            toolbar?.refresh()
+                            ledgerPanel?.refresh()
+                        }
+                        resizeSceneViewport(gameWindow.width, gameWindow.height)
 
                         contextMenuManager = ContextMenuManager(sceneLayers.ui)
 
@@ -412,6 +430,7 @@ internal class MapViewerScene(
                             onMovePreviewChanged = { preview -> objectMovePreview = preview },
                             onLedgerEntry = ::recordLedgerEntry,
                         )
+                        selectionControllerReady = true
 
                         gridLabelsOverlay = renderData.gridLayer?.let { layer ->
                             GridOverlayView(layer).also {
@@ -564,7 +583,8 @@ internal class MapViewerScene(
                             it.visible = false
                             it.zIndex = 42_000.0
                         }
-                        sceneLayers.ui.onStageResized { _, _ ->
+                        sceneLayers.ui.onStageResized { width, height ->
+                            resizeSceneViewport(width, height)
                             if (isReadOnly()) {
                                 refreshReadOnlyBanner()
                             }

@@ -29,10 +29,8 @@ inline fun Container.graphics(
 enum class GraphicsRenderer {
     /** Uses software system renderer (fast) */
     SYSTEM,
-
     /** Uses software kotlin renderer (slow) */
     CPU,
-
     /** Uses GPU renderer */
     GPU
 }
@@ -66,7 +64,6 @@ class Graphics(
 
     @KorgeInternal
     override val anchorDispX: Float get() = rendererView.anchorDispX
-
     @KorgeInternal
     override val anchorDispY: Float get() = rendererView.anchorDispY
 
@@ -98,7 +95,6 @@ class Graphics(
             gpuGraphics?.smoothing = value
             invalidateRender()
         }
-
     @ViewProperty
     var autoScaling: Boolean = true
         set(value) {
@@ -155,7 +151,6 @@ class Graphics(
                     }
                 }
             }
-
             else -> {
                 if (gpuGraphics != null) {
                     gpuGraphics?.removeFromParent()

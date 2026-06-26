@@ -161,10 +161,12 @@ internal class MapViewerToolbar(
             it.xy(left, BUTTON_HEIGHT + DRAW_MODE_TOP_GAP + DRAW_MODE_HEIGHT + COLOUR_ROW_TOP_GAP)
         }
         if (active) {
-            button.solidRect(COLOUR_SWATCH_SIZE - 4.0, COLOUR_SWATCH_SIZE - 4.0, MapViewerUiStateStyle.backing(active = true)) {
-                x = 2.0
-                y = 2.0
-            }
+            val overlay = button.solidRect(
+                COLOUR_SWATCH_SIZE - 4.0,
+                COLOUR_SWATCH_SIZE - 4.0,
+                MapViewerUiBoxes.toRgba(Palette.Colours.DARK, SWATCH_ACTIVE_OVERLAY_ALPHA),
+            )
+            overlay.xy(2.0, 2.0)
         }
         button.mouse {
             onClick {
@@ -185,6 +187,7 @@ internal class MapViewerToolbar(
         const val COLOUR_SWATCH_SIZE = 28.0
         const val COLOUR_SWATCH_GAP = 10.0
         const val COLOUR_ROW_TOP_GAP = 8.0
+        const val SWATCH_ACTIVE_OVERLAY_ALPHA = 96
     }
     private data class ToolbarButtonSpec(
         val tool: MapViewerTool,

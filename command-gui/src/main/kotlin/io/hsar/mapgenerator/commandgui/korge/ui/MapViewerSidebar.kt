@@ -134,12 +134,9 @@ internal class MapViewerSidebar(
     private fun relayout(viewportWidth: Int, viewportHeight: Int) {
         layout = MapViewerSidebarLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
 
-        toggleButton.removeChildren()
-        toggleButton.xy(layout.toggleBounds.left, layout.toggleBounds.top)
-        buildToggleButton(
+        MapViewerSidePanelChrome.renderToggle(
             parent = toggleButton,
-            width = layout.toggleBounds.width,
-            height = layout.toggleBounds.height,
+            bounds = layout.toggleBounds,
             label = if (collapsed) "Show Units" else "Hide Units",
         )
 
