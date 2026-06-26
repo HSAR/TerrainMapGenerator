@@ -2,26 +2,27 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.image.Palette
-import korlibs.image.color.RGBA
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.Text
-import korlibs.korge.view.container
-import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import java.awt.Color
 
 internal object MapViewerLaunchUi {
     fun panel(parent: Container, bounds: ScreenBounds, alpha: Int = 235): Container =
-        parent.container().also { panel ->
-            panel.xy(bounds.left, bounds.top)
-            panel.solidRect(bounds.width, bounds.height, RGBA(255, 255, 255, 255))
-            panel.solidRect(bounds.width - 4.0, bounds.height - 4.0, toRgba(Palette.Colours.DARK, alpha)) {
-                x = 2.0
-                y = 2.0
-            }
+        MapViewerUiBoxes.box(parent, bounds.width, bounds.height, style = {
+            io.hsar.mapgenerator.commandgui.korge.ui.UiFrameStyle(
+                fillColor = Palette.Colours.DARK,
+                fillAlpha = alpha,
+                borderColor = Palette.Colours.WHITE,
+                borderAlpha = MapViewerUiStateStyle.ACTIVE_ALPHA,
+            )
+        }).also {
+            it.xy(bounds.left, bounds.top)
         }
 
     fun button(
@@ -32,20 +33,18 @@ internal object MapViewerLaunchUi {
         disabled: Boolean = false,
         onClick: () -> Unit = {},
     ): Container =
-        parent.container().also { button ->
-            val fill = if (disabled) toRgba(Palette.Colours.DARK, 140) else toRgba(Palette.Colours.DARK, 245)
-            val textColor = if (disabled) Palette.Colours.LIGHT else Palette.Colours.WHITE
-            button.solidRect(width, height, RGBA(255, 255, 255, if (disabled) 120 else 255))
-            button.solidRect(width - 4.0, height - 4.0, fill) {
-                x = 2.0
-                y = 2.0
-            }
+        MapViewerUiBoxes.button(
+            parent = parent,
+            width = width,
+            height = height,
+            active = !disabled,
+        ).also { button ->
             MapViewerTextViews.box(
                 parent = button,
                 text = label,
                 width = width,
                 height = height,
-                color = textColor,
+                color = Palette.Colours.WHITE,
             ) {
                 alpha = if (disabled) 0.55 else 1.0
             }
@@ -87,9 +86,6 @@ internal object MapViewerLaunchUi {
             size = MapViewerTextViews.DEFAULT_TEXT_SIZE * scale,
             color = color,
         )
-
-    fun toRgba(color: Color, alpha: Int = color.alpha): RGBA =
-        RGBA(color.red, color.green, color.blue, alpha)
 
     private const val SCREEN_TITLE_TEXT_SIZE = 34.0
 }

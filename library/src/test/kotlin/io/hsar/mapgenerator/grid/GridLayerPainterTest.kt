@@ -32,21 +32,13 @@ class GridLayerPainterTest {
         val nearEdge = GridLayerPainter.edgeOpacity(10.0)
 
         assertThat(midFade, closeTo(0.75, 0.0001))
-        assertThat(nearEdge, closeTo(0.1597222222, 0.0001))
+        assertThat(nearEdge, closeTo(0.3055555556, 0.0001))
     }
 
     @Test
     fun `label layout derives gutter edges from rendered text size`() {
-        val surface = object : GridRenderSurface {
-            override val width = 200
-            override val height = 200
-
-            override fun drawString(point: Point, string: String, fontAndColour: Pair<Font, Color>) = Unit
-            override fun drawLine(point1: Point, point2: Point, width: Float, color: Color) = Unit
-            override fun getTextSize(text: String, font: Font): Rectangle = Rectangle(Point.ORIGIN, Point(20.0, 10.0))
-        }
-
-        val viewport = Rectangle(Point(100.0, 100.0), Point(300.0, 300.0))
+        val surface = testSurface()
+        val viewport = testViewport()
 
         val vertical = GridLayerPainter.labelLayout(
             surface = surface,
@@ -65,23 +57,16 @@ class GridLayerPainterTest {
             lineIDString = "34",
         )
 
-        assertThat(vertical.point, equalTo(Point(123.0, 150.0)))
-        assertThat(vertical.gutterEdge, equalTo(155.0))
-        assertThat(horizontal.point, equalTo(Point(155.0, 456.0)))
-        assertThat(horizontal.gutterEdge, equalTo(165.0))
+        assertThat(vertical.point, equalTo(Point(123.0, 105.55555555555556)))
+        assertThat(vertical.gutterEdge, equalTo(110.55555555555556))
+        assertThat(horizontal.point, equalTo(Point(104.6875, 456.0)))
+        assertThat(horizontal.gutterEdge, equalTo(114.6875))
     }
 
     @Test
     fun `line normal fade start is derived from the opposite axis labels`() {
-        val surface = object : GridRenderSurface {
-            override val width = 200
-            override val height = 200
-
-            override fun drawString(point: Point, string: String, fontAndColour: Pair<Font, Color>) = Unit
-            override fun drawLine(point1: Point, point2: Point, width: Float, color: Color) = Unit
-            override fun getTextSize(text: String, font: Font): Rectangle = Rectangle(Point.ORIGIN, Point(20.0, 10.0))
-        }
-        val viewport = Rectangle(Point(100.0, 100.0), Point(300.0, 300.0))
+        val surface = testSurface()
+        val viewport = testViewport()
 
         assertThat(
             GridLayerPainter.GridAxis.VERTICAL.normalFadeStart(
@@ -90,8 +75,11 @@ class GridLayerPainterTest {
                 textMode = GridLayerPainter.TextMode.STICKY_AXES,
                 linePosition = 123.0,
                 lineIDString = "12",
+                mapIdPadding = GridStyles.mapIdPadding(surface.width, surface.height),
+                gridLinePadding = GridStyles.gridLineIdPadding(surface.width, surface.height),
+                labelFont = GridStyles.gridLineIdFont(surface.width, surface.height).first,
             ),
-            equalTo(165.0),
+            equalTo(114.6875),
         )
         assertThat(
             GridLayerPainter.GridAxis.HORIZONTAL.normalFadeStart(
@@ -100,8 +88,24 @@ class GridLayerPainterTest {
                 textMode = GridLayerPainter.TextMode.STICKY_AXES,
                 linePosition = 456.0,
                 lineIDString = "34",
+                mapIdPadding = GridStyles.mapIdPadding(surface.width, surface.height),
+                gridLinePadding = GridStyles.gridLineIdPadding(surface.width, surface.height),
+                labelFont = GridStyles.gridLineIdFont(surface.width, surface.height).first,
             ),
-            equalTo(145.0),
+            equalTo(110.55555555555556),
         )
     }
+
+    private fun testSurface(): GridRenderSurface =
+        object : GridRenderSurface {
+            override val width = 200
+            override val height = 200
+
+            override fun drawString(point: Point, string: String, fontAndColour: Pair<Font, Color>) = Unit
+            override fun drawLine(point1: Point, point2: Point, width: Float, color: Color) = Unit
+            override fun getTextSize(text: String, font: Font): Rectangle = Rectangle(Point.ORIGIN, Point(20.0, 10.0))
+        }
+
+    private fun testViewport(): Rectangle =
+        Rectangle(Point(100.0, 100.0), Point(300.0, 300.0))
 }

@@ -2,11 +2,13 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
+import io.hsar.mapgenerator.commandgui.korge.ui.UiFrameStyle
 import io.hsar.mapgenerator.commandgui.save.SavedOperationSummary
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.color.Colors
-import korlibs.image.color.RGBA
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
@@ -140,11 +142,7 @@ internal class MapViewerLaunchpadView(
         val rowHeight = SAVE_ROW_HEIGHT - 12.0
         val row = parent.container()
         row.xy(0.0, rowTop)
-        row.solidRect(rowWidth, rowHeight, RGBA(255, 255, 255, 255))
-        row.solidRect(rowWidth - 4.0, rowHeight - 4.0, MapViewerLaunchUi.toRgba(Palette.Colours.DARK)) {
-            x = 2.0
-            y = 2.0
-        }
+        MapViewerUiBoxes.box(row, rowWidth, rowHeight)
         row.mouse {
             onClick { onLoadSavedOperation(summary) }
         }
@@ -154,10 +152,7 @@ internal class MapViewerLaunchpadView(
         val previewFrameWidth = previewFrameHeight * 16.0 / 9.0
         val previewFrameLeft = borderInset
         val previewFrameTop = borderInset
-        row.solidRect(previewFrameWidth, previewFrameHeight, RGBA(255, 255, 255, 255)) {
-            x = previewFrameLeft
-            y = previewFrameTop
-        }
+        MapViewerUiBoxes.box(row, previewFrameWidth, previewFrameHeight).xy(previewFrameLeft, previewFrameTop)
         summary.thumbnail?.let { thumbnail ->
             row.image(thumbnail) {
                 val scale = minOf(previewFrameWidth / width, previewFrameHeight / height)
@@ -189,10 +184,19 @@ internal class MapViewerLaunchpadView(
         val maxScroll = maxScroll()
         val bounds = layout.scrollbarBounds
         val disabled = maxScroll <= 0.0
-        panel.solidRect(bounds.width, bounds.height, RGBA(255, 255, 255, if (disabled) 70 else 140)) {
-            x = bounds.left
-            y = bounds.top
-        }
+        MapViewerUiBoxes.box(
+            panel,
+            bounds.width,
+            bounds.height,
+            style = {
+                UiFrameStyle(
+                    fillColor = Palette.Colours.DARK,
+                    fillAlpha = if (disabled) 70 else 140,
+                    borderColor = Palette.Colours.WHITE,
+                    borderAlpha = MapViewerUiStateStyle.ACTIVE_ALPHA,
+                )
+            },
+        ).xy(bounds.left, bounds.top)
         val thumbHeight = if (disabled) {
             bounds.height
         } else {
@@ -203,10 +207,19 @@ internal class MapViewerLaunchpadView(
         } else {
             bounds.top + ((bounds.height - thumbHeight) * (scrollOffset / maxScroll))
         }
-        panel.solidRect(bounds.width - 4.0, thumbHeight - 4.0, MapViewerLaunchUi.toRgba(Palette.Colours.WHITE, if (disabled) 80 else 220)) {
-            x = bounds.left + 2.0
-            y = thumbTop + 2.0
-        }
+        MapViewerUiBoxes.box(
+            panel,
+            bounds.width - 4.0,
+            thumbHeight - 4.0,
+            style = {
+                UiFrameStyle(
+                    fillColor = Palette.Colours.WHITE,
+                    fillAlpha = if (disabled) 80 else 220,
+                    borderColor = Palette.Colours.WHITE,
+                    borderAlpha = MapViewerUiStateStyle.ACTIVE_ALPHA,
+                )
+            },
+        ).xy(bounds.left + 2.0, thumbTop + 2.0)
     }
 
     private fun maxScroll(): Double =

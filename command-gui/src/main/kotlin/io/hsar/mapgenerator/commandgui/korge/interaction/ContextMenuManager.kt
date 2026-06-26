@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.image.color.RGBA
@@ -79,11 +80,7 @@ internal class ContextMenuManager(
 
         val menu = layer.container()
         menu.xy(left, top)
-        menu.solidRect(menuWidth, menuHeight, RGBA(255, 255, 255, 255))
-        menu.solidRect(menuWidth - 4.0, menuHeight - 4.0, RGBA(48, 58, 58, 255)) {
-            x = 2.0
-            y = 2.0
-        }
+        MapViewerUiBoxes.box(menu, menuWidth, menuHeight)
 
         actions.forEachIndexed { index, action ->
             val option = menu.container()

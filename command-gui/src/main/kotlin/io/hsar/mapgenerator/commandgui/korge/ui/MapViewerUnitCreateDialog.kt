@@ -14,7 +14,6 @@ import korlibs.korge.view.container
 import korlibs.korge.view.image
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
-import java.awt.Color
 import java.io.File
 import java.util.*
 import javax.swing.JFileChooser
@@ -57,11 +56,7 @@ internal class MapViewerUnitCreateDialog(
 
         val panel = layer.container()
         panel.xy(panelLeft, panelTop)
-        panel.solidRect(panelWidth, panelHeight, RGBA(255, 255, 255, 255))
-        panel.solidRect(panelWidth - 4.0, panelHeight - 4.0, toRgba(Palette.Colours.DARK)) {
-            x = 2.0
-            y = 2.0
-        }
+        MapViewerUiBoxes.box(panel, panelWidth, panelHeight)
 
         val content = panel.container()
         content.xy(20.0, 18.0)
@@ -80,11 +75,7 @@ internal class MapViewerUnitCreateDialog(
 
         val previewFrame = content.container()
         previewFrame.xy(0.0, 140.0)
-        previewFrame.solidRect(PREVIEW_WIDTH, PREVIEW_HEIGHT, RGBA(255, 255, 255, 255))
-        previewFrame.solidRect(PREVIEW_WIDTH - 4.0, PREVIEW_HEIGHT - 4.0, toRgba(Palette.Colours.DARK)) {
-            x = 2.0
-            y = 2.0
-        }
+        MapViewerUiBoxes.box(previewFrame, PREVIEW_WIDTH, PREVIEW_HEIGHT)
 
         val previewPlaceholder = MapViewerTextViews.box(previewFrame, "No image selected", PREVIEW_WIDTH, PREVIEW_HEIGHT, color = Palette.Colours.WHITE)
 
@@ -92,11 +83,7 @@ internal class MapViewerUnitCreateDialog(
             selectedBitmap = template.bitmap
             selectedAssetSource = template.assetSource
             previewFrame.removeChildren()
-            previewFrame.solidRect(PREVIEW_WIDTH, PREVIEW_HEIGHT, RGBA(255, 255, 255, 255))
-            previewFrame.solidRect(PREVIEW_WIDTH - 4.0, PREVIEW_HEIGHT - 4.0, toRgba(Palette.Colours.DARK)) {
-                x = 2.0
-                y = 2.0
-            }
+            MapViewerUiBoxes.box(previewFrame, PREVIEW_WIDTH, PREVIEW_HEIGHT)
             val fittedIcon = MapViewerIconFit.inside(template.bitmap, PREVIEW_WIDTH - 12.0, PREVIEW_HEIGHT - 12.0)
             previewImage = previewFrame.image(template.bitmap) {
                 scale = fittedIcon.scale
@@ -121,11 +108,7 @@ internal class MapViewerUnitCreateDialog(
             selectedBitmap = bitmap
             selectedAssetSource = AssetSource.fromFile(file)
             previewFrame.removeChildren()
-            previewFrame.solidRect(PREVIEW_WIDTH, PREVIEW_HEIGHT, RGBA(255, 255, 255, 255))
-            previewFrame.solidRect(PREVIEW_WIDTH - 4.0, PREVIEW_HEIGHT - 4.0, toRgba(Palette.Colours.DARK)) {
-                x = 2.0
-                y = 2.0
-            }
+            MapViewerUiBoxes.box(previewFrame, PREVIEW_WIDTH, PREVIEW_HEIGHT)
             val fittedIcon = MapViewerIconFit.inside(bitmap, PREVIEW_WIDTH - 12.0, PREVIEW_HEIGHT - 12.0)
             previewImage = previewFrame.image(bitmap) {
                 scale = fittedIcon.scale
@@ -178,11 +161,7 @@ internal class MapViewerUnitCreateDialog(
     }
 
     private fun buildButton(parent: Container, width: Double, height: Double, label: String, onActivate: () -> Unit) {
-        parent.solidRect(width, height, RGBA(255, 255, 255, 255))
-        parent.solidRect(width - 4.0, height - 4.0, toRgba(Palette.Colours.DARK)) {
-            x = 2.0
-            y = 2.0
-        }
+        MapViewerUiBoxes.button(parent, width, height)
         MapViewerTextViews.box(parent, label, width, height, color = Palette.Colours.WHITE)
         parent.mouse {
             onClick {
@@ -208,9 +187,6 @@ internal class MapViewerUnitCreateDialog(
     private fun loadBitmap(file: File): Bitmap32? {
         return MapViewerIconLoader.load(file)
     }
-
-    private fun toRgba(color: Color, alpha: Int = color.alpha): RGBA =
-        RGBA(color.red, color.green, color.blue, alpha)
 
     private companion object {
         const val Z_INDEX = 40_000.0

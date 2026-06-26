@@ -212,14 +212,28 @@ internal class MapActionHistory {
 
     val currentTurn: CurrentTurn
         get() = when {
-            redoStack.isNotEmpty() -> CurrentTurn(label = "Current", appliedIndex = undoStack.size, selected = false)
+            redoStack.isNotEmpty() -> CurrentTurn(
+                label = "Current",
+                appliedIndex = if (undoStack.lastOrNull() is AddTurnLedgerEntry) undoStack.lastIndex else undoStack.size,
+                selected = false,
+                showInjectedCurrentRow = true,
+                isLiveHead = false,
+            )
             undoStack.lastOrNull() is AddTurnLedgerEntry -> CurrentTurn(
                 label = (undoStack.lastOrNull() as AddTurnLedgerEntry).name,
                 appliedIndex = undoStack.lastIndex,
                 selected = true,
+                showInjectedCurrentRow = false,
+                isLiveHead = true,
             )
 
-            else -> CurrentTurn(label = "Current", appliedIndex = undoStack.size, selected = true)
+            else -> CurrentTurn(
+                label = "Current",
+                appliedIndex = undoStack.size,
+                selected = true,
+                showInjectedCurrentRow = true,
+                isLiveHead = true,
+            )
         }
 
     fun record(action: LedgerEntry) {
@@ -284,4 +298,6 @@ internal data class CurrentTurn(
     val label: String,
     val appliedIndex: Int,
     val selected: Boolean,
+    val showInjectedCurrentRow: Boolean,
+    val isLiveHead: Boolean,
 )

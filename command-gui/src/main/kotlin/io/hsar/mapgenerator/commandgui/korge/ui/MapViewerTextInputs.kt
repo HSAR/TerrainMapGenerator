@@ -10,11 +10,9 @@ import korlibs.korge.view.Container
 import korlibs.korge.view.Text
 import korlibs.korge.view.ViewRenderer
 import korlibs.korge.view.container
-import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Margin
 import korlibs.math.geom.Size2D
-import java.awt.Color
 
 @OptIn(KorgeExperimental::class)
 internal object MapViewerTextInputs {
@@ -29,11 +27,7 @@ internal object MapViewerTextInputs {
     ): MapViewerInputField =
         parent.container().let { field ->
             field.xy(x, y)
-            field.solidRect(width, height, RGBA(255, 255, 255, 255))
-            field.solidRect(width - 4.0, height - 4.0, toRgba(Palette.Colours.DARK)) {
-                this.x = 2.0
-                this.y = 2.0
-            }
+            MapViewerUiBoxes.box(field, width, height)
 
             val inputHost = field.container().also {
                 it.xy(2.0, 2.0)
@@ -71,9 +65,6 @@ internal object MapViewerTextInputs {
 
             MapViewerInputField(field, input, visibleText)
         }
-
-    private fun toRgba(color: Color, alpha: Int = color.alpha): RGBA =
-        RGBA(color.red, color.green, color.blue, alpha)
 }
 
 @OptIn(KorgeExperimental::class)

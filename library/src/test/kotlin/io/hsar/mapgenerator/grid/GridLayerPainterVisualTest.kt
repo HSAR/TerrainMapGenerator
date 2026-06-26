@@ -14,9 +14,12 @@ class GridLayerPainterVisualTest {
     @Test
     fun `sticky grid lines fade near the label gutters`() {
         val image = renderStickyGrid()
+        val padding = GridStyles.gridLineIdPadding(image.width, image.height)
+        val verticalLineX = (padding.x + 2 * 50.0).toInt()
+        val horizontalLineY = (padding.y + 1 * 50.0).toInt()
 
-        assertThat(alphaAt(image, 100, 75), lessThan(alphaAt(image, 150, 75)))
-        assertThat(alphaAt(image, 75, 50), lessThan(alphaAt(image, 75, 100)))
+        assertThat(alphaAt(image, verticalLineX, 14), lessThan(alphaAt(image, verticalLineX, 100)))
+        assertThat(alphaAt(image, 14, horizontalLineY), lessThan(alphaAt(image, 100, horizontalLineY)))
     }
 
     private fun renderStickyGrid(): BufferedImage {

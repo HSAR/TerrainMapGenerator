@@ -202,11 +202,7 @@ internal class MapViewerSidebar(
             }
         }
 
-        item.solidRect(itemWidth, UNIT_ITEM_HEIGHT, RGBA(255, 255, 255, 255))
-        item.solidRect(itemWidth - 4.0, UNIT_ITEM_HEIGHT - 4.0, toRgba(Palette.Colours.DARK)) {
-            x = 2.0
-            y = 2.0
-        }
+        MapViewerUiBoxes.box(item, itemWidth, UNIT_ITEM_HEIGHT)
 
         val iconSize = UNIT_ITEM_HEIGHT - 10.0
         val iconFrame = item.container()
@@ -230,11 +226,7 @@ internal class MapViewerSidebar(
     }
 
     private fun buildToggleButton(parent: Container, width: Double, height: Double, label: String, onClick: () -> Unit = {}) {
-        parent.solidRect(width, height, RGBA(255, 255, 255, 255))
-        parent.solidRect(width - 4.0, height - 4.0, toRgba(Palette.Colours.DARK)) {
-            x = 2.0
-            y = 2.0
-        }
+        MapViewerUiBoxes.button(parent, width, height)
         MapViewerTextViews.box(parent, label, width, height, color = Palette.Colours.WHITE)
         parent.mouse {
             this.onClick {
@@ -251,11 +243,7 @@ internal class MapViewerSidebar(
         dragLayer.removeChildren()
         val preview = dragLayer.container()
         preview.alpha = 0.92
-        preview.solidRect(PREVIEW_WIDTH, PREVIEW_HEIGHT, RGBA(255, 255, 255, 255))
-        preview.solidRect(PREVIEW_WIDTH - 4.0, PREVIEW_HEIGHT - 4.0, toRgba(Palette.Colours.DARK)) {
-            x = 2.0
-            y = 2.0
-        }
+        MapViewerUiBoxes.box(preview, PREVIEW_WIDTH, PREVIEW_HEIGHT)
         val fittedIcon = MapViewerIconFit.inside(template.bitmap, PREVIEW_WIDTH - 12.0, PREVIEW_HEIGHT - 12.0)
         preview.image(template.bitmap) {
             scale = fittedIcon.scale

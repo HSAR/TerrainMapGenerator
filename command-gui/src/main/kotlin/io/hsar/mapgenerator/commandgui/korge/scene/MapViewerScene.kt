@@ -176,7 +176,7 @@ internal class MapViewerScene(
                         var previousRightHeld = false
 
                         fun isReadOnly(): Boolean =
-                            !actionHistory.currentTurn.selected
+                            !actionHistory.currentTurn.isLiveHead
 
                         fun effectiveTool(): MapViewerTool =
                             if (isReadOnly()) {

@@ -11,7 +11,6 @@ import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.onStageResized
 import korlibs.korge.view.size
-import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.RectCorners
 import korlibs.math.geom.Vector2D
@@ -49,8 +48,8 @@ internal class MapViewerLedgerPanel(
         panel.radius = RectCorners(0.0)
         panel.bgColor = toRgba(Palette.Colours.DARK, 220)
         panel.borderSize = 2.0
-        panel.borderColor = RGBA(255, 255, 255, 255)
-        panel.shadowColor = RGBA(0, 0, 0, 0)
+        panel.borderColor = MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, MapViewerUiStateStyle.ACTIVE_ALPHA)
+        panel.shadowColor = MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, 0)
         panel.shadowRadius = 0.0
 
         toggleButton.mouse {
@@ -83,12 +82,13 @@ internal class MapViewerLedgerPanel(
 
         toggleButton.removeChildren()
         toggleButton.xy(layout.toggleBounds.left, layout.toggleBounds.top)
-        buildButton(
+        val toggle = MapViewerUiBoxes.button(
             parent = toggleButton,
             width = layout.toggleBounds.width,
             height = layout.toggleBounds.height,
-            label = if (collapsed) "Show Turns" else "Hide Turns",
+            active = true,
         )
+        MapViewerTextViews.box(toggle, if (collapsed) "Show Turns" else "Hide Turns", layout.toggleBounds.width, layout.toggleBounds.height, color = Palette.Colours.WHITE)
 
         val panelBounds = layout.panelBounds
         panel.visible = panelBounds != null
@@ -120,16 +120,28 @@ internal class MapViewerLedgerPanel(
 
         val undoButton = content.container()
         undoButton.xy(0.0, HEADER_HEIGHT + HEADER_GAP)
-        buildButton(undoButton, CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, "Undo", enabled = canUndo()) {
-            inputActive = false
-            onUndo()
+        val undo = MapViewerUiBoxes.button(undoButton, CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, active = canUndo())
+        MapViewerTextViews.box(undo, "Undo", CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(canUndo()))
+        undo.mouse {
+            this.onClick {
+                if (canUndo()) {
+                    inputActive = false
+                    onUndo()
+                }
+            }
         }
 
         val redoButton = content.container()
         redoButton.xy(CONTROL_BUTTON_WIDTH + BUTTON_GAP, HEADER_HEIGHT + HEADER_GAP)
-        buildButton(redoButton, CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, "Redo", enabled = canRedo()) {
-            inputActive = false
-            onRedo()
+        val redo = MapViewerUiBoxes.button(redoButton, CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, active = canRedo())
+        MapViewerTextViews.box(redo, "Redo", CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(canRedo()))
+        redo.mouse {
+            this.onClick {
+                if (canRedo()) {
+                    inputActive = false
+                    onRedo()
+                }
+            }
         }
 
         val markerRowTop = HEADER_HEIGHT + HEADER_GAP + CONTROL_BUTTON_HEIGHT + SECTION_GAP
@@ -153,15 +165,21 @@ internal class MapViewerLedgerPanel(
 
         val addButton = content.container()
         addButton.xy(0.0, markerRowTop)
-        buildButton(addButton, addButtonWidth, CONTROL_BUTTON_HEIGHT, "Add Turn", enabled = !isReadOnly()) {
-            inputActive = false
-            val fallback = defaultTurnName()
-            onAddTurn(markerInput?.text?.takeIf(String::isNotBlank) ?: fallback)
+        val addTurn = MapViewerUiBoxes.button(addButton, addButtonWidth, CONTROL_BUTTON_HEIGHT, active = !isReadOnly())
+        MapViewerTextViews.box(addTurn, "Add Turn", addButtonWidth, CONTROL_BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(!isReadOnly()))
+        addTurn.mouse {
+            this.onClick {
+                if (!isReadOnly()) {
+                    inputActive = false
+                    val fallback = defaultTurnName()
+                    onAddTurn(markerInput?.text?.takeIf(String::isNotBlank) ?: fallback)
+                }
+            }
         }
 
         val markersTop = markerRowTop + CONTROL_BUTTON_HEIGHT + SECTION_GAP
         renderMarkers(markersTop, current)
-        if (current.label == "Current") {
+        if (current.showInjectedCurrentRow) {
             renderCurrentTurn(markersTop + renderMarkersHeight() + MARKER_ROW_GAP)
         }
     }
@@ -176,7 +194,7 @@ internal class MapViewerLedgerPanel(
                 width = MapViewerLedgerPanelLayoutBuilder.PANEL_WIDTH - (CONTENT_PADDING * 2),
                 height = MARKER_ROW_HEIGHT,
                 marker = marker,
-                isCurrentState = current.label != "Current" && marker.appliedIndex == current.appliedIndex,
+                isCurrentState = marker.appliedIndex == current.appliedIndex,
             ) {
                 inputActive = false
                 onRevertToTurn(marker)
@@ -207,16 +225,13 @@ internal class MapViewerLedgerPanel(
         isCurrentState: Boolean,
         onClick: () -> Unit,
     ) {
-        val rowAlpha = when {
-            marker.isFuture -> 170
-            isCurrentState -> 255
-            else -> 255
-        }
-        parent.solidRect(width, height, RGBA(255, 255, 255, rowAlpha))
-        parent.solidRect(width - 4.0, height - 4.0, toRgba(Palette.Colours.DARK, if (marker.isFuture) 200 else 255)) {
-            x = 2.0
-            y = 2.0
-        }
+        val active = isCurrentState
+        MapViewerUiBoxes.box(
+            parent,
+            width,
+            height,
+            active = active,
+        )
 
         val nameWidth = width - TURN_INDEX_WIDTH - TURN_TEXT_INSET - TURN_TEXT_GAP
         MapViewerTextViews.leftBox(
@@ -224,18 +239,18 @@ internal class MapViewerLedgerPanel(
             text = marker.name,
             width = nameWidth,
             height = height,
-            color = Palette.Colours.WHITE.withAlpha(if (marker.isFuture) 170 else 255),
+            color = MapViewerUiStateStyle.text(active),
         ) {
             x = TURN_TEXT_INSET
         }
         MapViewerTextViews.box(
             parent = parent,
-            text = if (isCurrentState) "Current" else "%04X".format(marker.appliedIndex),
+            text = "%04X".format(marker.appliedIndex),
             width = TURN_INDEX_WIDTH,
             height = height,
             role = MapViewerFontRole.FLAVOUR,
             size = 18.0,
-            color = Palette.Colours.LIGHT.withAlpha(if (marker.isFuture) 140 else 255),
+            color = MapViewerUiStateStyle.secondaryText(active),
             alignment = TextAlignment.MIDDLE_RIGHT,
         ) {
             x = width - TURN_INDEX_WIDTH - TURN_INDEX_INSET
@@ -255,12 +270,13 @@ internal class MapViewerLedgerPanel(
         current: CurrentTurn,
         onClick: () -> Unit,
     ) {
-        val rowAlpha = if (current.selected) 255 else 170
-        parent.solidRect(width, height, RGBA(255, 255, 255, rowAlpha))
-        parent.solidRect(width - 4.0, height - 4.0, toRgba(Palette.Colours.DARK, if (current.selected) 255 else 200)) {
-            x = 2.0
-            y = 2.0
-        }
+        val active = current.selected
+        MapViewerUiBoxes.box(
+            parent,
+            width,
+            height,
+            active = active,
+        )
 
         val nameWidth = width - TURN_INDEX_WIDTH - TURN_TEXT_INSET - TURN_TEXT_GAP
         MapViewerTextViews.leftBox(
@@ -268,7 +284,7 @@ internal class MapViewerLedgerPanel(
             text = current.label,
             width = nameWidth,
             height = height,
-            color = Palette.Colours.WHITE.withAlpha(rowAlpha),
+            color = MapViewerUiStateStyle.text(active),
         ) {
             x = TURN_TEXT_INSET
         }
@@ -279,7 +295,7 @@ internal class MapViewerLedgerPanel(
             height = height,
             role = MapViewerFontRole.FLAVOUR,
             size = 18.0,
-            color = Palette.Colours.LIGHT.withAlpha(if (current.selected) 255 else 140),
+            color = MapViewerUiStateStyle.secondaryText(active),
             alignment = TextAlignment.MIDDLE_RIGHT,
         ) {
             x = width - TURN_INDEX_WIDTH - TURN_INDEX_INSET
@@ -288,29 +304,6 @@ internal class MapViewerLedgerPanel(
         parent.mouse {
             onClick {
                 onClick()
-            }
-        }
-    }
-
-    private fun buildButton(
-        parent: Container,
-        width: Double,
-        height: Double,
-        label: String,
-        enabled: Boolean = true,
-        onClick: () -> Unit = {},
-    ) {
-        parent.solidRect(width, height, RGBA(255, 255, 255, 255))
-        parent.solidRect(width - 4.0, height - 4.0, toRgba(if (enabled) Palette.Colours.DARK else Palette.Colours.LIGHT, if (enabled) 255 else 120)) {
-            x = 2.0
-            y = 2.0
-        }
-        MapViewerTextViews.box(parent, label, width, height, color = Palette.Colours.WHITE)
-        parent.mouse {
-            this.onClick {
-                if (enabled) {
-                    onClick()
-                }
             }
         }
     }
@@ -333,9 +326,6 @@ internal class MapViewerLedgerPanel(
 
     private fun toRgba(color: Color, alpha: Int = color.alpha): RGBA =
         RGBA(color.red, color.green, color.blue, alpha)
-
-    private fun Color.withAlpha(alpha: Int): Color =
-        Color(red, green, blue, alpha)
 
     private companion object {
         const val Z_INDEX = 10_000.0

@@ -4,7 +4,6 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingColour
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.image.Palette
-import korlibs.image.color.RGBA
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
@@ -12,7 +11,6 @@ import korlibs.korge.view.onStageResized
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Vector2D
-import java.awt.Color
 
 internal class MapViewerToolbar(
     root: Container,
@@ -92,23 +90,22 @@ internal class MapViewerToolbar(
 
     private fun addButton(tool: MapViewerTool, label: String, left: Double, enabled: Boolean = true) {
         val active = selectedTool() == tool
-        val button = content.container()
-        button.xy(left, 0.0)
-        button.solidRect(BUTTON_WIDTH, BUTTON_HEIGHT, RGBA(255, 255, 255, 255))
-        button.solidRect(
-            BUTTON_WIDTH - 4.0, BUTTON_HEIGHT - 4.0, toRgba(
-                when {
-                    active -> Palette.Colours.MAIN
-                    enabled -> Palette.Colours.DARK
-                    else -> Palette.Colours.LIGHT
-                },
-                if (enabled) 220 else 120,
-            )
-        ) {
-            x = 2.0
-            y = 2.0
+        val button = MapViewerUiBoxes.button(
+            content,
+            BUTTON_WIDTH,
+            BUTTON_HEIGHT,
+            active = active && enabled,
+            style = { state -> MapViewerUiBoxes.defaultStyle(state) },
+        ).also {
+            it.xy(left, 0.0)
         }
-        MapViewerTextViews.box(button, label, BUTTON_WIDTH, BUTTON_HEIGHT, color = Palette.Colours.WHITE)
+        MapViewerTextViews.box(
+            button,
+            label,
+            BUTTON_WIDTH,
+            BUTTON_HEIGHT,
+            color = if (enabled) MapViewerUiStateStyle.text(active) else MapViewerUiStateStyle.text(false),
+        )
         button.mouse {
             onClick {
                 if (enabled) {
@@ -121,14 +118,22 @@ internal class MapViewerToolbar(
 
     private fun addDrawingModeButton(mode: MapDrawingMode, left: Double) {
         val active = selectedDrawingMode() == mode
-        val button = content.container()
-        button.xy(left, BUTTON_HEIGHT + DRAW_MODE_TOP_GAP)
-        button.solidRect(DRAW_MODE_WIDTH, DRAW_MODE_HEIGHT, RGBA(255, 255, 255, 255))
-        button.solidRect(DRAW_MODE_WIDTH - 4.0, DRAW_MODE_HEIGHT - 4.0, toRgba(if (active) Palette.Colours.MAIN else Palette.Colours.DARK, 220)) {
-            x = 2.0
-            y = 2.0
+        val button = MapViewerUiBoxes.button(
+            content,
+            DRAW_MODE_WIDTH,
+            DRAW_MODE_HEIGHT,
+            active = active,
+            style = { state -> MapViewerUiBoxes.defaultStyle(state) },
+        ).also {
+            it.xy(left, BUTTON_HEIGHT + DRAW_MODE_TOP_GAP)
         }
-        MapViewerTextViews.box(button, mode.label, DRAW_MODE_WIDTH, DRAW_MODE_HEIGHT, color = Palette.Colours.WHITE)
+        MapViewerTextViews.box(
+            button,
+            mode.label,
+            DRAW_MODE_WIDTH,
+            DRAW_MODE_HEIGHT,
+            color = MapViewerUiStateStyle.text(active),
+        )
         button.mouse {
             onClick {
                 onDrawingModeSelected(mode)
@@ -139,15 +144,24 @@ internal class MapViewerToolbar(
 
     private fun addDrawingColourButton(colour: MapDrawingColour, left: Double) {
         val active = selectedDrawingColour() == colour
-        val button = content.container()
-        button.xy(left, BUTTON_HEIGHT + DRAW_MODE_TOP_GAP + DRAW_MODE_HEIGHT + COLOUR_ROW_TOP_GAP)
-        button.solidRect(COLOUR_SWATCH_SIZE, COLOUR_SWATCH_SIZE, RGBA(255, 255, 255, 255))
-        button.solidRect(COLOUR_SWATCH_SIZE - 4.0, COLOUR_SWATCH_SIZE - 4.0, toRgba(colour.color)) {
-            x = 2.0
-            y = 2.0
+        val button = MapViewerUiBoxes.box(
+            content,
+            COLOUR_SWATCH_SIZE,
+            COLOUR_SWATCH_SIZE,
+            active = active,
+            style = {
+                UiFrameStyle(
+                    fillColor = colour.color,
+                    fillAlpha = MapViewerUiStateStyle.ACTIVE_ALPHA,
+                    borderColor = Palette.Colours.WHITE,
+                    borderAlpha = MapViewerUiStateStyle.ACTIVE_ALPHA,
+                )
+            },
+        ).also {
+            it.xy(left, BUTTON_HEIGHT + DRAW_MODE_TOP_GAP + DRAW_MODE_HEIGHT + COLOUR_ROW_TOP_GAP)
         }
         if (active) {
-            button.solidRect(COLOUR_SWATCH_SIZE - 4.0, COLOUR_SWATCH_SIZE - 4.0, toRgba(Palette.Colours.DARK, 120)) {
+            button.solidRect(COLOUR_SWATCH_SIZE - 4.0, COLOUR_SWATCH_SIZE - 4.0, MapViewerUiStateStyle.backing(active = true)) {
                 x = 2.0
                 y = 2.0
             }
@@ -171,11 +185,7 @@ internal class MapViewerToolbar(
         const val COLOUR_SWATCH_SIZE = 28.0
         const val COLOUR_SWATCH_GAP = 10.0
         const val COLOUR_ROW_TOP_GAP = 8.0
-
-        fun toRgba(color: Color, alpha: Int = color.alpha) =
-            RGBA(color.red, color.green, color.blue, alpha)
     }
-
     private data class ToolbarButtonSpec(
         val tool: MapViewerTool,
         val label: String,

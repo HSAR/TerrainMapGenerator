@@ -163,6 +163,23 @@ class LedgerEntryHistoryTest {
         assertThat(controller.events, equalTo(listOf("undo third", "undo second")))
     }
 
+    @Test
+    fun `reverting to a previous turn marks the history read only`() {
+        val history = MapActionHistory()
+        val controller = TestLedgerController()
+
+        history.record(TestLedgerEntry("first"))
+        history.record(AddTurnLedgerEntry("Turn 1"))
+        history.record(TestLedgerEntry("second"))
+        history.record(AddTurnLedgerEntry("Turn 2"))
+
+        history.revertToAppliedIndex(history.turnMarkers.first().appliedIndex, controller)
+
+        assertThat(history.canRedo, equalTo(true))
+        assertThat(history.currentTurn.isLiveHead, equalTo(false))
+        assertThat(history.currentTurn.showInjectedCurrentRow, equalTo(true))
+    }
+
     private data class TestLedgerEntry(
         val name: String,
     ) : LedgerEntry {

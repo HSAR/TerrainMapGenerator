@@ -10,7 +10,6 @@ import korlibs.korge.view.container
 import korlibs.korge.view.image
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
-import java.awt.Color
 
 @OptIn(KorgeExperimental::class)
 internal class MapViewerUnitEditDialog(
@@ -50,11 +49,7 @@ internal class MapViewerUnitEditDialog(
 
         val panel = layer.container()
         panel.xy(panelLeft, panelTop)
-        panel.solidRect(panelWidth, panelHeight, RGBA(255, 255, 255, 255))
-        panel.solidRect(panelWidth - 4.0, panelHeight - 4.0, toRgba(Palette.Colours.DARK)) {
-            x = 2.0
-            y = 2.0
-        }
+        MapViewerUiBoxes.box(panel, panelWidth, panelHeight)
 
         val content = panel.container()
         content.xy(20.0, 18.0)
@@ -67,11 +62,7 @@ internal class MapViewerUnitEditDialog(
 
         val typePreview = content.container()
         typePreview.xy(0.0, 68.0)
-        typePreview.solidRect(PREVIEW_WIDTH, PREVIEW_HEIGHT, RGBA(255, 255, 255, 255))
-        typePreview.solidRect(PREVIEW_WIDTH - 4.0, PREVIEW_HEIGHT - 4.0, toRgba(Palette.Colours.DARK)) {
-            x = 2.0
-            y = 2.0
-        }
+        MapViewerUiBoxes.box(typePreview, PREVIEW_WIDTH, PREVIEW_HEIGHT)
         val iconSlot = typePreview.container()
         iconSlot.xy(6.0, 6.0)
         val fittedIcon = MapViewerIconFit.inside(unitType.bitmap, ICON_SLOT_WIDTH, ICON_SLOT_HEIGHT)
@@ -134,19 +125,11 @@ internal class MapViewerUnitEditDialog(
         fun refreshDestroyedToggle() {
             onDestroyedPreviewChanged(destroyedValue)
             destroyedToggle.removeChildren()
-            destroyedToggle.solidRect(260.0, 32.0, RGBA(255, 255, 255, 255))
-            destroyedToggle.solidRect(256.0, 28.0, toRgba(Palette.Colours.DARK)) {
-                x = 2.0
-                y = 2.0
-            }
+            MapViewerUiBoxes.box(destroyedToggle, 260.0, 32.0)
 
             val box = destroyedToggle.container()
             box.xy(10.0, 6.0)
-            box.solidRect(20.0, 20.0, RGBA(255, 255, 255, 255))
-            box.solidRect(16.0, 16.0, toRgba(Palette.Colours.DARK)) {
-                x = 2.0
-                y = 2.0
-            }
+            MapViewerUiBoxes.box(box, 20.0, 20.0)
             if (destroyedValue) {
                 MapViewerTextViews.box(box, "X", 20.0, 20.0, role = MapViewerFontRole.STRONG, color = Palette.Colours.RED)
                     .xy(0.0, 0.0)
@@ -199,11 +182,7 @@ internal class MapViewerUnitEditDialog(
     }
 
     private fun buildButton(parent: Container, width: Double, height: Double, label: String, onActivate: () -> Unit) {
-        parent.solidRect(width, height, RGBA(255, 255, 255, 255))
-        parent.solidRect(width - 4.0, height - 4.0, toRgba(Palette.Colours.DARK)) {
-            x = 2.0
-            y = 2.0
-        }
+        MapViewerUiBoxes.button(parent, width, height)
         MapViewerTextViews.box(parent, label, width, height, color = Palette.Colours.WHITE)
         parent.mouse {
             onClick {
@@ -211,9 +190,6 @@ internal class MapViewerUnitEditDialog(
             }
         }
     }
-
-    private fun toRgba(color: Color, alpha: Int = color.alpha): RGBA =
-        RGBA(color.red, color.green, color.blue, alpha)
 
     private companion object {
         const val Z_INDEX = 50_000.0

@@ -10,6 +10,7 @@ import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconFit
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputs
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
@@ -244,11 +245,7 @@ internal class MapViewerNewOperationView(
         val rowWidth = layout.unitsPanelBounds.width - CONTENT_PADDING * 2
         val rowContainer = parent.container()
         rowContainer.xy(CONTENT_PADDING, top)
-        rowContainer.solidRect(rowWidth, ROW_HEIGHT, RGBA(255, 255, 255, 255))
-        rowContainer.solidRect(rowWidth - 4.0, ROW_HEIGHT - 4.0, MapViewerLaunchUi.toRgba(Palette.Colours.DARK)) {
-            this.x = 2.0
-            this.y = 2.0
-        }
+        MapViewerUiBoxes.box(rowContainer, rowWidth, ROW_HEIGHT)
 
         renderPreviewFrame(
             parent = rowContainer,
@@ -280,11 +277,7 @@ internal class MapViewerNewOperationView(
     private fun renderPreviewFrame(parent: Container, bitmap: Bitmap32, left: Double, top: Double) {
         val frame = parent.container()
         frame.xy(left, top)
-        frame.solidRect(PREVIEW_WIDTH, PREVIEW_HEIGHT, RGBA(255, 255, 255, 255))
-        frame.solidRect(PREVIEW_WIDTH - 4.0, PREVIEW_HEIGHT - 4.0, MapViewerLaunchUi.toRgba(Palette.Colours.DARK)) {
-            this.x = 2.0
-            this.y = 2.0
-        }
+        MapViewerUiBoxes.box(frame, PREVIEW_WIDTH, PREVIEW_HEIGHT)
         val fittedIcon = MapViewerIconFit.inside(bitmap, PREVIEW_WIDTH - 12.0, PREVIEW_HEIGHT - 12.0)
         frame.image(bitmap) {
             scale = fittedIcon.scale
@@ -296,11 +289,7 @@ internal class MapViewerNewOperationView(
     private fun renderHandle(parent: Container, x: Double, y: Double, rowId: Long, index: Int) {
         val handle = parent.container()
         handle.xy(x, y)
-        handle.solidRect(HANDLE_WIDTH, HANDLE_HEIGHT, RGBA(255, 255, 255, 255))
-        handle.solidRect(HANDLE_WIDTH - 4.0, HANDLE_HEIGHT - 4.0, MapViewerLaunchUi.toRgba(Palette.Colours.DARK)) {
-            this.x = 2.0
-            this.y = 2.0
-        }
+        MapViewerUiBoxes.button(handle, HANDLE_WIDTH, HANDLE_HEIGHT)
 
         val grip = handle.container()
         grip.xy(7.0, 7.0)
@@ -416,11 +405,7 @@ internal class MapViewerNewOperationView(
 
     private fun renderMapPreview(parent: Container, bounds: ScreenBounds, mapImage: MapImageRow?) {
         parent.removeChildren()
-        parent.solidRect(bounds.width, bounds.height, RGBA(255, 255, 255, 255))
-        parent.solidRect(bounds.width - 4.0, bounds.height - 4.0, MapViewerLaunchUi.toRgba(Palette.Colours.DARK)) {
-            this.x = 2.0
-            this.y = 2.0
-        }
+        MapViewerUiBoxes.box(parent, bounds.width, bounds.height)
 
         val bitmap = mapImage?.previewBitmap
         if (bitmap == null) {
