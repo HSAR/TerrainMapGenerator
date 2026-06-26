@@ -3,7 +3,23 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 import com.fasterxml.jackson.databind.JsonNode
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
 import java.util.UUID
+import kotlin.Boolean
+import kotlin.Double
+import kotlin.Int
+import kotlin.String
+import kotlin.Unit
+import kotlin.also
 import kotlin.collections.ArrayDeque
+import kotlin.collections.List
+import kotlin.collections.Map
+import kotlin.collections.asReversed
+import kotlin.collections.buildList
+import kotlin.collections.forEach
+import kotlin.collections.forEachIndexed
+import kotlin.collections.isNotEmpty
+import kotlin.collections.lastIndex
+import kotlin.collections.toList
+import kotlin.let
 
 internal data class MapPlacedObjectId(
     val value: UUID,
@@ -117,6 +133,14 @@ internal data class BatchLedgerEntry(
     }
 }
 
+internal data class AddTurnLedgerEntry(
+    val name: String,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) = Unit
+
+    override fun redo(controller: LedgerController) = Unit
+}
+
 internal data class CreateUnitTemplateAction(
     val snapshot: UnitTemplateSnapshot,
 ) : LedgerEntry {
@@ -172,6 +196,32 @@ internal class MapActionHistory {
     val appliedEntries: List<LedgerEntry>
         get() = undoStack.toList()
 
+    val turnMarkers: List<TurnMarker>
+        get() = buildList {
+            undoStack.forEachIndexed { index, entry ->
+                (entry as? AddTurnLedgerEntry)?.let {
+                    add(TurnMarker(name = it.name, appliedIndex = index))
+                }
+            }
+            redoStack.asReversed().forEachIndexed { index, entry ->
+                (entry as? AddTurnLedgerEntry)?.let {
+                    add(TurnMarker(name = it.name, appliedIndex = undoStack.size + index, isFuture = true))
+                }
+            }
+        }
+
+    val currentTurn: CurrentTurn
+        get() = when {
+            redoStack.isNotEmpty() -> CurrentTurn(label = "Current", appliedIndex = undoStack.size, selected = false)
+            undoStack.lastOrNull() is AddTurnLedgerEntry -> CurrentTurn(
+                label = (undoStack.lastOrNull() as AddTurnLedgerEntry).name,
+                appliedIndex = undoStack.lastIndex,
+                selected = true,
+            )
+
+            else -> CurrentTurn(label = "Current", appliedIndex = undoStack.size, selected = true)
+        }
+
     fun record(action: LedgerEntry) {
         undoStack.addLast(action)
         redoStack.clear()
@@ -202,4 +252,36 @@ internal class MapActionHistory {
             action.redo(controller)
             undoStack.addLast(action)
         }
+
+    fun revertToLedgerIndex(index: Int, controller: LedgerController): List<LedgerEntry> =
+        buildList {
+            while (undoStack.lastIndex > index) {
+                undoEntry(controller)?.let(::add) ?: return@buildList
+            }
+            while (undoStack.lastIndex < index) {
+                redoEntry(controller)?.let(::add) ?: return@buildList
+            }
+        }
+
+    fun revertToCurrent(controller: LedgerController): List<LedgerEntry> =
+        buildList {
+            while (redoStack.isNotEmpty()) {
+                redoEntry(controller)?.let(::add) ?: return@buildList
+            }
+        }
+
+    fun revertToAppliedIndex(index: Int, controller: LedgerController): List<LedgerEntry> =
+        revertToLedgerIndex(index, controller)
 }
+
+internal data class TurnMarker(
+    val name: String,
+    val appliedIndex: Int,
+    val isFuture: Boolean = false,
+)
+
+internal data class CurrentTurn(
+    val label: String,
+    val appliedIndex: Int,
+    val selected: Boolean,
+)

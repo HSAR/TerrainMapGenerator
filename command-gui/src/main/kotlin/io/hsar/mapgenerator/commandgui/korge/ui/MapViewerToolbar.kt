@@ -21,6 +21,7 @@ internal class MapViewerToolbar(
     private val selectedTool: () -> MapViewerTool,
     private val selectedDrawingMode: () -> MapDrawingMode,
     private val selectedDrawingColour: () -> MapDrawingColour,
+    private val isReadOnly: () -> Boolean,
     private val onToolSelected: (MapViewerTool) -> Unit,
     private val onDrawingModeSelected: (MapDrawingMode) -> Unit,
     private val onDrawingColourSelected: (MapDrawingColour) -> Unit,
@@ -68,12 +69,18 @@ internal class MapViewerToolbar(
     }
 
     private fun render() {
+        val readOnly = isReadOnly()
         content.removeChildren()
         content.xy(0.0, layout.bounds.top)
         toolButtons.forEachIndexed { index, button ->
-            addButton(button.tool, button.label, layout.toolRowLeft + index * (BUTTON_WIDTH + BUTTON_GAP))
+            addButton(
+                button.tool,
+                button.label,
+                layout.toolRowLeft + index * (BUTTON_WIDTH + BUTTON_GAP),
+                enabled = !readOnly || button.tool == MapViewerTool.MEASURE,
+            )
         }
-        if (selectedTool() == MapViewerTool.DRAW) {
+        if (!readOnly && selectedTool() == MapViewerTool.DRAW) {
             drawingModeButtons.forEachIndexed { index, button ->
                 addDrawingModeButton(button, layout.drawingModeRowLeft + index * (DRAW_MODE_WIDTH + BUTTON_GAP))
             }
@@ -83,20 +90,31 @@ internal class MapViewerToolbar(
         }
     }
 
-    private fun addButton(tool: MapViewerTool, label: String, left: Double) {
+    private fun addButton(tool: MapViewerTool, label: String, left: Double, enabled: Boolean = true) {
         val active = selectedTool() == tool
         val button = content.container()
         button.xy(left, 0.0)
         button.solidRect(BUTTON_WIDTH, BUTTON_HEIGHT, RGBA(255, 255, 255, 255))
-        button.solidRect(BUTTON_WIDTH - 4.0, BUTTON_HEIGHT - 4.0, toRgba(if (active) Palette.Colours.MAIN else Palette.Colours.DARK, 220)) {
+        button.solidRect(
+            BUTTON_WIDTH - 4.0, BUTTON_HEIGHT - 4.0, toRgba(
+                when {
+                    active -> Palette.Colours.MAIN
+                    enabled -> Palette.Colours.DARK
+                    else -> Palette.Colours.LIGHT
+                },
+                if (enabled) 220 else 120,
+            )
+        ) {
             x = 2.0
             y = 2.0
         }
         MapViewerTextViews.box(button, label, BUTTON_WIDTH, BUTTON_HEIGHT, color = Palette.Colours.WHITE)
         button.mouse {
             onClick {
-                onToolSelected(tool)
-                relayout(currentViewportWidth, currentViewportHeight)
+                if (enabled) {
+                    onToolSelected(tool)
+                    relayout(currentViewportWidth, currentViewportHeight)
+                }
             }
         }
     }

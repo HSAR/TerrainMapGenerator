@@ -36,8 +36,7 @@ class UITextInput(initialText: String = "", size: Size = Size(128, 24)) :
     var skin by bg::viewRenderer
     private val container = clipContainer(Size.ZERO)
     //private val container = fixedSizeContainer(width - 4.0, height - 4.0).position(2.0, 3.0)
-    private val textView = container.text(initialText, 16.0, color = Colors.BLACK, font = DefaultTtfFontAsBitmap)
-    //private val textView = container.text(initialText, 16.0, color = Colors.BLACK, font = DefaultTtfFont)
+    private val textView = container.text(initialText, 16.0, color = Colors.BLACK, font = DefaultTtfFont)
     val controller = TextEditController(textView, textView, this, bg)
 
     //init { uiScrollable {  } }

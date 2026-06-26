@@ -21,7 +21,6 @@ import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
-import korlibs.korge.ui.UITextInput
 import korlibs.korge.view.Container
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
@@ -57,11 +56,11 @@ internal class MapViewerNewOperationView(
     private var mapIdText = ""
     private var gridStartXText = ""
     private var gridStartYText = ""
-    private var operationNameInput: UITextInput? = null
-    private var pixelsPerMetreInput: UITextInput? = null
-    private var mapIdInput: UITextInput? = null
-    private var gridStartXInput: UITextInput? = null
-    private var gridStartYInput: UITextInput? = null
+    private var operationNameInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
+    private var pixelsPerMetreInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
+    private var mapIdInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
+    private var gridStartXInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
+    private var gridStartYInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
     private var mapPreviewContainer: Container? = null
     private var mapPreviewBounds: ScreenBounds? = null
     private var mapPreviewSignature: String? = null
@@ -543,10 +542,10 @@ internal class MapViewerNewOperationView(
     private fun Double.formatGridCoordinate(): String =
         toString().removeSuffix(".0")
 
-    private fun textInput(parent: Container, text: String, bounds: ScreenBounds): UITextInput =
+    private fun textInput(parent: Container, text: String, bounds: ScreenBounds): io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField =
         MapViewerTextInputs.input(parent, text, bounds.width, bounds.height, bounds.left, bounds.top)
 
-    private fun wirePreviewRefresh(input: UITextInput?) {
+    private fun wirePreviewRefresh(input: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField?) {
         input ?: return
         input.controller.onTextUpdated.add {
             captureInputs()
@@ -581,7 +580,7 @@ internal class MapViewerNewOperationView(
         override var name: String,
         val bitmap: Bitmap32,
         val assetSource: AssetSource?,
-        var input: UITextInput? = null,
+        var input: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null,
     ) : ReorderRow
 
     private data class ReorderDragState(

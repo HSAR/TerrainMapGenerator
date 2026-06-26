@@ -4,7 +4,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 
 internal class MapViewerAutosaveController(
     private val saveIntervalMs: Long = 60_000L,
-    private val saveOperation: () -> Unit,
+    private val saveOperation: () -> Boolean,
 ) {
     private val queuedEntries = ArrayDeque<LedgerEntry>()
     private var queuedAtMs: Long? = null
@@ -22,9 +22,12 @@ internal class MapViewerAutosaveController(
             return
         }
 
-        saveOperation()
-        queuedEntries.clear()
-        queuedAtMs = null
+        if (saveOperation()) {
+            queuedEntries.clear()
+            queuedAtMs = null
+        } else {
+            queuedAtMs = nowMs
+        }
     }
 
     fun flush(force: Boolean = false, nowMs: Long = System.currentTimeMillis()) {
@@ -32,8 +35,11 @@ internal class MapViewerAutosaveController(
             return
         }
 
-        saveOperation()
-        queuedEntries.clear()
-        queuedAtMs = null
+        if (saveOperation()) {
+            queuedEntries.clear()
+            queuedAtMs = null
+        } else {
+            queuedAtMs = nowMs
+        }
     }
 }

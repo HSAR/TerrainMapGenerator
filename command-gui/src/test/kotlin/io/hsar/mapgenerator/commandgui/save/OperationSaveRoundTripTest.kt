@@ -5,6 +5,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.geometryFor
 import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
+import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateObjectAction
@@ -462,6 +463,26 @@ class OperationSaveRoundTripTest {
 
         assertThat(OperationSaveReader().read(savePath).ledger.entries.single() is BatchLedgerEntrySaveDto, equalTo(true))
         assertThat(OperationSaveLoader().load(savePath).ledgerEntries.single() is BatchLedgerEntry, equalTo(true))
+    }
+
+    @Test
+    fun `turn marker ledger entries round trip through the save file`() {
+        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = UUID.fromString("00000000-0000-0000-0000-0000000000d3"),
+                mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                ledgerEntries = listOf(AddTurnLedgerEntry("Turn 3")),
+            ),
+            tempDir.resolve("turn-ledger-save.oct.zip"),
+        )
+
+        val entry = OperationSaveReader().read(savePath).ledger.entries.single()
+        val loadedEntry = OperationSaveLoader().load(savePath).ledgerEntries.single()
+
+        assertThat(entry is AddTurnEntrySaveDto, equalTo(true))
+        assertThat((entry as AddTurnEntrySaveDto).name, equalTo("Turn 3"))
+        assertThat(loadedEntry, equalTo(AddTurnLedgerEntry("Turn 3")))
     }
 
     private fun request(

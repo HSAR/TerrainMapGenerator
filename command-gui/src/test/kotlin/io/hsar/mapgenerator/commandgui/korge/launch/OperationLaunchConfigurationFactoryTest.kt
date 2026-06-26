@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
+import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import org.hamcrest.MatcherAssert.assertThat
@@ -77,10 +78,11 @@ class OperationLaunchConfigurationFactoryTest {
 
         val configuration = OperationLaunchConfigurationFactory.create(draft, MapViewerSettings())
 
-        assertThat(configuration.initialLedgerEntries.size, equalTo(2))
+        assertThat(configuration.initialLedgerEntries.size, equalTo(3))
         assertThat(configuration.initialLedgerEntries[0] is CreateUnitTemplateAction, equalTo(true))
         assertThat((configuration.initialLedgerEntries[0] as CreateUnitTemplateAction).snapshot.id, equalTo(template("Alpha").id))
         assertThat((configuration.initialLedgerEntries[1] as CreateUnitTemplateAction).snapshot.id, equalTo(template("Bravo").id))
+        assertThat(configuration.initialLedgerEntries[2], equalTo(AddTurnLedgerEntry("Operation Start")))
     }
 
     private fun image(width: Int, height: Int): BufferedImage =

@@ -125,6 +125,44 @@ class LedgerEntryHistoryTest {
         assertThat(controller.events, equalTo(listOf("undo second", "undo first", "redo first", "redo second")))
     }
 
+    @Test
+    fun `turn markers are applied ledger entries with stable indices`() {
+        val history = MapActionHistory()
+
+        history.record(TestLedgerEntry("first"))
+        history.record(AddTurnLedgerEntry("Turn 1"))
+        history.record(TestLedgerEntry("second"))
+        history.record(AddTurnLedgerEntry("Turn 2"))
+
+        assertThat(
+            history.turnMarkers,
+            equalTo(
+                listOf(
+                    TurnMarker(name = "Turn 1", appliedIndex = 1),
+                    TurnMarker(name = "Turn 2", appliedIndex = 3),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `reverting to a turn marker undoes entries after that marker`() {
+        val history = MapActionHistory()
+        val controller = TestLedgerController()
+
+        history.record(TestLedgerEntry("first"))
+        history.record(AddTurnLedgerEntry("Turn 1"))
+        history.record(TestLedgerEntry("second"))
+        history.record(TestLedgerEntry("third"))
+
+        val undone = history.revertToAppliedIndex(history.turnMarkers.single().appliedIndex, controller)
+
+        assertThat(undone, equalTo(listOf(TestLedgerEntry("third"), TestLedgerEntry("second"))))
+        assertThat(history.appliedEntries, equalTo(listOf(TestLedgerEntry("first"), AddTurnLedgerEntry("Turn 1"))))
+        assertThat(history.canRedo, equalTo(true))
+        assertThat(controller.events, equalTo(listOf("undo third", "undo second")))
+    }
+
     private data class TestLedgerEntry(
         val name: String,
     ) : LedgerEntry {

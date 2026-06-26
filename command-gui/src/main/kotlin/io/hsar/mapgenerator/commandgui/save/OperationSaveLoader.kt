@@ -10,6 +10,7 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
+import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
@@ -190,6 +191,8 @@ private class RuntimeLedgerReplayer(
             is BatchLedgerEntrySaveDto -> BatchLedgerEntry(
                 entries = entry.entries.mapNotNull(::toRuntimeEntry),
             )
+
+            is AddTurnEntrySaveDto -> AddTurnLedgerEntry(entry.name)
 
             is CreateUnitTemplateEntrySaveDto -> entry.unitTemplate.toRuntimeSnapshot()
                 .also { registerTemplate(it) }

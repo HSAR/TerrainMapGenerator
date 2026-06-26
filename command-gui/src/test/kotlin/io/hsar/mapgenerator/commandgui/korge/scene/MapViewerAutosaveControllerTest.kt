@@ -13,6 +13,7 @@ class MapViewerAutosaveControllerTest {
         var saves = 0
         val controller = MapViewerAutosaveController(saveIntervalMs = 60_000L) {
             saves += 1
+            true
         }
 
         controller.enqueue(TestLedgerEntry, nowMs = 1_000L)
@@ -28,6 +29,7 @@ class MapViewerAutosaveControllerTest {
         var saves = 0
         val controller = MapViewerAutosaveController(saveIntervalMs = 60_000L) {
             saves += 1
+            true
         }
 
         controller.flush(force = true, nowMs = 1_000L)
