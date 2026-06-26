@@ -53,7 +53,7 @@ internal fun pivotHandleForSelection(
     coordinateSpace: MapCoordinateSpace,
     viewport: CameraViewport,
 ): ScreenPivotHandle? {
-    if (snapshots.none { it is UnitSnapshot }) {
+    if (snapshots.isEmpty()) {
         return null
     }
     val bounds = snapshots.combinedSelectionBounds(coordinateSpace) ?: return null

@@ -88,6 +88,31 @@ class MapSelectionGeometryTest {
     }
 
     @Test
+    fun `pivot handle appears for a selected drawing`() {
+        val viewport = CameraViewport.centeredOnMap(
+            geometry = ViewerGeometry(backgroundWidth = 1660, backgroundHeight = 1660, mapOffsetX = 330, mapOffsetY = 330),
+            mapWidth = 1000,
+            mapHeight = 1000,
+            viewportWidth = 1000,
+            viewportHeight = 1000,
+            zoom = 1.0,
+        )
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000014")),
+            drawing = LineDrawing(
+                start = MapDrawingPoint(0.4, 0.4),
+                end = MapDrawingPoint(0.6, 0.6),
+                color = java.awt.Color.RED,
+            ),
+        )
+
+        val handle = pivotHandleForSelection(listOf(drawing), coordinateSpace, viewport)
+
+        assertThat(handle?.center?.x, equalTo(616.0))
+        assertThat(handle?.center?.y, equalTo(384.0))
+    }
+
+    @Test
     fun `drawing selection bounds overlap partial selection boxes`() {
         val drawing = DrawingSnapshot(
             id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000002")),

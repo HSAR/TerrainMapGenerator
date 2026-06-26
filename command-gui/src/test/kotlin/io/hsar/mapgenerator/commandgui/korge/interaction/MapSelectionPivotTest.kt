@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
 import korlibs.image.bitmap.Bitmap32
 import korlibs.math.geom.Vector2D
 import org.hamcrest.MatcherAssert.assertThat
@@ -34,12 +35,12 @@ class MapSelectionPivotTest {
             facing = null,
         )
 
-        val updated = MapSelectionPivot.rotateUnits(
-            originalUnits = listOf(unit),
+        val updated = MapSelectionPivot.rotateSnapshots(
+            originalSnapshots = listOf(unit),
             pivotCenterWorld = coordinateSpace.toWorld(unit.mapCoordinate),
             deltaRadians = PI / 2.0,
             coordinateSpace = coordinateSpace,
-        ).single()
+        ).single() as UnitSnapshot
 
         assertThat(updated.facingDegrees, equalTo(90))
         assertThat(updated.mapCoordinate, equalTo(unit.mapCoordinate))
@@ -59,14 +60,14 @@ class MapSelectionPivotTest {
             y = 0.6,
             facing = null,
         )
-        val pivotCenter = MapSelectionPivot.pivotCenter(listOf(north, south))
+        val pivotCenter = MapSelectionPivot.pivotCenter(listOf(north, south), coordinateSpace)
 
-        val updated = MapSelectionPivot.rotateUnits(
-            originalUnits = listOf(north, south),
+        val updated = MapSelectionPivot.rotateSnapshots(
+            originalSnapshots = listOf(north, south),
             pivotCenterWorld = coordinateSpace.toWorld(pivotCenter),
             deltaRadians = PI / 2.0,
             coordinateSpace = coordinateSpace,
-        )
+        ).map { it as UnitSnapshot }
 
         assertThat(updated[0].facingDegrees, equalTo(100))
         assertThat(updated[0].mapCoordinate.x, closeTo(0.6, 0.0001))
@@ -74,6 +75,36 @@ class MapSelectionPivotTest {
         assertThat(updated[1].facingDegrees, equalTo(90))
         assertThat(updated[1].mapCoordinate.x, closeTo(0.4, 0.0001))
         assertThat(updated[1].mapCoordinate.y, closeTo(0.5, 0.0001))
+    }
+
+    @Test
+    fun `freeform drawings rotate around the shared pivot center`() {
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000004")),
+            drawing = FreeformDrawing(
+                points = listOf(
+                    io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint(0.4, 0.5),
+                    io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint(0.5, 0.6),
+                    io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint(0.6, 0.5),
+                ),
+                color = java.awt.Color.RED,
+            ),
+        )
+
+        val updated = MapSelectionPivot.rotateSnapshots(
+            originalSnapshots = listOf(drawing),
+            pivotCenterWorld = coordinateSpace.toWorld(MapCoordinate(0.5, 0.5)),
+            deltaRadians = PI / 2.0,
+            coordinateSpace = coordinateSpace,
+        ).single() as DrawingSnapshot
+
+        val points = (updated.drawing as FreeformDrawing).points
+        assertThat(points[0].x, closeTo(0.5, 0.0001))
+        assertThat(points[0].y, closeTo(0.4, 0.0001))
+        assertThat(points[1].x, closeTo(0.4, 0.0001))
+        assertThat(points[1].y, closeTo(0.5, 0.0001))
+        assertThat(points[2].x, closeTo(0.5, 0.0001))
+        assertThat(points[2].y, closeTo(0.6, 0.0001))
     }
 
     private fun unitSnapshot(id: String, x: Double, y: Double, facing: Int?) =

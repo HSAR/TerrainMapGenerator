@@ -50,7 +50,7 @@ internal class MapSelectionController(
         onMovePreviewChanged(null)
         boxState = null
         moveState = null
-        pivotState?.originalUnits?.forEach(objectController::updateObject)
+        pivotState?.originalSnapshots?.forEach(objectController::updateObject)
         pivotState = null
         publish()
     }
@@ -93,11 +93,7 @@ internal class MapSelectionController(
         if (!handle.contains(screenPoint)) {
             return false
         }
-        val units = selectedSnapshots.filterIsInstance<UnitSnapshot>()
-        if (units.isEmpty()) {
-            return false
-        }
-        val pivotCenter = MapSelectionPivot.pivotCenter(units)
+        val pivotCenter = MapSelectionPivot.pivotCenter(selectedSnapshots, coordinateSpace)
         val pivotCenterWorld = coordinateSpace.toWorld(pivotCenter)
         pivotState = PivotState(
             pivotCenterWorld = pivotCenterWorld,
@@ -105,7 +101,7 @@ internal class MapSelectionController(
                 pivotCenterWorld,
                 coordinateSpace.screenToWorld(screenPoint, viewportProvider()),
             ),
-            originalUnits = units,
+            originalSnapshots = selectedSnapshots,
         )
         boxState = null
         moveState = null
@@ -205,8 +201,8 @@ internal class MapSelectionController(
     }
 
     private fun applyPivot(state: PivotState, deltaRadians: Double) {
-        MapSelectionPivot.rotateUnits(
-            originalUnits = state.originalUnits,
+        MapSelectionPivot.rotateSnapshots(
+            originalSnapshots = state.originalSnapshots,
             pivotCenterWorld = state.pivotCenterWorld,
             deltaRadians = deltaRadians,
             coordinateSpace = coordinateSpace,
@@ -215,7 +211,7 @@ internal class MapSelectionController(
     }
 
     private fun commitPivot(state: PivotState) {
-        val actions = state.originalUnits.mapNotNull { before ->
+        val actions = state.originalSnapshots.mapNotNull { before ->
             val after = objectController.snapshot(before.id) ?: return@mapNotNull null
             MapPlacedObjectPatch.diff(before, after)
                 .takeIf { it.isNotEmpty() }
@@ -315,7 +311,7 @@ internal class MapSelectionController(
     private data class PivotState(
         val pivotCenterWorld: Vector2D,
         val startAngle: Double,
-        val originalUnits: List<UnitSnapshot>,
+        val originalSnapshots: List<MapPlacedObjectSnapshot>,
     )
 
     private companion object {
