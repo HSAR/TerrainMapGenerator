@@ -82,9 +82,9 @@ class MapSelectionGeometryTest {
         )
 
         val handle = pivotHandleForSelection(listOf(leftUnit, rightUnit), coordinateSpace, viewport)
+        val frame = listOf(leftUnit, rightUnit).groupSelectionFrame(coordinateSpace, viewport)
 
-        assertThat(handle?.center?.x, equalTo(816.0))
-        assertThat(handle?.center?.y, equalTo(184.0))
+        assertThat(handle?.center, equalTo(frame?.topRightCorner))
     }
 
     @Test

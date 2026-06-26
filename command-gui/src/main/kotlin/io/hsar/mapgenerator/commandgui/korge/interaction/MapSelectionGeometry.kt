@@ -52,9 +52,23 @@ internal fun pivotHandleForSelection(
     snapshots: List<MapPlacedObjectSnapshot>,
     coordinateSpace: MapCoordinateSpace,
     viewport: CameraViewport,
+    groupFrame: ScreenSelectionFrame? = null,
 ): ScreenPivotHandle? {
     if (snapshots.isEmpty()) {
         return null
+    }
+    groupFrame?.let {
+        return ScreenPivotHandle(
+            center = it.topRightCorner,
+            radius = PIVOT_HANDLE_RADIUS_PX,
+        )
+    }
+    if (snapshots.size > 1) {
+        val frame = snapshots.groupSelectionFrame(coordinateSpace, viewport) ?: return null
+        return ScreenPivotHandle(
+            center = frame.topRightCorner,
+            radius = PIVOT_HANDLE_RADIUS_PX,
+        )
     }
     val bounds = snapshots.combinedSelectionBounds(coordinateSpace) ?: return null
     val topLeft = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(bounds.left, bounds.top)), viewport)
@@ -80,6 +94,14 @@ internal fun List<MapPlacedObjectSnapshot>.combinedSelectionBounds(
                 bottom = bounds.maxOf { it.bottom },
             )
         }
+
+internal fun List<MapPlacedObjectSnapshot>.groupSelectionFrame(
+    coordinateSpace: MapCoordinateSpace,
+    viewport: CameraViewport,
+): ScreenSelectionFrame? =
+    combinedSelectionBounds(coordinateSpace)?.let { bounds ->
+        ScreenSelectionFrame.fromBounds(bounds, coordinateSpace, viewport)
+    }
 
 internal fun MapPlacedObjectSnapshot.overlapsSelectionBox(
     box: MapSelectionBounds,

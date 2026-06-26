@@ -29,7 +29,7 @@ internal class MapSelectionController(
         boxState == null &&
                 selectedIds
                     .mapNotNull(objectController::snapshot)
-                    .pivotHandle()
+                    .pivotHandle(groupFrame = currentGroupFrame())
                     ?.contains(screenPoint) == true
 
     fun refresh() {
@@ -89,7 +89,7 @@ internal class MapSelectionController(
 
     private fun beginPivotIfHandleHit(screenPoint: Vector2D): Boolean {
         val selectedSnapshots = selectedIds.mapNotNull(objectController::snapshot)
-        val handle = selectedSnapshots.pivotHandle() ?: return false
+        val handle = selectedSnapshots.pivotHandle(groupFrame = currentGroupFrame(selectedSnapshots)) ?: return false
         if (!handle.contains(screenPoint)) {
             return false
         }
@@ -102,6 +102,8 @@ internal class MapSelectionController(
                 coordinateSpace.screenToWorld(screenPoint, viewportProvider()),
             ),
             originalSnapshots = selectedSnapshots,
+            originalGroupFrame = selectedSnapshots.groupSelectionFrame(coordinateSpace, viewportProvider()),
+            deltaRadians = 0.0,
         )
         boxState = null
         moveState = null
@@ -196,7 +198,8 @@ internal class MapSelectionController(
             state.pivotCenterWorld,
             coordinateSpace.screenToWorld(pointer, viewportProvider()),
         )
-        applyPivot(state, currentAngle - state.startAngle)
+        state.deltaRadians = currentAngle - state.startAngle
+        applyPivot(state, state.deltaRadians)
         publish()
     }
 
@@ -281,21 +284,37 @@ internal class MapSelectionController(
 
     private fun publish() {
         val selectedSnapshots = selectedIds.mapNotNull(objectController::snapshot)
+        val groupFrame = currentGroupFrame(selectedSnapshots)
         onStateChanged(
             MapSelectionState(
                 selected = selectedSnapshots,
                 box = boxState
                     ?.takeIf { hypot(it.current.x - it.start.x, it.current.y - it.start.y) >= BOX_DRAG_THRESHOLD }
                     ?.let { ScreenSelectionBox(it.start, it.current) },
+                groupFrame = groupFrame,
                 pivotHandle = selectedSnapshots
                     .takeIf { boxState == null }
-                    ?.pivotHandle(),
+                    ?.pivotHandle(groupFrame = groupFrame),
             ),
         )
     }
 
-    private fun List<MapPlacedObjectSnapshot>.pivotHandle(): ScreenPivotHandle? =
-        pivotHandleForSelection(this, coordinateSpace, viewportProvider())
+    private fun currentGroupFrame(
+        snapshots: List<MapPlacedObjectSnapshot> = selectedIds.mapNotNull(objectController::snapshot),
+    ): ScreenSelectionFrame? =
+        when {
+            snapshots.size <= 1 -> null
+            pivotState != null -> pivotState?.originalGroupFrame
+                ?.rotatedAround(
+                    pivot = coordinateSpace.worldToScreen(pivotState!!.pivotCenterWorld, viewportProvider()),
+                    deltaRadians = pivotState!!.deltaRadians,
+                )
+
+            else -> snapshots.groupSelectionFrame(coordinateSpace, viewportProvider())
+        }
+
+    private fun List<MapPlacedObjectSnapshot>.pivotHandle(groupFrame: ScreenSelectionFrame? = null): ScreenPivotHandle? =
+        pivotHandleForSelection(this, coordinateSpace, viewportProvider(), groupFrame)
 
     private data class BoxSelectionState(
         val start: Vector2D,
@@ -312,6 +331,8 @@ internal class MapSelectionController(
         val pivotCenterWorld: Vector2D,
         val startAngle: Double,
         val originalSnapshots: List<MapPlacedObjectSnapshot>,
+        val originalGroupFrame: ScreenSelectionFrame?,
+        var deltaRadians: Double,
     )
 
     private companion object {

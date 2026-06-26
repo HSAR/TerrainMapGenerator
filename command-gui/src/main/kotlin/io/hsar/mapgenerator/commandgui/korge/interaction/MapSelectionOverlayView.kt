@@ -18,6 +18,7 @@ internal class MapSelectionOverlayView(
 
     fun update(state: MapSelectionState) {
         content.removeChildren()
+        state.groupFrame?.let(::drawGroupFrame)
         state.selected.forEach(::drawHighlight)
         state.box?.let(::drawSelectionBox)
         state.pivotHandle?.let(::drawPivotHandle)
@@ -49,6 +50,14 @@ internal class MapSelectionOverlayView(
         }
     }
 
+    private fun drawGroupFrame(frame: ScreenSelectionFrame) {
+        drawFilledQuad(frame.corners, fill = groupFill)
+        drawEdge(frame.topLeft, frame.topRight, groupStroke)
+        drawEdge(frame.topRight, frame.bottomRight, groupStroke)
+        drawEdge(frame.bottomRight, frame.bottomLeft, groupStroke)
+        drawEdge(frame.bottomLeft, frame.topLeft, groupStroke)
+    }
+
     private fun drawHighlight(snapshot: MapPlacedObjectSnapshot) {
         val bounds = snapshot.selectionBounds(coordinateSpace).expanded(HIGHLIGHT_MAP_PADDING)
         val viewport = viewportProvider()
@@ -78,6 +87,39 @@ internal class MapSelectionOverlayView(
             x = left + width - HIGHLIGHT_STROKE_WIDTH
             y = top
         }
+    }
+
+    private fun drawFilledQuad(points: List<korlibs.math.geom.Vector2D>, fill: RGBA) {
+        content.graphics {
+            fill(fill) {
+                moveTo(points[0].x, points[0].y)
+                points.drop(1).forEach { lineTo(it.x, it.y) }
+                close()
+            }
+        }
+    }
+
+    private fun drawEdge(start: korlibs.math.geom.Vector2D, end: korlibs.math.geom.Vector2D, color: RGBA) {
+        val dx = end.x - start.x
+        val dy = end.y - start.y
+        val length = kotlin.math.hypot(dx, dy)
+        if (length <= 0.0) {
+            return
+        }
+        val halfThickness = SELECTION_STROKE_WIDTH * 0.5
+        val unitX = dx / length
+        val unitY = dy / length
+        val perpX = -unitY * halfThickness
+        val perpY = unitX * halfThickness
+        drawFilledQuad(
+            listOf(
+                korlibs.math.geom.Vector2D(start.x + perpX, start.y + perpY),
+                korlibs.math.geom.Vector2D(end.x + perpX, end.y + perpY),
+                korlibs.math.geom.Vector2D(end.x - perpX, end.y - perpY),
+                korlibs.math.geom.Vector2D(start.x - perpX, start.y - perpY),
+            ),
+            fill = color,
+        )
     }
 
     private fun drawPivotHandle(handle: ScreenPivotHandle) {
@@ -119,6 +161,8 @@ internal class MapSelectionOverlayView(
         private const val HIGHLIGHT_MAP_PADDING = 0.002
         private val selectionStroke = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 170)
         private val highlightStroke = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 210)
+        private val groupFill = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 28)
+        private val groupStroke = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 150)
         private val handleFill = RGBA(Palette.Colours.WHITE.red, Palette.Colours.WHITE.green, Palette.Colours.WHITE.blue, 230)
         private val handleCore = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 230)
     }
