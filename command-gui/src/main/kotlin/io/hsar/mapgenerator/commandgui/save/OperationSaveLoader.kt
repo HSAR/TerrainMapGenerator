@@ -226,6 +226,7 @@ private class RuntimeLedgerReplayer(
                     template = template,
                     instanceName = instanceName,
                     destroyed = destroyed,
+                    facingDegrees = facingDegrees,
                     mapCoordinate = mapCoordinate.toRuntime(),
                     normalizedWidth = normalizedWidth,
                     normalizedHeight = normalizedHeight,

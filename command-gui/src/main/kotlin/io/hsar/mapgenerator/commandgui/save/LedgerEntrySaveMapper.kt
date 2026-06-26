@@ -76,6 +76,7 @@ internal class LedgerEntrySaveMapper(
                 unitTemplateId = unitTemplateId.value,
                 instanceName = instanceName,
                 destroyed = destroyed,
+                facingDegrees = facingDegrees,
                 mapCoordinate = mapCoordinate.toDto(),
                 normalizedWidth = normalizedWidth,
                 normalizedHeight = normalizedHeight,

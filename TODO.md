@@ -12,7 +12,6 @@
 - Select and multi-select allows pivoting multiple units in formation
 - Unit types additional semantic properties
     - Move limits
-    - Unit facing
 - Randomly generated operation names
 
 ## Bugs

@@ -41,6 +41,7 @@ internal data class UnitSnapshot(
     val template: MapViewerUnitTemplate,
     val instanceName: String,
     val destroyed: Boolean,
+    val facingDegrees: Int?,
     val mapCoordinate: MapCoordinate,
     val normalizedWidth: Double,
     val normalizedHeight: Double,

@@ -99,6 +99,7 @@ internal data class SavedUnitObjectDto(
     val unitTemplateId: UUID,
     val instanceName: String,
     val destroyed: Boolean,
+    val facingDegrees: Int? = null,
     val mapCoordinate: MapCoordinateSaveDto,
     val normalizedWidth: Double,
     val normalizedHeight: Double,

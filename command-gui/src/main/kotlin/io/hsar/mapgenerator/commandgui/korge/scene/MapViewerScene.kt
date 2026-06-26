@@ -403,7 +403,10 @@ internal class MapViewerScene(
                             objectController = objectController,
                             contextMenuManager = contextMenuManager,
                             objectAt = ::objectSelectionAt,
-                            onStateChanged = selectionOverlay::update,
+                            onStateChanged = { state ->
+                                selectionOverlay.update(state)
+                                unitManager.updateSelectedUnits(selectionController.selectedIds())
+                            },
                             onMovePreviewChanged = { preview -> objectMovePreview = preview },
                             onLedgerEntry = ::recordLedgerEntry,
                         )

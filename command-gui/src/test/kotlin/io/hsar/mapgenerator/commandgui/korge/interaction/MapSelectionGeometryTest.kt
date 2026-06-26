@@ -26,6 +26,7 @@ class MapSelectionGeometryTest {
             template = MapViewerUnitTemplate(UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")), "Unit", Bitmap32(4, 4)),
             instanceName = "Unit",
             destroyed = false,
+            facingDegrees = null,
             mapCoordinate = MapCoordinate(0.5, 0.5),
             normalizedWidth = 0.2,
             normalizedHeight = 0.2,

@@ -66,6 +66,7 @@ class OperationSaveRoundTripTest {
             template = unitTemplate,
             instanceName = "Alpha 1",
             destroyed = false,
+            facingDegrees = null,
             mapCoordinate = MapCoordinate(0.25, 0.75),
             normalizedWidth = 0.08,
             normalizedHeight = 0.08,
@@ -73,6 +74,7 @@ class OperationSaveRoundTripTest {
         val movedUnit = createdUnit.copy(
             instanceName = "Alpha 2",
             destroyed = true,
+            facingDegrees = 135,
             mapCoordinate = MapCoordinate(0.5, 0.4),
         )
         val createdDrawing = DrawingSnapshot(
@@ -150,6 +152,7 @@ class OperationSaveRoundTripTest {
         assertThat(reread.game.map.gridStartY != null, equalTo(true))
         assertThat(reread.ledger.entries.size, equalTo(5))
         assertThat(reread.ledger.entries[2] is EditObjectEntrySaveDto, equalTo(true))
+        assertThat((reread.ledger.entries[2] as EditObjectEntrySaveDto).forward["facingDegrees"]?.asInt(), equalTo(135))
 
         ZipFile(secondSave.toFile()).use { zip ->
             assertThat(zip.getEntry("assets/$operationId.jpg") != null, equalTo(true))

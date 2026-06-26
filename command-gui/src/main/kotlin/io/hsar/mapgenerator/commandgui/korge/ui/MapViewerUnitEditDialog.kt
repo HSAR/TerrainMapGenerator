@@ -19,9 +19,11 @@ internal class MapViewerUnitEditDialog(
     private val initialPositionX: String,
     private val initialPositionY: String,
     private val initialDestroyed: Boolean,
+    private val initialFacing: String,
     private val onPositionPreviewChanged: (String, String) -> Unit,
     private val onDestroyedPreviewChanged: (Boolean) -> Unit,
-    private val onSave: (String, String, String, Boolean) -> Unit,
+    private val onFacingPreviewChanged: (String) -> Unit,
+    private val onSave: (String, String, String, Boolean, String) -> Boolean,
     private val onDismiss: () -> Unit,
 ) {
     private val layer = root.container()
@@ -43,7 +45,7 @@ internal class MapViewerUnitEditDialog(
         }
 
         val panelWidth = 420.0
-        val panelHeight = 440.0
+        val panelHeight = 500.0
         val panelLeft = (viewportWidth - panelWidth) * 0.5
         val panelTop = (viewportHeight - panelHeight) * 0.5
 
@@ -144,8 +146,17 @@ internal class MapViewerUnitEditDialog(
             }
         }
 
+        val facingLabel = content.container()
+        facingLabel.xy(0.0, 360.0)
+        MapViewerTextViews.label(facingLabel, "Facing", color = Palette.Colours.WHITE)
+
+        val facingInput = MapViewerTextInputs.input(content, initialFacing, 120.0, 32.0, 0.0, 386.0)
+        facingInput.controller.onTextUpdated.add {
+            onFacingPreviewChanged(facingInput.text)
+        }
+
         val saveButton = content.container()
-        saveButton.xy(0.0, 360.0)
+        saveButton.xy(0.0, 440.0)
         saveButton.zIndex = 10.0
         buildButton(saveButton, 110.0, 40.0, "Save") {
             val name = nameInput.text.trim()
@@ -155,15 +166,17 @@ internal class MapViewerUnitEditDialog(
                 return@buildButton
             }
 
-            onSave(name, positionX, positionY, destroyedValue)
-            close()
+            if (onSave(name, positionX, positionY, destroyedValue, facingInput.text.trim())) {
+                close()
+            }
         }
 
         val cancelButton = content.container()
-        cancelButton.xy(130.0, 360.0)
+        cancelButton.xy(130.0, 440.0)
         cancelButton.zIndex = 10.0
         buildButton(cancelButton, 110.0, 40.0, "Cancel") {
             onDestroyedPreviewChanged(initialDestroyed)
+            onFacingPreviewChanged(initialFacing)
             close()
         }
 

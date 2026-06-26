@@ -34,6 +34,7 @@ internal object MapPlacedObjectPatch {
         }
         putIfChanged("instanceName", before.instanceName, after.instanceName)
         putIfChanged("destroyed", before.destroyed, after.destroyed)
+        putIfChanged("facingDegrees", before.facingDegrees, after.facingDegrees)
         putIfChanged("mapCoordinate", before.mapCoordinate, after.mapCoordinate)
         putIfChanged("normalizedWidth", before.normalizedWidth, after.normalizedWidth)
         putIfChanged("normalizedHeight", before.normalizedHeight, after.normalizedHeight)
@@ -77,6 +78,7 @@ internal object MapPlacedObjectPatch {
             when (key) {
                 "instanceName" -> current.copy(instanceName = value.requireValue().asText())
                 "destroyed" -> current.copy(destroyed = value.requireValue().asBoolean())
+                "facingDegrees" -> current.copy(facingDegrees = value?.takeUnless { it.isNull }?.asInt())
                 "unitTemplateId" -> current.copy(unitTemplateId = UnitTemplateId(UUID.fromString(value.requireValue().asText())))
                 "mapCoordinate" -> current.copy(mapCoordinate = fromNode(value.requireValue()))
                 "normalizedWidth" -> current.copy(normalizedWidth = value.requireValue().asDouble())

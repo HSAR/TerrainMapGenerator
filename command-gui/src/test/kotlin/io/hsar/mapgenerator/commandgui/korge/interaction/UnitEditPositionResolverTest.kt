@@ -38,4 +38,23 @@ class UnitEditPositionResolverTest {
 
         assertThat(resolved, equalTo(updated))
     }
+
+    @Test
+    fun `blank facing input clears facing`() {
+        assertThat(UnitFacingResolver.parse(" ").degrees, equalTo(null))
+        assertThat(UnitFacingResolver.parse(" ").isValid, equalTo(true))
+    }
+
+    @Test
+    fun `facing input normalizes full circle bearings`() {
+        assertThat(UnitFacingResolver.parse("0").degrees, equalTo(0))
+        assertThat(UnitFacingResolver.parse("90").degrees, equalTo(90))
+        assertThat(UnitFacingResolver.parse("359").degrees, equalTo(359))
+        assertThat(UnitFacingResolver.parse("360").degrees, equalTo(0))
+    }
+
+    @Test
+    fun `non numeric facing input is invalid`() {
+        assertThat(UnitFacingResolver.parse("north").isValid, equalTo(false))
+    }
 }

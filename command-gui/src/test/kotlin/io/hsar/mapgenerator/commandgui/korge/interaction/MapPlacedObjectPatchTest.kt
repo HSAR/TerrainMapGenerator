@@ -19,6 +19,7 @@ class MapPlacedObjectPatchTest {
             template = MapViewerUnitTemplate(UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")), "Unit", Bitmap32(4, 4)),
             instanceName = "Alpha 1",
             destroyed = false,
+            facingDegrees = null,
             mapCoordinate = MapCoordinate(0.2, 0.3),
             normalizedWidth = 0.1,
             normalizedHeight = 0.2,
@@ -26,8 +27,29 @@ class MapPlacedObjectPatchTest {
         val after = before.copy(
             instanceName = "Alpha 2",
             destroyed = true,
+            facingDegrees = 90,
             mapCoordinate = MapCoordinate(0.4, 0.5),
         )
+
+        val patch = MapPlacedObjectPatch.diff(before, after)
+
+        assertThat(MapPlacedObjectPatch.apply(before, patch), equalTo(after))
+    }
+
+    @Test
+    fun `unit facing can be cleared by applying a nullable patch value`() {
+        val before = UnitSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000003")),
+            unitTemplateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
+            template = MapViewerUnitTemplate(UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")), "Unit", Bitmap32(4, 4)),
+            instanceName = "Alpha 1",
+            destroyed = false,
+            facingDegrees = 270,
+            mapCoordinate = MapCoordinate(0.2, 0.3),
+            normalizedWidth = 0.1,
+            normalizedHeight = 0.2,
+        )
+        val after = before.copy(facingDegrees = null)
 
         val patch = MapPlacedObjectPatch.diff(before, after)
 

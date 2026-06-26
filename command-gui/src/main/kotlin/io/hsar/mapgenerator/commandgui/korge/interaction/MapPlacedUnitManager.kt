@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitEditDialog
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.image.Palette
@@ -17,7 +18,10 @@ import korlibs.korge.view.image
 import korlibs.math.geom.Point
 import korlibs.math.geom.Vector2D
 import java.awt.Color
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.sin
 
 @OptIn(KorgeInternal::class)
 internal class MapPlacedUnitManager(
@@ -40,6 +44,7 @@ internal class MapPlacedUnitManager(
     private val coordinateSpace = MapCoordinateSpace(geometry, mapWidth, mapHeight)
     private val units = mutableListOf<PlacedUnit>()
     private val dragPreviewLayer = unitLayer.container()
+    private var selectedUnitIds = emptySet<MapPlacedObjectId>()
     private var dragState: DragState? = null
     private var editDialog: MapViewerUnitEditDialog? = null
     private var editDialogUnitId: MapPlacedObjectId? = null
@@ -63,6 +68,11 @@ internal class MapPlacedUnitManager(
 
     val isEditDialogOpen: Boolean
         get() = editDialog != null
+
+    fun updateSelectedUnits(selectedIds: Set<MapPlacedObjectId>) {
+        selectedUnitIds = selectedIds
+        units.forEach { it.updateFacingOverlay() }
+    }
 
     private fun interactionsEnabled(): Boolean =
         canInteractWithUnits() && editDialog == null
@@ -167,6 +177,7 @@ internal class MapPlacedUnitManager(
         instanceName: String,
         mapCoordinate: MapCoordinate,
         destroyed: Boolean = false,
+        facingDegrees: Int? = null,
     ): UnitSnapshot {
         val unitSize = worldUnitSize(template.bitmap)
         return UnitSnapshot(
@@ -175,6 +186,7 @@ internal class MapPlacedUnitManager(
             template = template,
             instanceName = instanceName,
             destroyed = destroyed,
+            facingDegrees = facingDegrees,
             mapCoordinate = mapCoordinate,
             normalizedWidth = unitSize.worldWidth / mapWidth,
             normalizedHeight = unitSize.worldHeight / mapHeight,
@@ -188,6 +200,7 @@ internal class MapPlacedUnitManager(
             existing.template = snapshot.template
             existing.instanceName = snapshot.instanceName
             existing.destroyed = snapshot.destroyed
+            existing.facingDegrees = snapshot.facingDegrees
             existing.mapCoordinate = snapshot.mapCoordinate
             existing.normalizedWidth = snapshot.normalizedWidth
             existing.normalizedHeight = snapshot.normalizedHeight
@@ -208,6 +221,7 @@ internal class MapPlacedUnitManager(
             template = snapshot.template,
             instanceName = snapshot.instanceName,
             destroyed = snapshot.destroyed,
+            facingDegrees = snapshot.facingDegrees,
             mapCoordinate = snapshot.mapCoordinate,
             normalizedWidth = snapshot.normalizedWidth,
             normalizedHeight = snapshot.normalizedHeight,
@@ -276,7 +290,13 @@ internal class MapPlacedUnitManager(
 
         unit.view.visible = false
         dragPreviewLayer.removeChildren()
-        val preview = createVisual(dragPreviewLayer, unit.template.bitmap, unit.destroyed).also {
+        val preview = createVisual(
+            parent = dragPreviewLayer,
+            bitmap = unit.template.bitmap,
+            destroyed = unit.destroyed,
+            facingDegrees = unit.facingDegrees,
+            facingActive = true,
+        ).also {
             it.container.scale = unit.view.scaleX
             it.container.x = worldPoint.x - unit.worldWidth * 0.5
             it.container.y = worldPoint.y - unit.worldHeight * 0.5
@@ -356,6 +376,7 @@ internal class MapPlacedUnitManager(
             initialPositionX = position.easting,
             initialPositionY = position.northing,
             initialDestroyed = unit.destroyed,
+            initialFacing = UnitFacingResolver.format(unit.facingDegrees),
             onPositionPreviewChanged = { previewPositionX, previewPositionY ->
                 val updatedCoordinate = UnitEditPositionResolver.resolve(
                     currentCoordinate = originalSnapshot.mapCoordinate,
@@ -383,8 +404,20 @@ internal class MapPlacedUnitManager(
                 unit.destroyed = destroyed
                 unit.updateStateOverlay()
             },
-            onSave = save@{ newName, newPositionX, newPositionY, newDestroyed ->
-                val nameChanged = newName != unit.instanceName
+            onFacingPreviewChanged = { facingText ->
+                UnitFacingResolver.parse(facingText)
+                    .takeIf { it.isValid }
+                    ?.let { facing ->
+                        unit.facingDegrees = facing.degrees
+                        unit.updateFacingOverlay(forceActive = true)
+                    }
+                    ?: run {
+                        unit.facingDegrees = originalSnapshot.facingDegrees
+                        unit.updateFacingOverlay(forceActive = true)
+                    }
+            },
+            onSave = save@{ newName, newPositionX, newPositionY, newDestroyed, newFacingText ->
+                val nameChanged = newName != originalSnapshot.instanceName
                 val positionChanged = newPositionX.trim() != position.easting.trim() ||
                         newPositionY.trim() != position.northing.trim()
                 val updatedCoordinate = UnitEditPositionResolver.resolve(
@@ -395,18 +428,23 @@ internal class MapPlacedUnitManager(
                     newPositionY = newPositionY,
                 ) { easting, northing ->
                     referenceToMapCoordinate(easting, northing, viewportWidth, viewportHeight)
-                } ?: return@save
-                val destroyedChanged = newDestroyed != unit.destroyed
-                if (nameChanged || positionChanged || destroyedChanged) {
+                } ?: return@save false
+                val updatedFacing = UnitFacingResolver.parse(newFacingText).takeIf { it.isValid }?.degrees ?: return@save false
+                val destroyedChanged = newDestroyed != originalSnapshot.destroyed
+                val facingChanged = updatedFacing != originalSnapshot.facingDegrees
+                if (nameChanged || positionChanged || destroyedChanged || facingChanged) {
                     saveRequested = true
                     unit.instanceName = newName
                     unit.mapCoordinate = updatedCoordinate
                     unit.destroyed = newDestroyed
+                    unit.facingDegrees = updatedFacing
                     unit.updateStateOverlay()
+                    unit.updateFacingOverlay()
                     positionView(unit)
                     onMovePreviewChanged(null)
                     onUnitEdited(originalSnapshot, unit.snapshot())
                 }
+                true
             },
             onDismiss = {
                 if (!saveRequested && shouldRestoreEditSnapshot) {
@@ -488,18 +526,20 @@ internal class MapPlacedUnitManager(
         var template: MapViewerUnitTemplate,
         var instanceName: String,
         var destroyed: Boolean,
+        var facingDegrees: Int?,
         var mapCoordinate: MapCoordinate,
         var normalizedWidth: Double,
         var normalizedHeight: Double,
         var worldWidth: Double,
         var worldHeight: Double,
     ) : MapPlacedObject {
-        var icon: Image = view.image(template.bitmap)
+        private var facingLayer: Container = view.container().also { it.zIndex = 0.0 }
+        var icon: Image = view.image(template.bitmap).also { it.zIndex = 1.0 }
             private set
-        private var overlayLayer: Container = view.container()
+        private var overlayLayer: Container = view.container().also { it.zIndex = 2.0 }
 
         init {
-            overlayLayer.zIndex = 1.0
+            updateFacingOverlay()
             updateStateOverlay()
         }
 
@@ -510,6 +550,7 @@ internal class MapPlacedUnitManager(
                 template = template,
                 instanceName = instanceName,
                 destroyed = destroyed,
+                facingDegrees = facingDegrees,
                 mapCoordinate = mapCoordinate,
                 normalizedWidth = normalizedWidth,
                 normalizedHeight = normalizedHeight,
@@ -548,9 +589,19 @@ internal class MapPlacedUnitManager(
 
         fun rebuildVisual(bitmap: Bitmap32) {
             view.removeChildren()
-            icon = view.image(bitmap)
-            overlayLayer = view.container().also { it.zIndex = 1.0 }
+            facingLayer = view.container().also { it.zIndex = 0.0 }
+            icon = view.image(bitmap).also { it.zIndex = 1.0 }
+            overlayLayer = view.container().also { it.zIndex = 2.0 }
+            updateFacingOverlay()
             updateStateOverlay()
+        }
+
+        fun updateFacingOverlay(forceActive: Boolean = false) {
+            facingLayer.removeChildren()
+            facingDegrees?.let { degrees ->
+                facingLayer.alpha = facingOverlayAlpha(forceActive || id in selectedUnitIds || dragState?.unit?.id == id)
+                drawFacingIndicator(facingLayer, icon.bitmap.width.toDouble(), icon.bitmap.height.toDouble(), degrees)
+            }
         }
 
         fun updateStateOverlay() {
@@ -582,16 +633,83 @@ internal class MapPlacedUnitManager(
         val icon: Image,
     )
 
-    private fun createVisual(parent: Container, bitmap: Bitmap32, destroyed: Boolean): UnitVisual {
+    private fun createVisual(
+        parent: Container,
+        bitmap: Bitmap32,
+        destroyed: Boolean,
+        facingDegrees: Int? = null,
+        facingActive: Boolean = false,
+    ): UnitVisual {
         val container = parent.container()
-        val icon = container.image(bitmap)
-        val overlayLayer = container.container().also { it.zIndex = 1.0 }
+        val facingLayer = container.container().also { it.zIndex = 0.0 }
+        val icon = container.image(bitmap).also { it.zIndex = 1.0 }
+        facingDegrees?.let { degrees ->
+            facingLayer.alpha = facingOverlayAlpha(facingActive)
+            drawFacingIndicator(facingLayer, bitmap.width.toDouble(), bitmap.height.toDouble(), degrees)
+        }
+        val overlayLayer = container.container().also { it.zIndex = 2.0 }
         if (destroyed) {
             overlayLayer.alpha = 0.5
             drawStateCross(overlayLayer, bitmap.width.toDouble(), bitmap.height.toDouble(), toRgba(Palette.Colours.RED))
         }
         return UnitVisual(container = container, icon = icon)
     }
+
+    private fun drawFacingIndicator(
+        parent: Container,
+        width: Double,
+        height: Double,
+        facingDegrees: Int,
+    ) {
+        val center = Point(width * 0.5, height * 0.5)
+        val baseRadius = minOf(width, height) * 0.72
+        val outerRadius = baseRadius
+        val innerRadius = baseRadius * 0.86
+        val color = toRgba(Palette.Colours.MAIN)
+
+        repeat(FACING_RING_SEGMENTS) { index ->
+            val start = (index.toDouble() / FACING_RING_SEGMENTS) * PI * 2.0
+            val end = ((index + 1.0) / FACING_RING_SEGMENTS) * PI * 2.0
+            parent.graphics {
+                fill(color) {
+                    moveTo(center.x + cos(start) * outerRadius, center.y + sin(start) * outerRadius)
+                    lineTo(center.x + cos(end) * outerRadius, center.y + sin(end) * outerRadius)
+                    lineTo(center.x + cos(end) * innerRadius, center.y + sin(end) * innerRadius)
+                    lineTo(center.x + cos(start) * innerRadius, center.y + sin(start) * innerRadius)
+                    close()
+                }
+            }
+        }
+
+        val radians = Math.toRadians(facingDegrees.toDouble())
+        val direction = Vector2D(sin(radians), -cos(radians))
+        val perpendicular = Vector2D(cos(radians), sin(radians))
+        val tip = Point(
+            center.x + direction.x * outerRadius * 1.22,
+            center.y + direction.y * outerRadius * 1.22,
+        )
+        val base = Point(
+            center.x + direction.x * outerRadius * 0.72,
+            center.y + direction.y * outerRadius * 0.72,
+        )
+        val halfWidth = minOf(width, height) * 0.16
+
+        parent.graphics {
+            fill(color) {
+                moveTo(tip.x, tip.y)
+                lineTo(base.x + perpendicular.x * halfWidth, base.y + perpendicular.y * halfWidth)
+                lineTo(base.x - perpendicular.x * halfWidth, base.y - perpendicular.y * halfWidth)
+                close()
+            }
+        }
+    }
+
+    private fun facingOverlayAlpha(active: Boolean): Double =
+        if (active) {
+            MapViewerUiStateStyle.ACTIVE_ALPHA / 255.0
+        } else {
+            MapViewerUiStateStyle.inactiveFillAlpha / 255.0
+        }
 
     private fun drawStateCross(
         parent: Container,
@@ -662,6 +780,7 @@ internal class MapPlacedUnitManager(
     private companion object {
         const val UNIT_ICON_WIDTH_METRES = 250.0
         const val DRAG_PREVIEW_Z_INDEX = 15_000.0
+        private const val FACING_RING_SEGMENTS = 48
         private const val HIT_TOLERANCE = 8.0
     }
 }
@@ -680,4 +799,30 @@ internal object UnitEditPositionResolver {
         } else {
             parse(newPositionX, newPositionY)
         }
+}
+
+internal data class UnitFacingParseResult(
+    val degrees: Int?,
+    val isValid: Boolean,
+)
+
+internal object UnitFacingResolver {
+    fun format(facingDegrees: Int?): String =
+        facingDegrees?.toString() ?: ""
+
+    fun parse(input: String): UnitFacingParseResult {
+        val trimmed = input.trim()
+        if (trimmed.isBlank()) {
+            return UnitFacingParseResult(degrees = null, isValid = true)
+        }
+
+        return trimmed.toIntOrNull()
+            ?.let { UnitFacingParseResult(degrees = normalize(it), isValid = true) }
+            ?: UnitFacingParseResult(degrees = null, isValid = false)
+    }
+
+    private fun normalize(degrees: Int): Int =
+        ((degrees % FULL_CIRCLE_DEGREES) + FULL_CIRCLE_DEGREES) % FULL_CIRCLE_DEGREES
+
+    private const val FULL_CIRCLE_DEGREES = 360
 }
