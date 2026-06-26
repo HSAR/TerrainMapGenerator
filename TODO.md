@@ -1,7 +1,5 @@
 # TODO
 
-- Turns can be saved as points in the ledger
-    - Turns have thumbnails
 - Save and reload system
     - Unit custom properties can be created, saved and reloaded as key-value pairs
 - Icons should scale independent of map size
@@ -11,8 +9,7 @@
 - Destroyed units can be hidden or shown with reduced opacity
 - Support arbitrary states which are independently toggleable instead of mutually exclusive
 - Grid supports changing colour to maximise contrast
-- Select and multi-select allows moving or deleting multiple units at once
-    - Pivot multiple units in formation
+- Select and multi-select allows pivoting multiple units in formation
 - Unit types additional semantic properties
     - Move limits
     - Unit facing
