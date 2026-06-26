@@ -5,6 +5,7 @@ import korlibs.math.geom.Vector2D
 internal data class MapSelectionState(
     val selected: List<MapPlacedObjectSnapshot> = emptyList(),
     val box: ScreenSelectionBox? = null,
+    val pivotHandle: ScreenPivotHandle? = null,
 )
 
 internal data class ScreenSelectionBox(
@@ -17,4 +18,15 @@ internal data class ScreenSelectionBox(
     val bottom = maxOf(start.y, current.y)
     val width = right - left
     val height = bottom - top
+}
+
+internal data class ScreenPivotHandle(
+    val center: Vector2D,
+    val radius: Double,
+) {
+    fun contains(point: Vector2D): Boolean {
+        val dx = point.x - center.x
+        val dy = point.y - center.y
+        return dx * dx + dy * dy <= radius * radius
+    }
 }

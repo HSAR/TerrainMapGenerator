@@ -172,11 +172,12 @@ internal class MapViewerScene(
                         var saveNoticeMessage: String? = null
                         var saveNoticeExpiresAtMs = 0L
                         var readOnlyBannerLayer: Container? = null
+                        var turnReadOnly = false
                         var previousLeftHeld = false
                         var previousRightHeld = false
 
                         fun isReadOnly(): Boolean =
-                            !actionHistory.currentTurn.isLiveHead
+                            turnReadOnly
 
                         fun effectiveTool(): MapViewerTool =
                             if (isReadOnly()) {
@@ -269,6 +270,7 @@ internal class MapViewerScene(
                             ledgerPanel?.refresh()
                             toolbar?.refresh()
                             refreshReadOnlyBanner()
+                            selectionController.refresh()
                         }
 
                         fun recordLedgerEntry(entry: LedgerEntry) {
@@ -507,13 +509,15 @@ internal class MapViewerScene(
                             canUndo = { actionHistory.canUndo },
                             canRedo = { actionHistory.canRedo },
                             turnMarkers = { actionHistory.turnMarkers },
-                            currentTurn = { actionHistory.currentTurn },
+                            currentTurn = { actionHistory.currentTurn.copy(selected = !turnReadOnly) },
                             isReadOnly = { isReadOnly() },
                             onUndo = ::performUndo,
                             onRedo = ::performRedo,
                             onAddTurn = { name -> recordLedgerEntry(AddTurnLedgerEntry(name)) },
                             onRevertToTurn = { marker ->
                                 clearTransientInteractionState()
+                                selectionController.clear()
+                                turnReadOnly = true
                                 actionHistory
                                     .revertToLedgerIndex(marker.appliedIndex, ledgerController)
                                     .forEach(autosaveController::enqueue)
@@ -521,6 +525,7 @@ internal class MapViewerScene(
                             },
                             onSelectCurrent = {
                                 clearTransientInteractionState()
+                                turnReadOnly = false
                                 actionHistory
                                     .revertToCurrent(ledgerController)
                                     .forEach(autosaveController::enqueue)
@@ -694,10 +699,11 @@ internal class MapViewerScene(
                             },
                             isMovableObjectUnderPointer = { point ->
                                 effectiveTool() == MapViewerTool.SELECT &&
-                                        MapPlacedObjectSelectionResolver.choose(
-                                            unitManager.selectionAt(point),
-                                            drawingManager.selectionAt(point),
-                                        ) != null
+                                        (selectionController.hasPivotHandleAt(point) ||
+                                                MapPlacedObjectSelectionResolver.choose(
+                                                    unitManager.selectionAt(point),
+                                                    drawingManager.selectionAt(point),
+                                                ) != null)
                             },
                             isScreenOverlayBlocking = { point ->
                                 toolbar.blocksScreenPoint(point) ||
@@ -710,6 +716,7 @@ internal class MapViewerScene(
                                         drawingManager.blocksScreenPoint(point) ||
                                         escapeMenu?.isOpen == true ||
                                         contextMenuManager.blocksScreenPoint(point) ||
+                                        (effectiveTool() == MapViewerTool.SELECT && selectionController.hasPivotHandleAt(point)) ||
                                         (effectiveTool() == MapViewerTool.SELECT &&
                                                 MapPlacedObjectSelectionResolver.choose(
                                                     unitManager.selectionAt(point),

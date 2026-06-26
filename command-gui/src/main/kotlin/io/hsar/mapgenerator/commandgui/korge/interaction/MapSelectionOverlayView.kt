@@ -4,7 +4,11 @@ import io.hsar.mapgenerator.image.Palette
 import korlibs.image.color.RGBA
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
+import korlibs.korge.view.graphics
 import korlibs.korge.view.solidRect
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 internal class MapSelectionOverlayView(
     private val coordinateSpace: MapCoordinateSpace,
@@ -16,6 +20,7 @@ internal class MapSelectionOverlayView(
         content.removeChildren()
         state.selected.forEach(::drawHighlight)
         state.box?.let(::drawSelectionBox)
+        state.pivotHandle?.let(::drawPivotHandle)
     }
 
     private fun drawSelectionBox(box: ScreenSelectionBox) {
@@ -75,11 +80,46 @@ internal class MapSelectionOverlayView(
         }
     }
 
+    private fun drawPivotHandle(handle: ScreenPivotHandle) {
+        content.graphics {
+            fill(handleFill) {
+                val steps = 24
+                val firstX = handle.center.x + cos(0.0) * handle.radius
+                val firstY = handle.center.y + sin(0.0) * handle.radius
+                moveTo(firstX, firstY)
+                (1..steps).forEach { step ->
+                    val angle = (step.toDouble() / steps) * PI * 2.0
+                    lineTo(
+                        handle.center.x + cos(angle) * handle.radius,
+                        handle.center.y + sin(angle) * handle.radius,
+                    )
+                }
+                close()
+            }
+        }
+        content.graphics {
+            fill(handleCore) {
+                val radius = handle.radius * 0.55
+                val steps = 20
+                val firstX = handle.center.x + radius
+                val firstY = handle.center.y
+                moveTo(firstX, firstY)
+                (1..steps).forEach { step ->
+                    val angle = (step.toDouble() / steps) * PI * 2.0
+                    lineTo(handle.center.x + cos(angle) * radius, handle.center.y + sin(angle) * radius)
+                }
+                close()
+            }
+        }
+    }
+
     private companion object {
         private const val SELECTION_STROKE_WIDTH = 2.0
         private const val HIGHLIGHT_STROKE_WIDTH = 2.0
         private const val HIGHLIGHT_MAP_PADDING = 0.002
         private val selectionStroke = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 170)
         private val highlightStroke = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 210)
+        private val handleFill = RGBA(Palette.Colours.WHITE.red, Palette.Colours.WHITE.green, Palette.Colours.WHITE.blue, 230)
+        private val handleCore = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 230)
     }
 }

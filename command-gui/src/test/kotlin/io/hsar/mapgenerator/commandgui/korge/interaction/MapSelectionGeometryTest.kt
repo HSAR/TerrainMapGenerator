@@ -39,6 +39,55 @@ class MapSelectionGeometryTest {
     }
 
     @Test
+    fun `pivot handle appears above right of a selected unit`() {
+        val viewport = CameraViewport.centeredOnMap(
+            geometry = ViewerGeometry(backgroundWidth = 1660, backgroundHeight = 1660, mapOffsetX = 330, mapOffsetY = 330),
+            mapWidth = 1000,
+            mapHeight = 1000,
+            viewportWidth = 1000,
+            viewportHeight = 1000,
+            zoom = 1.0,
+        )
+        val unit = unitSnapshot(
+            id = "00000000-0000-0000-0000-000000000011",
+            x = 0.5,
+            y = 0.5,
+        )
+
+        val handle = pivotHandleForSelection(listOf(unit), coordinateSpace, viewport)
+
+        assertThat(handle?.center?.x, equalTo(616.0))
+        assertThat(handle?.center?.y, equalTo(384.0))
+    }
+
+    @Test
+    fun `pivot handle uses combined bounds for group selection`() {
+        val viewport = CameraViewport.centeredOnMap(
+            geometry = ViewerGeometry(backgroundWidth = 1660, backgroundHeight = 1660, mapOffsetX = 330, mapOffsetY = 330),
+            mapWidth = 1000,
+            mapHeight = 1000,
+            viewportWidth = 1000,
+            viewportHeight = 1000,
+            zoom = 1.0,
+        )
+        val leftUnit = unitSnapshot(
+            id = "00000000-0000-0000-0000-000000000012",
+            x = 0.3,
+            y = 0.3,
+        )
+        val rightUnit = unitSnapshot(
+            id = "00000000-0000-0000-0000-000000000013",
+            x = 0.7,
+            y = 0.7,
+        )
+
+        val handle = pivotHandleForSelection(listOf(leftUnit, rightUnit), coordinateSpace, viewport)
+
+        assertThat(handle?.center?.x, equalTo(816.0))
+        assertThat(handle?.center?.y, equalTo(184.0))
+    }
+
+    @Test
     fun `drawing selection bounds overlap partial selection boxes`() {
         val drawing = DrawingSnapshot(
             id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000002")),
@@ -81,4 +130,17 @@ class MapSelectionGeometryTest {
             equalTo(true),
         )
     }
+
+    private fun unitSnapshot(id: String, x: Double, y: Double) =
+        UnitSnapshot(
+            id = MapPlacedObjectId(UUID.fromString(id)),
+            unitTemplateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
+            template = MapViewerUnitTemplate(UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")), "Unit", Bitmap32(4, 4)),
+            instanceName = "Unit",
+            destroyed = false,
+            facingDegrees = null,
+            mapCoordinate = MapCoordinate(x, y),
+            normalizedWidth = 0.2,
+            normalizedHeight = 0.2,
+        )
 }

@@ -17,12 +17,20 @@ internal class MapSelectionController(
     private val selectedIds = linkedSetOf<MapPlacedObjectId>()
     private var boxState: BoxSelectionState? = null
     private var moveState: GroupMoveState? = null
+    private var pivotState: PivotState? = null
 
     val isDragging: Boolean
-        get() = boxState != null || moveState != null
+        get() = boxState != null || moveState != null || pivotState != null
 
     fun selectedIds(): Set<MapPlacedObjectId> =
         selectedIds.toSet()
+
+    fun hasPivotHandleAt(screenPoint: Vector2D): Boolean =
+        boxState == null &&
+                selectedIds
+                    .mapNotNull(objectController::snapshot)
+                    .pivotHandle()
+                    ?.contains(screenPoint) == true
 
     fun refresh() {
         publish()
@@ -42,6 +50,8 @@ internal class MapSelectionController(
         onMovePreviewChanged(null)
         boxState = null
         moveState = null
+        pivotState?.originalUnits?.forEach(objectController::updateObject)
+        pivotState = null
         publish()
     }
 
@@ -52,6 +62,9 @@ internal class MapSelectionController(
     }
 
     fun beginLeftDrag(screenPoint: Vector2D): Boolean {
+        if (beginPivotIfHandleHit(screenPoint)) {
+            return true
+        }
         val selection = objectAt(screenPoint)
         return if (selection != null) {
             if (selection.id !in selectedIds) {
@@ -69,8 +82,36 @@ internal class MapSelectionController(
     }
 
     fun update(pointer: Vector2D, leftHeld: Boolean) {
+        pivotState?.let { updatePivot(it, pointer, leftHeld) }
         moveState?.let { updateGroupMove(it, pointer, leftHeld) }
         boxState?.let { updateBoxSelection(it, pointer, leftHeld) }
+    }
+
+    private fun beginPivotIfHandleHit(screenPoint: Vector2D): Boolean {
+        val selectedSnapshots = selectedIds.mapNotNull(objectController::snapshot)
+        val handle = selectedSnapshots.pivotHandle() ?: return false
+        if (!handle.contains(screenPoint)) {
+            return false
+        }
+        val units = selectedSnapshots.filterIsInstance<UnitSnapshot>()
+        if (units.isEmpty()) {
+            return false
+        }
+        val pivotCenter = MapSelectionPivot.pivotCenter(units)
+        val pivotCenterWorld = coordinateSpace.toWorld(pivotCenter)
+        pivotState = PivotState(
+            pivotCenterWorld = pivotCenterWorld,
+            startAngle = MapSelectionPivot.bearingAngle(
+                pivotCenterWorld,
+                coordinateSpace.screenToWorld(screenPoint, viewportProvider()),
+            ),
+            originalUnits = units,
+        )
+        boxState = null
+        moveState = null
+        applyPivot(pivotState ?: return false, 0.0)
+        publish()
+        return true
     }
 
     fun openContextMenu(screenPoint: Vector2D): Boolean {
@@ -147,6 +188,42 @@ internal class MapSelectionController(
         publish()
     }
 
+    private fun updatePivot(state: PivotState, pointer: Vector2D, leftHeld: Boolean) {
+        if (!leftHeld) {
+            commitPivot(state)
+            pivotState = null
+            publish()
+            return
+        }
+
+        val currentAngle = MapSelectionPivot.bearingAngle(
+            state.pivotCenterWorld,
+            coordinateSpace.screenToWorld(pointer, viewportProvider()),
+        )
+        applyPivot(state, currentAngle - state.startAngle)
+        publish()
+    }
+
+    private fun applyPivot(state: PivotState, deltaRadians: Double) {
+        MapSelectionPivot.rotateUnits(
+            originalUnits = state.originalUnits,
+            pivotCenterWorld = state.pivotCenterWorld,
+            deltaRadians = deltaRadians,
+            coordinateSpace = coordinateSpace,
+        )
+            .forEach(objectController::updateObject)
+    }
+
+    private fun commitPivot(state: PivotState) {
+        val actions = state.originalUnits.mapNotNull { before ->
+            val after = objectController.snapshot(before.id) ?: return@mapNotNull null
+            MapPlacedObjectPatch.diff(before, after)
+                .takeIf { it.isNotEmpty() }
+                ?.let { EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before)) }
+        }
+        recordBatch(actions)
+    }
+
     private fun updateMovePreview(state: GroupMoveState) {
         val before = state.originalSnapshots.singleOrNull() as? UnitSnapshot
         val after = before?.let { objectController.snapshot(it.id) as? UnitSnapshot }
@@ -207,15 +284,22 @@ internal class MapSelectionController(
     }
 
     private fun publish() {
+        val selectedSnapshots = selectedIds.mapNotNull(objectController::snapshot)
         onStateChanged(
             MapSelectionState(
-                selected = selectedIds.mapNotNull(objectController::snapshot),
+                selected = selectedSnapshots,
                 box = boxState
                     ?.takeIf { hypot(it.current.x - it.start.x, it.current.y - it.start.y) >= BOX_DRAG_THRESHOLD }
                     ?.let { ScreenSelectionBox(it.start, it.current) },
+                pivotHandle = selectedSnapshots
+                    .takeIf { boxState == null }
+                    ?.pivotHandle(),
             ),
         )
     }
+
+    private fun List<MapPlacedObjectSnapshot>.pivotHandle(): ScreenPivotHandle? =
+        pivotHandleForSelection(this, coordinateSpace, viewportProvider())
 
     private data class BoxSelectionState(
         val start: Vector2D,
@@ -226,6 +310,12 @@ internal class MapSelectionController(
         val startCoordinate: MapCoordinate,
         var lastDelta: MapCoordinateDelta,
         val originalSnapshots: List<MapPlacedObjectSnapshot>,
+    )
+
+    private data class PivotState(
+        val pivotCenterWorld: Vector2D,
+        val startAngle: Double,
+        val originalUnits: List<UnitSnapshot>,
     )
 
     private companion object {

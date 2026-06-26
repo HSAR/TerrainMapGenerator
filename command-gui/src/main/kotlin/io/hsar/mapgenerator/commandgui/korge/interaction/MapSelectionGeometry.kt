@@ -6,6 +6,7 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
+import korlibs.math.geom.Vector2D
 import kotlin.math.max
 import kotlin.math.min
 
@@ -46,6 +47,39 @@ internal fun MapPlacedObjectSnapshot.selectionBounds(coordinateSpace: MapCoordin
 
         is DrawingSnapshot -> drawing.selectionBounds(coordinateSpace)
     }
+
+internal fun pivotHandleForSelection(
+    snapshots: List<MapPlacedObjectSnapshot>,
+    coordinateSpace: MapCoordinateSpace,
+    viewport: CameraViewport,
+): ScreenPivotHandle? {
+    if (snapshots.none { it is UnitSnapshot }) {
+        return null
+    }
+    val bounds = snapshots.combinedSelectionBounds(coordinateSpace) ?: return null
+    val topLeft = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(bounds.left, bounds.top)), viewport)
+    val bottomRight = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(bounds.right, bounds.bottom)), viewport)
+    val right = max(topLeft.x, bottomRight.x)
+    val top = min(topLeft.y, bottomRight.y)
+    return ScreenPivotHandle(
+        center = Vector2D(right + PIVOT_HANDLE_OFFSET_PX, top - PIVOT_HANDLE_OFFSET_PX),
+        radius = PIVOT_HANDLE_RADIUS_PX,
+    )
+}
+
+internal fun List<MapPlacedObjectSnapshot>.combinedSelectionBounds(
+    coordinateSpace: MapCoordinateSpace,
+): MapSelectionBounds? =
+    takeIf { it.isNotEmpty() }
+        ?.map { it.selectionBounds(coordinateSpace) }
+        ?.let { bounds ->
+            MapSelectionBounds(
+                left = bounds.minOf { it.left },
+                top = bounds.minOf { it.top },
+                right = bounds.maxOf { it.right },
+                bottom = bounds.maxOf { it.bottom },
+            )
+        }
 
 internal fun MapPlacedObjectSnapshot.overlapsSelectionBox(
     box: MapSelectionBounds,
@@ -109,3 +143,6 @@ private fun horizontalSegmentOverlapsBox(y: Double, left: Double, right: Double,
 
 private fun verticalSegmentOverlapsBox(x: Double, top: Double, bottom: Double, box: MapSelectionBounds): Boolean =
     x in box.left..box.right && bottom >= box.top && top <= box.bottom
+
+private const val PIVOT_HANDLE_OFFSET_PX = 16.0
+private const val PIVOT_HANDLE_RADIUS_PX = 7.0
