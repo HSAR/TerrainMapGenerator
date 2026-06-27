@@ -18,4 +18,3 @@
 
 - Too many callbacks warning in game log.
 - Edit Unit dialog modal input boxes text clipping.
-- Fix thumbnails

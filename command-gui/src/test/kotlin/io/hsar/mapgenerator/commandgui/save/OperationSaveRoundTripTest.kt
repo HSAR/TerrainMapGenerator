@@ -470,22 +470,33 @@ class OperationSaveRoundTripTest {
 
     @Test
     fun `turn marker ledger entries round trip through the save file`() {
+        val thumbnailAssetId = UUID.fromString("00000000-0000-0000-0000-0000000000f3")
+        val thumbnail = BufferedImage(320, 180, BufferedImage.TYPE_INT_RGB).also {
+            it.setRGB(10, 10, Color.RED.rgb)
+        }
         val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
             request(
                 operationId = UUID.fromString("00000000-0000-0000-0000-0000000000d3"),
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
                 mapSource = null,
-                ledgerEntries = listOf(AddTurnLedgerEntry("Turn 3")),
+                ledgerEntries = listOf(AddTurnLedgerEntry("Turn 3", thumbnailAssetId)),
+                generatedImageAssets = listOf(GeneratedImageAsset(thumbnailAssetId, "turn-thumbnail", thumbnail)),
             ),
             tempDir.resolve("turn-ledger-save.oct.zip"),
         )
 
         val entry = OperationSaveReader().read(savePath).ledger.entries.single()
-        val loadedEntry = OperationSaveLoader().load(savePath).ledgerEntries.single()
+        val loaded = OperationSaveLoader().load(savePath)
+        val loadedEntry = loaded.ledgerEntries.single()
 
         assertThat(entry is AddTurnEntrySaveDto, equalTo(true))
         assertThat((entry as AddTurnEntrySaveDto).name, equalTo("Turn 3"))
-        assertThat(loadedEntry, equalTo(AddTurnLedgerEntry("Turn 3")))
+        assertThat(entry.thumbnailAssetId, equalTo(thumbnailAssetId))
+        assertThat(loadedEntry, equalTo(AddTurnLedgerEntry("Turn 3", thumbnailAssetId)))
+        assertThat(loaded.generatedImageAssets.single().id, equalTo(thumbnailAssetId))
+        ZipFile(savePath.toFile()).use { zip ->
+            assertThat(zip.getEntry("assets/$thumbnailAssetId.jpg") != null, equalTo(true))
+        }
     }
 
     private fun request(
@@ -514,6 +525,7 @@ class OperationSaveRoundTripTest {
         mapImage: BufferedImage,
         mapSource: AssetSource?,
         ledgerEntries: List<io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry>,
+        generatedImageAssets: List<GeneratedImageAsset> = emptyList(),
     ) = OperationSaveRequest(
         operationId = operationId,
         operationName = operationName,
@@ -524,5 +536,6 @@ class OperationSaveRoundTripTest {
         mapImage = mapImage,
         mapAssetSource = mapSource,
         ledgerEntries = ledgerEntries,
+        generatedImageAssets = generatedImageAssets,
     )
 }

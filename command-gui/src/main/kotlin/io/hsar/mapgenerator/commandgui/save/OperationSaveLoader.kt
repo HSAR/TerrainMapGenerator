@@ -94,8 +94,39 @@ internal class OperationSaveLoader {
                 camera = save.game.camera,
                 mapImage = mapImage,
                 ledgerEntries = replayed.ledgerEntries,
+                generatedImageAssets = loadTurnThumbnailAssets(zip, save.ledger.entries),
             )
         }
+
+    private fun loadTurnThumbnailAssets(
+        zip: ZipFile,
+        entries: List<LedgerEntrySaveDto>,
+    ): List<GeneratedImageAsset> =
+        entries.turnThumbnailAssetIds()
+            .mapNotNull { assetId ->
+                runCatching {
+                    val asset = loadAsset(zip, assetId.toString())
+                    GeneratedImageAsset(
+                        id = assetId,
+                        role = ASSET_ROLE_TURN_THUMBNAIL,
+                        image = decodeBufferedImage(asset.bytes, asset.entry.name)
+                            ?: error("Unable to decode turn thumbnail ${asset.entry.name}"),
+                    )
+                }.onFailure { throwable ->
+                    org.apache.logging.log4j.LogManager
+                        .getLogger(OperationSaveLoader::class.java)
+                        .warn("Unable to load turn thumbnail asset {}", assetId, throwable)
+                }.getOrNull()
+            }
+
+    private fun List<LedgerEntrySaveDto>.turnThumbnailAssetIds(): Set<UUID> =
+        flatMap { entry ->
+            when (entry) {
+                is AddTurnEntrySaveDto -> listOfNotNull(entry.thumbnailAssetId)
+                is BatchLedgerEntrySaveDto -> entry.entries.turnThumbnailAssetIds().toList()
+                else -> emptyList()
+            }
+        }.toSet()
 
     private fun loadAsset(zip: ZipFile, assetId: String): AssetBytes =
         resolveAssetEntry(zip, assetId).let { entry ->
@@ -150,6 +181,7 @@ internal class OperationSaveLoader {
 
     private companion object {
         const val FORMAT_VERSION = 2
+        const val ASSET_ROLE_TURN_THUMBNAIL = "turn-thumbnail"
     }
 }
 
@@ -192,7 +224,7 @@ private class RuntimeLedgerReplayer(
                 entries = entry.entries.mapNotNull(::toRuntimeEntry),
             )
 
-            is AddTurnEntrySaveDto -> AddTurnLedgerEntry(entry.name)
+            is AddTurnEntrySaveDto -> AddTurnLedgerEntry(entry.name, entry.thumbnailAssetId)
 
             is CreateUnitTemplateEntrySaveDto -> entry.unitTemplate.toRuntimeSnapshot()
                 .also { registerTemplate(it) }

@@ -136,6 +136,7 @@ internal data class BatchLedgerEntry(
 
 internal data class AddTurnLedgerEntry(
     val name: String,
+    val thumbnailAssetId: UUID? = null,
 ) : LedgerEntry {
     override fun undo(controller: LedgerController) = Unit
 

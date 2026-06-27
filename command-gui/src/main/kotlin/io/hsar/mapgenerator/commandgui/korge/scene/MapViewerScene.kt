@@ -46,14 +46,15 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerLedgerPanel
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSidebar
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerToolbar
+import io.hsar.mapgenerator.commandgui.save.GeneratedImageAsset
 import io.hsar.mapgenerator.commandgui.save.LoadedOperation
+import io.hsar.mapgenerator.commandgui.save.MapThumbnailRenderer
 import io.hsar.mapgenerator.commandgui.save.OperationSaveCatalogue
 import io.hsar.mapgenerator.commandgui.save.OperationSaveLoader
 import io.hsar.mapgenerator.commandgui.save.OperationSaveRequest
 import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
 import io.hsar.mapgenerator.commandgui.save.toViewport
 import korlibs.event.Key
-import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.Colors
 import korlibs.korge.Korge
 import korlibs.korge.KorgeDisplayMode
@@ -167,6 +168,12 @@ internal class MapViewerScene(
                         val operationId = loadedOperation?.operationId ?: UUID.randomUUID()
                         val operationCreatedAt = loadedOperation?.createdAt ?: Instant.now()
                         val saveWriter = OperationSaveWriter()
+                        val thumbnailRenderer = MapThumbnailRenderer()
+                        val generatedImageAssets = loadedOperation
+                            ?.generatedImageAssets
+                            ?.associateBy { it.id }
+                            ?.toMutableMap()
+                            ?: mutableMapOf()
                         var gridLabelsOverlay: GridOverlayView? = null
                         val coordinateSpace = MapCoordinateSpace(renderedMap.geometry, renderedMap.bitmap.width, renderedMap.bitmap.height)
                         var objectMovePreview: io.hsar.mapgenerator.commandgui.korge.interaction.MapObjectMovePreview? = null
@@ -188,40 +195,75 @@ internal class MapViewerScene(
                                 currentTool
                             }
 
+                        fun renderOperationThumbnail() =
+                            thumbnailRenderer.renderOperationThumbnail(
+                                mapImage = renderData.baseImage,
+                                geometry = renderedMap.geometry,
+                                viewport = currentViewport,
+                                gridLayer = renderData.gridLayer,
+                                snapshots = objectController.snapshots(),
+                            )
+
+                        fun renderTurnThumbnailAsset(): GeneratedImageAsset {
+                            val assetId = UUID.randomUUID()
+                            return GeneratedImageAsset(
+                                id = assetId,
+                                role = "turn-thumbnail",
+                                image = thumbnailRenderer.renderTurnThumbnail(
+                                    mapImage = renderData.baseImage,
+                                    geometry = renderedMap.geometry,
+                                    gridLayer = renderData.gridLayer,
+                                    snapshots = objectController.snapshots(),
+                                ),
+                            )
+                        }
+
+                        fun AddTurnLedgerEntry.withGeneratedThumbnailIfRequired(): AddTurnLedgerEntry =
+                            if (thumbnailAssetId != null) {
+                                this
+                            } else {
+                                renderTurnThumbnailAsset().also { generatedAsset ->
+                                    generatedImageAssets[generatedAsset.id] = generatedAsset
+                                }.let { generatedAsset ->
+                                    copy(thumbnailAssetId = generatedAsset.id)
+                                }
+                            }
+
                         fun saveOperation(noticePrefix: String = "Saved"): Boolean =
                             if (isReadOnly()) {
                                 false
                             } else {
-                            val thumbnailImage = renderedMap.bitmap.toBufferedImage()
-                            val target = saveWriter.write(
-                                OperationSaveRequest(
-                                    operationId = operationId,
-                                    operationName = settings.operationName ?: "Operation",
-                                    createdAt = operationCreatedAt,
-                                    updatedAt = Instant.now(),
-                                    camera = currentViewport,
-                                    settings = settings,
-                                    mapImage = renderData.baseImage,
-                                    thumbnailImage = thumbnailImage,
-                                    mapAssetSource = operationMapImage?.assetSource,
-                                    ledgerEntries = actionHistory.appliedEntries,
-                                ),
-                            )
-                            saveNoticeMessage = "$noticePrefix ${target.fileName}"
-                            saveNoticeExpiresAtMs = System.currentTimeMillis() + 10_000L
-                            saveNoticeLayer.removeChildren()
-                            val noticeBounds = MapViewerTextViews.bounds(saveNoticeMessage!!)
-                            saveNoticeLayer.solidRect(
-                                width = noticeBounds.width + 24.0,
-                                height = noticeBounds.height + 16.0,
-                                color = korlibs.image.color.RGBA(0, 0, 0, 180),
-                            )
-                            MapViewerTextViews.label(saveNoticeLayer, saveNoticeMessage!!, color = io.hsar.mapgenerator.image.Palette.Colours.WHITE) {
-                                x = 12.0
-                                y = 8.0
-                            }
-                            saveNoticeLayer.visible = true
-                            saveNoticeLayer.xy(16.0, gameWindow.height - (noticeBounds.height + 16) - 16.0)
+                                val thumbnailImage = renderOperationThumbnail()
+                                val target = saveWriter.write(
+                                    OperationSaveRequest(
+                                        operationId = operationId,
+                                        operationName = settings.operationName ?: "Operation",
+                                        createdAt = operationCreatedAt,
+                                        updatedAt = Instant.now(),
+                                        camera = currentViewport,
+                                        settings = settings,
+                                        mapImage = renderData.baseImage,
+                                        thumbnailImage = thumbnailImage,
+                                        mapAssetSource = operationMapImage?.assetSource,
+                                        ledgerEntries = actionHistory.appliedEntries,
+                                        generatedImageAssets = generatedImageAssets.values.toList(),
+                                    ),
+                                )
+                                saveNoticeMessage = "$noticePrefix ${target.fileName}"
+                                saveNoticeExpiresAtMs = System.currentTimeMillis() + 10_000L
+                                saveNoticeLayer.removeChildren()
+                                val noticeBounds = MapViewerTextViews.bounds(saveNoticeMessage!!)
+                                saveNoticeLayer.solidRect(
+                                    width = noticeBounds.width + 24.0,
+                                    height = noticeBounds.height + 16.0,
+                                    color = korlibs.image.color.RGBA(0, 0, 0, 180),
+                                )
+                                MapViewerTextViews.label(saveNoticeLayer, saveNoticeMessage!!, color = io.hsar.mapgenerator.image.Palette.Colours.WHITE) {
+                                    x = 12.0
+                                    y = 8.0
+                                }
+                                saveNoticeLayer.visible = true
+                                saveNoticeLayer.xy(16.0, gameWindow.height - (noticeBounds.height + 16) - 16.0)
                                 true
                             }
 
@@ -532,7 +574,7 @@ internal class MapViewerScene(
                             isReadOnly = { isReadOnly() },
                             onUndo = ::performUndo,
                             onRedo = ::performRedo,
-                            onAddTurn = { name -> recordLedgerEntry(AddTurnLedgerEntry(name)) },
+                            onAddTurn = { name -> recordLedgerEntry(AddTurnLedgerEntry(name).withGeneratedThumbnailIfRequired()) },
                             onRevertToTurn = { marker ->
                                 clearTransientInteractionState()
                                 selectionController.clear()
@@ -607,8 +649,9 @@ internal class MapViewerScene(
 
                         val startupLedgerEntries = loadedOperation?.ledgerEntries ?: initialLedgerEntries
                         startupLedgerEntries.forEach { entry ->
-                            entry.redo(ledgerController)
-                            actionHistory.record(entry)
+                            val startupEntry = (entry as? AddTurnLedgerEntry)?.withGeneratedThumbnailIfRequired() ?: entry
+                            startupEntry.redo(ledgerController)
+                            actionHistory.record(startupEntry)
                         }
                         refreshHistoryUi()
 
@@ -855,16 +898,6 @@ internal class MapViewerScene(
         }
     }
 }
-
-private fun Bitmap32.toBufferedImage(): java.awt.image.BufferedImage =
-    java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_ARGB).also { image ->
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                val rgba = getRgba(x, y)
-                image.setRGB(x, y, (rgba.a shl 24) or (rgba.r shl 16) or (rgba.g shl 8) or rgba.b)
-            }
-        }
-    }
 
 private fun MapViewerSettings.operationTitle(viewerTitle: String): String =
     operationName

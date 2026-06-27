@@ -71,6 +71,7 @@ internal data class BatchLedgerEntrySaveDto(
 
 internal data class AddTurnEntrySaveDto(
     val name: String,
+    val thumbnailAssetId: UUID? = null,
 ) : LedgerEntrySaveDto
 
 internal data class CreateUnitTemplateEntrySaveDto(

@@ -19,4 +19,11 @@ internal data class OperationSaveRequest(
     val thumbnailImage: BufferedImage? = null,
     val mapAssetSource: AssetSource?,
     val ledgerEntries: List<LedgerEntry>,
+    val generatedImageAssets: List<GeneratedImageAsset> = emptyList(),
+)
+
+internal data class GeneratedImageAsset(
+    val id: UUID,
+    val role: String,
+    val image: BufferedImage,
 )

@@ -39,6 +39,13 @@ internal class OperationSaveWriter(
             operationId = request.operationId,
             image = request.thumbnailImage ?: request.mapImage,
         )
+        request.generatedImageAssets.forEach { generatedAsset ->
+            assets.registerGeneratedJpeg(
+                id = generatedAsset.id,
+                role = generatedAsset.role,
+                image = generatedAsset.image,
+            )
+        }
         val ledgerMapper = LedgerEntrySaveMapper(assets)
         val ledger = request.ledgerEntries.map(ledgerMapper::toDto)
         val updatedAt = request.updatedAt.takeIf { !it.isBefore(request.createdAt) } ?: clock.instant()
@@ -152,6 +159,18 @@ internal class OperationAssetRegistry(
             originalFilename = null,
             bytes = image.thumbnail(MAX_THUMBNAIL_WIDTH).encodeJpeg(),
         ).also(registeredAssets::add)
+
+    fun registerGeneratedJpeg(id: UUID, role: String, image: BufferedImage): RegisteredAsset =
+        registeredAssets
+            .firstOrNull { it.id == id }
+            ?: RegisteredAsset(
+                id = id,
+                path = "assets/$id.jpg",
+                mediaType = "image/jpeg",
+                role = role,
+                originalFilename = null,
+                bytes = image.thumbnail(MAX_THUMBNAIL_WIDTH).encodeJpeg(),
+            ).also(registeredAssets::add)
 
     private fun AssetSource.existingFileAsset(role: String): RegisteredAsset? {
         val file = file().takeIf { path.isNotBlank() && it.isFile }

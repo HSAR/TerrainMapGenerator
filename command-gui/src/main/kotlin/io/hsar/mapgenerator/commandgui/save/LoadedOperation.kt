@@ -15,4 +15,5 @@ internal data class LoadedOperation(
     val camera: CameraSaveDto?,
     val mapImage: BufferedImage,
     val ledgerEntries: List<LedgerEntry>,
+    val generatedImageAssets: List<GeneratedImageAsset> = emptyList(),
 )

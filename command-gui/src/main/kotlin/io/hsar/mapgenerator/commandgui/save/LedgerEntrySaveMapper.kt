@@ -51,6 +51,7 @@ internal class LedgerEntrySaveMapper(
 
             is AddTurnLedgerEntry -> AddTurnEntrySaveDto(
                 name = entry.name,
+                thumbnailAssetId = entry.thumbnailAssetId,
             )
 
             is CreateUnitTemplateAction -> CreateUnitTemplateEntrySaveDto(
