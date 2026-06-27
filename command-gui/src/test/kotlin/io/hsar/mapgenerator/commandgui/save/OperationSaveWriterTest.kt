@@ -89,7 +89,7 @@ class OperationSaveWriterTest {
             assertThat(zip.read("assets/00000000-0000-0000-0000-000000000002.svg"), equalTo(Files.readAllBytes(unitFile)))
             val thumbnail = ImageIO.read(zip.getInputStream(zip.getEntry("assets/$operationId.jpg")))
             assertThat(thumbnail, notNullValue())
-            assertThat(thumbnail.width, lessThanOrEqualTo(256))
+            assertThat(thumbnail.width, lessThanOrEqualTo(512))
         }
     }
 

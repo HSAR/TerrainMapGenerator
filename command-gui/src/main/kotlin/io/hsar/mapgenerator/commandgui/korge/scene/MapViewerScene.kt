@@ -55,7 +55,9 @@ import io.hsar.mapgenerator.commandgui.save.OperationSaveRequest
 import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
 import io.hsar.mapgenerator.commandgui.save.toViewport
 import korlibs.event.Key
+import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.Colors
+import korlibs.image.color.RGBA
 import korlibs.korge.Korge
 import korlibs.korge.KorgeDisplayMode
 import korlibs.korge.annotations.KorgeExperimental
@@ -174,6 +176,7 @@ internal class MapViewerScene(
                             ?.associateBy { it.id }
                             ?.toMutableMap()
                             ?: mutableMapOf()
+                        val generatedThumbnailBitmaps = mutableMapOf<UUID, Bitmap32>()
                         var gridLabelsOverlay: GridOverlayView? = null
                         val coordinateSpace = MapCoordinateSpace(renderedMap.geometry, renderedMap.bitmap.width, renderedMap.bitmap.height)
                         var objectMovePreview: io.hsar.mapgenerator.commandgui.korge.interaction.MapObjectMovePreview? = null
@@ -224,10 +227,16 @@ internal class MapViewerScene(
                             } else {
                                 renderTurnThumbnailAsset().also { generatedAsset ->
                                     generatedImageAssets[generatedAsset.id] = generatedAsset
+                                    generatedThumbnailBitmaps.remove(generatedAsset.id)
                                 }.let { generatedAsset ->
                                     copy(thumbnailAssetId = generatedAsset.id)
                                 }
                             }
+
+                        fun turnThumbnailBitmap(id: UUID): Bitmap32? {
+                            val asset = generatedImageAssets[id] ?: return null
+                            return generatedThumbnailBitmaps.getOrPut(id) { asset.image.toBitmap32() }
+                        }
 
                         fun saveOperation(noticePrefix: String = "Saved"): Boolean =
                             if (isReadOnly()) {
@@ -576,22 +585,26 @@ internal class MapViewerScene(
                             onRedo = ::performRedo,
                             onAddTurn = { name -> recordLedgerEntry(AddTurnLedgerEntry(name).withGeneratedThumbnailIfRequired()) },
                             onRevertToTurn = { marker ->
+                                if (marker.appliedIndex == actionHistory.currentTurn.appliedIndex) {
+                                    return@MapViewerLedgerPanel
+                                }
                                 clearTransientInteractionState()
                                 selectionController.clear()
-                                turnReadOnly = true
                                 actionHistory
                                     .revertToLedgerIndex(marker.appliedIndex, ledgerController)
                                     .forEach(autosaveController::enqueue)
+                                turnReadOnly = actionHistory.canRedo
                                 refreshHistoryUi()
                             },
                             onSelectCurrent = {
                                 clearTransientInteractionState()
-                                turnReadOnly = false
                                 actionHistory
                                     .revertToCurrent(ledgerController)
                                     .forEach(autosaveController::enqueue)
+                                turnReadOnly = actionHistory.canRedo
                                 refreshHistoryUi()
                             },
+                            turnThumbnail = ::turnThumbnailBitmap,
                         )
                         toolbar = MapViewerToolbar(
                             root = sceneLayers.ui,
@@ -898,6 +911,17 @@ internal class MapViewerScene(
         }
     }
 }
+
+private fun java.awt.image.BufferedImage.toBitmap32(): Bitmap32 =
+    Bitmap32(width, height) { x, y ->
+        val argb = getRGB(x, y)
+        RGBA(
+            (argb ushr 16) and 0xFF,
+            (argb ushr 8) and 0xFF,
+            argb and 0xFF,
+            (argb ushr 24) and 0xFF,
+        )
+    }.premultipliedIfRequired()
 
 private fun MapViewerSettings.operationTitle(viewerTitle: String): String =
     operationName

@@ -146,6 +146,16 @@ class LedgerEntryHistoryTest {
     }
 
     @Test
+    fun `next turn number ignores the initial operation start marker`() {
+        val markers = listOf(
+            TurnMarker(name = "Operation Start", appliedIndex = 0),
+            TurnMarker(name = "Turn 1", appliedIndex = 2),
+        )
+
+        assertThat(markers.nextTurnNumber(), equalTo(2))
+    }
+
+    @Test
     fun `reverting to a turn marker undoes entries after that marker`() {
         val history = MapActionHistory()
         val controller = TestLedgerController()

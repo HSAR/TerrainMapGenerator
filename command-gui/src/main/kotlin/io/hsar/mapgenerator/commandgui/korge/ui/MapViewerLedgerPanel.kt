@@ -2,7 +2,9 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.commandgui.korge.interaction.CurrentTurn
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnMarker
+import io.hsar.mapgenerator.commandgui.korge.interaction.nextTurnNumber
 import io.hsar.mapgenerator.image.Palette
+import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import korlibs.image.text.TextAlignment
 import korlibs.korge.input.mouse
@@ -15,6 +17,7 @@ import korlibs.korge.view.xy
 import korlibs.math.geom.RectCorners
 import korlibs.math.geom.Vector2D
 import java.awt.Color
+import java.util.*
 
 internal class MapViewerLedgerPanel(
     root: Container,
@@ -30,6 +33,7 @@ internal class MapViewerLedgerPanel(
     private val onAddTurn: (String) -> Unit,
     private val onRevertToTurn: (TurnMarker) -> Unit,
     private val onSelectCurrent: () -> Unit,
+    private val turnThumbnail: (UUID) -> Bitmap32? = { null },
 ) {
     private val overlay = root.container()
     private val panel = overlay.uiMaterialLayer()
@@ -229,7 +233,21 @@ internal class MapViewerLedgerPanel(
             active = active,
         )
 
-        val nameWidth = width - TURN_INDEX_WIDTH - TURN_TEXT_INSET - TURN_TEXT_GAP
+        val thumbnailLeft = TURN_THUMBNAIL_INSET
+        val thumbnailTop = TURN_THUMBNAIL_INSET
+        val thumbnailHeight = height - TURN_THUMBNAIL_INSET * 2.0
+        val thumbnailWidth = thumbnailHeight * TURN_THUMBNAIL_ASPECT_RATIO
+        MapViewerThumbnailViews.render(
+            parent = parent,
+            thumbnail = marker.thumbnailAssetId?.let(turnThumbnail),
+            left = thumbnailLeft,
+            top = thumbnailTop,
+            width = thumbnailWidth,
+            height = thumbnailHeight,
+        )
+
+        val textLeft = thumbnailLeft + thumbnailWidth + TURN_TEXT_GAP
+        val nameWidth = width - TURN_INDEX_WIDTH - textLeft - TURN_TEXT_GAP
         MapViewerTextViews.leftBox(
             parent = parent,
             text = marker.name,
@@ -237,7 +255,7 @@ internal class MapViewerLedgerPanel(
             height = height,
             color = MapViewerUiStateStyle.text(active),
         ) {
-            x = TURN_TEXT_INSET
+            x = textLeft
         }
         MapViewerTextViews.box(
             parent = parent,
@@ -274,7 +292,9 @@ internal class MapViewerLedgerPanel(
             active = active,
         )
 
-        val nameWidth = width - TURN_INDEX_WIDTH - TURN_TEXT_INSET - TURN_TEXT_GAP
+        val thumbnailWidth = (height - TURN_THUMBNAIL_INSET * 2.0) * TURN_THUMBNAIL_ASPECT_RATIO
+        val textLeft = TURN_THUMBNAIL_INSET + thumbnailWidth + TURN_TEXT_GAP
+        val nameWidth = width - TURN_INDEX_WIDTH - textLeft - TURN_TEXT_GAP
         MapViewerTextViews.leftBox(
             parent = parent,
             text = current.label,
@@ -282,7 +302,7 @@ internal class MapViewerLedgerPanel(
             height = height,
             color = MapViewerUiStateStyle.text(active),
         ) {
-            x = TURN_TEXT_INSET
+            x = textLeft
         }
         MapViewerTextViews.box(
             parent = parent,
@@ -305,7 +325,7 @@ internal class MapViewerLedgerPanel(
     }
 
     private fun defaultTurnName(): String =
-        "Turn ${turnMarkers().count { !it.isFuture } + 1}".trim()
+        "Turn ${turnMarkers().nextTurnNumber()}".trim()
 
     private fun renderMarkersHeight(): Double =
         if (turnMarkers().isEmpty()) {
@@ -332,9 +352,10 @@ internal class MapViewerLedgerPanel(
         const val BUTTON_GAP = 12.0
         const val CONTROL_BUTTON_WIDTH = 134.0
         const val CONTROL_BUTTON_HEIGHT = 40.0
-        const val MARKER_ROW_HEIGHT = 40.0
+        const val MARKER_ROW_HEIGHT = 56.0
         const val MARKER_ROW_GAP = 10.0
-        const val TURN_TEXT_INSET = 12.0
+        const val TURN_THUMBNAIL_INSET = 4.0
+        const val TURN_THUMBNAIL_ASPECT_RATIO = 16.0 / 9.0
         const val TURN_TEXT_GAP = 10.0
         const val TURN_INDEX_WIDTH = 64.0
         const val TURN_INDEX_INSET = 10.0

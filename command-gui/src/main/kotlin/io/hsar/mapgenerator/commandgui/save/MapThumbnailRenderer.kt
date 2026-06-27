@@ -356,7 +356,7 @@ internal class MapThumbnailRenderer {
     }
 
     private companion object {
-        const val DEFAULT_THUMBNAIL_WIDTH = 256
+        const val DEFAULT_THUMBNAIL_WIDTH = 512
         const val TURN_THUMBNAIL_ASPECT_RATIO = 16.0 / 9.0
         const val THUMBNAIL_DRAWING_STROKE = 2.0f
         const val FACING_ALPHA = 160

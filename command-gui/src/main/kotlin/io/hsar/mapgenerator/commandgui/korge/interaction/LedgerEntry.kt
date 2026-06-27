@@ -14,6 +14,7 @@ import kotlin.collections.List
 import kotlin.collections.Map
 import kotlin.collections.asReversed
 import kotlin.collections.buildList
+import kotlin.collections.count
 import kotlin.collections.forEach
 import kotlin.collections.forEachIndexed
 import kotlin.collections.isNotEmpty
@@ -202,12 +203,12 @@ internal class MapActionHistory {
         get() = buildList {
             undoStack.forEachIndexed { index, entry ->
                 (entry as? AddTurnLedgerEntry)?.let {
-                    add(TurnMarker(name = it.name, appliedIndex = index))
+                    add(TurnMarker(name = it.name, appliedIndex = index, thumbnailAssetId = it.thumbnailAssetId))
                 }
             }
             redoStack.asReversed().forEachIndexed { index, entry ->
                 (entry as? AddTurnLedgerEntry)?.let {
-                    add(TurnMarker(name = it.name, appliedIndex = undoStack.size + index, isFuture = true))
+                    add(TurnMarker(name = it.name, appliedIndex = undoStack.size + index, thumbnailAssetId = it.thumbnailAssetId, isFuture = true))
                 }
             }
         }
@@ -293,6 +294,7 @@ internal class MapActionHistory {
 internal data class TurnMarker(
     val name: String,
     val appliedIndex: Int,
+    val thumbnailAssetId: UUID? = null,
     val isFuture: Boolean = false,
 )
 
@@ -303,3 +305,6 @@ internal data class CurrentTurn(
     val showInjectedCurrentRow: Boolean,
     val isLiveHead: Boolean,
 )
+
+internal fun List<TurnMarker>.nextTurnNumber(): Int =
+    count { !it.isFuture && it.appliedIndex > 0 } + 1

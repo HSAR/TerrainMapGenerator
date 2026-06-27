@@ -312,7 +312,7 @@ internal class OperationAssetRegistry(
         }
 
     private companion object {
-        const val MAX_THUMBNAIL_WIDTH = 256
+        const val MAX_THUMBNAIL_WIDTH = 512
         const val JPEG_QUALITY = 0.72f
     }
 }

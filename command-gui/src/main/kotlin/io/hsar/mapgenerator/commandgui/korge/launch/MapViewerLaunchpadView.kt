@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerThumbnailViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
@@ -12,7 +13,6 @@ import korlibs.image.color.Colors
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
-import korlibs.korge.view.image
 import korlibs.korge.view.onStageResized
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
@@ -152,14 +152,7 @@ internal class MapViewerLaunchpadView(
         val previewFrameWidth = previewFrameHeight * 16.0 / 9.0
         val previewFrameLeft = borderInset
         val previewFrameTop = borderInset
-        summary.thumbnail?.let { thumbnail ->
-            row.image(thumbnail) {
-                val scale = minOf(previewFrameWidth / width, previewFrameHeight / height)
-                this.scale = scale
-                x = previewFrameLeft + ((previewFrameWidth - (width * scale)) * 0.5)
-                y = previewFrameTop + ((previewFrameHeight - (height * scale)) * 0.5)
-            }
-        }
+        MapViewerThumbnailViews.render(row, summary.thumbnail, previewFrameLeft, previewFrameTop, previewFrameWidth, previewFrameHeight)
 
         val textLeft = previewFrameLeft + previewFrameWidth + 18.0
         MapViewerTextViews.leftBox(
