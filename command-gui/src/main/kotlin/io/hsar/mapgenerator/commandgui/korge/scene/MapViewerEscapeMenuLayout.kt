@@ -16,30 +16,30 @@ internal data class MapViewerEscapeMenuLayout(
 
 internal object MapViewerEscapeMenuLayoutBuilder {
     fun build(viewportWidth: Int, viewportHeight: Int): MapViewerEscapeMenuLayout {
-        val panelWidth = 340.0
-        val panelHeight = 244.0
+        val panelWidth = 420.0
+        val panelHeight = 308.0
         val panelBounds = ScreenBounds(
             left = (viewportWidth - panelWidth) * 0.5,
             top = (viewportHeight - panelHeight) * 0.5,
             width = panelWidth,
             height = panelHeight,
         )
-        val buttonHeight = 38.0
-        val buttonGap = 10.0
+        val buttonHeight = 42.0
+        val buttonGap = 14.0
         val buttonWidth = maxOf(
-            buttonLabels().maxOf { labelWidth(it) } + 36.0,
-            120.0,
-        ).coerceAtMost(panelWidth - 48.0)
+            buttonLabels().maxOf { labelWidth(it) } + 48.0,
+            148.0,
+        ).coerceAtMost(panelWidth - 64.0)
         val buttonLeft = (panelWidth - buttonWidth) * 0.5
-        val returnButtonTop = 88.0
+        val returnButtonTop = 124.0
         val exitButtonTop = returnButtonTop + buttonHeight + buttonGap
         val closeButtonTop = exitButtonTop + buttonHeight + buttonGap
         return MapViewerEscapeMenuLayout(
             panelBounds = panelBounds,
             titleX = panelWidth * 0.5,
-            titleY = 20.0,
+            titleY = 28.0,
             subtitleX = panelWidth * 0.5,
-            subtitleY = 52.0,
+            subtitleY = 70.0,
             returnButtonBounds = ScreenBounds(
                 left = buttonLeft,
                 top = returnButtonTop,

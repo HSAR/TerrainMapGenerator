@@ -17,7 +17,7 @@ class MapViewerEscapeMenuLayoutTest {
             layout.exitButtonBounds.top - (layout.returnButtonBounds.top + layout.returnButtonBounds.height),
             greaterThan(0.0),
         )
-        assertThat(layout.panelBounds.left, closeTo(790.0, 0.1))
-        assertThat(layout.panelBounds.top, closeTo(418.0, 0.1))
+        assertThat(layout.panelBounds.left, closeTo(750.0, 0.1))
+        assertThat(layout.panelBounds.top, closeTo(386.0, 0.1))
     }
 }

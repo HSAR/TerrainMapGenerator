@@ -45,9 +45,11 @@ internal class MapViewerEscapeMenu(
     }
 
     private fun render(overlay: Container, width: Int, height: Int) {
-        layout = MapViewerEscapeMenuLayoutBuilder.build(width, height)
+        val stageWidth = overlay.stage?.views?.actualVirtualWidth ?: width
+        val stageHeight = overlay.stage?.views?.actualVirtualHeight ?: height
+        layout = MapViewerEscapeMenuLayoutBuilder.build(stageWidth, stageHeight)
         overlay.removeChildren()
-        overlay.solidRect(width.toDouble(), height.toDouble(), korlibs.image.color.RGBA(0, 0, 0, 140))
+        overlay.solidRect(stageWidth.toDouble(), stageHeight.toDouble(), korlibs.image.color.RGBA(0, 0, 0, 140))
         val panel = MapViewerLaunchUi.panel(overlay, layout.panelBounds)
         MapViewerTextViews.box(panel, "Menu", layout.panelBounds.width, 44.0, role = MapViewerFontRole.STRONG)
             .xy(0.0, layout.titleY)
