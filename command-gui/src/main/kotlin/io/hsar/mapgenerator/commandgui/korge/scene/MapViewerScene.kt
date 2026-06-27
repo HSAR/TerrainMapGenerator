@@ -244,7 +244,7 @@ internal class MapViewerScene(
                                         settings = settings,
                                         mapImage = renderData.baseImage,
                                         thumbnailImage = thumbnailImage,
-                                        mapAssetSource = operationMapImage?.assetSource,
+                                        mapAssetSource = operationMapImage?.assetSource ?: loadedOperation?.mapAssetSource,
                                         ledgerEntries = actionHistory.appliedEntries,
                                         generatedImageAssets = generatedImageAssets.values.toList(),
                                     ),

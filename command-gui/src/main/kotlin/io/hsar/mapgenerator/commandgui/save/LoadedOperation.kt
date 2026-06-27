@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.save
 
+import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import java.awt.image.BufferedImage
@@ -14,6 +15,7 @@ internal data class LoadedOperation(
     val settings: MapViewerSettings,
     val camera: CameraSaveDto?,
     val mapImage: BufferedImage,
+    val mapAssetSource: AssetSource? = null,
     val ledgerEntries: List<LedgerEntry>,
     val generatedImageAssets: List<GeneratedImageAsset> = emptyList(),
 )

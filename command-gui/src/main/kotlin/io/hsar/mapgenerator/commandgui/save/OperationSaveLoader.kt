@@ -50,6 +50,10 @@ internal class OperationSaveLoader {
             val mapAsset = loadAsset(zip, save.game.map.assetId)
             val mapImage = decodeBufferedImage(mapAsset.bytes, mapAsset.entry.name)
                 ?: error("Unable to decode map asset ${mapAsset.entry.name}")
+            val mapAssetSource = AssetSource.fromEmbeddedBytes(
+                fileName = mapAsset.entry.name.substringAfterLast('/'),
+                bytes = mapAsset.bytes,
+            )
             val operationUuid = UUID.fromString(save.game.id)
             val gridConfiguration = save.game.map.mapId
                 ?.takeIf { it.isNotBlank() }
@@ -93,6 +97,7 @@ internal class OperationSaveLoader {
                 settings = settings,
                 camera = save.game.camera,
                 mapImage = mapImage,
+                mapAssetSource = mapAssetSource,
                 ledgerEntries = replayed.ledgerEntries,
                 generatedImageAssets = loadTurnThumbnailAssets(zip, save.ledger.entries),
             )

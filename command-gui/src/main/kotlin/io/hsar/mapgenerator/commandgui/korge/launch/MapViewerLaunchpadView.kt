@@ -152,7 +152,6 @@ internal class MapViewerLaunchpadView(
         val previewFrameWidth = previewFrameHeight * 16.0 / 9.0
         val previewFrameLeft = borderInset
         val previewFrameTop = borderInset
-        MapViewerUiBoxes.box(row, previewFrameWidth, previewFrameHeight).xy(previewFrameLeft, previewFrameTop)
         summary.thumbnail?.let { thumbnail ->
             row.image(thumbnail) {
                 val scale = minOf(previewFrameWidth / width, previewFrameHeight / height)

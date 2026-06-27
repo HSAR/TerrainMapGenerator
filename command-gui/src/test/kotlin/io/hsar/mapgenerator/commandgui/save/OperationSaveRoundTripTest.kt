@@ -499,6 +499,43 @@ class OperationSaveRoundTripTest {
         }
     }
 
+    @Test
+    fun `loaded jpg map assets are saved back out as jpg`() {
+        val jpgFile = tempDir.resolve("map.jpg")
+        val jpgImage = BufferedImage(48, 32, BufferedImage.TYPE_INT_RGB).also {
+            it.setRGB(1, 1, Color.BLUE.rgb)
+        }
+        ImageIO.write(jpgImage, "jpg", jpgFile.toFile())
+
+        val firstSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = UUID.fromString("00000000-0000-0000-0000-0000000000f4"),
+                mapImage = jpgImage,
+                mapSource = AssetSource.fromFile(jpgFile.toFile()),
+                ledgerEntries = emptyList(),
+            ),
+            tempDir.resolve("map-jpg-first.oct.zip"),
+        )
+
+        val loaded = OperationSaveLoader().load(firstSave)
+        val secondSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = loaded.operationId,
+                operationName = loaded.operationName,
+                mapImage = loaded.mapImage,
+                mapSource = loaded.mapAssetSource,
+                ledgerEntries = loaded.ledgerEntries,
+            ),
+            tempDir.resolve("map-jpg-second.oct.zip"),
+        )
+
+        val reread = OperationSaveReader().read(secondSave)
+        ZipFile(secondSave.toFile()).use { zip ->
+            assertThat(zip.getEntry("assets/${reread.game.map.assetId}.jpg") != null, equalTo(true))
+            assertThat(zip.getEntry("assets/${reread.game.map.assetId}.png") == null, equalTo(true))
+        }
+    }
+
     private fun request(
         operationId: UUID,
         operationName: String = "Round Trip",
