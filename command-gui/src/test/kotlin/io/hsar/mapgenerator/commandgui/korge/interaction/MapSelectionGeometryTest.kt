@@ -156,6 +156,25 @@ class MapSelectionGeometryTest {
         )
     }
 
+    @Test
+    fun `selection centroid averages selected object centres for move previews`() {
+        val leftUnit = unitSnapshot(id = "00000000-0000-0000-0000-000000000021", x = 0.25, y = 0.5)
+        val rightUnit = unitSnapshot(id = "00000000-0000-0000-0000-000000000022", x = 0.75, y = 0.5)
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000023")),
+            drawing = LineDrawing(
+                start = MapDrawingPoint(0.4, 0.4),
+                end = MapDrawingPoint(0.6, 0.6),
+                color = Color.RED,
+            ),
+        )
+
+        val centroid = listOf(leftUnit, rightUnit, drawing).selectionCentroid(coordinateSpace)
+
+        assertThat(centroid?.x, equalTo(0.5))
+        assertThat(centroid?.y, equalTo(0.5))
+    }
+
     private fun unitSnapshot(id: String, x: Double, y: Double) =
         UnitSnapshot(
             id = MapPlacedObjectId(UUID.fromString(id)),

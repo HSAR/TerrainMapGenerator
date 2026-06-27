@@ -224,15 +224,24 @@ internal class MapSelectionController(
     }
 
     private fun updateMovePreview(state: GroupMoveState) {
-        val before = state.originalSnapshots.singleOrNull() as? UnitSnapshot
-        val after = before?.let { objectController.snapshot(it.id) as? UnitSnapshot }
-        onMovePreviewChanged(
-            if (before != null && after != null) {
-                MapObjectMovePreview(before.mapCoordinate, after.mapCoordinate)
-            } else {
-                null
-            },
-        )
+        if (state.originalSnapshots.none { it is UnitSnapshot }) {
+            onMovePreviewChanged(null)
+            return
+        }
+
+        val before = state.originalSnapshots.selectionCentroid(coordinateSpace) ?: run {
+            onMovePreviewChanged(null)
+            return
+        }
+        val after = state.originalSnapshots
+            .mapNotNull { objectController.snapshot(it.id) }
+            .selectionCentroid(coordinateSpace)
+            ?: run {
+                onMovePreviewChanged(null)
+                return
+            }
+
+        onMovePreviewChanged(MapObjectMovePreview(before, after))
     }
 
     private fun commitGroupMove(state: GroupMoveState) {
@@ -351,3 +360,13 @@ private fun MapPlacedObjectSnapshot.moveBy(delta: MapCoordinateDelta): MapPlaced
 
         is DrawingSnapshot -> copy(drawing = MapDrawingTranslator.translate(drawing, delta))
     }
+
+internal fun List<MapPlacedObjectSnapshot>.selectionCentroid(coordinateSpace: MapCoordinateSpace): MapCoordinate? =
+    takeIf { it.isNotEmpty() }
+        ?.map { it.selectionBounds(coordinateSpace) }
+        ?.let { bounds ->
+            MapCoordinate(
+                x = bounds.map { (it.left + it.right) * 0.5 }.average(),
+                y = bounds.map { (it.top + it.bottom) * 0.5 }.average(),
+            )
+        }
