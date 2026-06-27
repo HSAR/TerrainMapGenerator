@@ -7,6 +7,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.OPERATION_START_TURN_NAME
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.grid.GridLayerBuilder
 import java.awt.image.BufferedImage
@@ -101,7 +102,7 @@ internal object OperationLaunchConfigurationFactory {
             ?: return OperationLaunchConfiguration(
                 settings = baseSettings,
                 unitTemplates = draft.unitTemplates,
-                initialLedgerEntries = draft.seededUnitTemplateEntries() + AddTurnLedgerEntry("Operation Start"),
+                initialLedgerEntries = draft.seededUnitTemplateEntries() + AddTurnLedgerEntry(OPERATION_START_TURN_NAME),
                 mapImage = null,
             )
 
@@ -128,7 +129,7 @@ internal object OperationLaunchConfigurationFactory {
                 gridStartY = gridConfiguration.startY,
             ),
             unitTemplates = draft.unitTemplates,
-            initialLedgerEntries = draft.seededUnitTemplateEntries() + AddTurnLedgerEntry("Operation Start"),
+            initialLedgerEntries = draft.seededUnitTemplateEntries() + AddTurnLedgerEntry(OPERATION_START_TURN_NAME),
             mapImage = mapImage,
         )
     }

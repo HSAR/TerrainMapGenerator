@@ -174,21 +174,109 @@ class LedgerEntryHistoryTest {
     }
 
     @Test
-    fun `reverting to a previous turn marks the history read only`() {
+    fun `full timeline entries include redo entries in replay order`() {
+        val history = MapActionHistory()
+        val controller = TestLedgerController()
+        val first = TestLedgerEntry("first")
+        val second = TestLedgerEntry("second")
+        val third = TestLedgerEntry("third")
+
+        history.record(first)
+        history.record(second)
+        history.record(third)
+
+        history.undoEntry(controller)
+        history.undoEntry(controller)
+
+        assertThat(history.appliedEntries, equalTo(listOf(first)))
+        assertThat(history.redoEntriesInReplayOrder, equalTo(listOf(second, third)))
+        assertThat(history.fullTimelineEntries, equalTo(listOf(first, second, third)))
+        assertThat(history.fullTimelineLastEntry, equalTo(third))
+    }
+
+    @Test
+    fun `edit mode injects an active current row when the current ledger does not end with a turn`() {
+        val history = MapActionHistory()
+        history.record(TestLedgerEntry("first"))
+        history.record(AddTurnLedgerEntry("Turn 1"))
+        history.record(TestLedgerEntry("second"))
+
+        val state = history.turnPanelState(TurnPanelMode.Edit)
+
+        assertThat(state.rows.map { it.label }, equalTo(listOf("Turn 1", "Current")))
+        assertThat(state.rows.map { it.active }, equalTo(listOf(false, true)))
+    }
+
+    @Test
+    fun `edit mode marks the final turn active when the current ledger ends with a turn`() {
+        val history = MapActionHistory()
+        history.record(TestLedgerEntry("first"))
+        history.record(AddTurnLedgerEntry("Turn 1"))
+        history.record(TestLedgerEntry("second"))
+        history.record(AddTurnLedgerEntry("Turn 2"))
+
+        val state = history.turnPanelState(TurnPanelMode.Edit)
+
+        assertThat(state.rows.map { it.label }, equalTo(listOf("Turn 1", "Turn 2")))
+        assertThat(state.rows.map { it.active }, equalTo(listOf(false, true)))
+    }
+
+    @Test
+    fun `edit mode after undo marks the last applied turn active even with redo entries`() {
+        val history = MapActionHistory()
+        val controller = TestLedgerController()
+
+        history.record(AddTurnLedgerEntry("Operation Start"))
+        history.record(TestLedgerEntry("first"))
+        history.record(AddTurnLedgerEntry("Turn 1"))
+        history.record(TestLedgerEntry("second"))
+
+        history.undoEntry(controller)
+
+        val state = history.turnPanelState(TurnPanelMode.Edit)
+
+        assertThat(state.rows.map { it.label }, equalTo(listOf("Operation Start", "Turn 1")))
+        assertThat(state.rows.map { it.active }, equalTo(listOf(false, true)))
+    }
+
+    @Test
+    fun `read only mode keeps current visible when the full timeline does not end with a turn`() {
         val history = MapActionHistory()
         val controller = TestLedgerController()
 
         history.record(TestLedgerEntry("first"))
         history.record(AddTurnLedgerEntry("Turn 1"))
         history.record(TestLedgerEntry("second"))
-        history.record(AddTurnLedgerEntry("Turn 2"))
+        history.record(TestLedgerEntry("third"))
 
-        history.revertToAppliedIndex(history.turnMarkers.first().appliedIndex, controller)
+        val selectedTurn = history.turnMarkers.single()
+        history.revertToAppliedIndex(selectedTurn.appliedIndex, controller)
+        val state = history.turnPanelState(TurnPanelMode.ReadOnly(selectedTurn.appliedIndex))
 
-        assertThat(history.canRedo, equalTo(true))
-        assertThat(history.currentTurn.isLiveHead, equalTo(false))
-        assertThat(history.currentTurn.showInjectedCurrentRow, equalTo(true))
+        assertThat(state.rows.map { it.label }, equalTo(listOf("Turn 1", "Current")))
+        assertThat(state.rows.map { it.active }, equalTo(listOf(true, false)))
     }
+
+    @Test
+    fun `read only mode does not inject current when the full timeline ends with a turn`() {
+        val history = MapActionHistory()
+        val controller = TestLedgerController()
+
+        history.record(AddTurnLedgerEntry("Operation Start"))
+        history.record(AddTurnLedgerEntry("Turn 1"))
+
+        history.revertToAppliedIndex(0, controller)
+        val state = history.turnPanelState(TurnPanelMode.ReadOnly(0))
+
+        assertThat(state.rows.map { it.label }, equalTo(listOf("Operation Start", "Turn 1")))
+        assertThat(state.rows.map { it.active }, equalTo(listOf(true, false)))
+    }
+
+    private val TurnPanelRow.label: String
+        get() = when (this) {
+            is TurnPanelRow.Current -> "Current"
+            is TurnPanelRow.Marker -> marker.name
+        }
 
     private data class TestLedgerEntry(
         val name: String,

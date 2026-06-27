@@ -10,14 +10,8 @@ import kotlin.String
 import kotlin.Unit
 import kotlin.also
 import kotlin.collections.ArrayDeque
-import kotlin.collections.List
-import kotlin.collections.Map
 import kotlin.collections.asReversed
-import kotlin.collections.buildList
-import kotlin.collections.count
-import kotlin.collections.forEach
 import kotlin.collections.forEachIndexed
-import kotlin.collections.isNotEmpty
 import kotlin.collections.lastIndex
 import kotlin.collections.toList
 import kotlin.let
@@ -199,6 +193,18 @@ internal class MapActionHistory {
     val appliedEntries: List<LedgerEntry>
         get() = undoStack.toList()
 
+    val redoEntriesInReplayOrder: List<LedgerEntry>
+        get() = redoStack.asReversed().toList()
+
+    val fullTimelineEntries: List<LedgerEntry>
+        get() = appliedEntries + redoEntriesInReplayOrder
+
+    val fullTimelineLastEntry: LedgerEntry?
+        get() = fullTimelineEntries.lastOrNull()
+
+    val liveHeadIndex: Int
+        get() = fullTimelineEntries.lastIndex
+
     val turnMarkers: List<TurnMarker>
         get() = buildList {
             undoStack.forEachIndexed { index, entry ->
@@ -213,31 +219,45 @@ internal class MapActionHistory {
             }
         }
 
-    val currentTurn: CurrentTurn
-        get() = when {
-            redoStack.isNotEmpty() -> CurrentTurn(
-                label = "Current",
-                appliedIndex = if (undoStack.lastOrNull() is AddTurnLedgerEntry) undoStack.lastIndex else undoStack.size,
-                selected = false,
-                showInjectedCurrentRow = true,
-                isLiveHead = false,
-            )
-            undoStack.lastOrNull() is AddTurnLedgerEntry -> CurrentTurn(
-                label = (undoStack.lastOrNull() as AddTurnLedgerEntry).name,
-                appliedIndex = undoStack.lastIndex,
-                selected = true,
-                showInjectedCurrentRow = false,
-                isLiveHead = true,
-            )
-
-            else -> CurrentTurn(
-                label = "Current",
-                appliedIndex = undoStack.size,
-                selected = true,
-                showInjectedCurrentRow = true,
-                isLiveHead = true,
+    fun turnPanelState(mode: TurnPanelMode): TurnPanelState {
+        val sourceEntries = if (mode is TurnPanelMode.ReadOnly) {
+            fullTimelineEntries
+        } else {
+            appliedEntries
+        }
+        val markerRows = sourceEntries.mapIndexedNotNull { index, entry ->
+            (entry as? AddTurnLedgerEntry)?.let {
+                TurnPanelRow.Marker(
+                    marker = TurnMarker(
+                        name = it.name,
+                        appliedIndex = index,
+                        thumbnailAssetId = it.thumbnailAssetId,
+                        isFuture = index >= undoStack.size,
+                    ),
+                    active = when (mode) {
+                        TurnPanelMode.Edit -> appliedEntries.lastOrNull() is AddTurnLedgerEntry && index == undoStack.lastIndex
+                        is TurnPanelMode.ReadOnly -> index == mode.selectedTurnAppliedIndex
+                    },
+                )
+            }
+        }
+        val currentBoundaryEntry = when (mode) {
+            TurnPanelMode.Edit -> appliedEntries.lastOrNull()
+            is TurnPanelMode.ReadOnly -> fullTimelineLastEntry
+        }
+        val currentRow = if (currentBoundaryEntry is AddTurnLedgerEntry) {
+            null
+        } else {
+            TurnPanelRow.Current(
+                appliedIndex = when (mode) {
+                    TurnPanelMode.Edit -> undoStack.size
+                    is TurnPanelMode.ReadOnly -> fullTimelineEntries.size
+                },
+                active = mode == TurnPanelMode.Edit,
             )
         }
+        return TurnPanelState(rows = currentRow?.let { markerRows + it } ?: markerRows)
+    }
 
     fun record(action: LedgerEntry) {
         undoStack.addLast(action)
@@ -298,13 +318,36 @@ internal data class TurnMarker(
     val isFuture: Boolean = false,
 )
 
-internal data class CurrentTurn(
-    val label: String,
-    val appliedIndex: Int,
-    val selected: Boolean,
-    val showInjectedCurrentRow: Boolean,
-    val isLiveHead: Boolean,
+internal sealed interface TurnPanelMode {
+    data object Edit : TurnPanelMode
+
+    data class ReadOnly(
+        val selectedTurnAppliedIndex: Int,
+    ) : TurnPanelMode
+}
+
+internal data class TurnPanelState(
+    val rows: List<TurnPanelRow>,
 )
 
+internal sealed interface TurnPanelRow {
+    val appliedIndex: Int
+    val active: Boolean
+
+    data class Marker(
+        val marker: TurnMarker,
+        override val active: Boolean,
+    ) : TurnPanelRow {
+        override val appliedIndex: Int = marker.appliedIndex
+    }
+
+    data class Current(
+        override val appliedIndex: Int,
+        override val active: Boolean,
+    ) : TurnPanelRow
+}
+
 internal fun List<TurnMarker>.nextTurnNumber(): Int =
-    count { !it.isFuture && it.appliedIndex > 0 } + 1
+    count { !it.isFuture && it.name != OPERATION_START_TURN_NAME } + 1
+
+internal const val OPERATION_START_TURN_NAME = "Operation Start"

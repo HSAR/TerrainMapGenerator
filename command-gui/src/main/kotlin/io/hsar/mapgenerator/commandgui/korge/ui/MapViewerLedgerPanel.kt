@@ -1,7 +1,8 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
-import io.hsar.mapgenerator.commandgui.korge.interaction.CurrentTurn
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnMarker
+import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelRow
+import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelState
 import io.hsar.mapgenerator.commandgui.korge.interaction.nextTurnNumber
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
@@ -25,8 +26,7 @@ internal class MapViewerLedgerPanel(
     viewportHeight: Int,
     private val canUndo: () -> Boolean,
     private val canRedo: () -> Boolean,
-    private val turnMarkers: () -> List<TurnMarker>,
-    private val currentTurn: () -> CurrentTurn,
+    private val turnPanelState: () -> TurnPanelState,
     private val isReadOnly: () -> Boolean,
     private val onUndo: () -> Unit,
     private val onRedo: () -> Unit,
@@ -107,7 +107,7 @@ internal class MapViewerLedgerPanel(
 
     private fun renderContent() {
         val itemWidth = MapViewerLedgerPanelLayoutBuilder.PANEL_WIDTH - (CONTENT_PADDING * 2)
-        val current = currentTurn()
+        val turnPanel = turnPanelState()
         val headerLabel = if (isReadOnly()) "Turns (Read-Only)" else "Turns"
         MapViewerTextViews.leftBox(
             parent = content,
@@ -178,42 +178,36 @@ internal class MapViewerLedgerPanel(
         }
 
         val markersTop = markerRowTop + CONTROL_BUTTON_HEIGHT + SECTION_GAP
-        renderMarkers(markersTop, current)
-        if (current.showInjectedCurrentRow) {
-            renderCurrentTurn(markersTop + renderMarkersHeight() + MARKER_ROW_GAP)
-        }
+        renderRows(markersTop, turnPanel)
     }
 
-    private fun renderMarkers(top: Double, current: CurrentTurn) {
-        turnMarkers().forEachIndexed { index, marker ->
+    private fun renderRows(top: Double, turnPanel: TurnPanelState) {
+        turnPanel.rows.forEachIndexed { index, rowData ->
             val rowTop = top + index * (MARKER_ROW_HEIGHT + MARKER_ROW_GAP)
             val row = content.container()
             row.xy(0.0, rowTop)
-            buildMarkerRow(
-                parent = row,
-                width = MapViewerLedgerPanelLayoutBuilder.PANEL_WIDTH - (CONTENT_PADDING * 2),
-                height = MARKER_ROW_HEIGHT,
-                marker = marker,
-                isCurrentState = marker.appliedIndex == current.appliedIndex,
-            ) {
-                inputActive = false
-                onRevertToTurn(marker)
-            }
-        }
-    }
+            when (rowData) {
+                is TurnPanelRow.Marker -> buildMarkerRow(
+                    parent = row,
+                    width = MapViewerLedgerPanelLayoutBuilder.PANEL_WIDTH - (CONTENT_PADDING * 2),
+                    height = MARKER_ROW_HEIGHT,
+                    marker = rowData.marker,
+                    active = rowData.active,
+                ) {
+                    inputActive = false
+                    onRevertToTurn(rowData.marker)
+                }
 
-    private fun renderCurrentTurn(top: Double) {
-        val current = currentTurn()
-        val row = content.container()
-        row.xy(0.0, top)
-        buildCurrentTurnRow(
-            parent = row,
-            width = MapViewerLedgerPanelLayoutBuilder.PANEL_WIDTH - (CONTENT_PADDING * 2),
-            height = MARKER_ROW_HEIGHT,
-            current = current,
-        ) {
-            inputActive = false
-            onSelectCurrent()
+                is TurnPanelRow.Current -> buildCurrentTurnRow(
+                    parent = row,
+                    width = MapViewerLedgerPanelLayoutBuilder.PANEL_WIDTH - (CONTENT_PADDING * 2),
+                    height = MARKER_ROW_HEIGHT,
+                    current = rowData,
+                ) {
+                    inputActive = false
+                    onSelectCurrent()
+                }
+            }
         }
     }
 
@@ -222,10 +216,9 @@ internal class MapViewerLedgerPanel(
         width: Double,
         height: Double,
         marker: TurnMarker,
-        isCurrentState: Boolean,
+        active: Boolean,
         onClick: () -> Unit,
     ) {
-        val active = isCurrentState
         MapViewerUiBoxes.box(
             parent,
             width,
@@ -281,10 +274,10 @@ internal class MapViewerLedgerPanel(
         parent: Container,
         width: Double,
         height: Double,
-        current: CurrentTurn,
+        current: TurnPanelRow.Current,
         onClick: () -> Unit,
     ) {
-        val active = current.selected
+        val active = current.active
         MapViewerUiBoxes.box(
             parent,
             width,
@@ -297,7 +290,7 @@ internal class MapViewerLedgerPanel(
         val nameWidth = width - TURN_INDEX_WIDTH - textLeft - TURN_TEXT_GAP
         MapViewerTextViews.leftBox(
             parent = parent,
-            text = current.label,
+            text = "Current",
             width = nameWidth,
             height = height,
             color = MapViewerUiStateStyle.text(active),
@@ -325,13 +318,13 @@ internal class MapViewerLedgerPanel(
     }
 
     private fun defaultTurnName(): String =
-        "Turn ${turnMarkers().nextTurnNumber()}".trim()
+        "Turn ${turnPanelState().rows.filterIsInstance<TurnPanelRow.Marker>().map { it.marker }.nextTurnNumber()}"
 
     private fun renderMarkersHeight(): Double =
-        if (turnMarkers().isEmpty()) {
+        if (turnPanelState().rows.isEmpty()) {
             0.0
         } else {
-            (turnMarkers().size * MARKER_ROW_HEIGHT) + ((turnMarkers().size - 1) * MARKER_ROW_GAP)
+            (turnPanelState().rows.size * MARKER_ROW_HEIGHT) + ((turnPanelState().rows.size - 1) * MARKER_ROW_GAP)
         }
 
     private fun layoutViewportWidth(): Int =

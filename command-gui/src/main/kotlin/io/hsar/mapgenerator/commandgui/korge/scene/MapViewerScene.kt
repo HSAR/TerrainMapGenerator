@@ -32,6 +32,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapSelectionOverlayView
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplatePatch
+import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelMode
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchFlow
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchpadView
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerNewOperationView
@@ -183,13 +184,13 @@ internal class MapViewerScene(
                         var saveNoticeMessage: String? = null
                         var saveNoticeExpiresAtMs = 0L
                         var readOnlyBannerLayer: Container? = null
-                        var turnReadOnly = false
+                        var turnMode: TurnPanelMode = TurnPanelMode.Edit
                         var previousLeftHeld = false
                         var previousRightHeld = false
                         var selectionControllerReady = false
 
                         fun isReadOnly(): Boolean =
-                            turnReadOnly
+                            turnMode is TurnPanelMode.ReadOnly
 
                         fun effectiveTool(): MapViewerTool =
                             if (isReadOnly()) {
@@ -238,43 +239,40 @@ internal class MapViewerScene(
                             return generatedThumbnailBitmaps.getOrPut(id) { asset.image.toBitmap32() }
                         }
 
-                        fun saveOperation(noticePrefix: String = "Saved"): Boolean =
-                            if (isReadOnly()) {
-                                false
-                            } else {
-                                val thumbnailImage = renderOperationThumbnail()
-                                val target = saveWriter.write(
-                                    OperationSaveRequest(
-                                        operationId = operationId,
-                                        operationName = settings.operationName ?: "Operation",
-                                        createdAt = operationCreatedAt,
-                                        updatedAt = Instant.now(),
-                                        camera = currentViewport,
-                                        settings = settings,
-                                        mapImage = renderData.baseImage,
-                                        thumbnailImage = thumbnailImage,
-                                        mapAssetSource = operationMapImage?.assetSource ?: loadedOperation?.mapAssetSource,
-                                        ledgerEntries = actionHistory.appliedEntries,
-                                        generatedImageAssets = generatedImageAssets.values.toList(),
-                                    ),
-                                )
-                                saveNoticeMessage = "$noticePrefix ${target.fileName}"
-                                saveNoticeExpiresAtMs = System.currentTimeMillis() + 10_000L
-                                saveNoticeLayer.removeChildren()
-                                val noticeBounds = MapViewerTextViews.bounds(saveNoticeMessage!!)
-                                saveNoticeLayer.solidRect(
-                                    width = noticeBounds.width + 24.0,
-                                    height = noticeBounds.height + 16.0,
-                                    color = korlibs.image.color.RGBA(0, 0, 0, 180),
-                                )
-                                MapViewerTextViews.label(saveNoticeLayer, saveNoticeMessage!!, color = io.hsar.mapgenerator.image.Palette.Colours.WHITE) {
-                                    x = 12.0
-                                    y = 8.0
-                                }
-                                saveNoticeLayer.visible = true
-                                saveNoticeLayer.xy(16.0, gameWindow.height - (noticeBounds.height + 16) - 16.0)
-                                true
+                        fun saveOperation(noticePrefix: String = "Saved"): Boolean {
+                            val thumbnailImage = renderOperationThumbnail()
+                            val target = saveWriter.write(
+                                OperationSaveRequest(
+                                    operationId = operationId,
+                                    operationName = settings.operationName ?: "Operation",
+                                    createdAt = operationCreatedAt,
+                                    updatedAt = Instant.now(),
+                                    camera = currentViewport,
+                                    settings = settings,
+                                    mapImage = renderData.baseImage,
+                                    thumbnailImage = thumbnailImage,
+                                    mapAssetSource = operationMapImage?.assetSource ?: loadedOperation?.mapAssetSource,
+                                    ledgerEntries = actionHistory.fullTimelineEntries,
+                                    generatedImageAssets = generatedImageAssets.values.toList(),
+                                ),
+                            )
+                            saveNoticeMessage = "$noticePrefix ${target.fileName}"
+                            saveNoticeExpiresAtMs = System.currentTimeMillis() + 10_000L
+                            saveNoticeLayer.removeChildren()
+                            val noticeBounds = MapViewerTextViews.bounds(saveNoticeMessage!!)
+                            saveNoticeLayer.solidRect(
+                                width = noticeBounds.width + 24.0,
+                                height = noticeBounds.height + 16.0,
+                                color = korlibs.image.color.RGBA(0, 0, 0, 180),
+                            )
+                            MapViewerTextViews.label(saveNoticeLayer, saveNoticeMessage!!, color = io.hsar.mapgenerator.image.Palette.Colours.WHITE) {
+                                x = 12.0
+                                y = 8.0
                             }
+                            saveNoticeLayer.visible = true
+                            saveNoticeLayer.xy(16.0, gameWindow.height - (noticeBounds.height + 16) - 16.0)
+                            return true
+                        }
 
                         val autosaveController = MapViewerAutosaveController {
                             saveOperation("Autosaved")
@@ -327,6 +325,9 @@ internal class MapViewerScene(
                         }
 
                         fun recordLedgerEntry(entry: LedgerEntry) {
+                            if (isReadOnly()) {
+                                return
+                            }
                             actionHistory.record(entry)
                             autosaveController.enqueue(entry)
                             refreshHistoryUi()
@@ -559,15 +560,23 @@ internal class MapViewerScene(
                                 sidebar.removeUnitTemplate(id, notify = false)
                         }
                         fun performUndo() {
+                            val wasReadOnly = turnMode is TurnPanelMode.ReadOnly
                             actionHistory.undoEntry(ledgerController)?.let {
                                 autosaveController.enqueue(it)
+                                if (wasReadOnly && !actionHistory.canRedo) {
+                                    turnMode = TurnPanelMode.Edit
+                                }
                                 refreshHistoryUi()
                             }
                         }
 
                         fun performRedo() {
+                            val wasReadOnly = turnMode is TurnPanelMode.ReadOnly
                             actionHistory.redoEntry(ledgerController)?.let {
                                 autosaveController.enqueue(it)
+                                if (wasReadOnly && !actionHistory.canRedo) {
+                                    turnMode = TurnPanelMode.Edit
+                                }
                                 refreshHistoryUi()
                             }
                         }
@@ -578,22 +587,22 @@ internal class MapViewerScene(
                             viewportHeight = gameWindow.height,
                             canUndo = { actionHistory.canUndo },
                             canRedo = { actionHistory.canRedo },
-                            turnMarkers = { actionHistory.turnMarkers },
-                            currentTurn = { actionHistory.currentTurn.copy(selected = !turnReadOnly) },
+                            turnPanelState = { actionHistory.turnPanelState(turnMode) },
                             isReadOnly = { isReadOnly() },
                             onUndo = ::performUndo,
                             onRedo = ::performRedo,
                             onAddTurn = { name -> recordLedgerEntry(AddTurnLedgerEntry(name).withGeneratedThumbnailIfRequired()) },
                             onRevertToTurn = { marker ->
-                                if (marker.appliedIndex == actionHistory.currentTurn.appliedIndex) {
-                                    return@MapViewerLedgerPanel
-                                }
                                 clearTransientInteractionState()
                                 selectionController.clear()
                                 actionHistory
                                     .revertToLedgerIndex(marker.appliedIndex, ledgerController)
                                     .forEach(autosaveController::enqueue)
-                                turnReadOnly = actionHistory.canRedo
+                                turnMode = if (marker.appliedIndex == actionHistory.liveHeadIndex) {
+                                    TurnPanelMode.Edit
+                                } else {
+                                    TurnPanelMode.ReadOnly(marker.appliedIndex)
+                                }
                                 refreshHistoryUi()
                             },
                             onSelectCurrent = {
@@ -601,7 +610,7 @@ internal class MapViewerScene(
                                 actionHistory
                                     .revertToCurrent(ledgerController)
                                     .forEach(autosaveController::enqueue)
-                                turnReadOnly = actionHistory.canRedo
+                                turnMode = TurnPanelMode.Edit
                                 refreshHistoryUi()
                             },
                             turnThumbnail = ::turnThumbnailBitmap,
@@ -651,9 +660,7 @@ internal class MapViewerScene(
                             onReturnToLaunchpad = {
                                 clearTransientInteractionState()
                                 escapeMenu?.close()
-                                if (!isReadOnly()) {
-                                    saveOperation()
-                                }
+                                saveOperation()
                                 sceneLayers.destroy()
                                 showLaunchpad()
                             },
