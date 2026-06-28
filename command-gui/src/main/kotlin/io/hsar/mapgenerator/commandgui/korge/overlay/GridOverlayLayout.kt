@@ -80,7 +80,8 @@ internal object GridOverlayLayoutBuilder {
         val mapIdStyle = GridLabelStyle(MapViewerFontRole.STRONG, mapIdFont.first.size2D.toDouble(), mapIdFont.second)
         val minorAxisStyle = GridLabelStyle(MapViewerFontRole.MAIN, minorAxisFont.first.size2D.toDouble(), minorAxisFont.second)
         val majorAxisStyle = GridLabelStyle(MapViewerFontRole.STRONG, majorAxisFont.first.size2D.toDouble(), majorAxisFont.second)
-        val referenceStyle = GridLabelStyle(MapViewerFontRole.MAIN, minorAxisFont.first.size2D.toDouble(), Palette.Colours.RED)
+        val referenceColor = state.activeReference?.color ?: Palette.Colours.RED
+        val referenceStyle = GridLabelStyle(MapViewerFontRole.MAIN, minorAxisFont.first.size2D.toDouble(), referenceColor)
         val mapIdBounds = measureText(layer.mapId, mapIdStyle)
         val axisBounds = measureText("0".repeat(layer.detailLevel), minorAxisStyle)
 
@@ -180,7 +181,7 @@ internal object GridOverlayLayoutBuilder {
                 mapTop = mapTop,
                 mapBottom = mapBottom,
                 gutterBottom = xAxisBottomEdge,
-                color = Palette.Colours.RED.withAlpha(lineAlpha),
+                color = referenceColor.withAlpha(lineAlpha),
                 width = ACTIVE_REFERENCE_LINE_THICKNESS,
                 scale = state.scale,
                 edgeFadeDistance = edgeFadeDistance,
@@ -191,7 +192,7 @@ internal object GridOverlayLayoutBuilder {
                 mapTop = mapTop,
                 mapRight = mapRight,
                 gutterRight = yAxisRightEdge,
-                color = Palette.Colours.RED.withAlpha(rowAlpha),
+                color = referenceColor.withAlpha(rowAlpha),
                 width = ACTIVE_REFERENCE_LINE_THICKNESS,
                 scale = state.scale,
                 edgeFadeDistance = edgeFadeDistance,
@@ -214,7 +215,7 @@ internal object GridOverlayLayoutBuilder {
                     y1 = originScreenY,
                     x2 = destinationScreenX,
                     y2 = destinationScreenY,
-                    color = Palette.Colours.RED,
+                    color = referenceColor,
                 )
                 val distanceBounds = measureText(measurement.distanceText, referenceStyle)
                 val bearingBounds = measureText(measurement.bearingText, referenceStyle)

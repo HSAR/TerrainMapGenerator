@@ -315,7 +315,13 @@ internal class MapPlacedUnitManager(
             offset = grabOffset,
             originalSnapshot = unit.snapshot(),
         )
-        onMovePreviewChanged(MapObjectMovePreview(unit.snapshot().mapCoordinate, mapCoordinate))
+        onMovePreviewChanged(
+            MapObjectMovePreview(
+                origin = unit.snapshot().mapCoordinate,
+                destination = mapCoordinate,
+                color = unit.snapshot().selectionAccentColor(),
+            ),
+        )
     }
 
     private fun updateDrag(pointer: Vector2D, leftHeld: Boolean) {
@@ -354,7 +360,13 @@ internal class MapPlacedUnitManager(
         positionView(state.unit)
         state.preview.container.x = worldPoint.x - state.unit.worldWidth * 0.5
         state.preview.container.y = worldPoint.y - state.unit.worldHeight * 0.5
-        onMovePreviewChanged(MapObjectMovePreview(state.originalSnapshot.mapCoordinate, mapCoordinate))
+        onMovePreviewChanged(
+            MapObjectMovePreview(
+                origin = state.originalSnapshot.mapCoordinate,
+                destination = mapCoordinate,
+                color = state.unit.snapshot().selectionAccentColor(),
+            ),
+        )
     }
 
     private fun openContextMenu(unit: PlacedUnit, screenPoint: Vector2D) {
@@ -399,6 +411,7 @@ internal class MapPlacedUnitManager(
                             origin = originalSnapshot.mapCoordinate,
                             destination = updatedCoordinate,
                             referenceText = "${previewPositionX.trim()} ${previewPositionY.trim()}",
+                            color = unit.snapshot().selectionAccentColor(),
                         ),
                     )
                 } else {

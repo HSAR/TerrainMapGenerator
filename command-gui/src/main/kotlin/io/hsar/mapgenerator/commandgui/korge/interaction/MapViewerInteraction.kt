@@ -18,6 +18,7 @@ import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.grid.GridLayer
+import io.hsar.mapgenerator.image.Palette
 import korlibs.event.Key
 import korlibs.event.MouseButton
 import korlibs.korge.annotations.KorgeExperimental
@@ -444,6 +445,7 @@ internal class MapViewerInteraction(
                 gutterWidth = viewportWidth,
                 gutterHeight = viewportHeight,
             ),
+            color = preview.color ?: Palette.Colours.RED,
         )
     }
 

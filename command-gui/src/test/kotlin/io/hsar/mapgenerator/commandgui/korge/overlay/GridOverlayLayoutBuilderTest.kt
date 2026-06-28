@@ -334,6 +334,41 @@ class GridOverlayLayoutBuilderTest {
         assertThat(line.y2, equalTo(210.0))
     }
 
+    @Test
+    fun `active reference colour drives move preview arrow and labels`() {
+        val layout = GridOverlayLayoutBuilder.build(
+            state = state(
+                mapOffsetX = 0.0,
+                mapOffsetY = 0.0,
+                activeReference = GridCursorReference(
+                    screenX = 260.0,
+                    screenY = 280.0,
+                    text = "0730 3900",
+                    color = Palette.Colours.BLUE,
+                ),
+                measurement = GridMeasurement(
+                    originMapX = 120.0,
+                    originMapY = 180.0,
+                    destinationMapX = 260.0,
+                    destinationMapY = 280.0,
+                    distanceMetres = 344,
+                    bearingDegrees = 125,
+                ),
+            ),
+            measureText = ::measureText,
+        )
+
+        val referenceLabel = layout.labels.first { it.text == "0730 3900" }
+        val distance = layout.labels.first { it.text == "344m" }
+        val bearing = layout.labels.first { it.text == "125\u00b0" }
+        val arrow = layout.overlayArrows.single()
+
+        assertThat(referenceLabel.style.color, equalTo(Palette.Colours.BLUE))
+        assertThat(distance.style.color, equalTo(Palette.Colours.BLUE))
+        assertThat(bearing.style.color, equalTo(Palette.Colours.BLUE))
+        assertThat(arrow.color, equalTo(Palette.Colours.BLUE))
+    }
+
     private fun state(
         mapOffsetX: Double = -140.0,
         mapOffsetY: Double = -120.0,

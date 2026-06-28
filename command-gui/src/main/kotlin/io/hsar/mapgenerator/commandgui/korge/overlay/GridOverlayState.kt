@@ -2,6 +2,8 @@ package io.hsar.mapgenerator.commandgui.korge.overlay
 
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.grid.GridLayer
+import io.hsar.mapgenerator.image.Palette
+import java.awt.Color
 
 internal data class GridOverlayState(
     val viewport: Rectangle,
@@ -27,4 +29,5 @@ internal data class GridCursorReference(
     val screenX: Double,
     val screenY: Double,
     val text: String,
+    val color: Color = Palette.Colours.RED,
 )

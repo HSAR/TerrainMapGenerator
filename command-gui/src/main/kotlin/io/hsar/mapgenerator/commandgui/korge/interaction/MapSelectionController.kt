@@ -241,7 +241,13 @@ internal class MapSelectionController(
                 return
             }
 
-        onMovePreviewChanged(MapObjectMovePreview(before, after))
+        onMovePreviewChanged(
+            MapObjectMovePreview(
+                origin = before,
+                destination = after,
+                color = state.originalSnapshots.selectionAccentColor(),
+            ),
+        )
     }
 
     private fun commitGroupMove(state: GroupMoveState) {

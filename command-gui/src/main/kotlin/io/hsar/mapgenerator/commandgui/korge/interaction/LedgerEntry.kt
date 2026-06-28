@@ -28,6 +28,7 @@ internal data class MapObjectMovePreview(
     val origin: MapCoordinate,
     val destination: MapCoordinate,
     val referenceText: String? = null,
+    val color: java.awt.Color? = null,
 )
 
 internal data class UnitSnapshot(

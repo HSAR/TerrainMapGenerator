@@ -2,7 +2,6 @@ package io.hsar.mapgenerator.commandgui.korge.overlay
 
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.grid.GridLayer
-import io.hsar.mapgenerator.image.Palette
 import korlibs.image.color.RGBA
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.view.Container
@@ -61,7 +60,7 @@ internal class GridOverlayView(
         )
 
     private fun drawChevronArrow(arrow: GridArrow) {
-        val color = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, Palette.Colours.RED.alpha)
+        val color = RGBA(arrow.color.red, arrow.color.green, arrow.color.blue, arrow.color.alpha)
         val dx = arrow.x2 - arrow.x1
         val dy = arrow.y2 - arrow.y1
         val length = hypot(dx, dy)
