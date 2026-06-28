@@ -11,6 +11,7 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingView
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
+import io.hsar.mapgenerator.commandgui.korge.interaction.ContextMenuDeferredActionRunner
 import io.hsar.mapgenerator.commandgui.korge.interaction.ContextMenuManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
@@ -378,6 +379,7 @@ internal class MapViewerScene(
                         resizeSceneViewport(gameWindow.width, gameWindow.height)
 
                         contextMenuManager = ContextMenuManager(sceneLayers.ui)
+                        val deferredContextMenuActions = ContextMenuDeferredActionRunner(sceneLayers.ui)
 
                         unitManager = MapPlacedUnitManager(
                             root = sceneLayers.ui,
@@ -389,6 +391,7 @@ internal class MapViewerScene(
                             gridLayer = renderData.gridLayer,
                             viewportProvider = { currentViewport },
                             contextMenuManager = contextMenuManager,
+                            deferredActionRunner = deferredContextMenuActions,
                             canInteractWithUnits = { effectiveTool() == MapViewerTool.SELECT },
                             isHigherPriorityDragInProgress = { drawingManager.isDragging },
                             onMovePreviewChanged = { preview ->
@@ -501,6 +504,7 @@ internal class MapViewerScene(
                                     }
                             },
                             contextMenuManager = contextMenuManager,
+                            deferredActionRunner = deferredContextMenuActions,
                             onUnitTemplateCreated = { snapshot ->
                                 recordLedgerEntry(CreateUnitTemplateAction(snapshot))
                             },

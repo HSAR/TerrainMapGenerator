@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.ContextMenuDeferredActionRunner
 import io.hsar.mapgenerator.commandgui.korge.interaction.ContextMenuManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapContextMenuTarget
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectMenuAction
@@ -29,6 +30,7 @@ internal class MapViewerSidebar(
     viewportHeight: Int,
     private val onUnitDropped: (MapViewerUnitTemplate, Vector2D) -> Unit,
     private val contextMenuManager: ContextMenuManager? = null,
+    private val deferredActionRunner: ContextMenuDeferredActionRunner? = null,
     private val onUnitTemplateCreated: (UnitTemplateSnapshot) -> Unit = {},
     private val onUnitTemplateDeleted: (UnitTemplateSnapshot) -> Unit = {},
     private val onUnitTemplateEdited: (UnitTemplateSnapshot, UnitTemplateSnapshot) -> Unit = { _, _ -> },
@@ -349,16 +351,20 @@ internal class MapViewerSidebar(
                     listOf(
                         MapPlacedObjectMenuAction(
                             label = "Edit Unit Type",
-                            onSelected = { openEditUnitDialog(row) },
+                            onSelected = { launchModal { openEditUnitDialog(row) } },
                         ),
                         MapPlacedObjectMenuAction(
                             label = "Delete Unit Type",
-                            onSelected = { removeUnitTemplate(row.id) },
+                            onSelected = { launchModal { removeUnitTemplate(row.id) } },
                         ),
                     )
             },
             screenPoint = screenPoint,
         )
+    }
+
+    private fun launchModal(action: () -> Unit) {
+        deferredActionRunner?.launch(action) ?: action()
     }
 
     private fun layoutViewportWidth(): Int =

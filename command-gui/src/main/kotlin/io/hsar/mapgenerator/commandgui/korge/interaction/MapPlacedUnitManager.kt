@@ -34,6 +34,7 @@ internal class MapPlacedUnitManager(
     private val gridLayer: GridLayer? = null,
     private val viewportProvider: () -> CameraViewport,
     private val contextMenuManager: ContextMenuManager,
+    private val deferredActionRunner: ContextMenuDeferredActionRunner,
     private val canInteractWithUnits: () -> Boolean = { true },
     private val isHigherPriorityDragInProgress: () -> Boolean = { false },
     private val onMovePreviewChanged: (MapObjectMovePreview?) -> Unit = {},
@@ -590,7 +591,7 @@ internal class MapPlacedUnitManager(
             listOf(
                 MapPlacedObjectMenuAction(
                     label = "Edit Unit",
-                    onSelected = { openEditDialog(this) },
+                    onSelected = { deferredActionRunner.launch { openEditDialog(this) } },
                 ),
                 MapPlacedObjectMenuAction(
                     label = "Delete Unit",

@@ -32,6 +32,7 @@ class MapPlacedUnitManagerTest {
                 )
             },
             contextMenuManager = ContextMenuManager(root),
+            deferredActionRunner = ContextMenuDeferredActionRunner(root),
         )
         val templateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000011"))
         val unitId = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000012"))
