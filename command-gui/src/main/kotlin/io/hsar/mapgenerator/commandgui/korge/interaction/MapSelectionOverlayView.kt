@@ -1,11 +1,13 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.color.RGBA
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.graphics
 import korlibs.korge.view.solidRect
+import java.awt.Color
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -18,10 +20,11 @@ internal class MapSelectionOverlayView(
 
     fun update(state: MapSelectionState) {
         content.removeChildren()
-        state.groupFrame?.let(::drawGroupFrame)
+        val selectionColor = state.selected.selectionAccentColor()
+        state.groupFrame?.let { drawGroupFrame(it, selectionColor) }
         state.selected.forEach(::drawHighlight)
         state.box?.let(::drawSelectionBox)
-        state.pivotHandle?.let(::drawPivotHandle)
+        state.pivotHandle?.let { drawPivotHandle(it, selectionColor) }
     }
 
     private fun drawSelectionBox(box: ScreenSelectionBox) {
@@ -50,12 +53,12 @@ internal class MapSelectionOverlayView(
         }
     }
 
-    private fun drawGroupFrame(frame: ScreenSelectionFrame) {
-        drawFilledQuad(frame.corners, fill = groupFill)
-        drawEdge(frame.topLeft, frame.topRight, groupStroke)
-        drawEdge(frame.topRight, frame.bottomRight, groupStroke)
-        drawEdge(frame.bottomRight, frame.bottomLeft, groupStroke)
-        drawEdge(frame.bottomLeft, frame.topLeft, groupStroke)
+    private fun drawGroupFrame(frame: ScreenSelectionFrame, color: Color) {
+        drawFilledQuad(frame.corners, fill = MapViewerUiBoxes.toRgba(color, GROUP_FILL_ALPHA))
+        drawEdge(frame.topLeft, frame.topRight, MapViewerUiBoxes.toRgba(color, GROUP_STROKE_ALPHA))
+        drawEdge(frame.topRight, frame.bottomRight, MapViewerUiBoxes.toRgba(color, GROUP_STROKE_ALPHA))
+        drawEdge(frame.bottomRight, frame.bottomLeft, MapViewerUiBoxes.toRgba(color, GROUP_STROKE_ALPHA))
+        drawEdge(frame.bottomLeft, frame.topLeft, MapViewerUiBoxes.toRgba(color, GROUP_STROKE_ALPHA))
     }
 
     private fun drawHighlight(snapshot: MapPlacedObjectSnapshot) {
@@ -71,19 +74,20 @@ internal class MapSelectionOverlayView(
         if (width <= 0.0 || height <= 0.0) {
             return
         }
-        content.solidRect(width, HIGHLIGHT_STROKE_WIDTH, highlightStroke) {
+        val highlightColor = MapViewerUiBoxes.toRgba(snapshot.selectionAccentColor(), HIGHLIGHT_STROKE_ALPHA)
+        content.solidRect(width, HIGHLIGHT_STROKE_WIDTH, highlightColor) {
             x = left
             y = top
         }
-        content.solidRect(width, HIGHLIGHT_STROKE_WIDTH, highlightStroke) {
+        content.solidRect(width, HIGHLIGHT_STROKE_WIDTH, highlightColor) {
             x = left
             y = top + height - HIGHLIGHT_STROKE_WIDTH
         }
-        content.solidRect(HIGHLIGHT_STROKE_WIDTH, height, highlightStroke) {
+        content.solidRect(HIGHLIGHT_STROKE_WIDTH, height, highlightColor) {
             x = left
             y = top
         }
-        content.solidRect(HIGHLIGHT_STROKE_WIDTH, height, highlightStroke) {
+        content.solidRect(HIGHLIGHT_STROKE_WIDTH, height, highlightColor) {
             x = left + width - HIGHLIGHT_STROKE_WIDTH
             y = top
         }
@@ -122,9 +126,9 @@ internal class MapSelectionOverlayView(
         )
     }
 
-    private fun drawPivotHandle(handle: ScreenPivotHandle) {
+    private fun drawPivotHandle(handle: ScreenPivotHandle, color: Color) {
         content.graphics {
-            fill(handleFill) {
+            fill(MapViewerUiBoxes.toRgba(color, HANDLE_FILL_ALPHA)) {
                 val steps = 24
                 val firstX = handle.center.x + cos(0.0) * handle.radius
                 val firstY = handle.center.y + sin(0.0) * handle.radius
@@ -140,7 +144,7 @@ internal class MapSelectionOverlayView(
             }
         }
         content.graphics {
-            fill(handleCore) {
+            fill(MapViewerUiBoxes.toRgba(color, HANDLE_CORE_ALPHA)) {
                 val radius = handle.radius * 0.55
                 val steps = 20
                 val firstX = handle.center.x + radius
@@ -159,11 +163,11 @@ internal class MapSelectionOverlayView(
         private const val SELECTION_STROKE_WIDTH = 2.0
         private const val HIGHLIGHT_STROKE_WIDTH = 2.0
         private const val HIGHLIGHT_MAP_PADDING = 0.002
+        private const val GROUP_FILL_ALPHA = 28
+        private const val GROUP_STROKE_ALPHA = 150
+        private const val HIGHLIGHT_STROKE_ALPHA = 210
+        private const val HANDLE_FILL_ALPHA = 230
+        private const val HANDLE_CORE_ALPHA = 230
         private val selectionStroke = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 170)
-        private val highlightStroke = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 210)
-        private val groupFill = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 28)
-        private val groupStroke = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 150)
-        private val handleFill = RGBA(Palette.Colours.WHITE.red, Palette.Colours.WHITE.green, Palette.Colours.WHITE.blue, 230)
-        private val handleCore = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 230)
     }
 }

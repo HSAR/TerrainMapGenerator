@@ -4,6 +4,7 @@ import io.hsar.mapgenerator.commandgui.ViewerGeometry
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
+import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
 import korlibs.image.bitmap.Bitmap32
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
@@ -175,11 +176,55 @@ class MapSelectionGeometryTest {
         assertThat(centroid?.y, equalTo(0.5))
     }
 
-    private fun unitSnapshot(id: String, x: Double, y: Double) =
+    @Test
+    fun `selection accent colour follows the selected unit affiliation`() {
+        val unit = unitSnapshot(id = "00000000-0000-0000-0000-000000000031", x = 0.5, y = 0.5, affiliation = UnitAffiliation.Hostile)
+
+        assertThat(unit.selectionAccentColor(), equalTo(UnitAffiliationUi.swatchColor(UnitAffiliation.Hostile)))
+    }
+
+    @Test
+    fun `multi selection ignores drawings and treats null affiliations as wildcards`() {
+        val friend = unitSnapshot(id = "00000000-0000-0000-0000-000000000041", x = 0.2, y = 0.2, affiliation = UnitAffiliation.Friend)
+        val unknown = unitSnapshot(id = "00000000-0000-0000-0000-000000000042", x = 0.8, y = 0.2, affiliation = null)
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000043")),
+            drawing = LineDrawing(
+                start = MapDrawingPoint(0.4, 0.4),
+                end = MapDrawingPoint(0.6, 0.6),
+                color = Color.RED,
+            ),
+        )
+
+        assertThat(listOf(friend, unknown, drawing).selectionAccentColor(), equalTo(UnitAffiliationUi.swatchColor(UnitAffiliation.Friend)))
+    }
+
+    @Test
+    fun `multi selection falls back to default when affiliations are mixed or missing`() {
+        val friend = unitSnapshot(id = "00000000-0000-0000-0000-000000000051", x = 0.2, y = 0.2, affiliation = UnitAffiliation.Friend)
+        val hostile = unitSnapshot(id = "00000000-0000-0000-0000-000000000052", x = 0.8, y = 0.2, affiliation = UnitAffiliation.Hostile)
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000053")),
+            drawing = LineDrawing(
+                start = MapDrawingPoint(0.4, 0.4),
+                end = MapDrawingPoint(0.6, 0.6),
+                color = Color.RED,
+            ),
+        )
+
+        assertThat(listOf(friend, hostile, drawing).selectionAccentColor(), equalTo(UnitAffiliationUi.swatchColor(null)))
+        assertThat(listOf(drawing).selectionAccentColor(), equalTo(UnitAffiliationUi.swatchColor(null)))
+        assertThat(
+            listOf(unitSnapshot(id = "00000000-0000-0000-0000-000000000054", x = 0.5, y = 0.5, affiliation = null)).selectionAccentColor(),
+            equalTo(UnitAffiliationUi.swatchColor(null))
+        )
+    }
+
+    private fun unitSnapshot(id: String, x: Double, y: Double, affiliation: UnitAffiliation? = null) =
         UnitSnapshot(
             id = MapPlacedObjectId(UUID.fromString(id)),
             unitTemplateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
-            template = MapViewerUnitTemplate(UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")), "Unit", Bitmap32(4, 4)),
+            template = MapViewerUnitTemplate(UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")), "Unit", Bitmap32(4, 4), affiliation = affiliation),
             instanceName = "Unit",
             destroyed = false,
             facingDegrees = null,

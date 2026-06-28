@@ -18,6 +18,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectPatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
@@ -59,6 +60,7 @@ class OperationSaveRoundTripTest {
             name = "Alpha",
             bitmap = unitBitmap,
             assetSource = AssetSource.fromFile(unitFile.toFile()),
+            affiliation = UnitAffiliation.Neutral,
         )
         val createdUnit = UnitSnapshot(
             id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000007")),
@@ -109,6 +111,10 @@ class OperationSaveRoundTripTest {
         )
 
         val loaded = OperationSaveLoader().load(firstSave)
+        assertThat(
+            loaded.ledgerEntries.filterIsInstance<CreateUnitTemplateAction>().single().snapshot.template.affiliation,
+            equalTo(UnitAffiliation.Neutral),
+        )
         val secondSave = writer.write(
             request(
                 operationId = loaded.operationId,
@@ -379,9 +385,10 @@ class OperationSaveRoundTripTest {
                 extension = "png",
                 mediaType = "image/png",
             ),
+            affiliation = UnitAffiliation.Hostile,
         )
         val before = UnitTemplateSnapshot(template.id, template, 0)
-        val after = before.copy(template = before.template.copy(name = "S"))
+        val after = before.copy(template = before.template.copy(name = "S", affiliation = UnitAffiliation.Unknown))
 
         val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
             request(
@@ -409,6 +416,7 @@ class OperationSaveRoundTripTest {
         val edit = loaded.ledgerEntries.filterIsInstance<EditUnitTemplateAction>().single()
         assertThat(edit.id, equalTo(before.id))
         assertThat(edit.afterSnapshot?.template?.name, equalTo("S"))
+        assertThat(edit.afterSnapshot?.template?.affiliation, equalTo(UnitAffiliation.Unknown))
     }
 
     @Test

@@ -40,6 +40,14 @@ internal data class MapViewerDialogLayout(
     val resizeHandle: ScreenBounds,
 )
 
+internal fun ScreenBounds.offsetBy(dx: Double, dy: Double): ScreenBounds =
+    ScreenBounds(
+        left = left + dx,
+        top = top + dy,
+        width = width,
+        height = height,
+    )
+
 internal object MapViewerDialogLayoutBuilder {
     const val OUTER_PADDING = 16.0
     const val TITLE_BAR_HEIGHT = 38.0

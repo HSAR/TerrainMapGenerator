@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.NullNode
 import com.fasterxml.jackson.databind.node.TextNode
 import java.util.*
 
@@ -16,10 +17,16 @@ internal object MapViewerUnitTemplatePatch {
                 if (before.template.name != after.template.name) {
                     put("name", TextNode(after.template.name))
                 }
+                if (before.template.affiliation != after.template.affiliation) {
+                    put("affiliation", after.template.affiliation.toNode())
+                }
             },
             backward = buildMap {
                 if (before.template.name != after.template.name) {
                     put("name", TextNode(before.template.name))
+                }
+                if (before.template.affiliation != after.template.affiliation) {
+                    put("affiliation", before.template.affiliation.toNode())
                 }
             },
         )
@@ -47,6 +54,18 @@ internal object MapViewerUnitTemplatePatch {
             ?.asText()
             ?.let { template = template.copy(name = it) }
 
+        changes["affiliation"]
+            ?.let { node ->
+                template = if (node.isNull) {
+                    template.copy(affiliation = null)
+                } else {
+                    template.copy(affiliation = UnitAffiliation.valueOf(node.asText()))
+                }
+            }
+
         return snapshot.copy(template = template)
     }
+
+    private fun UnitAffiliation?.toNode(): JsonNode =
+        this?.let { TextNode(it.name) } ?: NullNode.instance
 }

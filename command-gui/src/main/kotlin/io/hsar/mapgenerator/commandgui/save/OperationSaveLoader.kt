@@ -24,6 +24,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplatePatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
@@ -302,6 +303,7 @@ private class RuntimeLedgerReplayer(
                 name = name,
                 bitmap = asset.bitmap,
                 assetSource = asset.assetSource,
+                affiliation = affiliation,
             )
         }
 
@@ -328,24 +330,18 @@ private class RuntimeLedgerReplayer(
 
     private fun applyUnitTemplateEdit(id: UUID, changes: Map<String, com.fasterxml.jackson.databind.JsonNode?>): UnitTemplateSnapshot? {
         val current = snapshotFor(id) ?: return null
-        var template = current.template
-        changes["assetId"]
-            ?.takeUnless { node -> node.isNull }
-            ?.asText()
-            ?.let { assetId ->
-                val loadedAsset = loadTemplateAsset(assetId)
-                template = template.copy(
+        val updated = MapViewerUnitTemplatePatch.apply(
+            snapshot = current,
+            changes = changes,
+        ) { assetId ->
+            loadTemplateAsset(assetId.toString()).let { loadedAsset ->
+                current.template.copy(
                     bitmap = loadedAsset.bitmap,
                     assetSource = loadedAsset.assetSource,
                 )
             }
-        changes["name"]
-            ?.takeUnless { node -> node.isNull }
-            ?.asText()
-            ?.let { template = template.copy(name = it) }
-
-        val updated = current.copy(template = template)
-        templatesById[id] = template
+        }
+        templatesById[id] = updated.template
         return updated
     }
 

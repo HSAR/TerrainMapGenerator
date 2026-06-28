@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.NullNode
 import com.fasterxml.jackson.databind.node.TextNode
 import korlibs.image.bitmap.Bitmap32
 import org.hamcrest.MatcherAssert.assertThat
@@ -95,6 +96,37 @@ class LedgerEntryHistoryTest {
 
         history.redo(controller)
         assertThat(controller.templates.single().template.name, equalTo("S"))
+    }
+
+    @Test
+    fun `unit template edits can clear affiliation through the ledger`() {
+        val history = MapActionHistory()
+        val controller = TestLedgerController()
+        val before = UnitTemplateSnapshot(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000011")),
+            template = MapViewerUnitTemplate(
+                id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000011")),
+                name = "SP",
+                bitmap = Bitmap32(4, 4),
+                affiliation = UnitAffiliation.Friend,
+            ),
+            index = 0,
+        )
+
+        controller.createUnitTemplate(before)
+        history.record(
+            EditUnitTemplateAction(
+                id = before.id,
+                forward = mapOf("affiliation" to NullNode.instance),
+                backward = mapOf("affiliation" to TextNode("Friend")),
+            ),
+        )
+
+        history.undo(controller)
+        assertThat(controller.templates.single().template.affiliation, equalTo(UnitAffiliation.Friend))
+
+        history.redo(controller)
+        assertThat(controller.templates.single().template.affiliation == null, equalTo(true))
     }
 
     @Test
@@ -321,11 +353,7 @@ class LedgerEntryHistoryTest {
         override fun applyUnitTemplateEdit(id: UnitTemplateId, changes: Map<String, JsonNode?>): UnitTemplateSnapshot? {
             val index = templates.indexOfFirst { it.id == id }
             if (index < 0) return null
-            val updated = templates[index].copy(
-                template = templates[index].template.copy(
-                    name = changes["name"]?.takeIf { !it.isNull }?.asText() ?: templates[index].template.name,
-                ),
-            )
+            val updated = MapViewerUnitTemplatePatch.apply(templates[index], changes)
             templates[index] = updated
             return updated
         }

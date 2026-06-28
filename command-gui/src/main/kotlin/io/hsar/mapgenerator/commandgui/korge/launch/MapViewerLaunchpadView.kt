@@ -138,7 +138,9 @@ internal class MapViewerLaunchpadView(
                 renderSaveRow(content, summary, index)
             }
         }
-        MapViewerScrollbar.render(panel, layout.scrollbarBounds, scrollState)
+        MapViewerScrollbar.render(panel, layout.scrollbarBounds, scrollState) { pointerY ->
+            scrollDragState = ScrollDragState(pointerY, scrollState.offset)
+        }
 
         MapViewerLaunchUi.button(
             parent = panel,
@@ -194,12 +196,8 @@ internal class MapViewerLaunchpadView(
             return
         }
 
-        val thumbBounds = MapViewerScrollbar.thumbBounds(layout.scrollbarBounds, scrollState)
         val state = scrollDragState
         if (state == null) {
-            if (thumbBounds.contains(pointer)) {
-                scrollDragState = ScrollDragState(pointer.y, scrollState.offset)
-            }
             return
         }
 

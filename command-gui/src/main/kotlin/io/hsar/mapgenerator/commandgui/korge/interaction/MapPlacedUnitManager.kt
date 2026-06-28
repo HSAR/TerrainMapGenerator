@@ -74,6 +74,12 @@ internal class MapPlacedUnitManager(
         units.forEach { it.updateFacingOverlay() }
     }
 
+    fun replaceUnitTemplate(snapshot: UnitTemplateSnapshot) {
+        units
+            .filter { it.unitTemplateId == snapshot.id }
+            .forEach { it.updateTemplate(snapshot.template) }
+    }
+
     private fun interactionsEnabled(): Boolean =
         canInteractWithUnits() && editDialog == null
 
@@ -594,6 +600,19 @@ internal class MapPlacedUnitManager(
             overlayLayer = view.container().also { it.zIndex = 2.0 }
             updateFacingOverlay()
             updateStateOverlay()
+        }
+
+        fun updateTemplate(template: MapViewerUnitTemplate) {
+            unitTemplateId = template.id
+            this.template = template
+            val unitSize = worldUnitSize(template.bitmap)
+            worldWidth = unitSize.worldWidth
+            worldHeight = unitSize.worldHeight
+            normalizedWidth = unitSize.worldWidth / mapWidth
+            normalizedHeight = unitSize.worldHeight / mapHeight
+            rebuildVisual(template.bitmap)
+            view.scale = unitSize.worldScale
+            positionView(this)
         }
 
         fun updateFacingOverlay(forceActive: Boolean = false) {

@@ -214,12 +214,17 @@ internal class MapViewerSidebar(
         MapViewerTextViews.leftBox(
             parent = item,
             text = row.template.name,
-            width = itemWidth - (iconInset + iconSlotWidth + 4.0),
+            width = itemWidth - (iconInset + iconSlotWidth + 4.0 + iconSlotWidth),
             height = UNIT_ITEM_HEIGHT,
             color = Palette.Colours.WHITE,
         ) {
             x = iconInset + iconSlotWidth + 4.0
         }
+
+        val affiliationFrame = item.container()
+        affiliationFrame.xy(itemWidth - iconSlotWidth + (iconSlotWidth - iconSize) * 0.5, (UNIT_ITEM_HEIGHT - iconSize) * 0.5)
+        affiliationFrame.solidRect(iconSlotWidth, iconSize, RGBA(0, 0, 0, 0))
+        MapViewerSwatchViews.render(affiliationFrame, UnitAffiliationUi.swatchColor(row.template.affiliation), iconSize)
     }
 
     private fun buildToggleButton(parent: Container, width: Double, height: Double, label: String, onClick: () -> Unit = {}) {

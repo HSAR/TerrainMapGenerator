@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.databind.JsonNode
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import java.util.*
 
 internal data class GameSaveDto(
@@ -119,6 +120,7 @@ internal data class UnitTemplateSnapshotSaveDto(
 internal data class UnitTemplateSaveDto(
     val name: String,
     val assetId: String,
+    val affiliation: UnitAffiliation? = null,
 )
 
 internal data class DrawingSaveDto(

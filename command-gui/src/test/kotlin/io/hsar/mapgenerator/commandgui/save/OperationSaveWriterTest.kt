@@ -6,6 +6,7 @@ import io.hsar.mapgenerator.commandgui.geometryFor
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.launch.defaultGridConfiguration
@@ -45,6 +46,7 @@ class OperationSaveWriterTest {
             name = "Infantry",
             bitmap = Bitmap32(4, 4) { _, _ -> RGBA(255, 0, 0, 255) },
             assetSource = AssetSource.fromFile(unitFile.toFile()),
+            affiliation = UnitAffiliation.Friend,
         )
         val writer = writerWithUuids(
             UUID.fromString("00000000-0000-0000-0000-000000000001"),
@@ -81,6 +83,7 @@ class OperationSaveWriterTest {
             assertThat(gameJson["map"]["gridStartY"].asDouble(), equalTo(expectedGrid.startY))
         }
         assertThat((save.ledger.entries.single() as CreateUnitTemplateEntrySaveDto).unitTemplate.template.assetId, equalTo("00000000-0000-0000-0000-000000000002"))
+        assertThat((save.ledger.entries.single() as CreateUnitTemplateEntrySaveDto).unitTemplate.template.affiliation, equalTo(UnitAffiliation.Friend))
 
         ZipFile(savePath.toFile()).use { zip ->
             assertThat(zip.getEntry("game.json") != null, equalTo(true))

@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
@@ -31,8 +32,17 @@ internal class MapViewerUnitCreateDialog(
     private val layer = root.container()
     private var selectedBitmap: Bitmap32? = null
     private var selectedAssetSource: AssetSource? = null
+    private var selectedAffiliation: UnitAffiliation? = initialTemplate?.affiliation
     private var previewImage: Image? = null
     private var isOpen = false
+    private val affiliationDropdown = MapViewerDropdownMenu(
+        root = root,
+        options = UnitAffiliationUi.options,
+        onSelected = { affiliation -> selectedAffiliation = affiliation },
+        labelForValue = UnitAffiliationUi::label,
+        swatchForValue = UnitAffiliationUi::swatchColor,
+        menuWidth = AFFILIATION_DROPDOWN_WIDTH,
+    )
 
     fun show(viewportWidth: Int, viewportHeight: Int) {
         if (isOpen) {
@@ -49,7 +59,7 @@ internal class MapViewerUnitCreateDialog(
             }
         }
 
-        val panelWidth = 420.0
+        val panelWidth = PREFERRED_WIDTH
         val panelHeight = 320.0
         val panelLeft = (viewportWidth - panelWidth) * 0.5
         val panelTop = (viewportHeight - panelHeight) * 0.5
@@ -67,7 +77,17 @@ internal class MapViewerUnitCreateDialog(
         nameLabel.xy(0.0, 42.0)
         MapViewerTextViews.label(nameLabel, "Name", color = Palette.Colours.WHITE)
 
-        val nameInput = MapViewerTextInputs.input(content, initialTemplate?.name ?: "Unit Type Name", 260.0, 32.0, 0.0, 68.0)
+        val nameInput = MapViewerTextInputs.input(content, initialTemplate?.name ?: "Unit Type Name", NAME_FIELD_WIDTH, 32.0, 0.0, 68.0)
+
+        affiliationDropdown.renderField(
+            parent = content,
+            label = "Affiliation",
+            value = selectedAffiliation,
+            x = NAME_FIELD_WIDTH + FIELD_GAP,
+            y = 42.0,
+            width = AFFILIATION_DROPDOWN_WIDTH,
+            height = 32.0,
+        )
 
         val imageLabel = content.container()
         imageLabel.xy(0.0, 114.0)
@@ -134,6 +154,7 @@ internal class MapViewerUnitCreateDialog(
                             name = name,
                             bitmap = bitmap,
                             assetSource = selectedAssetSource,
+                            affiliation = selectedAffiliation,
                         ),
                     )
                     close()
@@ -156,6 +177,7 @@ internal class MapViewerUnitCreateDialog(
         }
 
         isOpen = false
+        affiliationDropdown.close()
         layer.removeFromParent()
         onDismiss()
     }
@@ -190,7 +212,11 @@ internal class MapViewerUnitCreateDialog(
 
     private companion object {
         const val Z_INDEX = 40_000.0
+        const val PREFERRED_WIDTH = 520.0
         const val PREVIEW_WIDTH = 180.0
         const val PREVIEW_HEIGHT = 50.0
+        const val NAME_FIELD_WIDTH = 240.0
+        const val AFFILIATION_DROPDOWN_WIDTH = 220.0
+        const val FIELD_GAP = 20.0
     }
 }

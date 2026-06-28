@@ -1,7 +1,10 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.image.Palette
+import korlibs.event.MouseButton
+import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
+import korlibs.korge.view.container
 import korlibs.korge.view.xy
 import kotlin.math.max
 
@@ -38,28 +41,36 @@ internal object MapViewerScrollbar {
 
     fun thumbBounds(bounds: ScreenBounds, state: MapViewerScrollState): ScreenBounds {
         val disabled = !state.needsScrolling
+        val trackHeight = (bounds.height - INNER_INSET * 2.0).coerceAtLeast(0.0)
         val thumbHeight = if (disabled) {
-            bounds.height
+            trackHeight
         } else {
-            max(bounds.height * (state.viewportHeight / state.contentHeight), MIN_THUMB_HEIGHT)
+            max(trackHeight * (state.viewportHeight / state.contentHeight), MIN_THUMB_HEIGHT)
         }
         val thumbTop = if (disabled) {
-            bounds.top
+            bounds.top + INNER_INSET
         } else {
-            bounds.top + ((bounds.height - thumbHeight) * (state.offset / state.maxOffset))
+            bounds.top + INNER_INSET + ((trackHeight - thumbHeight).coerceAtLeast(0.0) * (state.offset / state.maxOffset))
         }
         return ScreenBounds(
             left = bounds.left + INNER_INSET,
-            top = thumbTop + INNER_INSET,
-            width = bounds.width - INNER_INSET * 2.0,
-            height = thumbHeight - INNER_INSET * 2.0,
+            top = thumbTop,
+            width = (bounds.width - INNER_INSET * 2.0).coerceAtLeast(0.0),
+            height = thumbHeight,
         )
     }
 
-    fun render(parent: Container, bounds: ScreenBounds, state: MapViewerScrollState) {
+    fun render(
+        parent: Container,
+        bounds: ScreenBounds,
+        state: MapViewerScrollState,
+        onThumbDown: ((Double) -> Unit)? = null,
+    ) {
         val disabled = !state.needsScrolling
+        val track = parent.container()
+        track.xy(bounds.left, bounds.top)
         MapViewerUiBoxes.box(
-            parent,
+            track,
             bounds.width,
             bounds.height,
             style = {
@@ -70,11 +81,13 @@ internal object MapViewerScrollbar {
                     borderAlpha = MapViewerUiStateStyle.ACTIVE_ALPHA,
                 )
             },
-        ).xy(bounds.left, bounds.top)
+        )
 
         val thumb = thumbBounds(bounds, state)
+        val thumbView = parent.container()
+        thumbView.xy(thumb.left, thumb.top)
         MapViewerUiBoxes.box(
-            parent,
+            thumbView,
             thumb.width,
             thumb.height,
             style = {
@@ -85,7 +98,16 @@ internal object MapViewerScrollbar {
                     borderAlpha = MapViewerUiStateStyle.ACTIVE_ALPHA,
                 )
             },
-        ).xy(thumb.left, thumb.top)
+        )
+        if (!disabled && onThumbDown != null) {
+            track.mouse {
+                onDown {
+                    if (button == MouseButton.LEFT && currentPosGlobal.x in thumb.left..thumb.right && currentPosGlobal.y in thumb.top..thumb.bottom) {
+                        onThumbDown(currentPosGlobal.y)
+                    }
+                }
+            }
+        }
     }
 
     fun dragOffset(
@@ -100,7 +122,7 @@ internal object MapViewerScrollbar {
         }
 
         val thumb = thumbBounds(bounds, state)
-        val travel = (bounds.height - thumb.height).coerceAtLeast(1.0)
+        val travel = ((bounds.height - INNER_INSET * 2.0) - thumb.height).coerceAtLeast(1.0)
         val delta = currentPointerY - dragStartPointerY
         return (dragStartOffset + delta * (state.maxOffset / travel)).coerceIn(0.0, state.maxOffset)
     }

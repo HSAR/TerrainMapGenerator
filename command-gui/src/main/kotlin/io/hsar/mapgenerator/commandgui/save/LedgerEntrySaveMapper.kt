@@ -99,6 +99,7 @@ internal class LedgerEntrySaveMapper(
         UnitTemplateSaveDto(
             name = name,
             assetId = assets.registerTemplate(this).id.toString(),
+            affiliation = affiliation,
         )
 
     private fun EditUnitTemplateAction.saveForwardPatch(): Map<String, com.fasterxml.jackson.databind.JsonNode?> =
@@ -110,6 +111,9 @@ internal class LedgerEntrySaveMapper(
             buildMap {
                 if (beforeSnapshot.template.name != afterSnapshot.template.name) {
                     put("name", TextNode(afterSnapshot.template.name))
+                }
+                if (beforeSnapshot.template.affiliation != afterSnapshot.template.affiliation) {
+                    put("affiliation", afterSnapshot.template.affiliation.toNode())
                 }
                 if (beforeAssetId != afterAssetId) {
                     put("assetId", TextNode(afterAssetId))
@@ -126,6 +130,9 @@ internal class LedgerEntrySaveMapper(
             buildMap {
                 if (beforeSnapshot.template.name != afterSnapshot.template.name) {
                     put("name", TextNode(beforeSnapshot.template.name))
+                }
+                if (beforeSnapshot.template.affiliation != afterSnapshot.template.affiliation) {
+                    put("affiliation", beforeSnapshot.template.affiliation.toNode())
                 }
                 if (beforeAssetId != afterAssetId) {
                     put("assetId", TextNode(beforeAssetId))
@@ -171,4 +178,7 @@ internal class LedgerEntrySaveMapper(
 
     private fun Color.toArgbHex() =
         "#%02X%02X%02X%02X".format(alpha, red, green, blue)
+
+    private fun io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation?.toNode(): com.fasterxml.jackson.databind.JsonNode =
+        this?.let { TextNode(it.name) } ?: com.fasterxml.jackson.databind.node.NullNode.instance
 }

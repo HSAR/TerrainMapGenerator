@@ -146,7 +146,9 @@ internal class MapViewerDialogWindow(
             }
         }
         if (scrollState.needsScrolling) {
-            MapViewerScrollbar.render(panel, layout.scrollbar, scrollState)
+            MapViewerScrollbar.render(panel, layout.scrollbar, scrollState) { pointerY ->
+                scrollDragState = ScrollDragState(pointerY, scrollState.offset)
+            }
         }
         layout.footer?.let { footer ->
             MapViewerDialogActions.render(panel, footer, actions)
@@ -169,18 +171,15 @@ internal class MapViewerDialogWindow(
             return
         }
 
-        val thumbBounds = MapViewerScrollbar.thumbBounds(layout.scrollbar, scrollState)
         val state = scrollDragState
         if (state == null) {
-            if (layout.scrollbar.contains(pointer) && thumbBounds.contains(pointer)) {
-                scrollDragState = ScrollDragState(pointer.y, scrollState.offset)
-            }
             return
         }
 
+        val scrollbarBounds = layout.scrollbar.offsetBy(currentBounds.left, currentBounds.top)
         scrollState = scrollState.withOffset(
             MapViewerScrollbar.dragOffset(
-                bounds = layout.scrollbar,
+                bounds = scrollbarBounds,
                 state = scrollState,
                 dragStartPointerY = state.startPointerY,
                 dragStartOffset = state.startOffset,

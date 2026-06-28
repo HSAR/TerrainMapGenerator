@@ -518,6 +518,7 @@ internal class MapViewerScene(
                                         afterSnapshot = after,
                                     ),
                                 )
+                                unitManager.replaceUnitTemplate(after)
                             },
                             canStartUnitDrag = { effectiveTool() == MapViewerTool.SELECT },
                             initialUnitTemplates = emptyList(),
@@ -543,6 +544,7 @@ internal class MapViewerScene(
 
                             override fun replaceUnitTemplate(snapshot: io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot) {
                                 sidebar.replaceUnitTemplate(snapshot, notify = false)
+                                unitManager.replaceUnitTemplate(snapshot)
                             }
 
                             override fun applyUnitTemplateEdit(
@@ -553,7 +555,7 @@ internal class MapViewerScene(
                                 return sidebar.replaceUnitTemplate(
                                     MapViewerUnitTemplatePatch.apply(current, changes),
                                     notify = false,
-                                )
+                                )?.also(unitManager::replaceUnitTemplate)
                             }
 
                             override fun deleteUnitTemplate(id: io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId): io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot? =
