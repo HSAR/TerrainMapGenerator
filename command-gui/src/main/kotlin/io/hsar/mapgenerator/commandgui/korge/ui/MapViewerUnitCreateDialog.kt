@@ -4,21 +4,19 @@ import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
+import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchUi
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
-import korlibs.image.color.RGBA
 import korlibs.korge.annotations.KorgeExperimental
-import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
-import korlibs.korge.view.Image
 import korlibs.korge.view.container
 import korlibs.korge.view.image
-import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import java.io.File
 import java.util.*
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
+import kotlin.math.max
 
 @OptIn(KorgeExperimental::class)
 internal class MapViewerUnitCreateDialog(
@@ -29,11 +27,15 @@ internal class MapViewerUnitCreateDialog(
     private val onCreated: (MapViewerUnitTemplate) -> Unit,
     private val onDismiss: () -> Unit,
 ) {
-    private val layer = root.container()
-    private var selectedBitmap: Bitmap32? = null
-    private var selectedAssetSource: AssetSource? = null
+    private var dialogWindow: MapViewerDialogWindow? = null
+    private var selectedBitmap: Bitmap32? = initialTemplate?.bitmap
+    private var selectedAssetSource: AssetSource? = initialTemplate?.assetSource
     private var selectedAffiliation: UnitAffiliation? = initialTemplate?.affiliation
-    private var previewImage: Image? = null
+    private var nameValue: String = initialTemplate?.name ?: "Unit Type Name"
+    private var statusText: String = selectedBitmap?.let { "Image selected" } ?: "No image selected"
+    private var nameInput: MapViewerInputField? = null
+    private var statusLabel: Container? = null
+    private var previewFrame: Container? = null
     private var isOpen = false
     private val affiliationDropdown = MapViewerDropdownMenu(
         root = root,
@@ -50,125 +52,23 @@ internal class MapViewerUnitCreateDialog(
         }
 
         isOpen = true
-        layer.zIndex = Z_INDEX
-        layer.mouseEnabled = true
-        layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 160))
-        layer.mouse {
-            onClick {
-                // Consume clicks on the backdrop.
-            }
+        dialogWindow = MapViewerDialogWindow(
+            root = root,
+            title = dialogTitle,
+            preferredWidth = PREFERRED_WIDTH,
+            preferredHeight = PREFERRED_HEIGHT,
+            contentHeight = { width -> contentHeightFor(width) },
+            actions = listOf(
+                MapViewerDialogAction(confirmLabel) { confirm() },
+                MapViewerDialogAction("Cancel") { close() },
+            ),
+            onClose = { close() },
+            renderContent = { content, contentWidth ->
+                renderContent(content, contentWidth)
+            },
+        ).also {
+            it.show(viewportWidth, viewportHeight)
         }
-
-        val panelWidth = PREFERRED_WIDTH
-        val panelHeight = 320.0
-        val panelLeft = (viewportWidth - panelWidth) * 0.5
-        val panelTop = (viewportHeight - panelHeight) * 0.5
-
-        val panel = layer.container()
-        panel.xy(panelLeft, panelTop)
-        MapViewerUiBoxes.box(panel, panelWidth, panelHeight)
-
-        val content = panel.container()
-        content.xy(20.0, 18.0)
-
-        MapViewerTextViews.label(content, dialogTitle, role = MapViewerFontRole.STRONG, color = Palette.Colours.WHITE)
-
-        val nameLabel = content.container()
-        nameLabel.xy(0.0, 42.0)
-        MapViewerTextViews.label(nameLabel, "Name", color = Palette.Colours.WHITE)
-
-        val nameInput = MapViewerTextInputs.input(content, initialTemplate?.name ?: "Unit Type Name", NAME_FIELD_WIDTH, 32.0, 0.0, 68.0)
-
-        affiliationDropdown.renderField(
-            parent = content,
-            label = "Affiliation",
-            value = selectedAffiliation,
-            x = NAME_FIELD_WIDTH + FIELD_GAP,
-            y = 42.0,
-            width = AFFILIATION_DROPDOWN_WIDTH,
-            height = 32.0,
-        )
-
-        val imageLabel = content.container()
-        imageLabel.xy(0.0, 114.0)
-        MapViewerTextViews.label(imageLabel, "Image", color = Palette.Colours.WHITE)
-
-        val previewFrame = content.container()
-        previewFrame.xy(0.0, 140.0)
-        MapViewerUiBoxes.box(previewFrame, PREVIEW_WIDTH, PREVIEW_HEIGHT)
-
-        val previewPlaceholder = MapViewerTextViews.box(previewFrame, "No image selected", PREVIEW_WIDTH, PREVIEW_HEIGHT, color = Palette.Colours.WHITE)
-
-        initialTemplate?.let { template ->
-            selectedBitmap = template.bitmap
-            selectedAssetSource = template.assetSource
-            previewFrame.removeChildren()
-            MapViewerUiBoxes.box(previewFrame, PREVIEW_WIDTH, PREVIEW_HEIGHT)
-            val fittedIcon = MapViewerIconFit.inside(template.bitmap, PREVIEW_WIDTH - 12.0, PREVIEW_HEIGHT - 12.0)
-            previewImage = previewFrame.image(template.bitmap) {
-                scale = fittedIcon.scale
-                x = 6.0 + fittedIcon.x
-                y = 6.0 + fittedIcon.y
-            }
-            previewPlaceholder.removeFromParent()
-        }
-
-        val statusLabel = content.container()
-        statusLabel.xy(0.0, 196.0)
-
-        val browseButton = content.container()
-        browseButton.xy(0.0, 228.0)
-        buildButton(browseButton, 140.0, 40.0, "Browse Image") {
-            val file = chooseImageFile() ?: return@buildButton
-            val bitmap = loadBitmap(file) ?: run {
-                showStatus(statusLabel, "Could not load image")
-                return@buildButton
-            }
-
-            selectedBitmap = bitmap
-            selectedAssetSource = AssetSource.fromFile(file)
-            previewFrame.removeChildren()
-            MapViewerUiBoxes.box(previewFrame, PREVIEW_WIDTH, PREVIEW_HEIGHT)
-            val fittedIcon = MapViewerIconFit.inside(bitmap, PREVIEW_WIDTH - 12.0, PREVIEW_HEIGHT - 12.0)
-            previewImage = previewFrame.image(bitmap) {
-                scale = fittedIcon.scale
-                x = 6.0 + fittedIcon.x
-                y = 6.0 + fittedIcon.y
-            }
-            showStatus(statusLabel, file.name)
-            previewPlaceholder.removeFromParent()
-        }
-
-        val createButton = content.container()
-        createButton.xy(160.0, 228.0)
-        buildButton(createButton, 120.0, 40.0, confirmLabel) {
-            val name = nameInput.text.trim()
-            val bitmap = selectedBitmap
-            when {
-                name.isBlank() -> showStatus(statusLabel, "Enter a type name")
-                bitmap == null -> showStatus(statusLabel, "Choose an image")
-                else -> {
-                    onCreated(
-                        MapViewerUnitTemplate(
-                            id = initialTemplate?.id ?: UnitTemplateId(UUID.randomUUID()),
-                            name = name,
-                            bitmap = bitmap,
-                            assetSource = selectedAssetSource,
-                            affiliation = selectedAffiliation,
-                        ),
-                    )
-                    close()
-                }
-            }
-        }
-
-        val cancelButton = content.container()
-        cancelButton.xy(300.0, 228.0)
-        buildButton(cancelButton, 100.0, 40.0, "Cancel") {
-            close()
-        }
-
-        nameInput.focus()
     }
 
     fun close() {
@@ -178,23 +78,166 @@ internal class MapViewerUnitCreateDialog(
 
         isOpen = false
         affiliationDropdown.close()
-        layer.removeFromParent()
+        dialogWindow?.close()
+        dialogWindow = null
         onDismiss()
     }
 
-    private fun buildButton(parent: Container, width: Double, height: Double, label: String, onActivate: () -> Unit) {
-        MapViewerUiBoxes.button(parent, width, height)
-        MapViewerTextViews.box(parent, label, width, height, color = Palette.Colours.WHITE)
-        parent.mouse {
-            onClick {
-                onActivate()
+    private fun renderContent(content: Container, contentWidth: Double) {
+        content.removeChildren()
+
+        val layout = layoutForWidth(contentWidth)
+
+        MapViewerTextViews.label(content, "Name", color = Palette.Colours.WHITE)
+        nameInput = MapViewerTextInputs.input(
+            content,
+            nameValue,
+            layout.nameFieldWidth,
+            MapViewerDialogSpacing.INPUT_HEIGHT,
+            0.0,
+            MapViewerDialogSpacing.LABEL_TO_FIELD_GAP,
+        )
+        nameInput?.controller?.onTextUpdated?.add {
+            nameValue = nameInput?.text.orEmpty()
+        }
+
+        affiliationDropdown.renderField(
+            parent = content,
+            label = "Affiliation",
+            value = selectedAffiliation,
+            x = layout.affiliationLeft,
+            y = layout.affiliationTop,
+            width = layout.affiliationFieldWidth,
+            height = MapViewerDialogSpacing.INPUT_HEIGHT,
+        )
+
+        MapViewerTextViews.label(content, "Image", color = Palette.Colours.WHITE) {
+            x = 0.0
+            y = layout.imageLabelTop
+        }
+
+        previewFrame = content.container().also {
+            it.xy(0.0, layout.previewTop)
+        }
+        previewFrame?.let { frame ->
+            MapViewerUiBoxes.box(frame, layout.previewWidth, MapViewerDialogSpacing.PREVIEW_HEIGHT)
+            selectedBitmap?.let { bitmap ->
+                renderPreview(frame, bitmap, layout.previewWidth)
+            } ?: run {
+                MapViewerTextViews.box(
+                    frame,
+                    "No image selected",
+                    layout.previewWidth,
+                    MapViewerDialogSpacing.PREVIEW_HEIGHT,
+                    color = Palette.Colours.WHITE,
+                )
+            }
+        }
+
+        statusLabel = content.container().also {
+            it.xy(0.0, layout.statusTop)
+        }
+        showStatus(statusLabel, statusText)
+
+        val browseButton = content.container()
+        browseButton.xy(0.0, layout.browseTop)
+        MapViewerLaunchUi.button(browseButton, 140.0, MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT, "Browse Image") {
+            val file = chooseImageFile() ?: return@button
+            val bitmap = loadBitmap(file) ?: run {
+                showStatus(statusLabel, "Could not load image")
+                return@button
+            }
+
+            selectedBitmap = bitmap
+            selectedAssetSource = AssetSource.fromFile(file)
+            statusText = file.name
+            previewFrame?.let { frame ->
+                renderPreview(frame, bitmap, layout.previewWidth)
+            }
+            showStatus(statusLabel, statusText)
+        }
+
+        nameInput?.focus()
+    }
+
+    private fun confirm() {
+        val name = nameInput?.text?.trim().orEmpty()
+        val bitmap = selectedBitmap
+        when {
+            name.isBlank() -> showStatus(statusLabel, "Enter a type name")
+            bitmap == null -> showStatus(statusLabel, "Choose an image")
+            else -> {
+                onCreated(
+                    MapViewerUnitTemplate(
+                        id = initialTemplate?.id ?: UnitTemplateId(UUID.randomUUID()),
+                        name = name,
+                        bitmap = bitmap,
+                        assetSource = selectedAssetSource,
+                        affiliation = selectedAffiliation,
+                    ),
+                )
+                close()
             }
         }
     }
 
-    private fun showStatus(parent: Container, text: String) {
+    private fun renderPreview(previewFrame: Container, bitmap: Bitmap32, previewWidth: Double) {
+        previewFrame.removeChildren()
+        MapViewerUiBoxes.box(previewFrame, previewWidth, MapViewerDialogSpacing.PREVIEW_HEIGHT)
+        val fittedIcon = MapViewerIconFit.inside(bitmap, previewWidth - 12.0, MapViewerDialogSpacing.PREVIEW_HEIGHT - 12.0)
+        previewFrame.image(bitmap) {
+            scale = fittedIcon.scale
+            x = 6.0 + fittedIcon.x
+            y = 6.0 + fittedIcon.y
+        }
+    }
+
+    private fun showStatus(parent: Container?, text: String) {
+        parent ?: return
         parent.removeChildren()
+        statusText = text
         MapViewerTextViews.leftBox(parent, text, 360.0, 28.0, color = Palette.Colours.WHITE)
+    }
+
+    private fun layoutForWidth(contentWidth: Double): UnitTypeDialogLayout {
+        val twoColumnWidth = NAME_FIELD_WIDTH + FIELD_GAP + AFFILIATION_DROPDOWN_WIDTH
+        val twoColumn = contentWidth >= twoColumnWidth
+        val nameFieldWidth = if (twoColumn) NAME_FIELD_WIDTH else contentWidth.coerceAtLeast(MIN_FIELD_WIDTH)
+        val affiliationFieldWidth = if (twoColumn) AFFILIATION_DROPDOWN_WIDTH else contentWidth.coerceAtLeast(MIN_FIELD_WIDTH)
+        val affiliationLeft = if (twoColumn) NAME_FIELD_WIDTH + FIELD_GAP else 0.0
+        val nameLabelTop = 0.0
+        val nameInputTop = MapViewerDialogSpacing.inputTop(nameLabelTop)
+        val firstRowBottom = nameInputTop + MapViewerDialogSpacing.INPUT_HEIGHT
+        val affiliationTop = if (twoColumn) {
+            nameLabelTop
+        } else {
+            MapViewerDialogSpacing.sectionTop(firstRowBottom)
+        }
+        val affiliationBottom = if (twoColumn) {
+            nameInputTop + MapViewerDialogSpacing.INPUT_HEIGHT
+        } else {
+            affiliationTop + MapViewerDialogSpacing.LABEL_TO_FIELD_GAP + MapViewerDialogSpacing.INPUT_HEIGHT
+        }
+        val imageLabelTop = MapViewerDialogSpacing.sectionTop(max(firstRowBottom, affiliationBottom))
+        val previewTop = MapViewerDialogSpacing.inputTop(imageLabelTop)
+        val statusTop = previewTop + MapViewerDialogSpacing.PREVIEW_HEIGHT + MapViewerDialogSpacing.PREVIEW_BOTTOM_GAP
+        val browseTop = statusTop + 30.0
+        return UnitTypeDialogLayout(
+            nameFieldWidth = nameFieldWidth,
+            affiliationFieldWidth = affiliationFieldWidth,
+            affiliationLeft = affiliationLeft,
+            affiliationTop = affiliationTop,
+            imageLabelTop = imageLabelTop,
+            previewTop = previewTop,
+            previewWidth = contentWidth.coerceAtLeast(MIN_FIELD_WIDTH),
+            statusTop = statusTop,
+            browseTop = browseTop,
+        )
+    }
+
+    private fun contentHeightFor(contentWidth: Double): Double {
+        val layout = layoutForWidth(contentWidth)
+        return layout.browseTop + MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT + MapViewerDialogSpacing.FORM_BOTTOM_PADDING
     }
 
     private fun chooseImageFile(): File? {
@@ -206,17 +249,27 @@ internal class MapViewerUnitCreateDialog(
         return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) chooser.selectedFile else null
     }
 
-    private fun loadBitmap(file: File): Bitmap32? {
-        return MapViewerIconLoader.load(file)
-    }
+    private fun loadBitmap(file: File): Bitmap32? =
+        MapViewerIconLoader.load(file)
 
     private companion object {
-        const val Z_INDEX = 40_000.0
-        const val PREFERRED_WIDTH = 520.0
-        const val PREVIEW_WIDTH = 180.0
-        const val PREVIEW_HEIGHT = 50.0
+        const val PREFERRED_WIDTH = 560.0
+        const val PREFERRED_HEIGHT = 420.0
         const val NAME_FIELD_WIDTH = 240.0
         const val AFFILIATION_DROPDOWN_WIDTH = 220.0
-        const val FIELD_GAP = 20.0
+        const val FIELD_GAP = MapViewerDialogSpacing.FIELD_GAP
+        const val MIN_FIELD_WIDTH = MapViewerDialogSpacing.MIN_FIELD_WIDTH
     }
 }
+
+private data class UnitTypeDialogLayout(
+    val nameFieldWidth: Double,
+    val affiliationFieldWidth: Double,
+    val affiliationLeft: Double,
+    val affiliationTop: Double,
+    val imageLabelTop: Double,
+    val previewTop: Double,
+    val previewWidth: Double,
+    val statusTop: Double,
+    val browseTop: Double,
+)

@@ -223,17 +223,13 @@ internal class MapViewerInteraction(
             measurement = activeMeasurement ?: movePreview?.let { preview ->
                 val origin = coordinateSpace.toMapPixels(preview.origin)
                 val destination = coordinateSpace.toMapPixels(preview.destination)
-                if (gridLayer == null) {
-                    null
-                } else {
-                    GridMeasurementCalculator.calculate(
-                        layer = gridLayer,
-                        originMapX = origin.x,
-                        originMapY = origin.y,
-                        destinationMapX = destination.x,
-                        destinationMapY = destination.y,
-                    )
-                }
+                GridMeasurementCalculator.calculate(
+                    layer = layer,
+                    originMapX = origin.x,
+                    originMapY = origin.y,
+                    destinationMapX = destination.x,
+                    destinationMapY = destination.y,
+                )
             },
             gridLayer = layer,
         )

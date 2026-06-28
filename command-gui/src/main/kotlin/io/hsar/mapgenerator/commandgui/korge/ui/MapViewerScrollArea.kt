@@ -1,7 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.image.Palette
-import korlibs.event.MouseButton
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
@@ -102,7 +101,11 @@ internal object MapViewerScrollbar {
         if (!disabled && onThumbDown != null) {
             track.mouse {
                 onDown {
-                    if (button == MouseButton.LEFT && currentPosGlobal.x in thumb.left..thumb.right && currentPosGlobal.y in thumb.top..thumb.bottom) {
+                    val thumbLocalLeft = thumb.left - bounds.left
+                    val thumbLocalTop = thumb.top - bounds.top
+                    if (currentPosLocal.x in thumbLocalLeft..(thumbLocalLeft + thumb.width) &&
+                        currentPosLocal.y in thumbLocalTop..(thumbLocalTop + thumb.height)
+                    ) {
                         onThumbDown(currentPosGlobal.y)
                     }
                 }

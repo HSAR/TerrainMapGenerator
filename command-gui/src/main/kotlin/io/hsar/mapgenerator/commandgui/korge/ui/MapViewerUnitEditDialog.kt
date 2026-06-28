@@ -82,9 +82,9 @@ internal class MapViewerUnitEditDialog(
         val typePreviewWidth = fieldWidth
         val compactRow = width >= COMPACT_ROW_MIN_WIDTH
         val compactFieldWidth = if (compactRow) {
-            (fieldWidth - COMPACT_FIELD_GAP * 2.0) / 3.0
+            (fieldWidth - MapViewerDialogSpacing.FIELD_GAP * 2.0) / 3.0
         } else {
-            (fieldWidth - COMPACT_FIELD_GAP) / 2.0
+            (fieldWidth - MapViewerDialogSpacing.FIELD_GAP) / 2.0
         }
 
         val typeLabel = parent.container()
@@ -92,8 +92,8 @@ internal class MapViewerUnitEditDialog(
         MapViewerTextViews.label(typeLabel, "Type", color = Palette.Colours.WHITE)
 
         val typePreview = parent.container()
-        typePreview.xy(0.0, 28.0)
-        MapViewerUiBoxes.box(typePreview, typePreviewWidth, PREVIEW_HEIGHT)
+        typePreview.xy(0.0, MapViewerDialogSpacing.LABEL_TO_FIELD_GAP)
+        MapViewerUiBoxes.box(typePreview, typePreviewWidth, MapViewerDialogSpacing.PREVIEW_HEIGHT)
         val iconSlot = typePreview.container()
         iconSlot.xy(6.0, 6.0)
         val fittedIcon = MapViewerIconFit.inside(unitType.bitmap, ICON_SLOT_WIDTH, ICON_SLOT_HEIGHT)
@@ -106,7 +106,7 @@ internal class MapViewerUnitEditDialog(
             parent = typePreview,
             text = unitType.name,
             width = typePreviewWidth - ICON_SLOT_WIDTH - 24.0,
-            height = PREVIEW_HEIGHT,
+            height = MapViewerDialogSpacing.PREVIEW_HEIGHT,
             color = Palette.Colours.WHITE,
         ) {
             x = ICON_SLOT_WIDTH + 12.0
@@ -116,7 +116,7 @@ internal class MapViewerUnitEditDialog(
         nameLabel.xy(0.0, 90.0)
         MapViewerTextViews.label(nameLabel, "Instance Name", color = Palette.Colours.WHITE)
 
-        val nameInput = MapViewerTextInputs.input(parent, nameValue, fieldWidth, INPUT_HEIGHT, 0.0, 118.0)
+        val nameInput = MapViewerTextInputs.input(parent, nameValue, fieldWidth, MapViewerDialogSpacing.INPUT_HEIGHT, 0.0, 118.0)
         nameInput.controller.onTextUpdated.add {
             nameValue = nameInput.text
         }
@@ -141,7 +141,7 @@ internal class MapViewerUnitEditDialog(
             parent = parent,
             label = "Y",
             text = positionYValue,
-            x = compactFieldWidth + COMPACT_FIELD_GAP,
+            x = compactFieldWidth + MapViewerDialogSpacing.FIELD_GAP,
             y = 194.0,
             width = compactFieldWidth,
         ) { input ->
@@ -149,7 +149,7 @@ internal class MapViewerUnitEditDialog(
             refreshPositionPreview()
         }
 
-        val facingX = if (compactRow) (compactFieldWidth + COMPACT_FIELD_GAP) * 2.0 else 0.0
+        val facingX = if (compactRow) (compactFieldWidth + MapViewerDialogSpacing.FIELD_GAP) * 2.0 else 0.0
         val facingY = if (compactRow) 194.0 else 262.0
         addField(
             parent = parent,
@@ -194,7 +194,7 @@ internal class MapViewerUnitEditDialog(
         val labelContainer = parent.container()
         labelContainer.xy(x, y)
         MapViewerTextViews.label(labelContainer, label, color = Palette.Colours.WHITE)
-        val input = MapViewerTextInputs.input(parent, text, width, INPUT_HEIGHT, x, y + 28.0)
+        val input = MapViewerTextInputs.input(parent, text, width, MapViewerDialogSpacing.INPUT_HEIGHT, x, y + MapViewerDialogSpacing.LABEL_TO_FIELD_GAP)
         input.controller.onTextUpdated.add {
             onTextUpdated(input)
         }
@@ -202,7 +202,7 @@ internal class MapViewerUnitEditDialog(
 
     private fun renderDestroyedToggle(parent: Container, width: Double) {
         parent.removeChildren()
-        MapViewerUiBoxes.box(parent, width, INPUT_HEIGHT)
+        MapViewerUiBoxes.box(parent, width, MapViewerDialogSpacing.INPUT_HEIGHT)
         val box = parent.container()
         box.xy(10.0, 8.0)
         MapViewerUiBoxes.box(box, 20.0, 20.0)
@@ -239,13 +239,9 @@ internal class MapViewerUnitEditDialog(
     private companion object {
         const val PREFERRED_WIDTH = 460.0
         const val PREFERRED_HEIGHT = 540.0
-        const val INPUT_HEIGHT = 36.0
-        const val BUTTON_HEIGHT = 40.0
-        const val PREVIEW_HEIGHT = 50.0
         const val ICON_SLOT_WIDTH = 34.0
         const val ICON_SLOT_HEIGHT = 26.0
         const val MIN_FIELD_WIDTH = 260.0
-        const val COMPACT_FIELD_GAP = 18.0
         const val COMPACT_ROW_MIN_WIDTH = 500.0
         const val COMPACT_CONTENT_HEIGHT = 320.0
         const val STACKED_CONTENT_HEIGHT = 392.0
