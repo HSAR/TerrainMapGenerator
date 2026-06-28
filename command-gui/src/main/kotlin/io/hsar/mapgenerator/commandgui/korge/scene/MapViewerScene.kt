@@ -459,7 +459,7 @@ internal class MapViewerScene(
                             coordinateSpace = coordinateSpace,
                             viewportProvider = { currentViewport },
                         ).also {
-                            sceneLayers.ui.addChild(it)
+                            sceneLayers.overlay.addChild(it)
                             it.zIndex = 20_000.0
                             it.mouseEnabled = false
                         }
