@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
@@ -128,6 +129,40 @@ class MapSelectionGeometryTest {
 
         assertThat(bounds.overlaps(MapSelectionBounds(0.55, 0.65, 0.8, 0.9)), equalTo(true))
         assertThat(bounds.overlaps(MapSelectionBounds(0.7, 0.1, 0.9, 0.2)), equalTo(false))
+    }
+
+    @Test
+    fun `circle selection boxes only match the outline with a small grace margin`() {
+        val circle = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000024")),
+            drawing = CircleDrawing(
+                center = MapDrawingPoint(0.5, 0.5),
+                radius = 0.1,
+                color = Color.RED,
+            ),
+        )
+
+        assertThat(
+            circle.overlapsSelectionBox(
+                MapSelectionBounds(0.48, 0.48, 0.52, 0.52),
+                coordinateSpace,
+            ),
+            equalTo(false),
+        )
+        assertThat(
+            circle.overlapsSelectionBox(
+                MapSelectionBounds(0.58, 0.40, 0.60, 0.42),
+                coordinateSpace,
+            ),
+            equalTo(false),
+        )
+        assertThat(
+            circle.overlapsSelectionBox(
+                MapSelectionBounds(0.595, 0.49, 0.603, 0.51),
+                coordinateSpace,
+            ),
+            equalTo(true),
+        )
     }
 
     @Test

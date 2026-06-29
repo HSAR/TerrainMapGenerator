@@ -12,6 +12,7 @@
 - Unit types additional semantic properties
     - Move limits
 - Randomly generated operation names
+- Drawings can be resized with appropriate UI on bounding boxes
 
 ## Bugs
 

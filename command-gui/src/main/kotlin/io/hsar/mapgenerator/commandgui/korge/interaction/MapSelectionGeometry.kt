@@ -7,6 +7,7 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import korlibs.math.geom.Vector2D
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 
@@ -134,6 +135,7 @@ internal fun MapDrawing.overlapsSelectionBox(
 ): Boolean =
     when (this) {
         is RectangleDrawing -> rectangleOutlineOverlapsBox(this, box)
+        is CircleDrawing -> circleOutlineOverlapsBox(this, box, coordinateSpace)
         else -> selectionBounds(coordinateSpace).overlaps(box)
     }
 
@@ -166,5 +168,42 @@ private fun horizontalSegmentOverlapsBox(y: Double, left: Double, right: Double,
 private fun verticalSegmentOverlapsBox(x: Double, top: Double, bottom: Double, box: MapSelectionBounds): Boolean =
     x in box.left..box.right && bottom >= box.top && top <= box.bottom
 
+private fun circleOutlineOverlapsBox(
+    drawing: CircleDrawing,
+    box: MapSelectionBounds,
+    coordinateSpace: MapCoordinateSpace,
+): Boolean {
+    val mapSize = coordinateSpace.toMapPixels(MapCoordinate(1.0, 1.0))
+    val center = coordinateSpace.toMapPixels(MapCoordinate(drawing.center.x, drawing.center.y))
+    val radius = drawing.radius * mapSize.y
+    val grace = CIRCLE_SELECTION_GRACE_PX
+    val left = box.left * mapSize.x
+    val top = box.top * mapSize.y
+    val right = box.right * mapSize.x
+    val bottom = box.bottom * mapSize.y
+    val minDistance = distanceFromPointToRectangle(center.x, center.y, left, top, right, bottom)
+    val maxDistance = maxOf(
+        hypot(center.x - left, center.y - top),
+        hypot(center.x - left, center.y - bottom),
+        hypot(center.x - right, center.y - top),
+        hypot(center.x - right, center.y - bottom),
+    )
+    return minDistance <= radius + grace && maxDistance >= maxOf(0.0, radius - grace)
+}
+
+private fun distanceFromPointToRectangle(
+    pointX: Double,
+    pointY: Double,
+    left: Double,
+    top: Double,
+    right: Double,
+    bottom: Double,
+): Double {
+    val clampedX = pointX.coerceIn(left, right)
+    val clampedY = pointY.coerceIn(top, bottom)
+    return hypot(pointX - clampedX, pointY - clampedY)
+}
+
 private const val PIVOT_HANDLE_OFFSET_PX = 16.0
 private const val PIVOT_HANDLE_RADIUS_PX = 7.0
+private const val CIRCLE_SELECTION_GRACE_PX = 3.0
