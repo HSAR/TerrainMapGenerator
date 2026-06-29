@@ -51,19 +51,20 @@ internal class MapViewerSidebar(
     private var dragState: DragState? = null
     private var lastDragPointer: Vector2D? = null
     private var createUnitDialog: MapViewerUnitCreateDialog? = null
+    private val editUnitDialogs = mutableMapOf<UnitTemplateId, MapViewerUnitCreateDialog>()
     private var layout = MapViewerSidebarLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
 
     internal val isUnitDragging: Boolean
         get() = dragState != null
 
     internal val isUnitDialogOpen: Boolean
-        get() = createUnitDialog != null
+        get() = createUnitDialog != null || editUnitDialogs.isNotEmpty()
 
     internal val isUnitDialogBlocking: Boolean
-        get() = createUnitDialog?.isModalBlocking == true
+        get() = createUnitDialog?.isModalBlocking == true || editUnitDialogs.values.any { it.isModalBlocking }
 
     internal val isUnitDialogTextInputActive: Boolean
-        get() = createUnitDialog?.isTextInputActive == true
+        get() = createUnitDialog?.isTextInputActive == true || editUnitDialogs.values.any { it.isTextInputActive }
 
     internal val unitTemplateCount: Int
         get() = unitTemplates.size
@@ -99,7 +100,7 @@ internal class MapViewerSidebar(
     }
 
     fun blocksScreenPoint(point: Vector2D): Boolean =
-        layout.blocks(point) || createUnitDialog?.blocksScreenPoint(point) == true
+        layout.blocks(point) || createUnitDialog?.blocksScreenPoint(point) == true || editUnitDialogs.values.any { it.blocksScreenPoint(point) }
 
     fun addUnitTemplate(template: MapViewerUnitTemplate, index: Int = unitTemplates.size, notify: Boolean = true): UnitTemplateSnapshot {
         val insertionIndex = index.coerceIn(0, unitTemplates.size)
@@ -124,6 +125,7 @@ internal class MapViewerSidebar(
     }
 
     fun removeUnitTemplate(id: UnitTemplateId, notify: Boolean = true): UnitTemplateSnapshot? {
+        editUnitDialogs.remove(id)?.close()
         val index = unitTemplates.indexOfFirst { it.id == id }
         if (index < 0) {
             return null
@@ -305,12 +307,12 @@ internal class MapViewerSidebar(
     }
 
     private fun openEditUnitDialog(row: UnitTemplateRow) {
-        if (createUnitDialog != null) {
+        if (createUnitDialog != null || editUnitDialogs.containsKey(row.id)) {
             return
         }
 
         val stage = overlay.stage ?: return
-        createUnitDialog = MapViewerUnitCreateDialog(
+        val dialog = MapViewerUnitCreateDialog(
             root = overlay,
             dialogTitle = "Edit Unit Type",
             confirmLabel = "Save",
@@ -319,9 +321,11 @@ internal class MapViewerSidebar(
                 replaceUnitTemplate(row.id, template)
             },
             onDismiss = {
-                createUnitDialog = null
+                editUnitDialogs.remove(row.id)
             },
-        ).also {
+        )
+        editUnitDialogs[row.id] = dialog
+        dialog.also {
             it.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
         }
     }

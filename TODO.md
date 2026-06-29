@@ -16,6 +16,4 @@
 ## Bugs
 
 - Too many callbacks warning in game log.
-- Opening the Edit Unit Type dialog is still inconsistent.
-- Cannot yet open multiple non-modal dialogs.
 - Consistency pass, launchpad UI should behave the same as the map viewer UI (ref `MapViewerUiBoxes.kt`) and use shared handlers
