@@ -1,6 +1,8 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogPositionSync
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitEditDialog
 import io.hsar.mapgenerator.grid.GridLayer
@@ -35,21 +37,21 @@ internal class MapPlacedUnitManager(
     private val viewportProvider: () -> CameraViewport,
     private val contextMenuManager: ContextMenuManager,
     private val deferredActionRunner: ContextMenuDeferredActionRunner,
+    private val dialogManager: MapViewerDialogManager,
     private val canInteractWithUnits: () -> Boolean = { true },
     private val isHigherPriorityDragInProgress: () -> Boolean = { false },
     private val onMovePreviewChanged: (MapObjectMovePreview?) -> Unit = {},
     private val onObjectMoved: (MapPlacedObjectSnapshot, MapPlacedObjectSnapshot) -> Unit = { _, _ -> },
     private val onObjectDeleted: (MapPlacedObjectSnapshot) -> Unit = {},
     private val onUnitEdited: (UnitSnapshot, UnitSnapshot) -> Unit = { _, _ -> },
+    private val onUnitsChanged: () -> Unit = {},
 ) {
     private val coordinateSpace = MapCoordinateSpace(geometry, mapWidth, mapHeight)
     private val units = mutableListOf<PlacedUnit>()
     private val dragPreviewLayer = unitLayer.container()
     private var selectedUnitIds = emptySet<MapPlacedObjectId>()
     private var dragState: DragState? = null
-    private var editDialog: MapViewerUnitEditDialog? = null
-    private var editDialogUnitId: MapPlacedObjectId? = null
-    private var shouldRestoreEditSnapshot = true
+    private val editSessions = mutableMapOf<MapPlacedObjectId, UnitEditSession>()
 
     fun install() {
         dragPreviewLayer.zIndex = DRAG_PREVIEW_Z_INDEX
@@ -68,7 +70,7 @@ internal class MapPlacedUnitManager(
         get() = contextMenuManager.isOpen
 
     val isEditDialogOpen: Boolean
-        get() = editDialog != null
+        get() = dialogManager.hasOpenDialogs()
 
     fun updateSelectedUnits(selectedIds: Set<MapPlacedObjectId>) {
         selectedUnitIds = selectedIds
@@ -82,16 +84,10 @@ internal class MapPlacedUnitManager(
     }
 
     private fun interactionsEnabled(): Boolean =
-        canInteractWithUnits() && editDialog == null
+        canInteractWithUnits()
 
-    fun blocksScreenPoint(point: Vector2D): Boolean {
-        if (!interactionsEnabled()) {
-            return false
-        }
-        val viewport = viewportProvider()
-        val mapCoordinate = coordinateSpace.screenToMap(point, viewport)
-        return units.any { unit -> unit.containsMapCoordinate(mapCoordinate) }
-    }
+    fun blocksScreenPoint(point: Vector2D): Boolean =
+        dialogManager.blocksScreenPoint(point)
 
     fun hasDragCandidate(point: Vector2D): Boolean {
         if (!interactionsEnabled()) {
@@ -217,6 +213,8 @@ internal class MapPlacedUnitManager(
             existing.rebuildVisual(snapshot.template.bitmap)
             existing.view.scale = unitSize.worldScale
             positionView(existing)
+            syncEditDialog(existing)
+            onUnitsChanged()
             return
         }
 
@@ -238,6 +236,7 @@ internal class MapPlacedUnitManager(
         placedUnit.view.scale = unitSize.worldScale
         positionView(placedUnit)
         units += placedUnit
+        onUnitsChanged()
     }
 
     fun remove(id: MapPlacedObjectId): UnitSnapshot? =
@@ -251,10 +250,8 @@ internal class MapPlacedUnitManager(
                         onMovePreviewChanged(null)
                         dragState = null
                     }
-                    if (editDialogUnitId == removed.id) {
-                        shouldRestoreEditSnapshot = false
-                        editDialog?.close()
-                    }
+                    editSessions.remove(removed.id)
+                    dialogManager.closeTarget(removed.id)
                 }.snapshot()
             }
 
@@ -273,9 +270,6 @@ internal class MapPlacedUnitManager(
             }
             onMovePreviewChanged(null)
             dragState = null
-        }
-        if (targetId == null || editDialogUnitId == targetId) {
-            editDialog?.close()
         }
     }
 
@@ -339,6 +333,7 @@ internal class MapPlacedUnitManager(
             val updatedSnapshot = state.unit.snapshot()
             if (updatedSnapshot != state.originalSnapshot) {
                 onObjectMoved(state.originalSnapshot, updatedSnapshot)
+                syncEditDialog(state.unit)
             }
             dragState = null
             state.preview.container.removeFromParent()
@@ -359,6 +354,7 @@ internal class MapPlacedUnitManager(
 
         state.unit.mapCoordinate = mapCoordinate
         positionView(state.unit)
+        onUnitsChanged()
         state.preview.container.x = worldPoint.x - state.unit.worldWidth * 0.5
         state.preview.container.y = worldPoint.y - state.unit.worldHeight * 0.5
         onMovePreviewChanged(
@@ -378,18 +374,24 @@ internal class MapPlacedUnitManager(
     }
 
     private fun openEditDialog(unit: PlacedUnit) {
-        editDialog?.close()
-        editDialogUnitId = unit.id
-        val originalSnapshot = unit.snapshot()
+        if (dialogManager.hasTarget(unit.id)) {
+            return
+        }
         val viewport = viewportProvider()
         val position = initialReferenceFields(unit)
+        val session = UnitEditSession(
+            baselineSnapshot = unit.snapshot(),
+            baselinePosition = position,
+        )
+        editSessions[unit.id] = session
         val viewportWidth = viewport.viewportWidth
         val viewportHeight = viewport.viewportHeight
         var saveRequested = false
-        shouldRestoreEditSnapshot = true
         onMovePreviewChanged(null)
-        editDialog = MapViewerUnitEditDialog(
+        MapViewerUnitEditDialog(
             root = root,
+            dialogManager = dialogManager,
+            dialogKey = unit.id,
             unitType = unit.template,
             initialName = unit.instanceName,
             initialPositionX = position.easting,
@@ -398,25 +400,27 @@ internal class MapPlacedUnitManager(
             initialFacing = UnitFacingResolver.format(unit.facingDegrees),
             onPositionPreviewChanged = { previewPositionX, previewPositionY ->
                 val updatedCoordinate = UnitEditPositionResolver.resolve(
-                    currentCoordinate = originalSnapshot.mapCoordinate,
-                    initialPositionX = position.easting,
-                    initialPositionY = position.northing,
+                    currentCoordinate = session.baselineSnapshot.mapCoordinate,
+                    initialPositionX = session.baselinePosition.easting,
+                    initialPositionY = session.baselinePosition.northing,
                     newPositionX = previewPositionX,
                     newPositionY = previewPositionY,
                 ) { easting, northing -> referenceToMapCoordinate(easting, northing, viewportWidth, viewportHeight) }
                 if (updatedCoordinate != null) {
                     unit.mapCoordinate = updatedCoordinate
                     positionView(unit)
+                    onUnitsChanged()
                     onMovePreviewChanged(
                         MapObjectMovePreview(
-                            origin = originalSnapshot.mapCoordinate,
+                            origin = session.baselineSnapshot.mapCoordinate,
                             destination = updatedCoordinate,
                             referenceText = "${previewPositionX.trim()} ${previewPositionY.trim()}",
                             color = unit.snapshot().selectionAccentColor(),
                         ),
                     )
                 } else {
-                    upsert(originalSnapshot)
+                    upsert(session.baselineSnapshot)
+                    onUnitsChanged()
                     onMovePreviewChanged(null)
                 }
             },
@@ -432,26 +436,26 @@ internal class MapPlacedUnitManager(
                         unit.updateFacingOverlay(forceActive = true)
                     }
                     ?: run {
-                        unit.facingDegrees = originalSnapshot.facingDegrees
+                        unit.facingDegrees = session.baselineSnapshot.facingDegrees
                         unit.updateFacingOverlay(forceActive = true)
                     }
             },
             onSave = save@{ newName, newPositionX, newPositionY, newDestroyed, newFacingText ->
-                val nameChanged = newName != originalSnapshot.instanceName
-                val positionChanged = newPositionX.trim() != position.easting.trim() ||
-                        newPositionY.trim() != position.northing.trim()
+                val nameChanged = newName != session.baselineSnapshot.instanceName
+                val positionChanged = newPositionX.trim() != session.baselinePosition.easting.trim() ||
+                        newPositionY.trim() != session.baselinePosition.northing.trim()
                 val updatedCoordinate = UnitEditPositionResolver.resolve(
-                    currentCoordinate = originalSnapshot.mapCoordinate,
-                    initialPositionX = position.easting,
-                    initialPositionY = position.northing,
+                    currentCoordinate = session.baselineSnapshot.mapCoordinate,
+                    initialPositionX = session.baselinePosition.easting,
+                    initialPositionY = session.baselinePosition.northing,
                     newPositionX = newPositionX,
                     newPositionY = newPositionY,
                 ) { easting, northing ->
                     referenceToMapCoordinate(easting, northing, viewportWidth, viewportHeight)
                 } ?: return@save false
                 val updatedFacing = UnitFacingResolver.parse(newFacingText).takeIf { it.isValid }?.degrees ?: return@save false
-                val destroyedChanged = newDestroyed != originalSnapshot.destroyed
-                val facingChanged = updatedFacing != originalSnapshot.facingDegrees
+                val destroyedChanged = newDestroyed != session.baselineSnapshot.destroyed
+                val facingChanged = updatedFacing != session.baselineSnapshot.facingDegrees
                 if (nameChanged || positionChanged || destroyedChanged || facingChanged) {
                     saveRequested = true
                     unit.instanceName = newName
@@ -461,19 +465,19 @@ internal class MapPlacedUnitManager(
                     unit.updateStateOverlay()
                     unit.updateFacingOverlay()
                     positionView(unit)
+                    onUnitsChanged()
                     onMovePreviewChanged(null)
-                    onUnitEdited(originalSnapshot, unit.snapshot())
+                    onUnitEdited(session.baselineSnapshot, unit.snapshot())
                 }
                 true
             },
             onDismiss = {
-                if (!saveRequested && shouldRestoreEditSnapshot) {
-                    upsert(originalSnapshot)
+                if (!saveRequested) {
+                    upsert(session.baselineSnapshot)
+                    onUnitsChanged()
                 }
-                shouldRestoreEditSnapshot = true
+                editSessions.remove(unit.id)
                 onMovePreviewChanged(null)
-                editDialog = null
-                editDialogUnitId = null
             },
         ).also {
             it.show(viewportWidth, viewportHeight)
@@ -655,10 +659,29 @@ internal class MapPlacedUnitManager(
         val originalSnapshot: UnitSnapshot,
     )
 
+    private data class UnitEditSession(
+        var baselineSnapshot: UnitSnapshot,
+        var baselinePosition: GridReferenceFields,
+    ) {
+        fun rebase(snapshot: UnitSnapshot, position: GridReferenceFields) {
+            baselineSnapshot = snapshot
+            baselinePosition = position
+        }
+    }
+
     private fun positionView(unit: PlacedUnit) {
         val worldPoint = coordinateSpace.toWorld(unit.mapCoordinate)
         unit.view.x = worldPoint.x - unit.worldWidth * 0.5
         unit.view.y = worldPoint.y - unit.worldHeight * 0.5
+    }
+
+    private fun syncEditDialog(unit: PlacedUnit) {
+        val position = initialReferenceFields(unit)
+        editSessions[unit.id]?.rebase(unit.snapshot(), position)
+        dialogManager.updateTarget(
+            unit.id,
+            MapViewerDialogPositionSync(positionX = position.easting, positionY = position.northing),
+        )
     }
 
     private data class UnitVisual(

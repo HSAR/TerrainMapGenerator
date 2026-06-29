@@ -43,6 +43,7 @@ import io.hsar.mapgenerator.commandgui.korge.launch.OperationMapImage
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
 import io.hsar.mapgenerator.commandgui.korge.render.MapViewerRenderer
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerLedgerPanel
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSidebar
@@ -380,6 +381,7 @@ internal class MapViewerScene(
 
                         contextMenuManager = ContextMenuManager(sceneLayers.ui)
                         val deferredContextMenuActions = ContextMenuDeferredActionRunner(sceneLayers.ui)
+                        val dialogManager = MapViewerDialogManager()
 
                         unitManager = MapPlacedUnitManager(
                             root = sceneLayers.ui,
@@ -392,6 +394,7 @@ internal class MapViewerScene(
                             viewportProvider = { currentViewport },
                             contextMenuManager = contextMenuManager,
                             deferredActionRunner = deferredContextMenuActions,
+                            dialogManager = dialogManager,
                             canInteractWithUnits = { effectiveTool() == MapViewerTool.SELECT },
                             isHigherPriorityDragInProgress = { drawingManager.isDragging },
                             onMovePreviewChanged = { preview ->
@@ -410,6 +413,11 @@ internal class MapViewerScene(
                                 MapPlacedObjectPatch.diff(before, after)
                                     .takeIf { it.isNotEmpty() }
                                     ?.let { recordLedgerEntry(EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before))) }
+                            },
+                            onUnitsChanged = {
+                                if (selectionControllerReady) {
+                                    selectionController.refresh()
+                                }
                             },
                         )
                         unitManager.install()
@@ -505,6 +513,7 @@ internal class MapViewerScene(
                             },
                             contextMenuManager = contextMenuManager,
                             deferredActionRunner = deferredContextMenuActions,
+                            dialogManager = dialogManager,
                             onUnitTemplateCreated = { snapshot ->
                                 recordLedgerEntry(CreateUnitTemplateAction(snapshot))
                             },
@@ -691,8 +700,8 @@ internal class MapViewerScene(
                                     ledgerPanel?.blocksScreenPoint(pointer) == true ||
                                     sidebar.blocksScreenPoint(pointer) ||
                                     sidebar.isUnitDragging ||
-                                    sidebar.isUnitDialogBlocking ||
-                                    unitManager.isEditDialogOpen ||
+                                    dialogManager.blocksScreenPoint(pointer) ||
+                                    unitManager.blocksScreenPoint(pointer) ||
                                     unitManager.isContextMenuOpen ||
                                     escapeMenu?.isOpen == true ||
                                     contextMenuManager.blocksScreenPoint(pointer)
@@ -725,8 +734,7 @@ internal class MapViewerScene(
                             autosaveController.update(now)
                             if (input.keys.justPressed(Key.S) &&
                                 input.keys[Key.CONTROL] &&
-                                !sidebar.isUnitDialogBlocking &&
-                                !sidebar.isUnitDialogTextInputActive &&
+                                !dialogManager.isTextInputActive() &&
                                 ledgerPanel?.isTextInputActive != true &&
                                 !sidebar.isUnitDragging &&
                                 !unitManager.isDragging &&
@@ -738,8 +746,7 @@ internal class MapViewerScene(
                                 saveOperation()
                             }
                             if (input.keys.justPressed(Key.ESCAPE) &&
-                                !sidebar.isUnitDialogBlocking &&
-                                !sidebar.isUnitDialogTextInputActive &&
+                                !dialogManager.isTextInputActive() &&
                                 ledgerPanel?.isTextInputActive != true &&
                                 !sidebar.isUnitDragging &&
                                 !unitManager.isDragging &&
@@ -769,8 +776,7 @@ internal class MapViewerScene(
                             currentDrawingColour = { currentDrawingColour.color },
                             drawingStore = drawingStore,
                             canUseUndoRedo = {
-                                !sidebar.isUnitDialogBlocking &&
-                                        !sidebar.isUnitDialogTextInputActive &&
+                                !dialogManager.isTextInputActive() &&
                                         ledgerPanel?.isTextInputActive != true &&
                                         !sidebar.isUnitDragging &&
                                         !unitManager.isDragging &&
@@ -802,8 +808,8 @@ internal class MapViewerScene(
                                         ledgerPanel?.blocksScreenPoint(point) == true ||
                                         sidebar.blocksScreenPoint(point) ||
                                         sidebar.isUnitDragging ||
-                                        sidebar.isUnitDialogBlocking ||
-                                        unitManager.isEditDialogOpen ||
+                                        dialogManager.blocksScreenPoint(point) ||
+                                        unitManager.blocksScreenPoint(point) ||
                                         unitManager.isContextMenuOpen ||
                                         drawingManager.blocksScreenPoint(point) ||
                                         escapeMenu?.isOpen == true ||

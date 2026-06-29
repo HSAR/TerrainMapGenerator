@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import korlibs.korge.view.Container
@@ -33,6 +34,7 @@ class MapPlacedUnitManagerTest {
             },
             contextMenuManager = ContextMenuManager(root),
             deferredActionRunner = ContextMenuDeferredActionRunner(root),
+            dialogManager = MapViewerDialogManager(),
         )
         val templateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000011"))
         val unitId = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000012"))

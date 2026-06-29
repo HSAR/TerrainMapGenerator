@@ -13,15 +13,17 @@ internal class MapObjectController(
     private val clearTransientState: () -> Unit = {},
     private val uuidGenerator: () -> UUID = UUID::randomUUID,
 ) {
+    private var nextUnitInstanceNumber = 1
+
     fun createUnit(
         template: MapViewerUnitTemplate,
         mapCoordinate: MapCoordinate,
-        instanceName: String = template.name,
+        instanceName: String? = null,
     ) = unitManager.buildSnapshot(
         id = MapPlacedObjectId(uuidGenerator()),
         unitTemplateId = template.id,
         template = template,
-        instanceName = instanceName,
+        instanceName = instanceName ?: nextUnitInstanceName(template.name),
         mapCoordinate = mapCoordinate,
     ).also(::createObject)
 
@@ -71,4 +73,7 @@ internal class MapObjectController(
 
     fun snapshots(): List<MapPlacedObjectSnapshot> =
         unitManager.snapshots() + drawingStore.snapshots()
+
+    private fun nextUnitInstanceName(baseName: String): String =
+        "$baseName ${nextUnitInstanceNumber++}"
 }

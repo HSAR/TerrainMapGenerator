@@ -31,6 +31,7 @@ internal class MapViewerSidebar(
     private val onUnitDropped: (MapViewerUnitTemplate, Vector2D) -> Unit,
     private val contextMenuManager: ContextMenuManager? = null,
     private val deferredActionRunner: ContextMenuDeferredActionRunner? = null,
+    private val dialogManager: MapViewerDialogManager,
     private val onUnitTemplateCreated: (UnitTemplateSnapshot) -> Unit = {},
     private val onUnitTemplateDeleted: (UnitTemplateSnapshot) -> Unit = {},
     private val onUnitTemplateEdited: (UnitTemplateSnapshot, UnitTemplateSnapshot) -> Unit = { _, _ -> },
@@ -50,21 +51,19 @@ internal class MapViewerSidebar(
     private var collapsed = false
     private var dragState: DragState? = null
     private var lastDragPointer: Vector2D? = null
-    private var createUnitDialog: MapViewerUnitCreateDialog? = null
-    private val editUnitDialogs = mutableMapOf<UnitTemplateId, MapViewerUnitCreateDialog>()
     private var layout = MapViewerSidebarLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
 
     internal val isUnitDragging: Boolean
         get() = dragState != null
 
     internal val isUnitDialogOpen: Boolean
-        get() = createUnitDialog != null || editUnitDialogs.isNotEmpty()
+        get() = dialogManager.hasOpenDialogs()
 
     internal val isUnitDialogBlocking: Boolean
-        get() = createUnitDialog?.isModalBlocking == true || editUnitDialogs.values.any { it.isModalBlocking }
+        get() = dialogManager.hasOpenDialogs()
 
     internal val isUnitDialogTextInputActive: Boolean
-        get() = createUnitDialog?.isTextInputActive == true || editUnitDialogs.values.any { it.isTextInputActive }
+        get() = dialogManager.isTextInputActive()
 
     internal val unitTemplateCount: Int
         get() = unitTemplates.size
@@ -100,7 +99,7 @@ internal class MapViewerSidebar(
     }
 
     fun blocksScreenPoint(point: Vector2D): Boolean =
-        layout.blocks(point) || createUnitDialog?.blocksScreenPoint(point) == true || editUnitDialogs.values.any { it.blocksScreenPoint(point) }
+        layout.blocks(point) || dialogManager.blocksScreenPoint(point)
 
     fun addUnitTemplate(template: MapViewerUnitTemplate, index: Int = unitTemplates.size, notify: Boolean = true): UnitTemplateSnapshot {
         val insertionIndex = index.coerceIn(0, unitTemplates.size)
@@ -125,7 +124,7 @@ internal class MapViewerSidebar(
     }
 
     fun removeUnitTemplate(id: UnitTemplateId, notify: Boolean = true): UnitTemplateSnapshot? {
-        editUnitDialogs.remove(id)?.close()
+        dialogManager.closeTarget(id)
         val index = unitTemplates.indexOfFirst { it.id == id }
         if (index < 0) {
             return null
@@ -286,20 +285,16 @@ internal class MapViewerSidebar(
     }
 
     private fun openCreateUnitDialog() {
-        if (createUnitDialog != null) {
-            return
-        }
-
         val stage = overlay.stage ?: return
-        createUnitDialog = MapViewerUnitCreateDialog(
+        MapViewerUnitCreateDialog(
             root = overlay,
+            dialogManager = dialogManager,
             dialogTitle = "Create Unit Type",
             confirmLabel = "Create",
             onCreated = { template ->
                 addUnitTemplate(template)
             },
             onDismiss = {
-                createUnitDialog = null
             },
         ).also {
             it.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
@@ -307,25 +302,20 @@ internal class MapViewerSidebar(
     }
 
     private fun openEditUnitDialog(row: UnitTemplateRow) {
-        if (createUnitDialog != null || editUnitDialogs.containsKey(row.id)) {
-            return
-        }
-
         val stage = overlay.stage ?: return
-        val dialog = MapViewerUnitCreateDialog(
+        MapViewerUnitCreateDialog(
             root = overlay,
+            dialogManager = dialogManager,
             dialogTitle = "Edit Unit Type",
             confirmLabel = "Save",
+            dialogKey = row.id,
             initialTemplate = row.template,
             onCreated = { template ->
                 replaceUnitTemplate(row.id, template)
             },
             onDismiss = {
-                editUnitDialogs.remove(row.id)
             },
-        )
-        editUnitDialogs[row.id] = dialog
-        dialog.also {
+        ).also {
             it.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
         }
     }

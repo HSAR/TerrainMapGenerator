@@ -6,13 +6,14 @@ import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
-import korlibs.korge.view.image
 import korlibs.korge.view.xy
 import kotlin.math.max
 
 @OptIn(KorgeExperimental::class)
 internal class MapViewerUnitEditDialog(
     private val root: Container,
+    private val dialogManager: MapViewerDialogManager,
+    private val dialogKey: Any,
     private val unitType: MapViewerUnitTemplate,
     initialName: String,
     initialPositionX: String,
@@ -30,6 +31,9 @@ internal class MapViewerUnitEditDialog(
     private var positionYValue = initialPositionY
     private var destroyedValue = initialDestroyed
     private var facingValue = initialFacing
+    private var nameInput: MapViewerInputField? = null
+    private var positionXInput: MapViewerInputField? = null
+    private var positionYInput: MapViewerInputField? = null
     private var isOpen = false
     private var window: MapViewerDialogWindow? = null
 
@@ -42,6 +46,7 @@ internal class MapViewerUnitEditDialog(
         window = MapViewerDialogWindow(
             root = root,
             title = "Edit Unit",
+            titleProvider = { MapViewerDialogTitles.unit("Edit Unit", nameValue) },
             preferredWidth = PREFERRED_WIDTH,
             preferredHeight = PREFERRED_HEIGHT,
             contentMinimumWidth = ::minimumContentWidth,
@@ -52,8 +57,19 @@ internal class MapViewerUnitEditDialog(
             ),
             onClose = { close() },
             renderContent = ::renderContent,
+            mode = MapViewerDialogMode.FLOATING,
         ).also {
             it.show(viewportWidth, viewportHeight)
+            dialogManager.register(
+                owner = this,
+                targetKey = dialogKey,
+                blocksScreenPoint = { point -> it.blocksScreenPoint(point) },
+                isTextInputActive = { isTextInputActive },
+                sync = { payload ->
+                    (payload as? MapViewerDialogPositionSync)?.let(::syncFields)
+                },
+                close = { close() },
+            )
         }
     }
 
@@ -73,10 +89,17 @@ internal class MapViewerUnitEditDialog(
         }
 
         isOpen = false
+        dialogManager.unregister(this)
         window?.close()
         window = null
         onDismiss()
     }
+
+    fun blocksScreenPoint(point: korlibs.math.geom.Vector2D): Boolean =
+        window?.blocksScreenPoint(point) == true
+
+    val isTextInputActive: Boolean
+        get() = nameInput?.isFocused == true
 
     private fun renderContent(parent: Container, width: Double) {
         val fieldWidth = fieldWidth(width)
@@ -94,15 +117,7 @@ internal class MapViewerUnitEditDialog(
 
         val typePreview = parent.container()
         typePreview.xy(0.0, MapViewerDialogSpacing.LABEL_TO_FIELD_GAP)
-        MapViewerUiBoxes.box(typePreview, typePreviewWidth, MapViewerDialogSpacing.PREVIEW_HEIGHT)
-        val iconSlot = typePreview.container()
-        iconSlot.xy(6.0, 6.0)
-        val fittedIcon = MapViewerIconFit.inside(unitType.bitmap, ICON_SLOT_WIDTH, ICON_SLOT_HEIGHT)
-        iconSlot.image(unitType.bitmap) {
-            scale = fittedIcon.scale
-            x = fittedIcon.x
-            y = fittedIcon.y
-        }
+        MapViewerUiBoxes.imageBox(typePreview, unitType.bitmap, typePreviewWidth, MapViewerDialogSpacing.PREVIEW_HEIGHT)
         MapViewerTextViews.leftBox(
             parent = typePreview,
             text = unitType.name,
@@ -117,9 +132,9 @@ internal class MapViewerUnitEditDialog(
         nameLabel.xy(0.0, 90.0)
         MapViewerTextViews.label(nameLabel, "Instance Name", color = Palette.Colours.WHITE)
 
-        val nameInput = MapViewerTextInputs.input(parent, nameValue, fieldWidth, MapViewerDialogSpacing.INPUT_HEIGHT, 0.0, 118.0)
-        nameInput.controller.onTextUpdated.add {
-            nameValue = nameInput.text
+        nameInput = MapViewerTextInputs.input(parent, nameValue, fieldWidth, MapViewerDialogSpacing.INPUT_HEIGHT, 0.0, 118.0)
+        nameInput?.controller?.onTextUpdated?.add {
+            nameValue = nameInput?.text.orEmpty()
         }
 
         val positionLabel = parent.container()
@@ -133,6 +148,7 @@ internal class MapViewerUnitEditDialog(
             x = 0.0,
             y = 194.0,
             width = compactFieldWidth,
+            onFieldCreated = { positionXInput = it },
         ) { input ->
             positionXValue = input.text
             refreshPositionPreview()
@@ -145,6 +161,7 @@ internal class MapViewerUnitEditDialog(
             x = compactFieldWidth + MapViewerDialogSpacing.FIELD_GAP,
             y = 194.0,
             width = compactFieldWidth,
+            onFieldCreated = { positionYInput = it },
         ) { input ->
             positionYValue = input.text
             refreshPositionPreview()
@@ -180,7 +197,14 @@ internal class MapViewerUnitEditDialog(
             }
         }
 
-        nameInput.focus()
+        nameInput?.focus()
+    }
+
+    private fun syncFields(sync: MapViewerDialogPositionSync) {
+        positionXValue = sync.positionX
+        positionYValue = sync.positionY
+        positionXInput?.text = sync.positionX
+        positionYInput?.text = sync.positionY
     }
 
     private fun addField(
@@ -190,12 +214,14 @@ internal class MapViewerUnitEditDialog(
         x: Double,
         y: Double,
         width: Double,
+        onFieldCreated: (MapViewerInputField) -> Unit = {},
         onTextUpdated: (MapViewerInputField) -> Unit,
     ) {
         val labelContainer = parent.container()
         labelContainer.xy(x, y)
         MapViewerTextViews.label(labelContainer, label, color = Palette.Colours.WHITE)
         val input = MapViewerTextInputs.input(parent, text, width, MapViewerDialogSpacing.INPUT_HEIGHT, x, y + MapViewerDialogSpacing.LABEL_TO_FIELD_GAP)
+        onFieldCreated(input)
         input.controller.onTextUpdated.add {
             onTextUpdated(input)
         }
@@ -255,7 +281,10 @@ internal class MapViewerUnitEditDialog(
         )
 
     private fun minimumTypePreviewWidth(): Double =
-        ICON_SLOT_WIDTH + 24.0 + MapViewerTextViews.measure(unitType.name).width
+        max(
+            ICON_SLOT_WIDTH + 24.0 + MapViewerTextViews.measure(unitType.name).width,
+            MapViewerTextViews.measure(MapViewerDialogTitles.unit("Edit Unit", nameValue)).width + 24.0,
+        )
 
     private fun nameInputMinimumWidth(): Double =
         maxOf(MIN_FIELD_WIDTH, MapViewerTextViews.measure(nameValue.ifBlank { "Instance Name" }).width + 24.0)

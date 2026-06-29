@@ -7,4 +7,11 @@ internal object MapViewerDialogTitles {
             ?.takeIf { it.isNotEmpty() }
             ?.let { "$baseTitle - $it" }
             ?: baseTitle
+
+    fun unit(baseTitle: String, unitName: String?): String =
+        unitName
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { "$baseTitle - $it" }
+            ?: baseTitle
 }

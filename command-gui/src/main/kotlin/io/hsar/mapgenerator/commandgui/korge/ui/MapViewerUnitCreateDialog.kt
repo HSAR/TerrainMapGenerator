@@ -21,8 +21,10 @@ import kotlin.math.max
 @OptIn(KorgeExperimental::class)
 internal class MapViewerUnitCreateDialog(
     private val root: Container,
+    private val dialogManager: MapViewerDialogManager,
     private val dialogTitle: String = "Create Unit Type",
     private val confirmLabel: String = "Create",
+    private val dialogKey: Any = Any(),
     private val initialTemplate: MapViewerUnitTemplate? = null,
     private val onCreated: (MapViewerUnitTemplate) -> Unit,
     private val onDismiss: () -> Unit,
@@ -70,6 +72,13 @@ internal class MapViewerUnitCreateDialog(
             mode = MapViewerDialogMode.FLOATING,
         ).also {
             it.show(viewportWidth, viewportHeight)
+            dialogManager.register(
+                owner = this,
+                targetKey = dialogKey,
+                blocksScreenPoint = { point -> it.blocksScreenPoint(point) },
+                isTextInputActive = { isTextInputActive },
+                close = { close() },
+            )
         }
     }
 
@@ -88,6 +97,7 @@ internal class MapViewerUnitCreateDialog(
         }
 
         isOpen = false
+        dialogManager.unregister(this)
         affiliationDropdown.close()
         dialogWindow?.close()
         dialogWindow = null
