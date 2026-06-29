@@ -1,9 +1,11 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.image.Palette
+import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
+import korlibs.korge.view.image
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Rectangle
@@ -122,6 +124,31 @@ internal object MapViewerUiBoxes {
     ): Container =
         frame(parent = parent, width = width, height = height, active = active, style = style)
 
+    fun imageBox(
+        parent: Container,
+        bitmap: Bitmap32,
+        maxWidth: Double,
+        maxHeight: Double,
+        active: Boolean = true,
+        style: (Boolean) -> UiFrameStyle = { state -> defaultStyle(state) },
+        inset: Double = BORDER_INSET,
+    ): Container =
+        frame(
+            parent = parent,
+            width = maxWidth,
+            height = maxHeight,
+            active = active,
+            style = style,
+            inset = inset,
+        ).also { box ->
+            val fitted = imageFit(bitmap, maxWidth, maxHeight, inset)
+            box.image(bitmap) {
+                scale = fitted.scale
+                x = fitted.x
+                y = fitted.y
+            }
+        }
+
     fun colorAlpha(color: Color, alpha: Int): Color =
         Color(color.red, color.green, color.blue, alpha)
 
@@ -148,6 +175,14 @@ internal object MapViewerUiBoxes {
             fillAlpha = if (active) ACTIVE_ALPHA else MapViewerUiStateStyle.inactiveFillAlpha,
             borderColor = Palette.Colours.WHITE,
             borderAlpha = ACTIVE_ALPHA,
+        )
+
+    private fun imageFit(bitmap: Bitmap32, maxWidth: Double, maxHeight: Double, inset: Double): MapViewerIconFit.Result =
+        MapViewerIconFit.inside(
+            bitmap = bitmap,
+            width = (maxWidth - inset * 2.0).coerceAtLeast(0.0),
+            height = (maxHeight - inset * 2.0).coerceAtLeast(0.0),
+            maxScale = 1.0,
         )
 
     private const val BORDER_INSET = 2.0

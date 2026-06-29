@@ -10,7 +10,6 @@ import korlibs.image.bitmap.Bitmap32
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
-import korlibs.korge.view.image
 import korlibs.korge.view.xy
 import korlibs.math.geom.Vector2D
 import java.io.File
@@ -44,7 +43,6 @@ internal class MapViewerUnitCreateDialog(
         onSelected = { affiliation -> selectedAffiliation = affiliation },
         labelForValue = UnitAffiliationUi::label,
         swatchForValue = UnitAffiliationUi::swatchColor,
-        menuWidth = AFFILIATION_DROPDOWN_WIDTH,
     )
 
     fun show(viewportWidth: Int, viewportHeight: Int) {
@@ -133,10 +131,10 @@ internal class MapViewerUnitCreateDialog(
             it.xy(0.0, layout.previewTop)
         }
         previewFrame?.let { frame ->
-            MapViewerUiBoxes.box(frame, layout.previewWidth, MapViewerDialogSpacing.PREVIEW_HEIGHT)
-            selectedBitmap?.let { bitmap ->
+            selectedBitmap?.let { bitmap ->  
                 renderPreview(frame, bitmap, layout.previewWidth)
             } ?: run {
+                MapViewerUiBoxes.box(frame, layout.previewWidth, MapViewerDialogSpacing.PREVIEW_HEIGHT)
                 MapViewerTextViews.box(
                     frame,
                     "No image selected",
@@ -196,13 +194,7 @@ internal class MapViewerUnitCreateDialog(
 
     private fun renderPreview(previewFrame: Container, bitmap: Bitmap32, previewWidth: Double) {
         previewFrame.removeChildren()
-        MapViewerUiBoxes.box(previewFrame, previewWidth, MapViewerDialogSpacing.PREVIEW_HEIGHT)
-        val fittedIcon = MapViewerIconFit.inside(bitmap, previewWidth - 12.0, MapViewerDialogSpacing.PREVIEW_HEIGHT - 12.0)
-        previewFrame.image(bitmap) {
-            scale = fittedIcon.scale
-            x = 6.0 + fittedIcon.x
-            y = 6.0 + fittedIcon.y
-        }
+        MapViewerUiBoxes.imageBox(previewFrame, bitmap, previewWidth, MapViewerDialogSpacing.PREVIEW_HEIGHT)
     }
 
     private fun showStatus(parent: Container?, text: String, width: Double) {
@@ -213,10 +205,11 @@ internal class MapViewerUnitCreateDialog(
     }
 
     private fun layoutForWidth(contentWidth: Double): UnitTypeDialogLayout {
-        val twoColumnWidth = NAME_FIELD_WIDTH + FIELD_GAP + AFFILIATION_DROPDOWN_WIDTH
+        val affiliationFieldWidth = affiliationMinimumWidth()
+        val twoColumnWidth = NAME_FIELD_WIDTH + FIELD_GAP + affiliationFieldWidth
         val twoColumn = contentWidth >= twoColumnWidth
         val nameFieldWidth = if (twoColumn) NAME_FIELD_WIDTH else contentWidth.coerceAtLeast(MIN_FIELD_WIDTH)
-        val affiliationFieldWidth = if (twoColumn) AFFILIATION_DROPDOWN_WIDTH else contentWidth.coerceAtLeast(MIN_FIELD_WIDTH)
+        val renderedAffiliationWidth = if (twoColumn) affiliationFieldWidth else contentWidth.coerceAtLeast(MIN_FIELD_WIDTH)
         val affiliationLeft = if (twoColumn) NAME_FIELD_WIDTH + FIELD_GAP else 0.0
         val nameLabelTop = 0.0
         val nameInputTop = MapViewerDialogSpacing.inputTop(nameLabelTop)
@@ -237,7 +230,7 @@ internal class MapViewerUnitCreateDialog(
         val browseTop = statusTop + 30.0
         return UnitTypeDialogLayout(
             nameFieldWidth = nameFieldWidth,
-            affiliationFieldWidth = affiliationFieldWidth,
+            affiliationFieldWidth = renderedAffiliationWidth,
             affiliationLeft = affiliationLeft,
             affiliationTop = affiliationTop,
             imageLabelTop = imageLabelTop,
@@ -256,7 +249,7 @@ internal class MapViewerUnitCreateDialog(
     private fun minimumContentWidth(): Double =
         maxOf(
             nameMinimumWidth(nameValue),
-            AFFILIATION_DROPDOWN_WIDTH,
+            affiliationMinimumWidth(),
             MIN_FIELD_WIDTH,
             statusWidthFor(statusText),
             BROWSE_BUTTON_WIDTH,
@@ -281,11 +274,18 @@ internal class MapViewerUnitCreateDialog(
     private fun statusWidthFor(text: String): Double =
         maxOf(180.0, MapViewerTextViews.measure(text).width + 24.0)
 
+    private fun affiliationMinimumWidth(): Double =
+        maxOf(
+            MIN_FIELD_WIDTH,
+            MapViewerDropdownLayoutBuilder.minimumMenuWidth(
+                labels = UnitAffiliationUi.options.map { it.label },
+            ) + 18.0,
+        )
+
     private companion object {
         const val PREFERRED_WIDTH = 560.0
         const val PREFERRED_HEIGHT = 420.0
         const val NAME_FIELD_WIDTH = 240.0
-        const val AFFILIATION_DROPDOWN_WIDTH = 220.0
         const val BROWSE_BUTTON_WIDTH = 140.0
         const val FIELD_GAP = MapViewerDialogSpacing.FIELD_GAP
         const val MIN_FIELD_WIDTH = MapViewerDialogSpacing.MIN_FIELD_WIDTH

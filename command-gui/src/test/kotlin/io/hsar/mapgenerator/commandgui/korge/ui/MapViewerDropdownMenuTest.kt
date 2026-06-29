@@ -5,6 +5,7 @@ import io.hsar.mapgenerator.image.Palette
 import korlibs.math.geom.Vector2D
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.greaterThan
 import org.junit.jupiter.api.Test
 
 class MapViewerDropdownMenuTest {
@@ -77,5 +78,13 @@ class MapViewerDropdownMenuTest {
         assertThat(UnitAffiliationUi.swatchColor(UnitAffiliation.Hostile), equalTo(Palette.Colours.RED))
         assertThat(UnitAffiliationUi.swatchColor(UnitAffiliation.Neutral), equalTo(Palette.Colours.GREEN))
         assertThat(UnitAffiliationUi.swatchColor(UnitAffiliation.Unknown), equalTo(Palette.Colours.YELLOW))
+    }
+
+    @Test
+    fun `minimum menu width grows with the longest label`() {
+        val shortWidth = MapViewerDropdownLayoutBuilder.minimumMenuWidth(listOf("A"))
+        val longWidth = MapViewerDropdownLayoutBuilder.minimumMenuWidth(listOf("A much longer option"))
+
+        assertThat(longWidth, greaterThan(shortWidth))
     }
 }

@@ -55,7 +55,7 @@ internal class MapViewerDropdownMenu<T>(
     private val onSelected: (T?) -> Unit,
     private val labelForValue: (T?) -> String,
     private val swatchForValue: (T?) -> Color? = { null },
-    private val menuWidth: Double = DEFAULT_MENU_WIDTH,
+    private val menuWidth: Double = 0.0,
 ) {
     private val layer = root.container()
     private val controller = MapViewerDropdownController(onSelected)
@@ -142,7 +142,11 @@ internal class MapViewerDropdownMenu<T>(
         val stage = root.stage ?: return
         val stageWidth = stage.views.actualVirtualWidth
         val stageHeight = stage.views.actualVirtualHeight
-        val resolvedMenuWidth = maxOf(menuWidth, triggerWidth)
+        val resolvedMenuWidth = maxOf(
+            menuWidth,
+            triggerWidth,
+            MapViewerDropdownLayoutBuilder.minimumMenuWidth(options.map { it.label }),
+        )
         val menuHeight = MENU_PADDING * 2.0 + (options.size * OPTION_HEIGHT)
         val bounds = MapViewerDropdownLayoutBuilder.menuBounds(
             anchor = anchorSource.globalPos,
@@ -284,7 +288,6 @@ internal class MapViewerDropdownMenu<T>(
     )
 
     private companion object {
-        const val DEFAULT_MENU_WIDTH = 200.0
         const val DEFAULT_FIELD_HEIGHT = 32.0
         private const val Z_INDEX = 60_000.0
         private const val MENU_PADDING = 4.0
@@ -303,6 +306,20 @@ internal class MapViewerDropdownMenu<T>(
 
 internal object MapViewerDropdownLayoutBuilder {
     const val MENU_GAP = 6.0
+    const val MENU_PADDING = 4.0
+    const val OPTION_TEXT_LEFT = 30.0
+    private const val OPTION_RIGHT_PADDING = 24.0
+
+    fun minimumMenuWidth(
+        labels: List<String>,
+        textSize: Double = MapViewerTextViews.DEFAULT_TEXT_SIZE,
+    ): Double {
+        val longestLabelWidth = labels.maxOfOrNull { label -> MapViewerTextViews.measure(label, size = textSize).width } ?: 0.0
+        return MENU_PADDING * 2.0 +
+                OPTION_TEXT_LEFT +
+                longestLabelWidth +
+                OPTION_RIGHT_PADDING
+    }
 
     fun menuBounds(
         anchor: Vector2D,

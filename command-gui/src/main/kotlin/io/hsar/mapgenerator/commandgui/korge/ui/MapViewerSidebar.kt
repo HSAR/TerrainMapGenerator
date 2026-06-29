@@ -253,13 +253,7 @@ internal class MapViewerSidebar(
         dragLayer.removeChildren()
         val preview = dragLayer.container()
         preview.alpha = 0.92
-        MapViewerUiBoxes.box(preview, PREVIEW_WIDTH, PREVIEW_HEIGHT)
-        val fittedIcon = MapViewerIconFit.inside(template.bitmap, PREVIEW_WIDTH - 12.0, PREVIEW_HEIGHT - 12.0)
-        preview.image(template.bitmap) {
-            scale = fittedIcon.scale
-            x = 6.0 + fittedIcon.x
-            y = 6.0 + fittedIcon.y
-        }
+        MapViewerUiBoxes.imageBox(preview, template.bitmap, PREVIEW_WIDTH, PREVIEW_HEIGHT)
 
         dragState = DragState(template = template, preview = preview)
         lastDragPointer = null
