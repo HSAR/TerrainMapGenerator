@@ -1,7 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.image.Palette
-import korlibs.event.MouseButton
 import korlibs.image.color.RGBA
 import korlibs.korge.input.mouse
 import korlibs.korge.internal.KorgeInternal
@@ -62,7 +61,8 @@ internal class MapViewerDropdownMenu<T>(
     private val controller = MapViewerDropdownController(onSelected)
     private var triggerLabel: Text? = null
     private var triggerSwatch: Container? = null
-    private var closeAfterRelease = false
+    private var ignoreOutsideUntilRelease = false
+    private var wasMouseDown = false
     private var popupState: PopupState<T>? = null
 
     init {
@@ -71,9 +71,9 @@ internal class MapViewerDropdownMenu<T>(
         layer.visible = false
         root.addUpdater {
             updatePopupPosition()
-            if (closeAfterRelease && root.stage?.views?.input?.mouseButtons == 0) {
-                closeAfterRelease = false
-                closePopup()
+            updatePointerSelection()
+            if (ignoreOutsideUntilRelease && root.stage?.views?.input?.mouseButtons == 0) {
+                ignoreOutsideUntilRelease = false
             }
         }
     }
@@ -156,16 +156,7 @@ internal class MapViewerDropdownMenu<T>(
         closePopup()
         controller.open(bounds)
         layer.visible = true
-
-        val backdrop = layer.container()
-        backdrop.solidRect(stageWidth.toDouble(), stageHeight.toDouble(), RGBA(0, 0, 0, 0))
-        backdrop.mouse {
-            onDown {
-                if (button == MouseButton.LEFT) {
-                    closePopup()
-                }
-            }
-        }
+        ignoreOutsideUntilRelease = true
 
         val menu = layer.container()
         menu.xy(bounds.left, bounds.top)
@@ -177,7 +168,6 @@ internal class MapViewerDropdownMenu<T>(
             triggerWidth = resolvedMenuWidth,
             menuHeight = menuHeight,
             selectedValue = selectedValue,
-            backdrop = backdrop,
             menu = menu,
         )
 
@@ -185,22 +175,13 @@ internal class MapViewerDropdownMenu<T>(
             val top = MENU_PADDING + (index * OPTION_HEIGHT)
             val optionRow = menu.container()
             optionRow.xy(MENU_PADDING, top)
-            optionRow.solidRect(
+            val rowBacking = optionRow.solidRect(
                 bounds.width - MENU_PADDING * 2.0,
                 OPTION_HEIGHT - OPTION_ROW_INSET,
                 RGBA(255, 255, 255, if (option.value == selectedValue) 32 else 16),
-            ) {
-                y = OPTION_ROW_INSET * 0.5
-            }
-            optionRow.mouse {
-                onClick {
-                    if (button == MouseButton.LEFT) {
-                        controller.select(option.value)
-                        updateTriggerDisplay(option.value)
-                        closeAfterRelease = true
-                    }
-                }
-            }
+            )
+            rowBacking.y = OPTION_ROW_INSET * 0.5
+            rowBacking.mouseEnabled = false
 
             val chip = optionRow.container()
             chip.xy(10.0, (OPTION_HEIGHT - CHIP_SIZE) * 0.5)
@@ -214,6 +195,9 @@ internal class MapViewerDropdownMenu<T>(
                 height = OPTION_HEIGHT - OPTION_ROW_INSET,
                 color = Palette.Colours.WHITE,
             )
+
+            val hitArea = optionRow.solidRect(bounds.width - MENU_PADDING * 2.0, OPTION_HEIGHT, RGBA(0, 0, 0, 1))
+            hitArea.mouseEnabled = false
         }
     }
 
@@ -236,13 +220,54 @@ internal class MapViewerDropdownMenu<T>(
         popup.menu.xy(bounds.left, bounds.top)
     }
 
+    private fun updatePointerSelection() {
+        val popup = popupState ?: return
+        if (!layer.visible) {
+            return
+        }
+
+        val stage = root.stage ?: return
+        val mouseDown = stage.views.input.mouseButtons != 0
+        val justPressed = mouseDown && !wasMouseDown
+        wasMouseDown = mouseDown
+        if (ignoreOutsideUntilRelease) {
+            return
+        }
+        if (!justPressed) {
+            return
+        }
+
+        val bounds = controller.menuBounds ?: return
+        val pointer = stage.views.input.mousePos
+        if (bounds.contains(pointer)) {
+            selectOptionAt(pointer, bounds)
+        } else {
+            closePopup()
+        }
+    }
+
+    private fun selectOptionAt(pointer: Vector2D, bounds: ScreenBounds) {
+        val localY = pointer.y - bounds.top - MENU_PADDING
+        if (localY < 0.0) {
+            return
+        }
+
+        val optionIndex = (localY / OPTION_HEIGHT).toInt()
+        options.getOrNull(optionIndex)?.let { option ->
+            controller.select(option.value)
+            updateTriggerDisplay(option.value)
+            closePopup()
+        }
+    }
+
     private fun updateTriggerDisplay(value: T?) {
         triggerLabel?.text = labelForValue(value)
         triggerSwatch?.let { MapViewerSwatchViews.render(it, swatchForValue(value), TRIGGER_SWATCH_SIZE) }
     }
 
     private fun closePopup() {
-        closeAfterRelease = false
+        ignoreOutsideUntilRelease = false
+        wasMouseDown = false
         controller.dismiss()
         popupState = null
         layer.removeChildren()
@@ -255,7 +280,6 @@ internal class MapViewerDropdownMenu<T>(
         val triggerWidth: Double,
         val menuHeight: Double,
         val selectedValue: T?,
-        val backdrop: Container,
         val menu: Container,
     )
 

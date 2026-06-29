@@ -183,11 +183,6 @@ internal class MapViewerDialogWindow(
             content.xy(0.0, -scrollState.offset)
             renderContent(content, layout.contentViewport.width)
         }
-        contentClip.mouse {
-            onClick {
-                // Consume content clicks at the dialog layer.
-            }
-        }
         if (scrollState.needsScrolling) {
             MapViewerScrollbar.render(panel, layout.scrollbar, scrollState) { pointerY ->
                 scrollDragState = ScrollDragState(pointerY, scrollState.offset)
