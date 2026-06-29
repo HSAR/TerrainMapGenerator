@@ -275,6 +275,13 @@ internal class MapViewerSidebar(
             return
         }
 
+        if (blocksScreenPoint(mouse)) {
+            state.preview.removeFromParent()
+            dragState = null
+            lastDragPointer = null
+            return
+        }
+
         onUnitDropped(state.template, mouse)
 
         state.preview.removeFromParent()
