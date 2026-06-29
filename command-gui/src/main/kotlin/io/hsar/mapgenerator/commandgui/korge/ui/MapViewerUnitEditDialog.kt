@@ -44,6 +44,7 @@ internal class MapViewerUnitEditDialog(
             title = "Edit Unit",
             preferredWidth = PREFERRED_WIDTH,
             preferredHeight = PREFERRED_HEIGHT,
+            contentMinimumWidth = ::minimumContentWidth,
             contentHeight = ::contentHeight,
             actions = listOf(
                 MapViewerDialogAction("Save") { saveAndClose() },
@@ -234,14 +235,48 @@ internal class MapViewerUnitEditDialog(
         }
 
     private fun fieldWidth(width: Double): Double =
-        max(MIN_FIELD_WIDTH, width)
+        max(minimumFieldWidth(), width)
+
+    private fun minimumContentWidth(): Double =
+        maxOf(
+            minimumTypePreviewWidth(),
+            nameInputMinimumWidth(),
+            positionInputMinimumWidth(),
+            destroyedMinimumWidth(),
+            MapViewerDialogActions.minimumWidth(2),
+        )
+
+    private fun minimumFieldWidth(): Double =
+        maxOf(
+            minimumTypePreviewWidth(),
+            nameInputMinimumWidth(),
+            positionInputMinimumWidth(),
+            destroyedMinimumWidth(),
+        )
+
+    private fun minimumTypePreviewWidth(): Double =
+        ICON_SLOT_WIDTH + 24.0 + MapViewerTextViews.measure(unitType.name).width
+
+    private fun nameInputMinimumWidth(): Double =
+        maxOf(MIN_FIELD_WIDTH, MapViewerTextViews.measure(nameValue.ifBlank { "Instance Name" }).width + 24.0)
+
+    private fun positionInputMinimumWidth(): Double =
+        maxOf(
+            90.0,
+            MapViewerTextViews.measure(positionXValue.ifBlank { "X" }).width + 24.0,
+            MapViewerTextViews.measure(positionYValue.ifBlank { "Y" }).width + 24.0,
+            MapViewerTextViews.measure(facingValue.ifBlank { "Facing" }).width + 24.0,
+        )
+
+    private fun destroyedMinimumWidth(): Double =
+        maxOf(84.0, MapViewerTextViews.measure("Destroyed").width + 12.0)
 
     private companion object {
         const val PREFERRED_WIDTH = 460.0
         const val PREFERRED_HEIGHT = 540.0
         const val ICON_SLOT_WIDTH = 34.0
         const val ICON_SLOT_HEIGHT = 26.0
-        const val MIN_FIELD_WIDTH = 260.0
+        const val MIN_FIELD_WIDTH = 120.0
         const val COMPACT_ROW_MIN_WIDTH = 500.0
         const val COMPACT_CONTENT_HEIGHT = 320.0
         const val STACKED_CONTENT_HEIGHT = 392.0

@@ -82,6 +82,28 @@ internal object MapViewerTextViews {
             block = block,
         )
 
+    fun ellipsize(
+        text: String,
+        maxWidth: Double,
+        role: MapViewerFontRole = MapViewerFontRole.MAIN,
+        size: Double = DEFAULT_TEXT_SIZE,
+        suffix: String = "...",
+    ): String {
+        val textWidth = measure(text, role, size).width
+        if (textWidth <= maxWidth) {
+            return text
+        }
+
+        val suffixWidth = measure(suffix, role, size).width
+        if (suffixWidth >= maxWidth) {
+            return longestPrefixThatFits(text, maxWidth, role, size)
+        }
+
+        val prefixWidthLimit = maxWidth - suffixWidth
+        return longestPrefixThatFits(text, prefixWidthLimit, role, size)
+            .let { prefix -> if (prefix.length < text.length) "$prefix$suffix" else prefix }
+    }
+
     fun bounds(text: String, role: MapViewerFontRole = MapViewerFontRole.MAIN, size: Double = DEFAULT_TEXT_SIZE): Rectangle =
         measure(text, role, size)
 
@@ -102,6 +124,29 @@ internal object MapViewerTextViews {
 
     fun Color.toRgba(alpha: Int = this.alpha): RGBA =
         RGBA(red, green, blue, alpha)
+
+    private fun longestPrefixThatFits(
+        text: String,
+        maxWidth: Double,
+        role: MapViewerFontRole,
+        size: Double,
+    ): String {
+        if (text.isEmpty() || maxWidth <= 0.0) {
+            return ""
+        }
+
+        var low = 0
+        var high = text.length
+        while (low < high) {
+            val mid = (low + high + 1) / 2
+            if (measure(text.take(mid), role, size).width <= maxWidth) {
+                low = mid
+            } else {
+                high = mid - 1
+            }
+        }
+        return text.take(low)
+    }
 
     const val DEFAULT_TEXT_SIZE = 24.0
 }

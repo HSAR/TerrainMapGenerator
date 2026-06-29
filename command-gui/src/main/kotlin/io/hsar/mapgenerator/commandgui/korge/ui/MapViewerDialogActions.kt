@@ -15,32 +15,96 @@ internal object MapViewerDialogActions {
     const val BUTTON_HEIGHT = MapViewerDialogLayoutBuilder.FOOTER_BUTTON_HEIGHT
     const val BUTTON_GAP = 18.0
 
-    fun render(parent: Container, bounds: ScreenBounds, actions: List<MapViewerDialogAction>) {
+    fun render(
+        parent: Container,
+        bounds: ScreenBounds,
+        actions: List<MapViewerDialogAction>,
+        layout: MapViewerDialogFooterLayout = footerLayout(bounds.width, actions.size),
+    ) {
         if (actions.isEmpty()) {
             return
         }
 
-        val centers = centerRatios(actions.size)
-        val centerY = bounds.top + bounds.height * 0.5
-        actions.zip(centers).forEach { (action, centerRatio) ->
-            val buttonLeft = bounds.left + (bounds.width * centerRatio) - BUTTON_WIDTH * 0.5
-            val buttonTop = centerY - BUTTON_HEIGHT * 0.5
-            val button = parent.container()
-            button.xy(buttonLeft, buttonTop)
-            MapViewerUiBoxes.button(button, BUTTON_WIDTH, BUTTON_HEIGHT)
-            MapViewerTextViews.box(button, action.label, BUTTON_WIDTH, BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(true))
-            button.mouse {
-                onClick {
-                    action.onClick()
+        when (layout) {
+            MapViewerDialogFooterLayout.ROW -> {
+                val centers = centerRatios(actions.size)
+                val centerY = bounds.top + bounds.height * 0.5
+                actions.zip(centers).forEach { (action, centerRatio) ->
+                    val buttonLeft = bounds.left + (bounds.width * centerRatio) - BUTTON_WIDTH * 0.5
+                    val buttonTop = centerY - BUTTON_HEIGHT * 0.5
+                    val button = parent.container()
+                    button.xy(buttonLeft, buttonTop)
+                    MapViewerUiBoxes.button(button, BUTTON_WIDTH, BUTTON_HEIGHT)
+                    MapViewerTextViews.box(button, action.label, BUTTON_WIDTH, BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(true))
+                    button.mouse {
+                        onClick {
+                            action.onClick()
+                        }
+                    }
+                }
+            }
+
+            MapViewerDialogFooterLayout.COLUMN -> {
+                val stackHeight = stackedHeight(actions.size)
+                val startTop = bounds.top + ((bounds.height - stackHeight) * 0.5)
+                val buttonLeft = bounds.left + (bounds.width - BUTTON_WIDTH) * 0.5
+                actions.forEachIndexed { index, action ->
+                    val button = parent.container()
+                    button.xy(buttonLeft, startTop + index * (BUTTON_HEIGHT + BUTTON_GAP))
+                    MapViewerUiBoxes.button(button, BUTTON_WIDTH, BUTTON_HEIGHT)
+                    MapViewerTextViews.box(button, action.label, BUTTON_WIDTH, BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(true))
+                    button.mouse {
+                        onClick {
+                            action.onClick()
+                        }
+                    }
                 }
             }
         }
     }
+
+    fun footerLayout(boundsWidth: Double, buttonCount: Int): MapViewerDialogFooterLayout =
+        if (buttonCount <= 1 || boundsWidth >= rowMinimumWidth(buttonCount)) {
+            MapViewerDialogFooterLayout.ROW
+        } else {
+            MapViewerDialogFooterLayout.COLUMN
+        }
+
+    fun footerHeight(buttonCount: Int, layout: MapViewerDialogFooterLayout): Double =
+        if (buttonCount <= 0) {
+            0.0
+        } else {
+            MapViewerDialogLayoutBuilder.FOOTER_TOP_GAP + MapViewerDialogLayoutBuilder.FOOTER_BOTTOM_PADDING + when (layout) {
+                MapViewerDialogFooterLayout.ROW -> BUTTON_HEIGHT
+                MapViewerDialogFooterLayout.COLUMN -> stackedHeight(buttonCount)
+            }
+        }
+
+    fun minimumWidth(buttonCount: Int): Double =
+        if (buttonCount <= 0) {
+            0.0
+        } else {
+            BUTTON_WIDTH
+        }
 
     fun centerRatios(buttonCount: Int): List<Double> =
         if (buttonCount <= 0) {
             emptyList()
         } else {
             (0 until buttonCount).map { index -> (index + 1).toDouble() / (buttonCount + 1).toDouble() }
+        }
+
+    private fun rowMinimumWidth(buttonCount: Int): Double =
+        if (buttonCount <= 0) {
+            0.0
+        } else {
+            (buttonCount + 1).toDouble() * BUTTON_WIDTH
+        }
+
+    private fun stackedHeight(buttonCount: Int): Double =
+        if (buttonCount <= 0) {
+            0.0
+        } else {
+            (buttonCount * BUTTON_HEIGHT) + ((buttonCount - 1) * BUTTON_GAP)
         }
 }

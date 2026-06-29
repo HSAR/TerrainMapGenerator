@@ -691,7 +691,7 @@ internal class MapViewerScene(
                                     ledgerPanel?.blocksScreenPoint(pointer) == true ||
                                     sidebar.blocksScreenPoint(pointer) ||
                                     sidebar.isUnitDragging ||
-                                    sidebar.isUnitDialogOpen ||
+                                    sidebar.isUnitDialogBlocking ||
                                     unitManager.isEditDialogOpen ||
                                     unitManager.isContextMenuOpen ||
                                     escapeMenu?.isOpen == true ||
@@ -725,7 +725,8 @@ internal class MapViewerScene(
                             autosaveController.update(now)
                             if (input.keys.justPressed(Key.S) &&
                                 input.keys[Key.CONTROL] &&
-                                !sidebar.isUnitDialogOpen &&
+                                !sidebar.isUnitDialogBlocking &&
+                                !sidebar.isUnitDialogTextInputActive &&
                                 ledgerPanel?.isTextInputActive != true &&
                                 !sidebar.isUnitDragging &&
                                 !unitManager.isDragging &&
@@ -737,7 +738,8 @@ internal class MapViewerScene(
                                 saveOperation()
                             }
                             if (input.keys.justPressed(Key.ESCAPE) &&
-                                !sidebar.isUnitDialogOpen &&
+                                !sidebar.isUnitDialogBlocking &&
+                                !sidebar.isUnitDialogTextInputActive &&
                                 ledgerPanel?.isTextInputActive != true &&
                                 !sidebar.isUnitDragging &&
                                 !unitManager.isDragging &&
@@ -767,7 +769,8 @@ internal class MapViewerScene(
                             currentDrawingColour = { currentDrawingColour.color },
                             drawingStore = drawingStore,
                             canUseUndoRedo = {
-                                !sidebar.isUnitDialogOpen &&
+                                !sidebar.isUnitDialogBlocking &&
+                                        !sidebar.isUnitDialogTextInputActive &&
                                         ledgerPanel?.isTextInputActive != true &&
                                         !sidebar.isUnitDragging &&
                                         !unitManager.isDragging &&
@@ -799,7 +802,7 @@ internal class MapViewerScene(
                                         ledgerPanel?.blocksScreenPoint(point) == true ||
                                         sidebar.blocksScreenPoint(point) ||
                                         sidebar.isUnitDragging ||
-                                        sidebar.isUnitDialogOpen ||
+                                        sidebar.isUnitDialogBlocking ||
                                         unitManager.isEditDialogOpen ||
                                         unitManager.isContextMenuOpen ||
                                         drawingManager.blocksScreenPoint(point) ||

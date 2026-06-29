@@ -46,10 +46,30 @@ class MapViewerDialogLayoutBuilderTest {
             viewportHeight = 800,
         )
 
-        assertThat(small.width, equalTo(MapViewerDialogLayoutBuilder.MIN_WIDTH))
+        assertThat(small.width, equalTo(100.0))
         assertThat(small.height, equalTo(MapViewerDialogLayoutBuilder.MIN_HEIGHT))
         assertThat(large.width, lessThanOrEqualTo(1000.0 - MapViewerDialogLayoutBuilder.OUTER_PADDING * 2.0))
         assertThat(large.height, lessThanOrEqualTo(800.0 - MapViewerDialogLayoutBuilder.OUTER_PADDING * 2.0))
+    }
+
+    @Test
+    fun `minimum width is honoured when supplied`() {
+        val clamped = MapViewerDialogLayoutBuilder.clampSize(
+            size = MapViewerDialogSize(100.0, 320.0),
+            viewportWidth = 1000,
+            viewportHeight = 800,
+            minimumWidth = 240.0,
+        )
+
+        assertThat(clamped.width, equalTo(240.0))
+    }
+
+    @Test
+    fun `minimum shell width includes scrollbar gutter`() {
+        assertThat(
+            MapViewerDialogLayoutBuilder.minimumShellWidth(240.0, actionButtonCount = 2),
+            equalTo(240.0 + (MapViewerDialogLayoutBuilder.CONTENT_PADDING * 2.0) + MapViewerScrollbar.WIDTH + 10.0),
+        )
     }
 
     @Test
@@ -71,5 +91,13 @@ class MapViewerDialogLayoutBuilderTest {
 
         assertThat(withoutActions.footer, equalTo(null))
         assertThat(withActions.footer != null, equalTo(true))
+        assertThat(withActions.footer?.layout, equalTo(MapViewerDialogFooterLayout.ROW))
+    }
+
+    @Test
+    fun `footer switches to column when buttons would overlap`() {
+        val layout = MapViewerDialogLayoutBuilder.build(MapViewerDialogBounds(0.0, 0.0, 200.0, 540.0), actionButtonCount = 2)
+
+        assertThat(layout.footer?.layout, equalTo(MapViewerDialogFooterLayout.COLUMN))
     }
 }

@@ -12,15 +12,23 @@ import korlibs.korge.view.xy
 import korlibs.math.geom.Size2D
 import korlibs.math.geom.Vector2D
 
+internal enum class MapViewerDialogMode {
+    MODAL,
+    FLOATING,
+}
+
 internal class MapViewerDialogWindow(
     private val root: Container,
     private val title: String,
+    private val titleProvider: () -> String = { title },
     private val preferredWidth: Double,
     private val preferredHeight: Double,
+    private val contentMinimumWidth: () -> Double = { 0.0 },
     private val contentHeight: (Double) -> Double,
     private val actions: List<MapViewerDialogAction> = emptyList(),
     private val onClose: () -> Unit,
     private val renderContent: (Container, Double) -> Unit,
+    private val mode: MapViewerDialogMode = MapViewerDialogMode.MODAL,
 ) {
     private val layer = root.container()
     private var viewportWidth = 0
@@ -41,7 +49,13 @@ internal class MapViewerDialogWindow(
         layer.mouseEnabled = true
         this.viewportWidth = viewportWidth
         this.viewportHeight = viewportHeight
-        bounds = MapViewerDialogLayoutBuilder.defaultBounds(viewportWidth, viewportHeight, preferredWidth, preferredHeight)
+        bounds = MapViewerDialogLayoutBuilder.defaultBounds(
+            viewportWidth = viewportWidth,
+            viewportHeight = viewportHeight,
+            preferredWidth = preferredWidth,
+            preferredHeight = preferredHeight,
+            minimumWidth = minimumWidth(),
+        )
         installInputHandlers()
         render()
     }
@@ -55,11 +69,23 @@ internal class MapViewerDialogWindow(
         layer.removeFromParent()
     }
 
+    fun blocksScreenPoint(point: Vector2D): Boolean =
+        isOpen && (mode == MapViewerDialogMode.MODAL || bounds?.contains(point) == true)
+
+    val isModal: Boolean
+        get() = mode == MapViewerDialogMode.MODAL
+
+    fun refresh() {
+        if (isOpen) {
+            render()
+        }
+    }
+
     private fun installInputHandlers() {
         layer.onStageResized { width, height ->
             viewportWidth = width
             viewportHeight = height
-            bounds = bounds?.let { with(MapViewerDialogLayoutBuilder) { it.clampedTo(width, height) } }
+            bounds = bounds?.let { with(MapViewerDialogLayoutBuilder) { it.clampedTo(width, height, minimumWidth()) } }
             render()
         }
         layer.mouse {
@@ -103,13 +129,22 @@ internal class MapViewerDialogWindow(
                     width = state.original.width + pointer.x - state.startPointer.x,
                     height = state.original.height + pointer.y - state.startPointer.y,
                 )
-            }.let { with(MapViewerDialogLayoutBuilder) { it.clampedTo(viewportWidth, viewportHeight) } }
+            }.let { with(MapViewerDialogLayoutBuilder) { it.clampedTo(viewportWidth, viewportHeight, minimumWidth()) } }
             render()
         }
     }
 
     private fun render() {
         val currentBounds = bounds ?: return
+        val minimumWidth = minimumWidth()
+        val clampedBounds = currentBounds.let { current ->
+            with(MapViewerDialogLayoutBuilder) { current.clampedTo(viewportWidth, viewportHeight, minimumWidth) }
+        }
+        if (clampedBounds != currentBounds) {
+            bounds = clampedBounds
+            render()
+            return
+        }
         val layout = MapViewerDialogLayoutBuilder.build(currentBounds, actions.size)
         val contentHeightValue = contentHeight(layout.contentViewport.width)
         scrollState = scrollState.withContent(
@@ -121,14 +156,22 @@ internal class MapViewerDialogWindow(
         }
 
         layer.removeChildren()
-        layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 160))
+        if (mode == MapViewerDialogMode.MODAL) {
+            layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 160))
+        }
 
         val panel = layer.container()
         panel.xy(currentBounds.left, currentBounds.top)
+        val clickCatcher = panel.solidRect(currentBounds.width, currentBounds.height, RGBA(0, 0, 0, 0))
+        clickCatcher.mouse {
+            onClick {
+                // Consume clicks within the dialog frame so they don't reach the map.
+            }
+        }
         MapViewerDialogChrome.render(
             parent = panel,
             layout = layout,
-            title = title,
+            title = titleProvider(),
             onClose = onClose,
             onBeginMove = { beginDrag(DialogDragMode.MOVE) },
             onBeginResize = { beginDrag(DialogDragMode.RESIZE) },
@@ -151,7 +194,7 @@ internal class MapViewerDialogWindow(
             }
         }
         layout.footer?.let { footer ->
-            MapViewerDialogActions.render(panel, footer, actions)
+            MapViewerDialogActions.render(panel, footer.bounds, actions, footer.layout)
         }
     }
 
@@ -191,6 +234,9 @@ internal class MapViewerDialogWindow(
 
     private fun MapViewerDialogBounds.contains(point: Vector2D): Boolean =
         point.x in left..right && point.y in top..bottom
+
+    private fun minimumWidth(): Double =
+        MapViewerDialogLayoutBuilder.minimumShellWidth(contentMinimumWidth(), actions.size)
 
     private sealed interface DialogDragState {
         val startPointer: Vector2D

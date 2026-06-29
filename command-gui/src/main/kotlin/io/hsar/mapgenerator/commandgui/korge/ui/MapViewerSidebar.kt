@@ -59,6 +59,12 @@ internal class MapViewerSidebar(
     internal val isUnitDialogOpen: Boolean
         get() = createUnitDialog != null
 
+    internal val isUnitDialogBlocking: Boolean
+        get() = createUnitDialog?.isModalBlocking == true
+
+    internal val isUnitDialogTextInputActive: Boolean
+        get() = createUnitDialog?.isTextInputActive == true
+
     internal val unitTemplateCount: Int
         get() = unitTemplates.size
 
@@ -93,7 +99,7 @@ internal class MapViewerSidebar(
     }
 
     fun blocksScreenPoint(point: Vector2D): Boolean =
-        isUnitDialogOpen || layout.blocks(point)
+        layout.blocks(point) || createUnitDialog?.blocksScreenPoint(point) == true
 
     fun addUnitTemplate(template: MapViewerUnitTemplate, index: Int = unitTemplates.size, notify: Boolean = true): UnitTemplateSnapshot {
         val insertionIndex = index.coerceIn(0, unitTemplates.size)

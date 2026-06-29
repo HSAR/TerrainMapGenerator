@@ -1,0 +1,50 @@
+package io.hsar.mapgenerator.commandgui.korge.ui
+
+import korlibs.korge.view.Container
+import korlibs.math.geom.Vector2D
+import org.hamcrest.MatcherAssert.assertThat
+import org.hamcrest.Matchers.equalTo
+import org.junit.jupiter.api.Test
+
+class MapViewerDialogWindowTest {
+    @Test
+    fun `non modal dialog only blocks points inside its bounds`() {
+        val root = Container()
+        val window = MapViewerDialogWindow(
+            root = root,
+            title = "Test",
+            preferredWidth = 400.0,
+            preferredHeight = 300.0,
+            contentHeight = { 0.0 },
+            actions = emptyList(),
+            onClose = {},
+            renderContent = { _, _ -> },
+            mode = MapViewerDialogMode.FLOATING,
+        )
+
+        window.show(800, 600)
+
+        assertThat(window.blocksScreenPoint(Vector2D(400.0, 300.0)), equalTo(true))
+        assertThat(window.blocksScreenPoint(Vector2D(10.0, 10.0)), equalTo(false))
+    }
+
+    @Test
+    fun `modal dialog blocks the whole screen`() {
+        val root = Container()
+        val window = MapViewerDialogWindow(
+            root = root,
+            title = "Test",
+            preferredWidth = 400.0,
+            preferredHeight = 300.0,
+            contentHeight = { 0.0 },
+            actions = emptyList(),
+            onClose = {},
+            renderContent = { _, _ -> },
+        )
+
+        window.show(800, 600)
+
+        assertThat(window.blocksScreenPoint(Vector2D(400.0, 300.0)), equalTo(true))
+        assertThat(window.blocksScreenPoint(Vector2D(10.0, 10.0)), equalTo(true))
+    }
+}

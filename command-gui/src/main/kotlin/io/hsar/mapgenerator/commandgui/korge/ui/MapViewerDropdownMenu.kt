@@ -63,12 +63,14 @@ internal class MapViewerDropdownMenu<T>(
     private var triggerLabel: Text? = null
     private var triggerSwatch: Container? = null
     private var closeAfterRelease = false
+    private var popupState: PopupState<T>? = null
 
     init {
         layer.zIndex = Z_INDEX
         layer.mouseEnabled = true
         layer.visible = false
         root.addUpdater {
+            updatePopupPosition()
             if (closeAfterRelease && root.stage?.views?.input?.mouseButtons == 0) {
                 closeAfterRelease = false
                 closePopup()
@@ -122,7 +124,7 @@ internal class MapViewerDropdownMenu<T>(
         field.mouse {
             onClick {
                 openPopup(
-                    anchor = field.globalPos,
+                    anchorSource = field,
                     triggerWidth = width,
                     triggerHeight = height,
                     selectedValue = value,
@@ -132,7 +134,7 @@ internal class MapViewerDropdownMenu<T>(
     }
 
     private fun openPopup(
-        anchor: Vector2D,
+        anchorSource: Container,
         triggerWidth: Double,
         triggerHeight: Double,
         selectedValue: T?,
@@ -143,7 +145,7 @@ internal class MapViewerDropdownMenu<T>(
         val resolvedMenuWidth = maxOf(menuWidth, triggerWidth)
         val menuHeight = MENU_PADDING * 2.0 + (options.size * OPTION_HEIGHT)
         val bounds = MapViewerDropdownLayoutBuilder.menuBounds(
-            anchor = anchor,
+            anchor = anchorSource.globalPos,
             triggerHeight = triggerHeight,
             viewportWidth = stageWidth,
             viewportHeight = stageHeight,
@@ -168,6 +170,16 @@ internal class MapViewerDropdownMenu<T>(
         val menu = layer.container()
         menu.xy(bounds.left, bounds.top)
         MapViewerUiBoxes.box(menu, bounds.width, bounds.height)
+        controller.open(bounds)
+        popupState = PopupState(
+            anchorSource = anchorSource,
+            triggerHeight = triggerHeight,
+            triggerWidth = resolvedMenuWidth,
+            menuHeight = menuHeight,
+            selectedValue = selectedValue,
+            backdrop = backdrop,
+            menu = menu,
+        )
 
         options.forEachIndexed { index, option ->
             val top = MENU_PADDING + (index * OPTION_HEIGHT)
@@ -205,6 +217,25 @@ internal class MapViewerDropdownMenu<T>(
         }
     }
 
+    private fun updatePopupPosition() {
+        val popup = popupState ?: return
+        if (!layer.visible) {
+            return
+        }
+
+        val stage = root.stage ?: return
+        val bounds = MapViewerDropdownLayoutBuilder.menuBounds(
+            anchor = popup.anchorSource.globalPos,
+            triggerHeight = popup.triggerHeight,
+            viewportWidth = stage.views.actualVirtualWidth,
+            viewportHeight = stage.views.actualVirtualHeight,
+            menuWidth = popup.triggerWidth,
+            menuHeight = popup.menuHeight,
+        )
+        controller.open(bounds)
+        popup.menu.xy(bounds.left, bounds.top)
+    }
+
     private fun updateTriggerDisplay(value: T?) {
         triggerLabel?.text = labelForValue(value)
         triggerSwatch?.let { MapViewerSwatchViews.render(it, swatchForValue(value), TRIGGER_SWATCH_SIZE) }
@@ -213,9 +244,20 @@ internal class MapViewerDropdownMenu<T>(
     private fun closePopup() {
         closeAfterRelease = false
         controller.dismiss()
+        popupState = null
         layer.removeChildren()
         layer.visible = false
     }
+
+    private data class PopupState<T>(
+        val anchorSource: Container,
+        val triggerHeight: Double,
+        val triggerWidth: Double,
+        val menuHeight: Double,
+        val selectedValue: T?,
+        val backdrop: Container,
+        val menu: Container,
+    )
 
     private companion object {
         const val DEFAULT_MENU_WIDTH = 200.0

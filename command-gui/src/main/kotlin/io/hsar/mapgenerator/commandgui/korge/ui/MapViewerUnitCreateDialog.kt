@@ -12,6 +12,7 @@ import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.image
 import korlibs.korge.view.xy
+import korlibs.math.geom.Vector2D
 import java.io.File
 import java.util.*
 import javax.swing.JFileChooser
@@ -55,8 +56,10 @@ internal class MapViewerUnitCreateDialog(
         dialogWindow = MapViewerDialogWindow(
             root = root,
             title = dialogTitle,
+            titleProvider = { MapViewerDialogTitles.unitType(dialogTitle, nameValue) },
             preferredWidth = PREFERRED_WIDTH,
             preferredHeight = PREFERRED_HEIGHT,
+            contentMinimumWidth = ::minimumContentWidth,
             contentHeight = { width -> contentHeightFor(width) },
             actions = listOf(
                 MapViewerDialogAction(confirmLabel) { confirm() },
@@ -66,10 +69,20 @@ internal class MapViewerUnitCreateDialog(
             renderContent = { content, contentWidth ->
                 renderContent(content, contentWidth)
             },
+            mode = MapViewerDialogMode.FLOATING,
         ).also {
             it.show(viewportWidth, viewportHeight)
         }
     }
+
+    val isTextInputActive: Boolean
+        get() = nameInput?.isFocused == true
+
+    val isModalBlocking: Boolean
+        get() = dialogWindow?.isModal == true
+
+    fun blocksScreenPoint(point: Vector2D): Boolean =
+        dialogWindow?.blocksScreenPoint(point) == true
 
     fun close() {
         if (!isOpen) {
@@ -137,14 +150,14 @@ internal class MapViewerUnitCreateDialog(
         statusLabel = content.container().also {
             it.xy(0.0, layout.statusTop)
         }
-        showStatus(statusLabel, statusText)
+        showStatus(statusLabel, statusText, statusWidthFor(statusText))
 
         val browseButton = content.container()
         browseButton.xy(0.0, layout.browseTop)
         MapViewerLaunchUi.button(browseButton, 140.0, MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT, "Browse Image") {
             val file = chooseImageFile() ?: return@button
             val bitmap = loadBitmap(file) ?: run {
-                showStatus(statusLabel, "Could not load image")
+                showStatus(statusLabel, "Could not load image", statusWidthFor("Could not load image"))
                 return@button
             }
 
@@ -154,7 +167,7 @@ internal class MapViewerUnitCreateDialog(
             previewFrame?.let { frame ->
                 renderPreview(frame, bitmap, layout.previewWidth)
             }
-            showStatus(statusLabel, statusText)
+            showStatus(statusLabel, statusText, statusWidthFor(statusText))
         }
 
         nameInput?.focus()
@@ -164,8 +177,8 @@ internal class MapViewerUnitCreateDialog(
         val name = nameInput?.text?.trim().orEmpty()
         val bitmap = selectedBitmap
         when {
-            name.isBlank() -> showStatus(statusLabel, "Enter a type name")
-            bitmap == null -> showStatus(statusLabel, "Choose an image")
+            name.isBlank() -> showStatus(statusLabel, "Enter a type name", statusWidthFor("Enter a type name"))
+            bitmap == null -> showStatus(statusLabel, "Choose an image", statusWidthFor("Choose an image"))
             else -> {
                 onCreated(
                     MapViewerUnitTemplate(
@@ -192,11 +205,11 @@ internal class MapViewerUnitCreateDialog(
         }
     }
 
-    private fun showStatus(parent: Container?, text: String) {
+    private fun showStatus(parent: Container?, text: String, width: Double) {
         parent ?: return
         parent.removeChildren()
         statusText = text
-        MapViewerTextViews.leftBox(parent, text, 360.0, 28.0, color = Palette.Colours.WHITE)
+        MapViewerTextViews.leftBox(parent, text, width, 28.0, color = Palette.Colours.WHITE)
     }
 
     private fun layoutForWidth(contentWidth: Double): UnitTypeDialogLayout {
@@ -240,6 +253,16 @@ internal class MapViewerUnitCreateDialog(
         return layout.browseTop + MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT + MapViewerDialogSpacing.FORM_BOTTOM_PADDING
     }
 
+    private fun minimumContentWidth(): Double =
+        maxOf(
+            nameMinimumWidth(nameValue),
+            AFFILIATION_DROPDOWN_WIDTH,
+            MIN_FIELD_WIDTH,
+            statusWidthFor(statusText),
+            BROWSE_BUTTON_WIDTH,
+            MapViewerDialogActions.minimumWidth(2),
+        )
+
     private fun chooseImageFile(): File? {
         val chooser = JFileChooser().apply {
             isAcceptAllFileFilterUsed = true
@@ -252,11 +275,18 @@ internal class MapViewerUnitCreateDialog(
     private fun loadBitmap(file: File): Bitmap32? =
         MapViewerIconLoader.load(file)
 
+    private fun nameMinimumWidth(text: String): Double =
+        maxOf(MIN_FIELD_WIDTH, MapViewerTextViews.measure(text.ifBlank { "Unit Type Name" }).width + 24.0)
+
+    private fun statusWidthFor(text: String): Double =
+        maxOf(180.0, MapViewerTextViews.measure(text).width + 24.0)
+
     private companion object {
         const val PREFERRED_WIDTH = 560.0
         const val PREFERRED_HEIGHT = 420.0
         const val NAME_FIELD_WIDTH = 240.0
         const val AFFILIATION_DROPDOWN_WIDTH = 220.0
+        const val BROWSE_BUTTON_WIDTH = 140.0
         const val FIELD_GAP = MapViewerDialogSpacing.FIELD_GAP
         const val MIN_FIELD_WIDTH = MapViewerDialogSpacing.MIN_FIELD_WIDTH
     }

@@ -20,4 +20,19 @@ class MapViewerDialogActionsTest {
     fun `three actions are evenly spaced`() {
         assertThat(MapViewerDialogActions.centerRatios(3), equalTo(listOf(0.25, 0.5, 0.75)))
     }
+
+    @Test
+    fun `footer uses row layout when wide enough`() {
+        assertThat(MapViewerDialogActions.footerLayout(400.0, 2), equalTo(MapViewerDialogFooterLayout.ROW))
+    }
+
+    @Test
+    fun `footer falls back to column layout when too narrow`() {
+        assertThat(MapViewerDialogActions.footerLayout(200.0, 2), equalTo(MapViewerDialogFooterLayout.COLUMN))
+    }
+
+    @Test
+    fun `footer minimum width is a single button width`() {
+        assertThat(MapViewerDialogActions.minimumWidth(2), equalTo(MapViewerDialogActions.BUTTON_WIDTH))
+    }
 }

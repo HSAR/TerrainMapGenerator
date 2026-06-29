@@ -21,10 +21,17 @@ internal object MapViewerDialogChrome {
         val titleBar = parent.container()
         titleBar.xy(layout.titleBar.left, layout.titleBar.top)
         titleBar.solidRect(layout.titleBar.width, layout.titleBar.height, MapViewerUiBoxes.toRgba(Palette.Colours.DARK, TITLE_BAR_ALPHA))
+        val titleWidth = (layout.titleBar.width - layout.closeButton.width - TITLE_TEXT_RIGHT_GAP - TITLE_TEXT_LEFT).coerceAtLeast(0.0)
+        val fittedTitle = MapViewerTextViews.ellipsize(
+            text = title,
+            maxWidth = titleWidth,
+            role = MapViewerFontRole.STRONG,
+            size = MapViewerTextViews.DEFAULT_TEXT_SIZE,
+        )
         MapViewerTextViews.leftBox(
             parent = titleBar,
-            text = title,
-            width = layout.titleBar.width - layout.closeButton.width - TITLE_TEXT_RIGHT_GAP,
+            text = fittedTitle,
+            width = titleWidth,
             height = layout.titleBar.height,
             role = MapViewerFontRole.STRONG,
             color = Palette.Colours.WHITE,

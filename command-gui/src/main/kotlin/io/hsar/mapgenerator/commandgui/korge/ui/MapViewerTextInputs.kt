@@ -74,6 +74,8 @@ internal class MapViewerInputField(
     private val visibleText: Text,
 ) {
     val controller get() = input.controller
+    var isFocused: Boolean = false
+        private set
 
     var text: String
         get() = input.text
@@ -83,10 +85,12 @@ internal class MapViewerInputField(
         }
 
     fun focus() {
+        isFocused = true
         input.focus()
     }
 
     fun blur() {
+        isFocused = false
         input.blur()
     }
 
