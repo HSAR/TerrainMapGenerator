@@ -5,7 +5,6 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.image.color.RGBA
-import korlibs.korge.input.mouse
 import korlibs.korge.internal.KorgeInternal
 import korlibs.korge.view.Container
 import korlibs.korge.view.addUpdater
@@ -68,16 +67,6 @@ internal class ContextMenuManager(
         val left = screenPoint.x.coerceIn(0.0, (stageWidth - menuWidth).coerceAtLeast(0.0))
         val top = screenPoint.y.coerceIn(0.0, (stageHeight - menuHeight).coerceAtLeast(0.0))
 
-        val backdrop = layer.container()
-        backdrop.solidRect(stageWidth, stageHeight, RGBA(0, 0, 0, 0))
-        backdrop.mouse {
-            onDown {
-                if (button == MouseButton.LEFT) {
-                    close()
-                }
-            }
-        }
-
         val menu = layer.container()
         menu.xy(left, top)
         MapViewerUiBoxes.box(menu, menuWidth, menuHeight)
@@ -88,17 +77,6 @@ internal class ContextMenuManager(
             option.solidRect(menuWidth - PADDING * 2, ACTION_HEIGHT - 4.0, RGBA(255, 255, 255, 16)) {
                 x = 0.0
                 y = 2.0
-            }
-            option.mouse {
-                onDown {
-                    if (button == MouseButton.LEFT) {
-                        ContextMenuActionExecutor.execute(
-                            action = action.onSelected,
-                            dismiss = ::requestClose,
-                            onActionSelected = onActionSelected,
-                        )
-                    }
-                }
             }
             MapViewerTextViews.leftBox(
                 parent = option,
@@ -113,19 +91,19 @@ internal class ContextMenuManager(
 
         state = ContextMenuState(
             menu = menu,
-            backdrop = backdrop,
             bounds = ScreenBounds(
                 left = left,
                 top = top,
                 width = menuWidth,
                 height = menuHeight,
             ),
+            actions = actions,
+            onActionSelected = onActionSelected,
         )
     }
 
     fun close() {
         state?.menu?.removeFromParent()
-        state?.backdrop?.removeFromParent()
         layer.removeChildren()
         layer.visible = false
         state = null
@@ -143,8 +121,12 @@ internal class ContextMenuManager(
             return
         }
 
-        if (leftHeld && !previousLeftHeld && ContextMenuDismissal.shouldDismiss(current.bounds, pointer)) {
-            close()
+        if (leftHeld && !previousLeftHeld) {
+            if (current.bounds.contains(pointer)) {
+                selectAction(current, pointer)
+            } else {
+                close()
+            }
         }
         if (rightHeld && !previousRightHeld && ContextMenuDismissal.shouldDismiss(current.bounds, pointer)) {
             close()
@@ -154,10 +136,26 @@ internal class ContextMenuManager(
         previousRightHeld = rightHeld
     }
 
+    private fun selectAction(current: ContextMenuState, pointer: Vector2D) {
+        val localY = pointer.y - current.bounds.top - PADDING
+        if (localY < 0.0) {
+            return
+        }
+
+        current.actions.getOrNull((localY / ACTION_HEIGHT).toInt())?.let { action ->
+            ContextMenuActionExecutor.execute(
+                action = action.onSelected,
+                dismiss = ::requestClose,
+                onActionSelected = current.onActionSelected,
+            )
+        }
+    }
+
     private data class ContextMenuState(
         val menu: Container,
-        val backdrop: Container,
         val bounds: ScreenBounds,
+        val actions: List<MapPlacedObjectMenuAction>,
+        val onActionSelected: () -> Unit,
     )
 
     private companion object {
