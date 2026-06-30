@@ -1,7 +1,5 @@
 # TODO
 
-- Save and reload system
-    - Unit custom properties can be created, saved and reloaded as key-value pairs
 - Icons should scale independent of map size
     - When zooming out, tokens should gather appropriately (eg. platoons to companies)
 - Measure tool should lock to the midpoint of a unit when starting and ending, unless shift key is held

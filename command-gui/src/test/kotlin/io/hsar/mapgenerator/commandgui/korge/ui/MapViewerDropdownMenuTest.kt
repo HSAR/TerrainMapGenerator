@@ -69,9 +69,9 @@ class MapViewerDropdownMenuTest {
     fun `affiliation ui exposes the expected labels and colours`() {
         assertThat(
             UnitAffiliationUi.options.map { it.label },
-            equalTo(listOf("No affiliation", "Friend", "Hostile", "Neutral", "Unknown")),
+            equalTo(listOf("No Affiliation", "Friend", "Hostile", "Neutral", "Unknown")),
         )
-        assertThat(UnitAffiliationUi.label(null), equalTo("No affiliation"))
+        assertThat(UnitAffiliationUi.label(null), equalTo("No Affiliation"))
         assertThat(UnitAffiliationUi.label(UnitAffiliation.Unknown), equalTo("Unknown"))
         assertThat(UnitAffiliationUi.swatchColor(null), equalTo(Palette.Colours.MAIN))
         assertThat(UnitAffiliationUi.swatchColor(UnitAffiliation.Friend), equalTo(Palette.Colours.BLUE))

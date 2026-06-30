@@ -402,6 +402,7 @@ internal class MapPlacedUnitManager(
             initialPositionY = position.northing,
             initialDestroyed = unit.destroyed,
             initialFacing = UnitFacingResolver.format(unit.facingDegrees),
+            initialCustomProperties = unit.customProperties,
             onPositionPreviewChanged = { previewPositionX, previewPositionY ->
                 val updatedCoordinate = UnitEditPositionResolver.resolve(
                     currentCoordinate = session.baselineSnapshot.mapCoordinate,
@@ -444,7 +445,7 @@ internal class MapPlacedUnitManager(
                         unit.updateFacingOverlay(forceActive = true)
                     }
             },
-            onSave = save@{ newName, newPositionX, newPositionY, newDestroyed, newFacingText ->
+            onSave = save@{ newName, newPositionX, newPositionY, newDestroyed, newFacingText, customProperties ->
                 val nameChanged = newName != session.baselineSnapshot.instanceName
                 val positionChanged = newPositionX.trim() != session.baselinePosition.easting.trim() ||
                         newPositionY.trim() != session.baselinePosition.northing.trim()
@@ -460,12 +461,14 @@ internal class MapPlacedUnitManager(
                 val updatedFacing = UnitFacingResolver.parse(newFacingText).takeIf { it.isValid }?.degrees ?: return@save false
                 val destroyedChanged = newDestroyed != session.baselineSnapshot.destroyed
                 val facingChanged = updatedFacing != session.baselineSnapshot.facingDegrees
-                if (nameChanged || positionChanged || destroyedChanged || facingChanged) {
+                val customPropertiesChanged = customProperties != session.baselineSnapshot.customProperties
+                if (nameChanged || positionChanged || destroyedChanged || facingChanged || customPropertiesChanged) {
                     saveRequested = true
                     unit.instanceName = newName
                     unit.mapCoordinate = updatedCoordinate
                     unit.destroyed = newDestroyed
                     unit.facingDegrees = updatedFacing
+                    unit.customProperties = customProperties
                     unit.updateStateOverlay()
                     unit.updateFacingOverlay()
                     positionView(unit)

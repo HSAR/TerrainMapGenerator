@@ -76,9 +76,29 @@ internal object MapViewerDialogLayoutBuilder {
         preferredWidth: Double,
         preferredHeight: Double,
         minimumWidth: Double = 0.0,
+        actionButtonCount: Int = 0,
+        contentHeight: ((Double) -> Double)? = null,
     ): MapViewerDialogBounds {
+        val preferredSize = MapViewerDialogSize(preferredWidth, preferredHeight)
+        val preferredWidthClamped = clampSize(
+            size = preferredSize,
+            viewportWidth = viewportWidth,
+            viewportHeight = viewportHeight,
+            minimumWidth = minimumWidth,
+        ).width
+        val contentAwareHeight = contentHeight
+            ?.let { heightProvider ->
+                contentAwareShellHeight(
+                    width = preferredWidthClamped,
+                    viewportHeight = viewportHeight,
+                    actionButtonCount = actionButtonCount,
+                    preferredHeight = preferredHeight,
+                    contentHeight = heightProvider(contentViewportWidth(preferredWidthClamped)),
+                )
+            }
+            ?: preferredHeight
         val size = clampSize(
-            size = MapViewerDialogSize(preferredWidth, preferredHeight),
+            size = MapViewerDialogSize(preferredWidth, contentAwareHeight),
             viewportWidth = viewportWidth,
             viewportHeight = viewportHeight,
             minimumWidth = minimumWidth,
@@ -102,7 +122,7 @@ internal object MapViewerDialogLayoutBuilder {
         val footerHeight = MapViewerDialogActions.footerHeight(actionButtonCount, footerLayout)
         val contentTop = BORDER_INSET + TITLE_BAR_HEIGHT + FOOTER_TOP_GAP
         val contentLeft = CONTENT_PADDING
-        val contentWidth = bounds.width - CONTENT_PADDING * 2.0 - MapViewerScrollbar.WIDTH - SCROLLBAR_GAP
+        val contentWidth = contentViewportWidth(bounds.width)
         val contentHeight = bounds.height - contentTop - CONTENT_PADDING - footerHeight
         return MapViewerDialogLayout(
             bounds = bounds,
@@ -175,6 +195,25 @@ internal object MapViewerDialogLayoutBuilder {
             ),
         )
 
+    fun contentAwareShellHeight(
+        width: Double,
+        viewportHeight: Int,
+        actionButtonCount: Int,
+        preferredHeight: Double,
+        contentHeight: Double,
+    ): Double {
+        val footerLayout = MapViewerDialogActions.footerLayout(width, actionButtonCount)
+        val footerHeight = MapViewerDialogActions.footerHeight(actionButtonCount, footerLayout)
+        val requiredHeight = BORDER_INSET + TITLE_BAR_HEIGHT + FOOTER_TOP_GAP + contentHeight + CONTENT_PADDING + footerHeight
+        val maxInitialHeight = (viewportHeight * MAX_INITIAL_HEIGHT_RATIO)
+            .coerceAtMost((viewportHeight - OUTER_PADDING * 2.0).coerceAtLeast(0.0))
+        return maxOf(preferredHeight, requiredHeight)
+            .coerceAtMost(maxInitialHeight)
+    }
+
+    fun contentViewportWidth(shellWidth: Double): Double =
+        (shellWidth - CONTENT_PADDING * 2.0 - MapViewerScrollbar.WIDTH - SCROLLBAR_GAP).coerceAtLeast(0.0)
+
     fun MapViewerDialogBounds.clampedTo(
         viewportWidth: Int,
         viewportHeight: Int,
@@ -191,4 +230,5 @@ internal object MapViewerDialogLayoutBuilder {
         point.x in 0.0..bounds.width && point.y in 0.0..bounds.height
 
     private const val SCROLLBAR_GAP = 10.0
+    private const val MAX_INITIAL_HEIGHT_RATIO = 0.75
 }

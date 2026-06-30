@@ -20,10 +20,11 @@ internal class MapViewerUnitEditDialog(
     initialPositionY: String,
     private val initialDestroyed: Boolean,
     private val initialFacing: String,
+    initialCustomProperties: Map<String, String>,
     private val onPositionPreviewChanged: (String, String) -> Unit,
     private val onDestroyedPreviewChanged: (Boolean) -> Unit,
     private val onFacingPreviewChanged: (String) -> Unit,
-    private val onSave: (String, String, String, Boolean, String) -> Boolean,
+    private val onSave: (String, String, String, Boolean, String, Map<String, String>) -> Boolean,
     private val onDismiss: () -> Unit,
 ) {
     private var nameValue = initialName
@@ -36,6 +37,12 @@ internal class MapViewerUnitEditDialog(
     private var positionYInput: MapViewerInputField? = null
     private var isOpen = false
     private var window: MapViewerDialogWindow? = null
+    private var initialFocusApplied = false
+    private val customPropertiesEditor = MapViewerCustomPropertiesEditor(
+        initialProperties = initialCustomProperties,
+        reservedKeys = UNIT_FIELD_KEYS,
+        onRowsChanged = { window?.refresh() },
+    )
 
     fun show(viewportWidth: Int, viewportHeight: Int) {
         if (isOpen) {
@@ -99,7 +106,10 @@ internal class MapViewerUnitEditDialog(
         window?.blocksScreenPoint(point) == true
 
     val isTextInputActive: Boolean
-        get() = nameInput?.isFocused == true
+        get() = nameInput?.isFocused == true ||
+                positionXInput?.isFocused == true ||
+                positionYInput?.isFocused == true ||
+                customPropertiesEditor.isTextInputActive
 
     private fun renderContent(parent: Container, width: Double) {
         val fieldWidth = fieldWidth(width)
@@ -197,7 +207,14 @@ internal class MapViewerUnitEditDialog(
             }
         }
 
-        nameInput?.focus()
+        val customPropertiesContainer = parent.container()
+        customPropertiesContainer.xy(0.0, customPropertiesTop(width))
+        customPropertiesEditor.render(customPropertiesContainer, fieldWidth)
+
+        if (!initialFocusApplied) {
+            nameInput?.focus()
+            initialFocusApplied = true
+        }
     }
 
     private fun syncFields(sync: MapViewerDialogPositionSync) {
@@ -248,12 +265,23 @@ internal class MapViewerUnitEditDialog(
             return
         }
 
-        if (onSave(nameValue.trim(), positionXValue.trim(), positionYValue.trim(), destroyedValue, facingValue.trim())) {
+        if (onSave(
+                nameValue.trim(),
+                positionXValue.trim(),
+                positionYValue.trim(),
+                destroyedValue,
+                facingValue.trim(),
+                customPropertiesEditor.properties(),
+            )
+        ) {
             dismiss()
         }
     }
 
     private fun contentHeight(width: Double): Double =
+        customPropertiesTop(width) + customPropertiesEditor.height()
+
+    private fun customPropertiesTop(width: Double): Double =
         if (width >= COMPACT_ROW_MIN_WIDTH) {
             COMPACT_CONTENT_HEIGHT
         } else {
@@ -269,6 +297,7 @@ internal class MapViewerUnitEditDialog(
             nameInputMinimumWidth(),
             positionInputMinimumWidth(),
             destroyedMinimumWidth(),
+            customPropertiesEditor.minimumWidth(),
             MapViewerDialogActions.minimumWidth(2),
         )
 
@@ -278,6 +307,7 @@ internal class MapViewerUnitEditDialog(
             nameInputMinimumWidth(),
             positionInputMinimumWidth(),
             destroyedMinimumWidth(),
+            customPropertiesEditor.minimumWidth(),
         )
 
     private fun minimumTypePreviewWidth(): Double =
@@ -309,5 +339,14 @@ internal class MapViewerUnitEditDialog(
         const val COMPACT_ROW_MIN_WIDTH = 500.0
         const val COMPACT_CONTENT_HEIGHT = 320.0
         const val STACKED_CONTENT_HEIGHT = 392.0
+        val UNIT_FIELD_KEYS = setOf(
+            "unitTemplateId",
+            "instanceName",
+            "destroyed",
+            "facingDegrees",
+            "mapCoordinate",
+            "normalizedWidth",
+            "normalizedHeight",
+        )
     }
 }

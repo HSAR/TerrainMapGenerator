@@ -22,6 +22,41 @@ class MapViewerDialogLayoutBuilderTest {
     }
 
     @Test
+    fun `default bounds expand to fit content height`() {
+        val bounds = MapViewerDialogLayoutBuilder.defaultBounds(
+            viewportWidth = 1000,
+            viewportHeight = 800,
+            preferredWidth = 400.0,
+            preferredHeight = 300.0,
+            actionButtonCount = 2,
+            contentHeight = { 420.0 },
+        )
+
+        val footerLayout = MapViewerDialogActions.footerLayout(bounds.width, 2)
+        val expectedHeight = MapViewerDialogLayoutBuilder.BORDER_INSET +
+                MapViewerDialogLayoutBuilder.TITLE_BAR_HEIGHT +
+                MapViewerDialogLayoutBuilder.FOOTER_TOP_GAP +
+                420.0 +
+                MapViewerDialogLayoutBuilder.CONTENT_PADDING +
+                MapViewerDialogActions.footerHeight(2, footerLayout)
+        assertThat(bounds.height, equalTo(expectedHeight))
+    }
+
+    @Test
+    fun `default bounds cap content-aware height at three quarters of viewport`() {
+        val bounds = MapViewerDialogLayoutBuilder.defaultBounds(
+            viewportWidth = 1000,
+            viewportHeight = 800,
+            preferredWidth = 400.0,
+            preferredHeight = 300.0,
+            actionButtonCount = 2,
+            contentHeight = { 2000.0 },
+        )
+
+        assertThat(bounds.height, equalTo(600.0))
+    }
+
+    @Test
     fun `dragged bounds are clamped inside viewport`() {
         val bounds = MapViewerDialogBounds(-200.0, -100.0, 420.0, 360.0)
 

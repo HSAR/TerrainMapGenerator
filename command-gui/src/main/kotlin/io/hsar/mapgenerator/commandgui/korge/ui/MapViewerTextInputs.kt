@@ -9,6 +9,7 @@ import korlibs.korge.ui.uiTextInput
 import korlibs.korge.view.Container
 import korlibs.korge.view.Text
 import korlibs.korge.view.ViewRenderer
+import korlibs.korge.view.clipContainer
 import korlibs.korge.view.container
 import korlibs.korge.view.xy
 import korlibs.math.geom.Margin
@@ -24,10 +25,11 @@ internal object MapViewerTextInputs {
         x: Double = 0.0,
         y: Double = 0.0,
         role: MapViewerFontRole = MapViewerFontRole.MAIN,
+        frameStyle: (Boolean) -> UiFrameStyle = MapViewerUiBoxes::defaultStyle,
     ): MapViewerInputField =
         parent.container().let { field ->
             field.xy(x, y)
-            MapViewerUiBoxes.box(field, width, height)
+            MapViewerUiBoxes.box(field, width, height, style = frameStyle)
 
             val inputHost = field.container().also {
                 it.xy(2.0, 2.0)
@@ -45,17 +47,20 @@ internal object MapViewerTextInputs {
                     }
                 }
             }
+            val visibleTextClip = field.clipContainer(Size2D(width - 12.0, height - 4.0)) {
+                zIndex = 10.0
+                mouseEnabled = false
+            }.also {
+                it.xy(6.0, 2.0)
+            }
             val visibleText: Text = MapViewerTextViews.leftBox(
-                parent = field,
+                parent = visibleTextClip,
                 text = text,
-                width = width - 4.0,
+                width = width - 12.0,
                 height = height - 4.0,
                 role = role,
                 color = Palette.Colours.WHITE,
             ).also {
-                it.x = 6.0
-                it.y = 2.0
-                it.zIndex = 10.0
                 it.mouseEnabled = false
             }
 

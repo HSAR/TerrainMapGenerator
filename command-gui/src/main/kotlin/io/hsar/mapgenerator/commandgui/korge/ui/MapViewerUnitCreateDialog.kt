@@ -34,17 +34,23 @@ internal class MapViewerUnitCreateDialog(
     private var selectedAssetSource: AssetSource? = initialTemplate?.assetSource
     private var selectedAffiliation: UnitAffiliation? = initialTemplate?.affiliation
     private var nameValue: String = initialTemplate?.name ?: "Unit Type Name"
-    private var statusText: String = selectedBitmap?.let { "Image selected" } ?: "No image selected"
+    private var statusText: String = selectedBitmap?.let { "Image Selected" } ?: "No Image Selected"
     private var nameInput: MapViewerInputField? = null
     private var statusLabel: Container? = null
     private var previewFrame: Container? = null
     private var isOpen = false
+    private var initialFocusApplied = false
     private val affiliationDropdown = MapViewerDropdownMenu(
         root = root,
         options = UnitAffiliationUi.options,
         onSelected = { affiliation -> selectedAffiliation = affiliation },
         labelForValue = UnitAffiliationUi::label,
         swatchForValue = UnitAffiliationUi::swatchColor,
+    )
+    private val customPropertiesEditor = MapViewerCustomPropertiesEditor(
+        initialProperties = initialTemplate?.customProperties.orEmpty(),
+        reservedKeys = UNIT_TYPE_FIELD_KEYS,
+        onRowsChanged = { dialogWindow?.refresh() },
     )
 
     fun show(viewportWidth: Int, viewportHeight: Int) {
@@ -83,7 +89,7 @@ internal class MapViewerUnitCreateDialog(
     }
 
     val isTextInputActive: Boolean
-        get() = nameInput?.isFocused == true
+        get() = nameInput?.isFocused == true || customPropertiesEditor.isTextInputActive
 
     val isModalBlocking: Boolean
         get() = dialogWindow?.isModal == true
@@ -147,7 +153,7 @@ internal class MapViewerUnitCreateDialog(
                 MapViewerUiBoxes.box(frame, layout.previewWidth, MapViewerDialogSpacing.PREVIEW_HEIGHT)
                 MapViewerTextViews.box(
                     frame,
-                    "No image selected",
+                    "No Image Selected",
                     layout.previewWidth,
                     MapViewerDialogSpacing.PREVIEW_HEIGHT,
                     color = Palette.Colours.WHITE,
@@ -178,7 +184,14 @@ internal class MapViewerUnitCreateDialog(
             showStatus(statusLabel, statusText, statusWidthFor(statusText))
         }
 
-        nameInput?.focus()
+        val customPropertiesContainer = content.container()
+        customPropertiesContainer.xy(0.0, layout.customPropertiesTop)
+        customPropertiesEditor.render(customPropertiesContainer, contentWidth.coerceAtLeast(MIN_FIELD_WIDTH))
+
+        if (!initialFocusApplied) {
+            nameInput?.focus()
+            initialFocusApplied = true
+        }
     }
 
     private fun confirm() {
@@ -195,6 +208,7 @@ internal class MapViewerUnitCreateDialog(
                         bitmap = bitmap,
                         assetSource = selectedAssetSource,
                         affiliation = selectedAffiliation,
+                        customProperties = customPropertiesEditor.properties(),
                     ),
                 )
                 close()
@@ -238,6 +252,7 @@ internal class MapViewerUnitCreateDialog(
         val previewTop = MapViewerDialogSpacing.inputTop(imageLabelTop)
         val statusTop = previewTop + MapViewerDialogSpacing.PREVIEW_HEIGHT + MapViewerDialogSpacing.PREVIEW_BOTTOM_GAP
         val browseTop = statusTop + 30.0
+        val customPropertiesTop = browseTop + MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT + MapViewerDialogSpacing.SECTION_GAP
         return UnitTypeDialogLayout(
             nameFieldWidth = nameFieldWidth,
             affiliationFieldWidth = renderedAffiliationWidth,
@@ -248,12 +263,13 @@ internal class MapViewerUnitCreateDialog(
             previewWidth = contentWidth.coerceAtLeast(MIN_FIELD_WIDTH),
             statusTop = statusTop,
             browseTop = browseTop,
+            customPropertiesTop = customPropertiesTop,
         )
     }
 
     private fun contentHeightFor(contentWidth: Double): Double {
         val layout = layoutForWidth(contentWidth)
-        return layout.browseTop + MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT + MapViewerDialogSpacing.FORM_BOTTOM_PADDING
+        return layout.customPropertiesTop + customPropertiesEditor.height() + MapViewerDialogSpacing.FORM_BOTTOM_PADDING
     }
 
     private fun minimumContentWidth(): Double =
@@ -263,6 +279,7 @@ internal class MapViewerUnitCreateDialog(
             MIN_FIELD_WIDTH,
             statusWidthFor(statusText),
             BROWSE_BUTTON_WIDTH,
+            customPropertiesEditor.minimumWidth(),
             MapViewerDialogActions.minimumWidth(2),
         )
 
@@ -299,6 +316,7 @@ internal class MapViewerUnitCreateDialog(
         const val BROWSE_BUTTON_WIDTH = 140.0
         const val FIELD_GAP = MapViewerDialogSpacing.FIELD_GAP
         const val MIN_FIELD_WIDTH = MapViewerDialogSpacing.MIN_FIELD_WIDTH
+        val UNIT_TYPE_FIELD_KEYS = setOf("name", "assetId", "affiliation")
     }
 }
 
@@ -312,4 +330,5 @@ private data class UnitTypeDialogLayout(
     val previewWidth: Double,
     val statusTop: Double,
     val browseTop: Double,
+    val customPropertiesTop: Double,
 )

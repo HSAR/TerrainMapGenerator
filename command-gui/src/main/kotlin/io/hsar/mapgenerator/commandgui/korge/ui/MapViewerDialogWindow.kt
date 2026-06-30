@@ -55,6 +55,8 @@ internal class MapViewerDialogWindow(
             preferredWidth = preferredWidth,
             preferredHeight = preferredHeight,
             minimumWidth = minimumWidth(),
+            actionButtonCount = actions.size,
+            contentHeight = contentHeight,
         )
         installInputHandlers()
         render()
@@ -179,6 +181,7 @@ internal class MapViewerDialogWindow(
 
         val contentClip = panel.clipContainer(Size2D(layout.contentViewport.width, layout.contentViewport.height)) {
             xy(layout.contentViewport.left, layout.contentViewport.top)
+            zIndex = CONTENT_Z_INDEX
             val content = container()
             content.xy(0.0, -scrollState.offset)
             renderContent(content, layout.contentViewport.width)
@@ -189,7 +192,11 @@ internal class MapViewerDialogWindow(
             }
         }
         layout.footer?.let { footer ->
-            MapViewerDialogActions.render(panel, footer.bounds, actions, footer.layout)
+            val footerLayer = panel.container().also {
+                it.xy(0.0, 0.0)
+                it.zIndex = FOOTER_Z_INDEX
+            }
+            MapViewerDialogActions.render(footerLayer, footer.bounds, actions, footer.layout)
         }
     }
 
@@ -260,5 +267,7 @@ internal class MapViewerDialogWindow(
 
     private companion object {
         const val Z_INDEX = 50_000.0
+        const val CONTENT_Z_INDEX = 100.0
+        const val FOOTER_Z_INDEX = 1_000.0
     }
 }
