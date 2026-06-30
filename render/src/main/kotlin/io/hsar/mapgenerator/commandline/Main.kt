@@ -12,7 +12,9 @@ import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
+import io.hsar.mapgenerator.grid.GridLayerBuilder
 import io.hsar.mapgenerator.gui.ImageFrame
+import io.hsar.mapgenerator.image.GridRenderer
 import io.hsar.mapgenerator.image.ImageUtils.compose
 import io.hsar.mapgenerator.image.ImageWriter
 import org.apache.logging.log4j.LogManager
@@ -21,6 +23,7 @@ import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.nio.file.Path
+import java.util.*
 import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.ImageIO
@@ -326,7 +329,12 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewe
             gridColour = GridColourSelector.toHex(gridColour),
         )
         RenderCache.gridLayers.getOrPut(gridKey) {
-            terrainMapGenerator.generateGridLayer(
+            GridLayerBuilder.build(
+                width = renderWidth,
+                height = renderHeight,
+                gridScale = GridRenderer.ONE_KM_GRID_SQUARES,
+                metresPerPixel = renderMetresPerPixel,
+                random = Random(gridSeed(seed)),
                 mapId = gridConfiguration.mapId,
                 verticalLineNumberStart = gridConfiguration.startX,
                 horizontalLineNumberStart = gridConfiguration.startY,
@@ -407,20 +415,25 @@ private fun fallbackGridConfiguration(
     metresPerPixel: Double,
     seed: Long,
 ): RenderGridConfiguration =
-    TerrainMapGenerator(
-        metresPerPixel = metresPerPixel,
-        metresPerContour = 10.0,
+    GridLayerBuilder.build(
         width = mapImage.width,
         height = mapImage.height,
-        graphMapWidthMetres = mapImage.width * metresPerPixel,
-        graphMapHeightMetres = mapImage.height * metresPerPixel,
-        seed = seed,
-    ).generateGridLayer().let { gridLayer ->
+        gridScale = GridRenderer.ONE_KM_GRID_SQUARES,
+        metresPerPixel = metresPerPixel,
+        random = Random(gridSeed(seed)),
+    ).let { gridLayer ->
         RenderGridConfiguration(
             mapId = gridLayer.mapId,
             startX = gridLayer.verticalLineNumberStart,
             startY = gridLayer.horizontalLineNumberStart,
         )
+    }
+
+private fun gridSeed(seed: Long): Long =
+    Random(seed).let { random ->
+        random.nextLong()
+        random.nextLong()
+        random.nextLong()
     }
 
 internal data class LoadedStaticImageLayer(

@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
+import io.hsar.mapgenerator.commandgui.MapLayer
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
@@ -45,6 +46,19 @@ class OperationLaunchConfigurationFactoryTest {
         val layerId = configuration.settings.availableLayers.filterIsInstance<StaticImageLayer>().single().id
 
         assertThat(layerId in configuration.settings.enabledLayerIds, equalTo(true))
+    }
+
+    @Test
+    fun `operation map image only enables static map and grid by default`() {
+        val draft = NewOperationDraft(
+            operationName = "Operation Copperhead",
+            mapImage = OperationMapImage("Satellite", "satellite.png", image(100, 50)),
+        )
+
+        val configuration = OperationLaunchConfigurationFactory.create(draft, MapViewerSettings())
+        val layerId = configuration.settings.availableLayers.filterIsInstance<StaticImageLayer>().single().id
+
+        assertThat(configuration.settings.enabledLayerIds, equalTo(setOf(layerId, MapLayer.GRID.id)))
     }
 
     @Test

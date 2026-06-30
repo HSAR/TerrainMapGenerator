@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.GridColourSelector
+import io.hsar.mapgenerator.commandgui.MapLayer
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
@@ -120,7 +121,7 @@ internal object OperationLaunchConfigurationFactory {
             settings = baseSettings.copy(
                 operationName = draft.operationName.trim(),
                 availableLayers = availableLayers,
-                enabledLayerIds = baseSettings.enabledLayerIds + staticLayer.first.id,
+                enabledLayerIds = setOf(staticLayer.first.id, MapLayer.GRID.id),
                 staticLayerImages = layerImages,
                 width = mapImage.image.width,
                 height = mapImage.image.height,
