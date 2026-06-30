@@ -41,6 +41,7 @@ internal data class UnitSnapshot(
     val mapCoordinate: MapCoordinate,
     val normalizedWidth: Double,
     val normalizedHeight: Double,
+    val customProperties: Map<String, String> = emptyMap(),
 ) : MapPlacedObjectSnapshot
 
 internal data class DrawingSnapshot(

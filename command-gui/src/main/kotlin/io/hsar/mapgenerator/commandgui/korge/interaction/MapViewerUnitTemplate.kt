@@ -9,6 +9,7 @@ internal data class MapViewerUnitTemplate @JvmOverloads constructor(
     val bitmap: Bitmap32,
     val assetSource: AssetSource? = null,
     val affiliation: UnitAffiliation? = null,
+    val customProperties: Map<String, String> = emptyMap(),
 )
 
 internal enum class UnitAffiliation {

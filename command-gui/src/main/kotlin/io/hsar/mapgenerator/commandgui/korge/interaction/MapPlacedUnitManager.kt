@@ -181,6 +181,7 @@ internal class MapPlacedUnitManager(
         mapCoordinate: MapCoordinate,
         destroyed: Boolean = false,
         facingDegrees: Int? = null,
+        customProperties: Map<String, String> = emptyMap(),
     ): UnitSnapshot {
         val unitSize = worldUnitSize(template.bitmap)
         return UnitSnapshot(
@@ -193,6 +194,7 @@ internal class MapPlacedUnitManager(
             mapCoordinate = mapCoordinate,
             normalizedWidth = unitSize.worldWidth / mapWidth,
             normalizedHeight = unitSize.worldHeight / mapHeight,
+            customProperties = customProperties,
         )
     }
 
@@ -207,6 +209,7 @@ internal class MapPlacedUnitManager(
             existing.mapCoordinate = snapshot.mapCoordinate
             existing.normalizedWidth = snapshot.normalizedWidth
             existing.normalizedHeight = snapshot.normalizedHeight
+            existing.customProperties = snapshot.customProperties
             val unitSize = worldUnitSize(snapshot.template.bitmap)
             existing.worldWidth = unitSize.worldWidth
             existing.worldHeight = unitSize.worldHeight
@@ -230,6 +233,7 @@ internal class MapPlacedUnitManager(
             mapCoordinate = snapshot.mapCoordinate,
             normalizedWidth = snapshot.normalizedWidth,
             normalizedHeight = snapshot.normalizedHeight,
+            customProperties = snapshot.customProperties,
             worldWidth = unitSize.worldWidth,
             worldHeight = unitSize.worldHeight,
         )
@@ -554,6 +558,7 @@ internal class MapPlacedUnitManager(
         var mapCoordinate: MapCoordinate,
         var normalizedWidth: Double,
         var normalizedHeight: Double,
+        var customProperties: Map<String, String>,
         var worldWidth: Double,
         var worldHeight: Double,
     ) : MapPlacedObject {
@@ -578,6 +583,7 @@ internal class MapPlacedUnitManager(
                 mapCoordinate = mapCoordinate,
                 normalizedWidth = normalizedWidth,
                 normalizedHeight = normalizedHeight,
+                customProperties = customProperties,
             )
 
         override fun containsMapCoordinate(

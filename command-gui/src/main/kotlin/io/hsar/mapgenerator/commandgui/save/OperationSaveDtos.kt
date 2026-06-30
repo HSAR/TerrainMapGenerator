@@ -1,9 +1,13 @@
 package io.hsar.mapgenerator.commandgui.save
 
+import com.fasterxml.jackson.annotation.JsonAnyGetter
+import com.fasterxml.jackson.annotation.JsonAnySetter
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.databind.JsonNode
+import io.hsar.mapgenerator.commandgui.CustomPropertyJson
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import java.util.*
 
@@ -97,7 +101,7 @@ internal data class EditUnitTemplateEntrySaveDto(
 )
 internal sealed interface SavedMapObjectDto
 
-internal data class SavedUnitObjectDto(
+internal class SavedUnitObjectDto(
     val unitTemplateId: UUID,
     val instanceName: String,
     val destroyed: Boolean,
@@ -105,7 +109,58 @@ internal data class SavedUnitObjectDto(
     val mapCoordinate: MapCoordinateSaveDto,
     val normalizedWidth: Double,
     val normalizedHeight: Double,
-) : SavedMapObjectDto
+) : SavedMapObjectDto {
+    private val customPropertiesByKey = linkedMapOf<String, String>()
+
+    constructor(
+        unitTemplateId: UUID,
+        instanceName: String,
+        destroyed: Boolean,
+        facingDegrees: Int? = null,
+        mapCoordinate: MapCoordinateSaveDto,
+        normalizedWidth: Double,
+        normalizedHeight: Double,
+        customProperties: Map<String, String>,
+    ) : this(
+        unitTemplateId = unitTemplateId,
+        instanceName = instanceName,
+        destroyed = destroyed,
+        facingDegrees = facingDegrees,
+        mapCoordinate = mapCoordinate,
+        normalizedWidth = normalizedWidth,
+        normalizedHeight = normalizedHeight,
+    ) {
+        customPropertiesByKey.putAll(customProperties.filterKeys { it !in KNOWN_PROPERTIES })
+    }
+
+    @get:JsonIgnore
+    val customProperties: Map<String, String>
+        get() = customPropertiesByKey.filterKeys { it !in KNOWN_PROPERTIES }
+
+    @JsonAnySetter
+    fun setCustomProperty(key: String, value: JsonNode?) {
+        if (key !in KNOWN_PROPERTIES) {
+            customPropertiesByKey[key] = CustomPropertyJson.toStringValue(value)
+        }
+    }
+
+    @JsonAnyGetter
+    fun customPropertiesForSerialization(): Map<String, String> =
+        customProperties
+
+    private companion object {
+        val KNOWN_PROPERTIES = setOf(
+            "type",
+            "unitTemplateId",
+            "instanceName",
+            "destroyed",
+            "facingDegrees",
+            "mapCoordinate",
+            "normalizedWidth",
+            "normalizedHeight",
+        )
+    }
+}
 
 internal data class SavedDrawingObjectDto(
     val drawing: DrawingSaveDto,
@@ -117,11 +172,45 @@ internal data class UnitTemplateSnapshotSaveDto(
     val index: Int,
 )
 
-internal data class UnitTemplateSaveDto(
+internal class UnitTemplateSaveDto(
     val name: String,
     val assetId: String,
     val affiliation: UnitAffiliation? = null,
-)
+) {
+    private val customPropertiesByKey = linkedMapOf<String, String>()
+
+    constructor(
+        name: String,
+        assetId: String,
+        affiliation: UnitAffiliation? = null,
+        customProperties: Map<String, String>,
+    ) : this(
+        name = name,
+        assetId = assetId,
+        affiliation = affiliation,
+    ) {
+        customPropertiesByKey.putAll(customProperties.filterKeys { it !in KNOWN_PROPERTIES })
+    }
+
+    @get:JsonIgnore
+    val customProperties: Map<String, String>
+        get() = customPropertiesByKey.filterKeys { it !in KNOWN_PROPERTIES }
+
+    @JsonAnySetter
+    fun setCustomProperty(key: String, value: JsonNode?) {
+        if (key !in KNOWN_PROPERTIES) {
+            customPropertiesByKey[key] = CustomPropertyJson.toStringValue(value)
+        }
+    }
+
+    @JsonAnyGetter
+    fun customPropertiesForSerialization(): Map<String, String> =
+        customProperties
+
+    private companion object {
+        val KNOWN_PROPERTIES = setOf("name", "assetId", "affiliation")
+    }
+}
 
 internal data class DrawingSaveDto(
     val type: String,

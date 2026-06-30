@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import com.fasterxml.jackson.databind.node.TextNode
+import io.hsar.mapgenerator.commandgui.CustomPropertyJson
 import java.util.*
 
 internal data class UnitTemplateEditPatch(
@@ -20,6 +21,13 @@ internal object MapViewerUnitTemplatePatch {
                 if (before.template.affiliation != after.template.affiliation) {
                     put("affiliation", after.template.affiliation.toNode())
                 }
+                putAll(
+                    CustomPropertyJson.diff(
+                        before = before.template.customProperties,
+                        after = after.template.customProperties,
+                        reservedKeys = UNIT_TEMPLATE_PATCH_FIELDS,
+                    ),
+                )
             },
             backward = buildMap {
                 if (before.template.name != after.template.name) {
@@ -28,6 +36,13 @@ internal object MapViewerUnitTemplatePatch {
                 if (before.template.affiliation != after.template.affiliation) {
                     put("affiliation", before.template.affiliation.toNode())
                 }
+                putAll(
+                    CustomPropertyJson.diff(
+                        before = after.template.customProperties,
+                        after = before.template.customProperties,
+                        reservedKeys = UNIT_TEMPLATE_PATCH_FIELDS,
+                    ),
+                )
             },
         )
 
@@ -63,9 +78,24 @@ internal object MapViewerUnitTemplatePatch {
                 }
             }
 
+        template = changes.entries
+            .filterNot { (key, _) -> key in UNIT_TEMPLATE_PATCH_FIELDS }
+            .fold(template) { current, (key, value) ->
+                current.copy(customProperties = current.customProperties.applyCustomPropertyPatch(key, value))
+            }
+
         return snapshot.copy(template = template)
     }
 
     private fun UnitAffiliation?.toNode(): JsonNode =
         this?.let { TextNode(it.name) } ?: NullNode.instance
+
+    private fun Map<String, String>.applyCustomPropertyPatch(key: String, value: JsonNode?): Map<String, String> =
+        if (value == null || value.isNull) {
+            this - key
+        } else {
+            this + (key to CustomPropertyJson.toStringValue(value))
+        }
+
+    private val UNIT_TEMPLATE_PATCH_FIELDS = setOf("name", "affiliation", "assetId")
 }

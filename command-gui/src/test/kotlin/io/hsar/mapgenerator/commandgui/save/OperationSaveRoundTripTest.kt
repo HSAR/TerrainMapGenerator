@@ -244,6 +244,124 @@ class OperationSaveRoundTripTest {
     }
 
     @Test
+    fun `unit and unit template custom properties save load and save again as flat fields`() {
+        val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000d4")
+        val template = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000030")),
+            name = "Recon",
+            bitmap = Bitmap32(4, 4) { _, _ -> RGBA(0, 255, 0, 255) },
+            customProperties = mapOf("role" to "screen", "echelon" to "platoon"),
+        )
+        val unit = UnitSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000031")),
+            unitTemplateId = template.id,
+            template = template,
+            instanceName = "Recon 1",
+            destroyed = false,
+            facingDegrees = null,
+            mapCoordinate = MapCoordinate(0.25, 0.75),
+            normalizedWidth = 0.08,
+            normalizedHeight = 0.08,
+            customProperties = mapOf("callsign" to "R1", "morale" to "steady"),
+        )
+
+        val firstSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = operationId,
+                mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                ledgerEntries = listOf(
+                    CreateUnitTemplateAction(UnitTemplateSnapshot(template.id, template, 0)),
+                    CreateObjectAction(unit),
+                ),
+            ),
+            tempDir.resolve("custom-properties-first.oct.zip"),
+        )
+
+        assertFlatCustomProperties(firstSave)
+        val loaded = OperationSaveLoader().load(firstSave)
+        assertThat(
+            loaded.ledgerEntries.filterIsInstance<CreateUnitTemplateAction>().single().snapshot.template.customProperties,
+            equalTo(template.customProperties),
+        )
+        assertThat(
+            (loaded.ledgerEntries.filterIsInstance<CreateObjectAction>().single().snapshot as UnitSnapshot).customProperties,
+            equalTo(unit.customProperties),
+        )
+
+        val secondSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = loaded.operationId,
+                operationName = loaded.operationName,
+                mapImage = loaded.mapImage,
+                mapSource = loaded.mapAssetSource,
+                ledgerEntries = loaded.ledgerEntries,
+            ),
+            tempDir.resolve("custom-properties-second.oct.zip"),
+        )
+
+        assertFlatCustomProperties(secondSave)
+    }
+
+    @Test
+    fun `unknown non-string unit and unit template properties load as compact json strings`() {
+        val unit = OperationSaveJson.objectMapper.readValue(
+            """
+            {
+              "type": "unit",
+              "unitTemplateId": "00000000-0000-0000-0000-000000000030",
+              "instanceName": "Recon 1",
+              "destroyed": false,
+              "facingDegrees": null,
+              "mapCoordinate": { "x": 0.25, "y": 0.75 },
+              "normalizedWidth": 0.08,
+              "normalizedHeight": 0.08,
+              "priority": 3,
+              "flags": ["fast", true],
+              "metadata": { "supply": 2 },
+              "unknownNull": null
+            }
+            """.trimIndent(),
+            SavedMapObjectDto::class.java,
+        ) as SavedUnitObjectDto
+        val template = OperationSaveJson.objectMapper.readValue(
+            """
+            {
+              "name": "Recon",
+              "assetId": "00000000-0000-0000-0000-000000000032",
+              "affiliation": "Friend",
+              "priority": 3,
+              "metadata": { "supply": 2 },
+              "unknownNull": null
+            }
+            """.trimIndent(),
+            UnitTemplateSaveDto::class.java,
+        )
+
+        assertThat(
+            unit.customProperties,
+            equalTo(
+                mapOf(
+                    "priority" to "3",
+                    "flags" to """["fast",true]""",
+                    "metadata" to """{"supply":2}""",
+                    "unknownNull" to "null",
+                ),
+            ),
+        )
+        assertThat(
+            template.customProperties,
+            equalTo(
+                mapOf(
+                    "priority" to "3",
+                    "metadata" to """{"supply":2}""",
+                    "unknownNull" to "null",
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun `unit templates that share an asset still round trip with distinct names`() {
         val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000ce")
         val iconSource = AssetSource(
@@ -583,4 +701,19 @@ class OperationSaveRoundTripTest {
         ledgerEntries = ledgerEntries,
         generatedImageAssets = generatedImageAssets,
     )
+
+    private fun assertFlatCustomProperties(savePath: Path) {
+        ZipFile(savePath.toFile()).use { zip ->
+            val ledgerJson = OperationSaveJson.objectMapper.readTree(zip.getInputStream(zip.getEntry("ledger.json")))
+            val templateJson = ledgerJson["entries"][0]["unitTemplate"]["template"]
+            val unitJson = ledgerJson["entries"][1]["objectData"]
+
+            assertThat(templateJson["role"].asText(), equalTo("screen"))
+            assertThat(templateJson["echelon"].asText(), equalTo("platoon"))
+            assertThat(templateJson.has("customProperties"), equalTo(false))
+            assertThat(unitJson["callsign"].asText(), equalTo("R1"))
+            assertThat(unitJson["morale"].asText(), equalTo("steady"))
+            assertThat(unitJson.has("customProperties"), equalTo(false))
+        }
+    }
 }

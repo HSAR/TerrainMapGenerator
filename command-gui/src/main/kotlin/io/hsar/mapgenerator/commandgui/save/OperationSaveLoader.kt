@@ -268,6 +268,7 @@ private class RuntimeLedgerReplayer(
                     mapCoordinate = mapCoordinate.toRuntime(),
                     normalizedWidth = normalizedWidth,
                     normalizedHeight = normalizedHeight,
+                    customProperties = customProperties,
                 )
             }
 
@@ -304,6 +305,7 @@ private class RuntimeLedgerReplayer(
                 bitmap = asset.bitmap,
                 assetSource = asset.assetSource,
                 affiliation = affiliation,
+                customProperties = customProperties,
             )
         }
 

@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.TextNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.hsar.mapgenerator.commandgui.CustomPropertyJson
 import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
@@ -38,6 +39,7 @@ internal object MapPlacedObjectPatch {
         putIfChanged("mapCoordinate", before.mapCoordinate, after.mapCoordinate)
         putIfChanged("normalizedWidth", before.normalizedWidth, after.normalizedWidth)
         putIfChanged("normalizedHeight", before.normalizedHeight, after.normalizedHeight)
+        putAll(CustomPropertyJson.diff(before.customProperties, after.customProperties, UNIT_PATCH_FIELDS))
     }
 
     private fun drawingDiff(before: DrawingSnapshot, after: DrawingSnapshot): Map<String, JsonNode?> {
@@ -83,7 +85,7 @@ internal object MapPlacedObjectPatch {
                 "mapCoordinate" -> current.copy(mapCoordinate = fromNode(value.requireValue()))
                 "normalizedWidth" -> current.copy(normalizedWidth = value.requireValue().asDouble())
                 "normalizedHeight" -> current.copy(normalizedHeight = value.requireValue().asDouble())
-                else -> current
+                else -> current.copy(customProperties = current.customProperties.applyCustomPropertyPatch(key, value))
             }
         }
 
@@ -136,4 +138,21 @@ internal object MapPlacedObjectPatch {
         val blue = hex.substring(6, 8).toInt(16)
         return Color(red, green, blue, alpha)
     }
+
+    private fun Map<String, String>.applyCustomPropertyPatch(key: String, value: JsonNode?): Map<String, String> =
+        if (value == null || value.isNull) {
+            this - key
+        } else {
+            this + (key to CustomPropertyJson.toStringValue(value))
+        }
+
+    private val UNIT_PATCH_FIELDS = setOf(
+        "unitTemplateId",
+        "instanceName",
+        "destroyed",
+        "facingDegrees",
+        "mapCoordinate",
+        "normalizedWidth",
+        "normalizedHeight",
+    )
 }

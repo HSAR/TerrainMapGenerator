@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.save
 
 import com.fasterxml.jackson.databind.node.TextNode
+import io.hsar.mapgenerator.commandgui.CustomPropertyJson
 import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
@@ -81,6 +82,7 @@ internal class LedgerEntrySaveMapper(
                 mapCoordinate = mapCoordinate.toDto(),
                 normalizedWidth = normalizedWidth,
                 normalizedHeight = normalizedHeight,
+                customProperties = customProperties,
             )
 
             is DrawingSnapshot -> SavedDrawingObjectDto(
@@ -100,6 +102,7 @@ internal class LedgerEntrySaveMapper(
             name = name,
             assetId = assets.registerTemplate(this).id.toString(),
             affiliation = affiliation,
+            customProperties = customProperties,
         )
 
     private fun EditUnitTemplateAction.saveForwardPatch(): Map<String, com.fasterxml.jackson.databind.JsonNode?> =
@@ -118,6 +121,13 @@ internal class LedgerEntrySaveMapper(
                 if (beforeAssetId != afterAssetId) {
                     put("assetId", TextNode(afterAssetId))
                 }
+                putAll(
+                    CustomPropertyJson.diff(
+                        before = beforeSnapshot.template.customProperties,
+                        after = afterSnapshot.template.customProperties,
+                        reservedKeys = UNIT_TEMPLATE_PATCH_FIELDS,
+                    ),
+                )
             }
         }
 
@@ -137,6 +147,13 @@ internal class LedgerEntrySaveMapper(
                 if (beforeAssetId != afterAssetId) {
                     put("assetId", TextNode(beforeAssetId))
                 }
+                putAll(
+                    CustomPropertyJson.diff(
+                        before = afterSnapshot.template.customProperties,
+                        after = beforeSnapshot.template.customProperties,
+                        reservedKeys = UNIT_TEMPLATE_PATCH_FIELDS,
+                    ),
+                )
             }
         }
 
@@ -181,4 +198,8 @@ internal class LedgerEntrySaveMapper(
 
     private fun io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation?.toNode(): com.fasterxml.jackson.databind.JsonNode =
         this?.let { TextNode(it.name) } ?: com.fasterxml.jackson.databind.node.NullNode.instance
+
+    private companion object {
+        val UNIT_TEMPLATE_PATCH_FIELDS = setOf("name", "affiliation", "assetId")
+    }
 }

@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import com.fasterxml.jackson.databind.node.IntNode
+import com.fasterxml.jackson.databind.node.TextNode
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import korlibs.image.bitmap.Bitmap32
@@ -54,6 +56,60 @@ class MapPlacedObjectPatchTest {
         val patch = MapPlacedObjectPatch.diff(before, after)
 
         assertThat(MapPlacedObjectPatch.apply(before, patch), equalTo(after))
+    }
+
+    @Test
+    fun `unit custom property diff can be applied and reversed`() {
+        val before = UnitSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000004")),
+            unitTemplateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
+            template = MapViewerUnitTemplate(UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")), "Unit", Bitmap32(4, 4)),
+            instanceName = "Alpha 1",
+            destroyed = false,
+            facingDegrees = null,
+            mapCoordinate = MapCoordinate(0.2, 0.3),
+            normalizedWidth = 0.1,
+            normalizedHeight = 0.2,
+            customProperties = mapOf("callsign" to "A1", "obsolete" to "yes"),
+        )
+        val after = before.copy(customProperties = mapOf("callsign" to "A2", "morale" to "7"))
+
+        val forward = MapPlacedObjectPatch.diff(before, after)
+        val backward = MapPlacedObjectPatch.diff(after, before)
+
+        assertThat(forward["callsign"], equalTo(TextNode("A2")))
+        assertThat(forward["morale"], equalTo(TextNode("7")))
+        assertThat(forward["obsolete"], equalTo(null))
+        assertThat(MapPlacedObjectPatch.apply(before, forward), equalTo(after))
+        assertThat(MapPlacedObjectPatch.apply(after, backward), equalTo(before))
+    }
+
+    @Test
+    fun `unknown unit patch keys update custom properties without shadowing known fields`() {
+        val before = UnitSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000005")),
+            unitTemplateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
+            template = MapViewerUnitTemplate(UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")), "Unit", Bitmap32(4, 4)),
+            instanceName = "Alpha 1",
+            destroyed = false,
+            facingDegrees = null,
+            mapCoordinate = MapCoordinate(0.2, 0.3),
+            normalizedWidth = 0.1,
+            normalizedHeight = 0.2,
+            customProperties = mapOf("morale" to "steady"),
+        )
+
+        val after = MapPlacedObjectPatch.apply(
+            before,
+            mapOf(
+                "instanceName" to TextNode("Alpha 2"),
+                "morale" to IntNode(5),
+                "obsolete" to null,
+            ),
+        ) as UnitSnapshot
+
+        assertThat(after.instanceName, equalTo("Alpha 2"))
+        assertThat(after.customProperties, equalTo(mapOf("morale" to "5")))
     }
 
     @Test
