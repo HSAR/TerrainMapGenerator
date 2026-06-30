@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.save
 
 import io.hsar.mapgenerator.commandgui.AssetSource
+import io.hsar.mapgenerator.commandgui.GridColourSelector
 import io.hsar.mapgenerator.commandgui.MapLayer
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
@@ -86,6 +87,7 @@ internal class OperationSaveLoader {
                 mapId = gridConfiguration.mapId,
                 gridStartX = gridConfiguration.startX,
                 gridStartY = gridConfiguration.startY,
+                gridColour = GridColourSelector.resolve(save.game.map.gridColour, mapImage),
                 seed = operationUuid.mostSignificantBits xor operationUuid.leastSignificantBits,
             )
 

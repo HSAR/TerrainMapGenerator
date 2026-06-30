@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.grid
 
+import java.awt.Color
+
 data class GridLayer(
     val mapId: String,
     val gridScale: Int,
@@ -10,4 +12,5 @@ data class GridLayer(
     val horizontalLineNumberStart: Double,
     val verticalLineCount: Int,
     val horizontalLineCount: Int,
+    val colour: Color = GridPalettes.DEFAULT.lineColour,
 )

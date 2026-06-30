@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.grid
 
 import io.hsar.mapgenerator.random.GridGenerator
 import io.hsar.mapgenerator.random.RandomGenerator
+import java.awt.Color
 import java.util.*
 import kotlin.math.log
 import kotlin.math.pow
@@ -18,6 +19,7 @@ object GridLayerBuilder {
         mapId: String? = null,
         verticalLineNumberStart: Double? = null,
         horizontalLineNumberStart: Double? = null,
+        colour: Color = GridPalettes.DEFAULT.lineColour,
     ): GridLayer {
         val pixelsPerLine = gridScale / metresPerPixel
         val detailLevel = getDetailLevel(gridScale)
@@ -34,6 +36,7 @@ object GridLayerBuilder {
             horizontalLineNumberStart = horizontalLineNumberStart ?: generateLineNumberStart(detailLevel, horizontalLineCount, random),
             verticalLineCount = verticalLineCount,
             horizontalLineCount = horizontalLineCount,
+            colour = colour,
         )
     }
 

@@ -29,9 +29,9 @@ object GridLayerPainter {
     ) {
         val mapIdPadding = GridStyles.mapIdPadding(surface.width, surface.height)
         val gridLinePadding = GridStyles.gridLineIdPadding(surface.width, surface.height)
-        val mapIdFont = GridStyles.mapIdFont(surface.width, surface.height)
-        val gridLineFont = GridStyles.gridLineIdFont(surface.width, surface.height)
-        val majorGridLineFont = GridStyles.majorGridLineIdFont(surface.width, surface.height)
+        val mapIdFont = GridStyles.mapIdFont(surface.width, surface.height).first to layer.colour
+        val gridLineFont = GridStyles.gridLineIdFont(surface.width, surface.height).first to layer.colour
+        val majorGridLineFont = GridStyles.majorGridLineIdFont(surface.width, surface.height).first to layer.colour
         val edgeFadeDistance = GridStyles.fadeDistance(surface.width, surface.height)
 
         surface.drawCenteredString(
@@ -155,7 +155,7 @@ object GridLayerPainter {
                     start = lineBounds.start,
                     end = lineBounds.end,
                     width = width,
-                    color = GridStyles.GRID_LINE_COLOUR,
+                    color = layer.colour,
                     textMode = textMode,
                     fadeStart = labelLayout.gutterEdge,
                     lineNormal = linePosition,

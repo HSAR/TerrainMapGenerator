@@ -23,6 +23,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
+import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import org.hamcrest.MatcherAssert.assertThat
@@ -660,6 +661,35 @@ class OperationSaveRoundTripTest {
             assertThat(zip.getEntry("assets/${reread.game.map.assetId}.jpg") != null, equalTo(true))
             assertThat(zip.getEntry("assets/${reread.game.map.assetId}.png") == null, equalTo(true))
         }
+    }
+
+    @Test
+    fun `grid colour saves as map hex value and loads into settings`() {
+        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = UUID.fromString("00000000-0000-0000-0000-0000000000f5"),
+                mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                settings = MapViewerSettings(
+                    operationName = "Grid Colour",
+                    availableLayers = emptyList(),
+                    enabledLayerIds = emptySet(),
+                    staticLayerImages = emptyMap(),
+                    width = 64,
+                    height = 64,
+                    metresPerPixel = 20.0,
+                    gridColour = Palette.Colours.DARK,
+                ),
+                ledgerEntries = emptyList(),
+            ),
+            tempDir.resolve("grid-colour-save.oct.zip"),
+        )
+
+        val reread = OperationSaveReader().read(savePath)
+        val loaded = OperationSaveLoader().load(savePath)
+
+        assertThat(reread.game.map.gridColour, equalTo("#120909"))
+        assertThat(loaded.settings.gridColour, equalTo(Palette.Colours.DARK))
     }
 
     private fun request(

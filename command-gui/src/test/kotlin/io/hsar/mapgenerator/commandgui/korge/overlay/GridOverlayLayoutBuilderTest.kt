@@ -10,6 +10,7 @@ import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.lessThan
 import org.junit.jupiter.api.Test
+import kotlin.math.abs
 
 class GridOverlayLayoutBuilderTest {
 
@@ -74,7 +75,7 @@ class GridOverlayLayoutBuilderTest {
         assertThat(mapId.y, equalTo(GridStyles.mapIdPadding(1200, 900).y))
         assertThat(mapId.style.role, equalTo(io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole.STRONG))
         assertThat(mapId.style.size, equalTo(GridStyles.mapIdFont(1200, 900).first.size2D.toDouble()))
-        assertThat(mapId.style.color, equalTo(GridStyles.mapIdFont(1200, 900).second))
+        assertThat(mapId.style.color, equalTo(io.hsar.mapgenerator.grid.GridPalettes.DEFAULT.lineColour))
         assertThat(mapId.shadows.size, equalTo(0))
     }
 
@@ -103,6 +104,37 @@ class GridOverlayLayoutBuilderTest {
     }
 
     @Test
+    fun `hundred metre labels keep even cadence when x grid start is fractional`() {
+        val layout = GridOverlayLayoutBuilder.build(
+            state = state(
+                pixelsPerLine = 100.0,
+                scale = 4.0,
+                gridStartX = 61.3,
+                gridStartY = 45.0,
+            ),
+            measureText = ::measureText,
+        )
+
+        val verticalLineCentres = layout.lineRects
+            .filter { it.height > it.width }
+            .groupBy { it.x + it.width / 2.0 }
+            .keys
+            .sorted()
+
+        assertThat(layout.labels.any { it.text == "613" }, equalTo(false))
+        assertThat(layout.labels.any { it.text == "614" }, equalTo(true))
+        assertThat(layout.labels.any { it.text == "615" }, equalTo(false))
+        assertThat(layout.labels.any { it.text == "616" }, equalTo(true))
+        assertThat(layout.labels.any { it.text == "620" }, equalTo(true))
+        assertThat(
+            verticalLineCentres.zipWithNext().take(4).all { (first, second) ->
+                abs(second - first - 10.0) < 0.0001
+            },
+            equalTo(true),
+        )
+    }
+
+    @Test
     fun `major grid labels use the strong font`() {
         val layout = GridOverlayLayoutBuilder.build(
             state = state(mapOffsetX = 0.0, mapOffsetY = 0.0),
@@ -113,10 +145,31 @@ class GridOverlayLayoutBuilderTest {
 
         assertThat(majorLabel.style.role, equalTo(io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole.STRONG))
         assertThat(majorLabel.style.size, equalTo(GridStyles.majorGridLineIdFont(1200, 900).first.size2D.toDouble()))
-        assertThat(majorLabel.style.color.red, equalTo(GridStyles.majorGridLineIdFont(1200, 900).second.red))
-        assertThat(majorLabel.style.color.green, equalTo(GridStyles.majorGridLineIdFont(1200, 900).second.green))
-        assertThat(majorLabel.style.color.blue, equalTo(GridStyles.majorGridLineIdFont(1200, 900).second.blue))
+        assertThat(majorLabel.style.color.red, equalTo(io.hsar.mapgenerator.grid.GridPalettes.DEFAULT.lineColour.red))
+        assertThat(majorLabel.style.color.green, equalTo(io.hsar.mapgenerator.grid.GridPalettes.DEFAULT.lineColour.green))
+        assertThat(majorLabel.style.color.blue, equalTo(io.hsar.mapgenerator.grid.GridPalettes.DEFAULT.lineColour.blue))
     }
+
+    @Test
+    fun `grid colour drives map id labels axis labels and grid lines`() {
+        val layout = GridOverlayLayoutBuilder.build(
+            state = state(gridColour = Palette.Colours.LIGHT),
+            measureText = ::measureText,
+        )
+
+        val mapId = layout.labels.first { it.text == "25F XK" }
+        val axisLabel = layout.labels.first { it.text == "06" }
+        val line = layout.lineRects.first()
+
+        assertThat(mapId.style.color, equalTo(Palette.Colours.LIGHT))
+        assertThat(axisLabel.style.color.red, equalTo(Palette.Colours.LIGHT.red))
+        assertThat(axisLabel.style.color.green, equalTo(Palette.Colours.LIGHT.green))
+        assertThat(axisLabel.style.color.blue, equalTo(Palette.Colours.LIGHT.blue))
+        assertThat(line.color.red, equalTo(Palette.Colours.LIGHT.red))
+        assertThat(line.color.green, equalTo(Palette.Colours.LIGHT.green))
+        assertThat(line.color.blue, equalTo(Palette.Colours.LIGHT.blue))
+    }
+
 
     @Test
     fun `first visible vertical line can render at the gutter edge`() {
@@ -131,8 +184,48 @@ class GridOverlayLayoutBuilderTest {
 
         assertThat(
             firstVerticalLine.x,
-            closeTo(GridStyles.gridLineIdPadding(1200, 900).x + 20.0 - 0.5, 0.0001),
+            closeTo(GridStyles.gridLineIdPadding(1200, 900).x - 0.5, 0.0001),
         )
+    }
+
+    @Test
+    fun `hundred metre lines render when they land on the axis fade boundary`() {
+        val gridLinePadding = GridStyles.gridLineIdPadding(1200, 900)
+        val mapIdPadding = GridStyles.mapIdPadding(1200, 900)
+        val axisRightEdge = gridLinePadding.x + 10.0
+        val axisBottomEdge = mapIdPadding.y + 5.0
+        val scale = 3.0
+        val layout = GridOverlayLayoutBuilder.build(
+            state = state(
+                mapOffsetX = axisRightEdge - gridLinePadding.x * scale,
+                mapOffsetY = axisBottomEdge - gridLinePadding.y * scale,
+                pixelsPerLine = 100.0,
+                scale = scale,
+                gridStartX = 61.3,
+                gridStartY = 32.9,
+            ),
+            measureText = ::measureText,
+        )
+
+        val boundaryVerticalLine = layout.lineRects
+            .filter { it.height > it.width }
+            .groupBy { it.x + it.width / 2.0 }
+            .values
+            .first { segments ->
+                abs(segments.first().x + segments.first().width / 2.0 - gridLinePadding.x) < 0.0001
+            }
+            .maxBy { it.height }
+        val boundaryHorizontalLine = layout.lineRects
+            .filter { it.width > it.height }
+            .groupBy { it.y + it.height / 2.0 }
+            .values
+            .first { segments ->
+                abs(segments.first().y + segments.first().height / 2.0 - gridLinePadding.y) < 0.0001
+            }
+            .maxBy { it.width }
+
+        assertThat(boundaryVerticalLine.color.alpha, equalTo(255))
+        assertThat(boundaryHorizontalLine.color.alpha, equalTo(255))
     }
 
     @Test
@@ -173,7 +266,7 @@ class GridOverlayLayoutBuilderTest {
 
         assertThat(
             fractionalFirstVerticalLine.x - integerFirstVerticalLine.x,
-            closeTo(-5.0, 0.0001),
+            closeTo(5.0, 0.0001),
         )
         assertThat(
             fractionalFirstHorizontalLine.y - integerFirstHorizontalLine.y,
@@ -377,6 +470,7 @@ class GridOverlayLayoutBuilderTest {
         scale: Double = 1.0,
         gridStartX: Double = 5.0,
         gridStartY: Double = 45.0,
+        gridColour: java.awt.Color = io.hsar.mapgenerator.grid.GridPalettes.DEFAULT.lineColour,
         activeReference: GridCursorReference? = null,
         measurement: GridMeasurement? = null,
     ) = GridOverlayState(
@@ -406,6 +500,7 @@ class GridOverlayLayoutBuilderTest {
             horizontalLineNumberStart = gridStartY,
             verticalLineCount = 20,
             horizontalLineCount = 20,
+            colour = gridColour,
         ),
     )
 

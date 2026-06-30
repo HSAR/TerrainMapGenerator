@@ -20,6 +20,7 @@ import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import org.kynosarges.tektosyne.geometry.RectD
 import org.kynosarges.tektosyne.geometry.Voronoi
+import java.awt.Color
 import java.awt.image.BufferedImage
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
@@ -88,25 +89,27 @@ class TerrainMapGenerator(
         return io.hsar.mapgenerator.image.ContourRenderer.createImage(heightData = heightData, contourHeight = 0.025)
     }
 
-    fun generateGridImage(): BufferedImage {
+    fun generateGridImage(colour: Color = io.hsar.mapgenerator.grid.GridPalettes.DEFAULT.lineColour): BufferedImage {
         val imageBuilder = io.hsar.mapgenerator.image.ImageBuilder(width = width, height = height)
             .also { it.fillTransparent() }
-        io.hsar.mapgenerator.grid.GridLayerPainter.draw(imageBuilder, generateGridLayer())
+        io.hsar.mapgenerator.grid.GridLayerPainter.draw(imageBuilder, generateGridLayer(colour = colour))
         return imageBuilder.build()
     }
 
-    fun generateGridLayer(): GridLayer = GridLayerBuilder.build(
+    fun generateGridLayer(colour: Color = io.hsar.mapgenerator.grid.GridPalettes.DEFAULT.lineColour): GridLayer = GridLayerBuilder.build(
         width = width,
         height = height,
         gridScale = io.hsar.mapgenerator.image.GridRenderer.ONE_KM_GRID_SQUARES,
         metresPerPixel = metresPerPixel,
         random = Random(gridSeed),
+        colour = colour,
     )
 
     fun generateGridLayer(
         mapId: String?,
         verticalLineNumberStart: Double?,
         horizontalLineNumberStart: Double?,
+        colour: Color = io.hsar.mapgenerator.grid.GridPalettes.DEFAULT.lineColour,
     ): GridLayer = GridLayerBuilder.build(
         width = width,
         height = height,
@@ -116,6 +119,7 @@ class TerrainMapGenerator(
         mapId = mapId,
         verticalLineNumberStart = verticalLineNumberStart,
         horizontalLineNumberStart = horizontalLineNumberStart,
+        colour = colour,
     )
 
     companion object {

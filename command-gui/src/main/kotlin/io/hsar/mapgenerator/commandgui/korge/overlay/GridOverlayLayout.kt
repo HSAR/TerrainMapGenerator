@@ -74,9 +74,9 @@ internal object GridOverlayLayoutBuilder {
         val mapBottom = mapTop + state.pixelHeight * state.scale
         val mapIdPadding = GridStyles.mapIdPadding(viewportWidth.toInt(), viewportHeight.toInt())
         val gridLinePadding = GridStyles.gridLineIdPadding(viewportWidth.toInt(), viewportHeight.toInt())
-        val mapIdFont = GridStyles.mapIdFont(viewportWidth.toInt(), viewportHeight.toInt())
-        val minorAxisFont = GridStyles.gridLineIdFont(viewportWidth.toInt(), viewportHeight.toInt())
-        val majorAxisFont = GridStyles.majorGridLineIdFont(viewportWidth.toInt(), viewportHeight.toInt())
+        val mapIdFont = GridStyles.mapIdFont(viewportWidth.toInt(), viewportHeight.toInt()).first to layer.colour
+        val minorAxisFont = GridStyles.gridLineIdFont(viewportWidth.toInt(), viewportHeight.toInt()).first to layer.colour
+        val majorAxisFont = GridStyles.majorGridLineIdFont(viewportWidth.toInt(), viewportHeight.toInt()).first to layer.colour
         val mapIdStyle = GridLabelStyle(MapViewerFontRole.STRONG, mapIdFont.first.size2D.toDouble(), mapIdFont.second)
         val minorAxisStyle = GridLabelStyle(MapViewerFontRole.MAIN, minorAxisFont.first.size2D.toDouble(), minorAxisFont.second)
         val majorAxisStyle = GridLabelStyle(MapViewerFontRole.STRONG, majorAxisFont.first.size2D.toDouble(), majorAxisFont.second)
@@ -113,10 +113,9 @@ internal object GridOverlayLayoutBuilder {
                     lineIndex * layer.pixelsPerLine
             val lineCanvasX = mapLeft + lineMapX * state.scale
             val labelAlpha = edgeOpacity(lineCanvasX - xLabelFadeStart, edgeFadeDistance)
-            val lineAlpha = edgeOpacity(lineCanvasX - yAxisRightEdge, edgeFadeDistance)
             val isMajorLine = isMajorLine(lineId)
 
-            if (shouldRenderVerticalLabel(fineMode, lineIndex, isMajorLine)) {
+            if (shouldRenderVerticalLabel(fineMode, lineId, isMajorLine)) {
                 val labelStyle = if (isMajorLine) majorAxisStyle else minorAxisStyle
                 labels += GridLabel(
                     text = lineText,
@@ -132,7 +131,7 @@ internal object GridOverlayLayoutBuilder {
                 mapTop = mapTop,
                 mapBottom = mapBottom,
                 gutterBottom = xAxisBottomEdge,
-                color = GridStyles.GRID_LINE_COLOUR.withAlpha(lineAlpha),
+                color = layer.colour,
                 width = if (isMajorLine) MAJOR_LINE_THICKNESS else MINOR_LINE_THICKNESS,
                 scale = state.scale,
                 edgeFadeDistance = edgeFadeDistance,
@@ -146,7 +145,6 @@ internal object GridOverlayLayoutBuilder {
                     lineIndex * layer.pixelsPerLine
             val lineCanvasY = mapTop + lineMapY * state.scale
             val labelAlpha = edgeOpacity(lineCanvasY - yLabelFadeStart, edgeFadeDistance)
-            val lineAlpha = edgeOpacity(lineCanvasY - xAxisBottomEdge, edgeFadeDistance)
             val isMajorLine = isMajorLine(lineId)
             val labelStyle = if (isMajorLine) majorAxisStyle else minorAxisStyle
 
@@ -163,7 +161,7 @@ internal object GridOverlayLayoutBuilder {
                 mapTop = mapTop,
                 mapRight = mapRight,
                 gutterRight = yAxisRightEdge,
-                color = GridStyles.GRID_LINE_COLOUR.withAlpha(lineAlpha),
+                color = layer.colour,
                 width = if (isMajorLine) MAJOR_LINE_THICKNESS else MINOR_LINE_THICKNESS,
                 scale = state.scale,
                 edgeFadeDistance = edgeFadeDistance,
@@ -414,6 +412,7 @@ internal object GridOverlayLayoutBuilder {
                 horizontalLineNumberStart = layer.horizontalLineNumberStart * FINE_GRID_SUBDIVISIONS,
                 verticalLineCount = layer.verticalLineCount * FINE_GRID_SUBDIVISIONS,
                 horizontalLineCount = layer.horizontalLineCount * FINE_GRID_SUBDIVISIONS,
+                colour = layer.colour,
             )
         } else {
             layer
@@ -426,8 +425,11 @@ internal object GridOverlayLayoutBuilder {
     private fun isFineMode(state: GridOverlayState, layer: GridLayer): Boolean =
         layer.gridScale < state.gridLayer.gridScale
 
-    private fun shouldRenderVerticalLabel(fineMode: Boolean, lineIndex: Int, isMajorLine: Boolean): Boolean =
-        !fineMode || isMajorLine || lineIndex % 2 == 0
+    private fun shouldRenderVerticalLabel(fineMode: Boolean, lineId: Double, isMajorLine: Boolean): Boolean =
+        !fineMode || isMajorLine || isEvenFineLine(lineId)
+
+    private fun isEvenFineLine(lineId: Double): Boolean =
+        abs(lineId % 2.0) < 1e-6
 
     private fun accentLabelShadows(): List<GridLabelShadow> =
         listOf(

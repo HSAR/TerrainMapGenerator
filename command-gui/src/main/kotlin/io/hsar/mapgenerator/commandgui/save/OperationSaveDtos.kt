@@ -38,6 +38,7 @@ internal data class MapSaveDto(
     val mapId: String? = null,
     val gridStartX: Double? = null,
     val gridStartY: Double? = null,
+    val gridColour: String? = null,
 )
 
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")

@@ -8,6 +8,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
+import java.awt.Color
 import java.awt.image.BufferedImage
 import java.util.*
 
@@ -66,6 +67,18 @@ class OperationLaunchConfigurationFactoryTest {
     }
 
     @Test
+    fun `operation map image drives automatic grid colour`() {
+        val draft = NewOperationDraft(
+            operationName = "Operation Copperhead",
+            mapImage = OperationMapImage("Satellite", "satellite.png", image(100, 50, Color.WHITE)),
+        )
+
+        val configuration = OperationLaunchConfigurationFactory.create(draft, MapViewerSettings())
+
+        assertThat(configuration.settings.gridColour, equalTo(io.hsar.mapgenerator.image.Palette.Colours.DARK))
+    }
+
+    @Test
     fun `unit templates from setup are seeded into the initial ledger`() {
         val draft = NewOperationDraft(
             operationName = "Operation Copperhead",
@@ -85,8 +98,14 @@ class OperationLaunchConfigurationFactoryTest {
         assertThat(configuration.initialLedgerEntries[2], equalTo(AddTurnLedgerEntry("Operation Start")))
     }
 
-    private fun image(width: Int, height: Int): BufferedImage =
-        BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+    private fun image(width: Int, height: Int, color: Color = Color.BLACK): BufferedImage =
+        BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { image ->
+            for (y in 0 until height) {
+                for (x in 0 until width) {
+                    image.setRGB(x, y, color.rgb)
+                }
+            }
+        }
 
     private fun template(name: String) =
         io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate(

@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.save
 
 import io.hsar.mapgenerator.commandgui.AssetSource
+import io.hsar.mapgenerator.commandgui.GridColourSelector
 import io.hsar.mapgenerator.commandgui.geometryFor
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.launch.GridConfiguration
@@ -75,6 +76,9 @@ internal class OperationSaveWriter(
                 mapId = gridConfiguration.mapId,
                 gridStartX = gridConfiguration.startX,
                 gridStartY = gridConfiguration.startY,
+                gridColour = GridColourSelector.toHex(
+                    request.settings.gridColour ?: GridColourSelector.bestPresetFor(request.mapImage),
+                ),
             ),
         )
         val ledgerFile = LedgerFileDto(entries = ledger)

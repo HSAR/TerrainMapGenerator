@@ -4,6 +4,7 @@ import com.beust.jcommander.JCommander
 import com.beust.jcommander.Parameter
 import com.beust.jcommander.Parameters
 import io.hsar.mapgenerator.TerrainMapGenerator
+import io.hsar.mapgenerator.commandgui.GridColourSelector
 import io.hsar.mapgenerator.commandgui.MapLayer
 import io.hsar.mapgenerator.commandgui.MapViewerFrame
 import io.hsar.mapgenerator.commandgui.MapViewerLayer
@@ -271,17 +272,6 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewe
         metresPerContour = settings.metresPerContour,
         layers = baseLayers.map { it.id }.toSet(),
     )
-    val gridKey = GridRenderKey(
-        seed = seed,
-        width = renderWidth,
-        height = renderHeight,
-        metresPerPixel = renderMetresPerPixel,
-        metresPerContour = settings.metresPerContour,
-        mapId = settings.mapId,
-        gridStartX = settings.gridStartX,
-        gridStartY = settings.gridStartY,
-    )
-
     val terrainMapGenerator by lazy {
         TerrainMapGenerator(
             metresPerPixel = renderMetresPerPixel,
@@ -321,6 +311,7 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewe
     }
 
     val gridConfiguration = resolveGridConfiguration(settings, baseImage, seed)
+    val gridColour = settings.gridColour ?: GridColourSelector.bestPresetFor(baseImage)
 
     val gridLayer = if (MapLayer.GRID.id in settings.enabledLayerIds) {
         val gridKey = GridRenderKey(
@@ -332,12 +323,14 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewe
             mapId = gridConfiguration.mapId,
             gridStartX = gridConfiguration.startX,
             gridStartY = gridConfiguration.startY,
+            gridColour = GridColourSelector.toHex(gridColour),
         )
         RenderCache.gridLayers.getOrPut(gridKey) {
             terrainMapGenerator.generateGridLayer(
                 mapId = gridConfiguration.mapId,
                 verticalLineNumberStart = gridConfiguration.startX,
                 horizontalLineNumberStart = gridConfiguration.startY,
+                colour = gridColour,
             )
         }
     } else {
@@ -395,6 +388,7 @@ private data class GridRenderKey(
     val mapId: String?,
     val gridStartX: Double?,
     val gridStartY: Double?,
+    val gridColour: String,
 )
 
 internal data class RenderGridConfiguration(

@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.AssetSource
+import io.hsar.mapgenerator.commandgui.GridColourSelector
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
@@ -127,6 +128,7 @@ internal object OperationLaunchConfigurationFactory {
                 mapId = gridConfiguration.mapId,
                 gridStartX = gridConfiguration.startX,
                 gridStartY = gridConfiguration.startY,
+                gridColour = GridColourSelector.bestPresetFor(mapImage.image),
             ),
             unitTemplates = draft.unitTemplates,
             initialLedgerEntries = draft.seededUnitTemplateEntries() + AddTurnLedgerEntry(OPERATION_START_TURN_NAME),

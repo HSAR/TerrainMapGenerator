@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui
 
+import java.awt.Color
 import java.awt.image.BufferedImage
 
 data class MapViewerSettings(
@@ -10,6 +11,7 @@ data class MapViewerSettings(
     val mapId: String? = null,
     val gridStartX: Double? = null,
     val gridStartY: Double? = null,
+    val gridColour: Color? = null,
     val zoom: Double = 1.0,
     val metresPerPixel: Double = 20.0,
     val metresPerContour: Double = 10.0,

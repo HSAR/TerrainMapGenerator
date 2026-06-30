@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.AssetSource
+import io.hsar.mapgenerator.commandgui.GridColourSelector
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
@@ -433,6 +434,7 @@ internal class MapViewerNewOperationView(
             mapId = gridConfiguration.mapId,
             verticalLineNumberStart = gridConfiguration.startX,
             horizontalLineNumberStart = gridConfiguration.startY,
+            colour = GridColourSelector.bestPresetFor(mapImage.image),
         )
         val lineOverlay = GridOverlayLinesView(gridLayer)
         val labelOverlay = GridOverlayView(gridLayer)
