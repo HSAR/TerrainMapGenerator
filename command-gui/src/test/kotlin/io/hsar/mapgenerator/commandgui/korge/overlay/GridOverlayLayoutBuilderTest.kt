@@ -172,7 +172,7 @@ class GridOverlayLayoutBuilderTest {
 
 
     @Test
-    fun `first visible vertical line renders from map origin`() {
+    fun `first visible vertical line fades in after the axis gutter`() {
         val layout = GridOverlayLayoutBuilder.build(
             state = state(mapOffsetX = 0.0, mapOffsetY = 0.0),
             measureText = ::measureText,
@@ -184,48 +184,33 @@ class GridOverlayLayoutBuilderTest {
 
         assertThat(
             firstVerticalLine.x,
-            closeTo(-0.5, 0.0001),
+            closeTo(39.5, 0.0001),
         )
     }
 
     @Test
-    fun `hundred metre lines render when they land on the axis fade boundary`() {
-        val gridLinePadding = GridStyles.gridLineIdPadding(1200, 900)
-        val mapIdPadding = GridStyles.mapIdPadding(1200, 900)
-        val axisRightEdge = gridLinePadding.x + 10.0
-        val axisBottomEdge = mapIdPadding.y + 5.0
-        val scale = 3.0
+    fun `hundred metre lines render after the axis fade boundary`() {
         val layout = GridOverlayLayoutBuilder.build(
             state = state(
-                mapOffsetX = gridLinePadding.x,
-                mapOffsetY = gridLinePadding.y,
+                mapOffsetX = 200.0,
+                mapOffsetY = 100.0,
                 pixelsPerLine = 100.0,
-                scale = scale,
+                scale = 3.0,
                 gridStartX = 61.3,
                 gridStartY = 32.9,
             ),
             measureText = ::measureText,
         )
 
-        val boundaryVerticalLine = layout.lineRects
+        val visibleVerticalLine = layout.lineRects
             .filter { it.height > it.width }
-            .groupBy { it.x + it.width / 2.0 }
-            .values
-            .first { segments ->
-                abs(segments.first().x + segments.first().width / 2.0) < 0.0001
-            }
-            .maxBy { it.height }
-        val boundaryHorizontalLine = layout.lineRects
+            .maxBy { it.color.alpha }
+        val visibleHorizontalLine = layout.lineRects
             .filter { it.width > it.height }
-            .groupBy { it.y + it.height / 2.0 }
-            .values
-            .first { segments ->
-                abs(segments.first().y + segments.first().height / 2.0) < 0.0001
-            }
-            .maxBy { it.width }
+            .maxBy { it.color.alpha }
 
-        assertThat(boundaryVerticalLine.color.alpha, equalTo(255))
-        assertThat(boundaryHorizontalLine.color.alpha, equalTo(255))
+        assertThat(visibleVerticalLine.color.alpha > 0, equalTo(true))
+        assertThat(visibleHorizontalLine.color.alpha > 0, equalTo(true))
     }
 
     @Test
@@ -250,28 +235,23 @@ class GridOverlayLayoutBuilderTest {
             measureText = ::measureText,
         )
 
-        val integerFirstVerticalLine = integerLayout.lineRects
+        val integerVerticalLineCentres = integerLayout.lineRects
             .filter { it.height > it.width }
-            .minBy { it.x }
-        val fractionalFirstVerticalLine = fractionalLayout.lineRects
+            .map { it.x + it.width / 2.0 }
+        val fractionalVerticalLineCentres = fractionalLayout.lineRects
             .filter { it.height > it.width }
-            .minBy { it.x }
-
-        val integerFirstHorizontalLine = integerLayout.lineRects
+            .map { it.x + it.width / 2.0 }
+        val integerHorizontalLineCentres = integerLayout.lineRects
             .filter { it.width > it.height }
-            .minBy { it.y }
-        val fractionalFirstHorizontalLine = fractionalLayout.lineRects
+            .map { it.y + it.height / 2.0 }
+        val fractionalHorizontalLineCentres = fractionalLayout.lineRects
             .filter { it.width > it.height }
-            .minBy { it.y }
+            .map { it.y + it.height / 2.0 }
 
-        assertThat(
-            fractionalFirstVerticalLine.x - integerFirstVerticalLine.x,
-            closeTo(5.0, 0.0001),
-        )
-        assertThat(
-            fractionalFirstHorizontalLine.y - integerFirstHorizontalLine.y,
-            closeTo(2.5, 0.0001),
-        )
+        assertThat(integerVerticalLineCentres.any { abs(it - 50.0) < 0.0001 }, equalTo(true))
+        assertThat(fractionalVerticalLineCentres.any { abs(it - 55.0) < 0.0001 }, equalTo(true))
+        assertThat(integerHorizontalLineCentres.any { abs(it - 50.0) < 0.0001 }, equalTo(true))
+        assertThat(fractionalHorizontalLineCentres.any { abs(it - 52.5) < 0.0001 }, equalTo(true))
         assertThat(fractionalLayout.labels.any { it.text == "06" }, equalTo(true))
         assertThat(fractionalLayout.labels.any { it.text == "45" }, equalTo(true))
     }
@@ -299,6 +279,26 @@ class GridOverlayLayoutBuilderTest {
         assertThat(verticalLineSegments.last().color.alpha, equalTo(255))
         assertThat(horizontalLineSegments.first().color.alpha, lessThan(horizontalLineSegments.last().color.alpha))
         assertThat(horizontalLineSegments.last().color.alpha, equalTo(255))
+    }
+
+    @Test
+    fun `whole grid lines fade as they approach their matching axis gutter`() {
+        val layout = GridOverlayLayoutBuilder.build(
+            state = state(mapOffsetX = 0.0, mapOffsetY = 0.0),
+            measureText = ::measureText,
+        )
+
+        val verticalLineAlphas = layout.lineRects
+            .filter { it.height > it.width }
+            .groupBy { it.x + it.width / 2.0 }
+            .mapValues { (_, segments) -> segments.maxOf { it.color.alpha } }
+        val horizontalLineAlphas = layout.lineRects
+            .filter { it.width > it.height }
+            .groupBy { it.y + it.height / 2.0 }
+            .mapValues { (_, segments) -> segments.maxOf { it.color.alpha } }
+
+        assertThat(verticalLineAlphas[0.0] ?: 0, lessThan(verticalLineAlphas[100.0] ?: 0))
+        assertThat(horizontalLineAlphas[0.0] ?: 0, lessThan(horizontalLineAlphas[100.0] ?: 0))
     }
 
     @Test
