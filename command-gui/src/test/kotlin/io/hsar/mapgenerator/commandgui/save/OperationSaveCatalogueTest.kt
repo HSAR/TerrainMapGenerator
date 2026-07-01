@@ -12,6 +12,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import java.util.*
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class OperationSaveCatalogueTest {
 
@@ -67,6 +69,35 @@ class OperationSaveCatalogueTest {
         val saves = OperationSaveCatalogue().list(tempDir)
 
         assertThat(saves.map { it.operationName }, equalTo(listOf("Valid Operation")))
+    }
+
+    @Test
+    fun `catalogue summary does not require loading the full operation`() {
+        ZipOutputStream(Files.newOutputStream(tempDir.resolve("summary-only.oct.zip"))).use { zip ->
+            zip.putNextEntry(ZipEntry("game.json"))
+            zip.write(
+                OperationSaveJson.objectMapper.writeValueAsBytes(
+                    GameSaveDto(
+                        formatVersion = 2,
+                        id = "00000000-0000-0000-0000-000000000004",
+                        name = "Summary Only",
+                        createdAt = "2026-06-18T09:00:00Z",
+                        updatedAt = "2026-06-18T13:00:00Z",
+                        thumbnailAssetId = null,
+                        camera = null,
+                        map = MapSaveDto(
+                            metresPerPixel = 20.0,
+                            assetId = "00000000-0000-0000-0000-000000000005",
+                        ),
+                    ),
+                ),
+            )
+            zip.closeEntry()
+        }
+
+        val saves = OperationSaveCatalogue().list(tempDir)
+
+        assertThat(saves.map { it.operationName }, equalTo(listOf("Summary Only")))
     }
 
     private fun request(

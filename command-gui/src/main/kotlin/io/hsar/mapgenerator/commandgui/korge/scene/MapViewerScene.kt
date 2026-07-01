@@ -80,6 +80,7 @@ import korlibs.math.geom.Size2D
 import korlibs.render.awt.AwtGameWindow
 import kotlinx.coroutines.runBlocking
 import org.apache.logging.log4j.LogManager
+import java.awt.Component
 import java.awt.Toolkit
 import java.nio.file.Files
 import java.nio.file.Path
@@ -112,7 +113,10 @@ internal class MapViewerScene(
                     title = MapViewerWindowTitle.format("Launchpad"),
                     displayMode = KorgeDisplayMode.TOP_LEFT_NO_CLIP,
                 ) {
-                    (gameWindow as? AwtGameWindow)?.frame?.extendedState = JFrame.MAXIMIZED_BOTH
+                    (gameWindow as? AwtGameWindow)?.frame?.also { frame ->
+                        frame.extendedState = JFrame.MAXIMIZED_BOTH
+                        frame.disableDropTargets()
+                    }
                     val pendingUiActions = ConcurrentLinkedQueue<() -> Unit>()
                     views.stage.addUpdater {
                         generateSequence { pendingUiActions.poll() }
@@ -125,6 +129,7 @@ internal class MapViewerScene(
                     val launchFlow = MapViewerLaunchFlow()
                     var launchpadView: MapViewerLaunchpadView? = null
                     var newOperationView: MapViewerNewOperationView? = null
+                    var saveCatalogueLoadGeneration = 0
                     lateinit var showLaunchpad: () -> Unit
                     lateinit var showNewOperation: () -> Unit
                     lateinit var showPreparedViewer: (
@@ -958,6 +963,26 @@ internal class MapViewerScene(
                         loadExistingOperation(chooser.selectedFile.toPath())
                     }
 
+                    fun loadSavedOperationsForLaunchpad() {
+                        val targetLaunchpad = launchpadView ?: return
+                        val loadGeneration = ++saveCatalogueLoadGeneration
+                        thread(name = "command-gui-save-catalogue", isDaemon = true) {
+                            val savedOperations = runCatching {
+                                val saveDirectory = OperationSaveWriter().defaultSaveDirectory()
+                                Files.createDirectories(saveDirectory)
+                                OperationSaveCatalogue().list(saveDirectory)
+                            }.onFailure { throwable ->
+                                logger.error("Failed to list saved operations", throwable)
+                            }.getOrElse { emptyList() }
+
+                            runOnUiThread {
+                                if (loadGeneration == saveCatalogueLoadGeneration && launchpadView === targetLaunchpad) {
+                                    targetLaunchpad.updateSavedOperations(savedOperations)
+                                }
+                            }
+                        }
+                    }
+
                     fun launchDraft(draft: NewOperationDraft) {
                         if (!launchFlow.launchNewOperation(draft)) {
                             return
@@ -995,19 +1020,17 @@ internal class MapViewerScene(
                         launchFlow.returnToLaunchpad()
                         newOperationView?.close()
                         newOperationView = null
+                        saveCatalogueLoadGeneration++
                         gameWindow.title = MapViewerWindowTitle.format("Launchpad")
-                        val saveDirectory = OperationSaveWriter().defaultSaveDirectory()
-                        Files.createDirectories(saveDirectory)
-                        val savedOperations = OperationSaveCatalogue().list(saveDirectory)
                         launchpadView = MapViewerLaunchpadView(
                             root = views.stage,
                             viewportWidth = gameWindow.width,
                             viewportHeight = gameWindow.height,
-                            savedOperations = savedOperations,
                             onCreateNewOperation = { showNewOperation() },
                             onLoadSavedOperation = { summary -> loadExistingOperation(summary.path) },
                             onOpenSavePicker = { browseForExistingOperation() },
                             onExitProgram = exitProgram,
+                            onOngoingOperationsEntered = { loadSavedOperationsForLaunchpad() },
                             onTitleChanged = { title -> gameWindow.title = MapViewerWindowTitle.format(title) },
                         )
                     }
@@ -1033,6 +1056,13 @@ private fun java.awt.image.BufferedImage.toBitmap32(): Bitmap32 =
             (argb ushr 24) and 0xFF,
         )
     }.premultipliedIfRequired()
+
+private fun Component.disableDropTargets() {
+    setDropTarget(null)
+    if (this is java.awt.Container) {
+        components.forEach { it.disableDropTargets() }
+    }
+}
 
 private fun MapViewerSettings.operationTitle(viewerTitle: String): String =
     operationName

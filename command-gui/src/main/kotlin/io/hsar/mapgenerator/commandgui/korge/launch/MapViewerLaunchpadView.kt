@@ -26,11 +26,12 @@ internal class MapViewerLaunchpadView(
     private val root: Container,
     viewportWidth: Int,
     viewportHeight: Int,
-    private val savedOperations: List<SavedOperationSummary>,
+    savedOperations: List<SavedOperationSummary>? = null,
     private val onCreateNewOperation: () -> Unit,
     private val onLoadSavedOperation: (SavedOperationSummary) -> Unit,
     private val onOpenSavePicker: () -> Unit,
     private val onExitProgram: () -> Unit,
+    private val onOngoingOperationsEntered: () -> Unit = {},
     private val onTitleChanged: (String) -> Unit = {},
 ) {
     private val layer = root.container()
@@ -38,6 +39,7 @@ internal class MapViewerLaunchpadView(
     private var mode = LaunchpadMode.HOME
     private var scrollState = MapViewerScrollState(0.0, 0.0)
     private var scrollDragState: ScrollDragState? = null
+    private var savedOperations = savedOperations
 
     init {
         layer.zIndex = Z_INDEX
@@ -115,12 +117,22 @@ internal class MapViewerLaunchpadView(
             label = "Ongoing Operations",
             onClick = {
                 mode = LaunchpadMode.EXISTING_OPERATIONS
+                savedOperations = null
                 scrollState = scrollState.copy(offset = 0.0)
                 rerender()
+                onOngoingOperationsEntered()
             },
         ).xy(buttonLeft, 188.0)
         MapViewerLaunchUi.button(panel, BUTTON_WIDTH, BUTTON_HEIGHT, "Exit", onClick = onExitProgram)
             .xy(buttonLeft, 250.0)
+    }
+
+    fun updateSavedOperations(summaries: List<SavedOperationSummary>) {
+        savedOperations = summaries
+        scrollState = scrollState.copy(offset = 0.0)
+        if (mode == LaunchpadMode.EXISTING_OPERATIONS) {
+            rerender()
+        }
     }
 
     private fun renderExistingOperations(panel: Container) {
@@ -130,11 +142,15 @@ internal class MapViewerLaunchpadView(
         val content = panel.container().also {
             it.xy(listBounds.left + 12.0, listBounds.top + 12.0 - scrollState.offset)
         }
-        if (savedOperations.isEmpty()) {
+        val operations = savedOperations
+        if (operations == null) {
+            MapViewerLaunchUi.label(content, "Loading saved operations...", color = Palette.Colours.LIGHT)
+                .xy(12.0, 12.0)
+        } else if (operations.isEmpty()) {
             MapViewerLaunchUi.label(content, "No valid saves found in the default save directory.", color = Palette.Colours.LIGHT)
                 .xy(12.0, 12.0)
         } else {
-            savedOperations.forEachIndexed { index, summary ->
+            operations.forEachIndexed { index, summary ->
                 renderSaveRow(content, summary, index)
             }
         }
@@ -189,7 +205,7 @@ internal class MapViewerLaunchpadView(
     }
 
     private fun totalContentHeight(): Double =
-        savedOperations.size * SAVE_ROW_HEIGHT
+        (savedOperations?.size ?: 0) * SAVE_ROW_HEIGHT
 
     private fun updateScrollDrag(pointer: korlibs.math.geom.Vector2D) {
         if (!scrollState.needsScrolling) {

@@ -2,6 +2,11 @@ package io.hsar.mapgenerator.commandgui.save
 
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.runBlocking
 import org.apache.logging.log4j.LogManager
 import java.awt.image.BufferedImage
 import java.nio.file.Files
@@ -24,19 +29,32 @@ internal data class SavedOperationSummary(
 internal class OperationSaveCatalogue {
     private val logger = LogManager.getLogger(OperationSaveCatalogue::class.java)
 
-    fun list(directory: Path): List<SavedOperationSummary> =
-        Files.list(directory).use { paths ->
-            paths.iterator().asSequence()
-                .filter(Files::isRegularFile)
-                .filter { it.fileName.toString().lowercase().endsWith(".zip") }
-                .mapNotNull(::readSummaryOrNull)
+    fun list(directory: Path): List<SavedOperationSummary> {
+        val startedAt = System.nanoTime()
+        return runBlocking { listInParallel(directory) }
+            .also { summaries ->
+                val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+                if (elapsedMs >= SLOW_LIST_THRESHOLD_MS) {
+                    logger.info("Operation save catalogue listed {} saves in {}ms", summaries.size, elapsedMs)
+                }
+            }
+    }
+
+    private suspend fun listInParallel(directory: Path): List<SavedOperationSummary> =
+        coroutineScope {
+            Files.list(directory).use { paths ->
+                paths.iterator().asSequence()
+                    .filter(Files::isRegularFile)
+                    .filter { it.fileName.toString().lowercase().endsWith(".zip") }
+                    .map { path -> async(Dispatchers.IO) { readSummaryOrNull(path) } }
+                    .toList()
+            }.awaitAll()
+                .filterNotNull()
                 .sortedWith(compareByDescending<SavedOperationSummary> { it.updatedAt }.thenByDescending { it.createdAt })
-                .toList()
         }
 
     private fun readSummaryOrNull(path: Path): SavedOperationSummary? =
         runCatching {
-            OperationSaveLoader().load(path)
             ZipFile(path.toFile()).use { zip ->
                 val game = zip.getEntry(GAME_JSON)
                     ?.let(zip::getInputStream)
@@ -82,5 +100,6 @@ internal class OperationSaveCatalogue {
 
     private companion object {
         const val GAME_JSON = "game.json"
+        const val SLOW_LIST_THRESHOLD_MS = 100L
     }
 }
