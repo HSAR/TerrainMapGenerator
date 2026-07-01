@@ -1,12 +1,12 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
-import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.xy
 
 internal data class MapViewerDialogAction(
     val label: String,
+    val enabled: () -> Boolean = { true },
     val onClick: () -> Unit,
 )
 
@@ -34,13 +34,7 @@ internal object MapViewerDialogActions {
                     val buttonTop = centerY - BUTTON_HEIGHT * 0.5
                     val button = parent.container()
                     button.xy(buttonLeft, buttonTop)
-                    MapViewerUiBoxes.button(button, BUTTON_WIDTH, BUTTON_HEIGHT)
-                    MapViewerTextViews.box(button, action.label, BUTTON_WIDTH, BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(true))
-                    button.mouse {
-                        onClick {
-                            action.onClick()
-                        }
-                    }
+                    renderButton(button, action)
                 }
             }
 
@@ -51,13 +45,7 @@ internal object MapViewerDialogActions {
                 actions.forEachIndexed { index, action ->
                     val button = parent.container()
                     button.xy(buttonLeft, startTop + index * (BUTTON_HEIGHT + BUTTON_GAP))
-                    MapViewerUiBoxes.button(button, BUTTON_WIDTH, BUTTON_HEIGHT)
-                    MapViewerTextViews.box(button, action.label, BUTTON_WIDTH, BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(true))
-                    button.mouse {
-                        onClick {
-                            action.onClick()
-                        }
-                    }
+                    renderButton(button, action)
                 }
             }
         }
@@ -107,4 +95,15 @@ internal object MapViewerDialogActions {
         } else {
             (buttonCount * BUTTON_HEIGHT) + ((buttonCount - 1) * BUTTON_GAP)
         }
+
+    private fun renderButton(parent: Container, action: MapViewerDialogAction) {
+        MapViewerActionButtons.button(
+            parent = parent,
+            width = BUTTON_WIDTH,
+            height = BUTTON_HEIGHT,
+            label = action.label,
+            enabled = action.enabled(),
+            onClick = action.onClick,
+        )
+    }
 }

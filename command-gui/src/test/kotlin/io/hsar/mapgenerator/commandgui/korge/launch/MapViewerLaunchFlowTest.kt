@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
+import java.awt.image.BufferedImage
 
 class MapViewerLaunchFlowTest {
 
@@ -40,4 +41,41 @@ class MapViewerLaunchFlowTest {
         assertThat(launched, equalTo(false))
         assertThat(flow.state, equalTo(MapViewerLaunchState.NEW_OPERATION))
     }
+
+    @Test
+    fun `new operation without grid configuration does not launch viewer`() {
+        val flow = MapViewerLaunchFlow().also { it.createNewOperation() }
+
+        val launched = flow.launchNewOperation(
+            NewOperationDraft(
+                operationName = "Test",
+                mapImage = OperationMapImage("Map", "map.png", image()),
+                pixelsPerMetre = 20.0,
+                gridConfiguration = null,
+            ),
+        )
+
+        assertThat(launched, equalTo(false))
+        assertThat(flow.state, equalTo(MapViewerLaunchState.NEW_OPERATION))
+    }
+
+    @Test
+    fun `valid new operation launches viewer`() {
+        val flow = MapViewerLaunchFlow().also { it.createNewOperation() }
+
+        val launched = flow.launchNewOperation(
+            NewOperationDraft(
+                operationName = "Test",
+                mapImage = OperationMapImage("Map", "map.png", image()),
+                pixelsPerMetre = 20.0,
+                gridConfiguration = GridConfiguration("AA", 1.0, 2.0),
+            ),
+        )
+
+        assertThat(launched, equalTo(true))
+        assertThat(flow.state, equalTo(MapViewerLaunchState.VIEWER))
+    }
+
+    private fun image(): BufferedImage =
+        BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
 }

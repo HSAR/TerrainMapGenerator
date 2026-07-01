@@ -26,4 +26,21 @@ class MapViewerCustomPropertiesEditorTest {
 
         assertThat(populated.height() > empty.height(), equalTo(true))
     }
+
+    @Test
+    fun `editor is valid when initial reserved keys are filtered out`() {
+        val editor = MapViewerCustomPropertiesEditor(
+            initialProperties = mapOf("instanceName" to "reserved"),
+            reservedKeys = setOf("instanceName"),
+        )
+
+        assertThat(editor.isValid, equalTo(true))
+    }
+
+    @Test
+    fun `shared text input validation trims required text and reserved keys`() {
+        assertThat(MapViewerTextInputValidation.isPresent(" Name "), equalTo(true))
+        assertThat(MapViewerTextInputValidation.isPresent(" "), equalTo(false))
+        assertThat(MapViewerTextInputValidation.isReservedKey(" instanceName ", setOf("instanceName")), equalTo(true))
+    }
 }

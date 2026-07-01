@@ -10,9 +10,11 @@ import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconFit
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputValidation
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputs
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
+import io.hsar.mapgenerator.commandgui.korge.ui.UiFrameStyle
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.grid.GridLayerBuilder
@@ -82,10 +84,13 @@ internal class MapViewerNewOperationView(
         }
     }
     private var statusContainer: Container? = null
+    private var launchButtonContainer: Container? = null
     private var layout = MapViewerNewOperationLayoutBuilder.build(viewportWidth, viewportHeight)
     private var dragState: ReorderDragState? = null
     private var nextRowId = 1L
     private var reseedGridDefaults = mapImage != null
+    private var operationNameWasValid = MapViewerTextInputValidation.isPresent(operationName)
+    private var pendingOperationNameFocus = false
 
     init {
         layer.zIndex = Z_INDEX
@@ -147,8 +152,10 @@ internal class MapViewerNewOperationView(
                 width = panelWidth - CONTENT_PADDING * 2.0,
                 height = INPUT_HEIGHT,
             ),
+            frameStyle = MapViewerTextInputValidation.frameStyle(MapViewerTextInputValidation.isPresent(operationName)),
         )
-        wirePreviewRefresh(operationNameInput)
+        focusOperationNameIfPending()
+        wireOperationNameValidation(operationNameInput)
 
         MapViewerLaunchUi.button(panel, 160.0, 36.0, "Choose Map Image") {
             chooseMapImage()
@@ -236,9 +243,10 @@ internal class MapViewerNewOperationView(
     }
 
     private fun renderButtons() {
-        MapViewerLaunchUi.button(layer, 190.0, 42.0, "Launch Operation") {
-            launch()
-        }.xy(layout.launchButtonBounds.left, layout.launchButtonBounds.top)
+        launchButtonContainer = layer.container().also {
+            it.xy(layout.launchButtonBounds.left, layout.launchButtonBounds.top)
+        }
+        refreshLaunchButton()
     }
 
     private fun renderUnitRow(parent: Container, row: UnitRow, index: Int) {
@@ -338,8 +346,18 @@ internal class MapViewerNewOperationView(
 
     private fun launch() {
         captureInputs()
-        val gridConfiguration = parseGridConfiguration()
-        val draft = NewOperationDraft(
+        val draft = currentDraft()
+        when {
+            !MapViewerTextInputValidation.isPresent(draft.operationName) -> showStatus("Enter an operation name")
+            draft.mapImage == null -> showStatus("Choose a map image")
+            draft.pixelsPerMetre <= 0.0 -> showStatus("Enter a pixels-per-metre value")
+            draft.gridConfiguration == null -> showStatus("Enter a map ID and starting coordinates")
+            else -> onLaunch(draft)
+        }
+    }
+
+    private fun currentDraft(): NewOperationDraft =
+        NewOperationDraft(
             operationName = operationName,
             mapImage = mapImage?.let { image ->
                 OperationMapImage(
@@ -350,7 +368,7 @@ internal class MapViewerNewOperationView(
                 )
             },
             pixelsPerMetre = pixelsPerMetreText.toDoubleOrNull() ?: -1.0,
-            gridConfiguration = gridConfiguration,
+            gridConfiguration = parseGridConfiguration(),
             unitTemplates = unitRows.map { row ->
                 MapViewerUnitTemplate(
                     id = UnitTemplateId(UUID.randomUUID()),
@@ -360,14 +378,6 @@ internal class MapViewerNewOperationView(
                 )
             },
         )
-        when {
-            draft.operationName.isBlank() -> showStatus("Enter an operation name")
-            draft.mapImage == null -> showStatus("Choose a map image")
-            draft.pixelsPerMetre <= 0.0 -> showStatus("Enter a pixels-per-metre value")
-            draft.gridConfiguration == null -> showStatus("Enter a map ID and starting coordinates")
-            else -> onLaunch(draft)
-        }
-    }
 
     private fun captureInputs() {
         operationNameInput?.text?.trim()?.let { operationName = it }
@@ -430,7 +440,10 @@ internal class MapViewerNewOperationView(
             width = previewWidth,
             height = previewHeight,
             gridScale = 1_000,
-            metresPerPixel = pixelsPerMetreText.toDoubleOrNull() ?: initialPixelsPerMetre,
+            metresPerPixel = previewMetresPerPixel(
+                metresPerPixel = pixelsPerMetreText.toDoubleOrNull() ?: initialPixelsPerMetre,
+                previewScale = fittedIcon.scale,
+            ),
             mapId = gridConfiguration.mapId,
             verticalLineNumberStart = gridConfiguration.startX,
             horizontalLineNumberStart = gridConfiguration.startY,
@@ -523,20 +536,76 @@ internal class MapViewerNewOperationView(
         statusContainer?.let { MapViewerLaunchUi.label(it, text, color = Palette.Colours.RED) }
     }
 
+    private fun refreshLaunchButton() {
+        val container = launchButtonContainer ?: return
+        container.removeChildren()
+        MapViewerLaunchUi.button(
+            parent = container,
+            width = 190.0,
+            height = 42.0,
+            label = "Launch Operation",
+            disabled = !isCurrentOperationLaunchable(),
+        ) {
+            launch()
+        }
+    }
+
+    private fun isCurrentOperationLaunchable(): Boolean =
+        NewOperationDraft(
+            operationName = operationName,
+            mapImage = mapImage?.let { image ->
+                OperationMapImage(
+                    name = image.name,
+                    imagePath = image.imagePath,
+                    image = image.image,
+                    assetSource = image.assetSource,
+                )
+            },
+            pixelsPerMetre = pixelsPerMetreText.toDoubleOrNull() ?: -1.0,
+            gridConfiguration = parseGridConfiguration(),
+        ).isLaunchable()
+
     private fun screenTitle(): String =
         "New Operation"
 
     private fun Double.formatGridCoordinate(): String =
         toString().removeSuffix(".0")
 
-    private fun textInput(parent: Container, text: String, bounds: ScreenBounds): io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField =
-        MapViewerTextInputs.input(parent, text, bounds.width, bounds.height, bounds.left, bounds.top)
+    private fun textInput(
+        parent: Container,
+        text: String,
+        bounds: ScreenBounds,
+        frameStyle: (Boolean) -> UiFrameStyle = MapViewerUiBoxes::defaultStyle,
+    ): io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField =
+        MapViewerTextInputs.input(parent, text, bounds.width, bounds.height, bounds.left, bounds.top, frameStyle = frameStyle)
+
+    private fun focusOperationNameIfPending() {
+        if (pendingOperationNameFocus) {
+            operationNameInput?.focus()
+            pendingOperationNameFocus = false
+        }
+    }
+
+    private fun wireOperationNameValidation(input: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField?) {
+        input ?: return
+        input.controller.onTextUpdated.add {
+            val wasValid = operationNameWasValid
+            captureInputs()
+            operationNameWasValid = MapViewerTextInputValidation.isPresent(operationName)
+            refreshLaunchButton()
+            if (operationNameWasValid != wasValid) {
+                pendingOperationNameFocus = true
+                render(layout.viewportWidth, layout.viewportHeight)
+            }
+        }
+    }
 
     private fun wirePreviewRefresh(input: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField?) {
         input ?: return
         input.controller.onTextUpdated.add {
             captureInputs()
             mapPreviewDirty = true
+            refreshLaunchButton()
         }
     }
 

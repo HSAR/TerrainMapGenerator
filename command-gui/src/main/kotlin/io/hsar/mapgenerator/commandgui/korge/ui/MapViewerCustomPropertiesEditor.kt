@@ -9,7 +9,6 @@ import korlibs.korge.view.container
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Vector2D
-import java.awt.Color
 import kotlin.math.max
 
 @OptIn(KorgeExperimental::class)
@@ -17,6 +16,7 @@ internal class MapViewerCustomPropertiesEditor(
     initialProperties: Map<String, String>,
     private val reservedKeys: Set<String> = emptySet(),
     private val onRowsChanged: () -> Unit = {},
+    private val onValidationChanged: () -> Unit = {},
 ) {
     private val rows = initialProperties
         .filterKeys { it !in reservedKeys }
@@ -30,6 +30,12 @@ internal class MapViewerCustomPropertiesEditor(
 
     val isTextInputActive: Boolean
         get() = inputs.any { it.isFocused }
+
+    val isValid: Boolean
+        get() {
+            syncRowsFromInputs()
+            return rows.none { it.isConflicting() }
+        }
 
     fun properties(): Map<String, String> {
         syncRowsFromInputs()
@@ -86,13 +92,14 @@ internal class MapViewerCustomPropertiesEditor(
             height = MapViewerDialogSpacing.INPUT_HEIGHT,
             x = 0.0,
             y = top,
-            frameStyle = if (isConflicting) ::errorFrameStyle else MapViewerUiBoxes::defaultStyle,
+            frameStyle = MapViewerTextInputValidation.frameStyle(!isConflicting),
         )
         keyInput.controller.onTextUpdated.add {
             val wasConflicting = row.isConflicting()
             row.key = keyInput.text
             if (row.isConflicting() != wasConflicting) {
                 pendingFocusInputIndex = index * INPUTS_PER_ROW
+                onValidationChanged()
                 rerender()
             }
         }
@@ -121,7 +128,11 @@ internal class MapViewerCustomPropertiesEditor(
         removeButton.xy(layout.removeLeft, top)
         renderButton(removeButton, REMOVE_BUTTON_WIDTH, "X") {
             syncRowsFromInputs()
+            val wasValid = rows.none { it.isConflicting() }
             rows.removeAt(index)
+            if (rows.none { it.isConflicting() } != wasValid) {
+                onValidationChanged()
+            }
             onRowsChanged()
             rerender()
         }
@@ -215,15 +226,7 @@ internal class MapViewerCustomPropertiesEditor(
     }
 
     private fun CustomPropertyRow.isConflicting(): Boolean =
-        key.trim() in reservedKeys
-
-    private fun errorFrameStyle(active: Boolean): UiFrameStyle =
-        UiFrameStyle(
-            fillColor = if (active) ERROR_FILL else Palette.Colours.MAIN,
-            fillAlpha = if (active) 190 else MapViewerUiStateStyle.inactiveFillAlpha,
-            borderColor = Palette.Colours.RED,
-            borderAlpha = 235,
-        )
+        MapViewerTextInputValidation.isReservedKey(key, reservedKeys)
 
     private fun layout(width: Double): CustomPropertyEditorLayout {
         val removeLeft = width - REMOVE_BUTTON_WIDTH
@@ -267,6 +270,5 @@ internal class MapViewerCustomPropertiesEditor(
         const val TOOLTIP_MIN_WIDTH = 260.0
         const val TOOLTIP_PADDING_X = 10.0
         const val TOOLTIP_Z_INDEX = 1000.0
-        val ERROR_FILL = Color(82, 16, 20)
     }
 }

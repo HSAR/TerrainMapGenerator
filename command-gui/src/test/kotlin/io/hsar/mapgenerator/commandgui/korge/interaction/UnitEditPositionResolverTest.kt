@@ -46,6 +46,13 @@ class UnitEditPositionResolverTest {
     }
 
     @Test
+    fun `valid blank facing input can be used by save handling`() {
+        val parsedFacing = UnitFacingResolver.parseValid(" ")
+
+        assertThat(parsedFacing?.degrees, equalTo(null))
+    }
+
+    @Test
     fun `facing input normalizes full circle bearings`() {
         assertThat(UnitFacingResolver.parse("0").degrees, equalTo(0))
         assertThat(UnitFacingResolver.parse("90").degrees, equalTo(90))

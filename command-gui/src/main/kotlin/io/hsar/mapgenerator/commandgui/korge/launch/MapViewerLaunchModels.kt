@@ -74,7 +74,7 @@ internal class MapViewerLaunchFlow {
 }
 
 internal fun NewOperationDraft.isLaunchable(): Boolean =
-    operationName.isNotBlank() && mapImage != null && pixelsPerMetre > 0.0
+    operationName.isNotBlank() && mapImage != null && pixelsPerMetre > 0.0 && gridConfiguration != null
 
 internal fun defaultGridConfiguration(
     mapImage: BufferedImage,
@@ -94,6 +94,11 @@ internal fun defaultGridConfiguration(
             startY = gridLayer.horizontalLineNumberStart,
         )
     }
+
+internal fun previewMetresPerPixel(metresPerPixel: Double, previewScale: Double): Double {
+    require(previewScale > 0.0) { "Preview scale must be positive." }
+    return metresPerPixel / previewScale
+}
 
 internal object OperationLaunchConfigurationFactory {
     fun create(

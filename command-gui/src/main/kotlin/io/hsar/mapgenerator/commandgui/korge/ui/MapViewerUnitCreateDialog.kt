@@ -40,6 +40,8 @@ internal class MapViewerUnitCreateDialog(
     private var previewFrame: Container? = null
     private var isOpen = false
     private var initialFocusApplied = false
+    private var nameWasValid = MapViewerTextInputValidation.isPresent(nameValue)
+    private var pendingNameFocus = false
     private val affiliationDropdown = MapViewerDropdownMenu(
         root = root,
         options = UnitAffiliationUi.options,
@@ -51,6 +53,7 @@ internal class MapViewerUnitCreateDialog(
         initialProperties = initialTemplate?.customProperties.orEmpty(),
         reservedKeys = UNIT_TYPE_FIELD_KEYS,
         onRowsChanged = { dialogWindow?.refresh() },
+        onValidationChanged = { dialogWindow?.refresh() },
     )
 
     fun show(viewportWidth: Int, viewportHeight: Int) {
@@ -68,7 +71,7 @@ internal class MapViewerUnitCreateDialog(
             contentMinimumWidth = ::minimumContentWidth,
             contentHeight = { width -> contentHeightFor(width) },
             actions = listOf(
-                MapViewerDialogAction(confirmLabel) { confirm() },
+                MapViewerDialogAction(confirmLabel, enabled = { canConfirm() }) { confirm() },
                 MapViewerDialogAction("Cancel") { close() },
             ),
             onClose = { close() },
@@ -117,15 +120,22 @@ internal class MapViewerUnitCreateDialog(
 
         MapViewerTextViews.label(content, "Name", color = Palette.Colours.WHITE)
         nameInput = MapViewerTextInputs.input(
-            content,
-            nameValue,
-            layout.nameFieldWidth,
-            MapViewerDialogSpacing.INPUT_HEIGHT,
-            0.0,
-            MapViewerDialogSpacing.LABEL_TO_FIELD_GAP,
+            parent = content,
+            text = nameValue,
+            width = layout.nameFieldWidth,
+            height = MapViewerDialogSpacing.INPUT_HEIGHT,
+            x = 0.0,
+            y = MapViewerDialogSpacing.LABEL_TO_FIELD_GAP,
+            frameStyle = MapViewerTextInputValidation.frameStyle(MapViewerTextInputValidation.isPresent(nameValue)),
         )
         nameInput?.controller?.onTextUpdated?.add {
+            val wasValid = nameWasValid
             nameValue = nameInput?.text.orEmpty()
+            nameWasValid = MapViewerTextInputValidation.isPresent(nameValue)
+            if (nameWasValid != wasValid) {
+                pendingNameFocus = true
+                dialogWindow?.refresh()
+            }
         }
 
         affiliationDropdown.renderField(
@@ -178,10 +188,7 @@ internal class MapViewerUnitCreateDialog(
             selectedBitmap = bitmap
             selectedAssetSource = AssetSource.fromFile(file)
             statusText = file.name
-            previewFrame?.let { frame ->
-                renderPreview(frame, bitmap, layout.previewWidth)
-            }
-            showStatus(statusLabel, statusText, statusWidthFor(statusText))
+            dialogWindow?.refresh()
         }
 
         val customPropertiesContainer = content.container()
@@ -192,6 +199,10 @@ internal class MapViewerUnitCreateDialog(
             nameInput?.focus()
             initialFocusApplied = true
         }
+        if (pendingNameFocus) {
+            nameInput?.focus()
+            pendingNameFocus = false
+        }
     }
 
     private fun confirm() {
@@ -199,6 +210,7 @@ internal class MapViewerUnitCreateDialog(
         val bitmap = selectedBitmap
         when {
             name.isBlank() -> showStatus(statusLabel, "Enter a type name", statusWidthFor("Enter a type name"))
+            !customPropertiesEditor.isValid -> return
             bitmap == null -> showStatus(statusLabel, "Choose an image", statusWidthFor("Choose an image"))
             else -> {
                 onCreated(
@@ -215,6 +227,9 @@ internal class MapViewerUnitCreateDialog(
             }
         }
     }
+
+    private fun canConfirm(): Boolean =
+        MapViewerTextInputValidation.isPresent(nameValue) && selectedBitmap != null && customPropertiesEditor.isValid
 
     private fun renderPreview(previewFrame: Container, bitmap: Bitmap32, previewWidth: Double) {
         previewFrame.removeChildren()

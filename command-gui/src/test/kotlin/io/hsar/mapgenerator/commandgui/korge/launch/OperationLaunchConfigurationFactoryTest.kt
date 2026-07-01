@@ -93,6 +93,16 @@ class OperationLaunchConfigurationFactoryTest {
     }
 
     @Test
+    fun `preview metres per pixel preserves map scale when image is fitted smaller`() {
+        val metresPerPixel = previewMetresPerPixel(
+            metresPerPixel = 20.0,
+            previewScale = 0.25,
+        )
+
+        assertThat(metresPerPixel, equalTo(80.0))
+    }
+
+    @Test
     fun `unit templates from setup are seeded into the initial ledger`() {
         val draft = NewOperationDraft(
             operationName = "Operation Copperhead",

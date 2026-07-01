@@ -1,12 +1,12 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerActionButtons
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.image.Palette
-import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.Text
 import korlibs.korge.view.xy
@@ -33,27 +33,14 @@ internal object MapViewerLaunchUi {
         disabled: Boolean = false,
         onClick: () -> Unit = {},
     ): Container =
-        MapViewerUiBoxes.button(
+        MapViewerActionButtons.button(
             parent = parent,
             width = width,
             height = height,
-            active = !disabled,
-        ).also { button ->
-            MapViewerTextViews.box(
-                parent = button,
-                text = label,
-                width = width,
-                height = height,
-                color = Palette.Colours.WHITE,
-            ) {
-                alpha = if (disabled) 0.55 else 1.0
-            }
-            if (!disabled) {
-                button.mouse {
-                    onClick { onClick() }
-                }
-            }
-        }
+            label = label,
+            enabled = !disabled,
+            onClick = onClick,
+        )
 
     fun backButton(parent: Container, onClick: () -> Unit = {}): Container =
         button(parent, 120.0, 42.0, "Back", onClick = onClick)

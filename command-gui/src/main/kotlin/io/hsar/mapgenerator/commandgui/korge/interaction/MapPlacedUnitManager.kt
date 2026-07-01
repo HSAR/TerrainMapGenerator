@@ -445,6 +445,18 @@ internal class MapPlacedUnitManager(
                         unit.updateFacingOverlay(forceActive = true)
                     }
             },
+            isPositionValid = { positionX, positionY ->
+                UnitEditPositionResolver.resolve(
+                    currentCoordinate = session.baselineSnapshot.mapCoordinate,
+                    initialPositionX = session.baselinePosition.easting,
+                    initialPositionY = session.baselinePosition.northing,
+                    newPositionX = positionX,
+                    newPositionY = positionY,
+                ) { easting, northing -> referenceToMapCoordinate(easting, northing, viewportWidth, viewportHeight) } != null
+            },
+            isFacingValid = { facingText ->
+                UnitFacingResolver.parse(facingText).isValid
+            },
             onSave = save@{ newName, newPositionX, newPositionY, newDestroyed, newFacingText, customProperties ->
                 val nameChanged = newName != session.baselineSnapshot.instanceName
                 val positionChanged = newPositionX.trim() != session.baselinePosition.easting.trim() ||
@@ -458,7 +470,8 @@ internal class MapPlacedUnitManager(
                 ) { easting, northing ->
                     referenceToMapCoordinate(easting, northing, viewportWidth, viewportHeight)
                 } ?: return@save false
-                val updatedFacing = UnitFacingResolver.parse(newFacingText).takeIf { it.isValid }?.degrees ?: return@save false
+                val parsedFacing = UnitFacingResolver.parseValid(newFacingText) ?: return@save false
+                val updatedFacing = parsedFacing.degrees
                 val destroyedChanged = newDestroyed != session.baselineSnapshot.destroyed
                 val facingChanged = updatedFacing != session.baselineSnapshot.facingDegrees
                 val customPropertiesChanged = customProperties != session.baselineSnapshot.customProperties
@@ -874,6 +887,9 @@ internal data class UnitFacingParseResult(
 internal object UnitFacingResolver {
     fun format(facingDegrees: Int?): String =
         facingDegrees?.toString() ?: ""
+
+    fun parseValid(input: String): UnitFacingParseResult? =
+        parse(input).takeIf { it.isValid }
 
     fun parse(input: String): UnitFacingParseResult {
         val trimmed = input.trim()

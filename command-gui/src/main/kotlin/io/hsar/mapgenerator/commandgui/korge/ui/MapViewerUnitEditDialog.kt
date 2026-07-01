@@ -24,6 +24,8 @@ internal class MapViewerUnitEditDialog(
     private val onPositionPreviewChanged: (String, String) -> Unit,
     private val onDestroyedPreviewChanged: (Boolean) -> Unit,
     private val onFacingPreviewChanged: (String) -> Unit,
+    private val isPositionValid: (String, String) -> Boolean = { _, _ -> true },
+    private val isFacingValid: (String) -> Boolean = { true },
     private val onSave: (String, String, String, Boolean, String, Map<String, String>) -> Boolean,
     private val onDismiss: () -> Unit,
 ) {
@@ -38,10 +40,15 @@ internal class MapViewerUnitEditDialog(
     private var isOpen = false
     private var window: MapViewerDialogWindow? = null
     private var initialFocusApplied = false
+    private var nameWasValid = MapViewerTextInputValidation.isPresent(nameValue)
+    private var positionWasValid = isPositionValid(positionXValue, positionYValue)
+    private var facingWasValid = isFacingValid(facingValue)
+    private var pendingNameFocus = false
     private val customPropertiesEditor = MapViewerCustomPropertiesEditor(
         initialProperties = initialCustomProperties,
         reservedKeys = UNIT_FIELD_KEYS,
         onRowsChanged = { window?.refresh() },
+        onValidationChanged = { window?.refresh() },
     )
 
     fun show(viewportWidth: Int, viewportHeight: Int) {
@@ -59,7 +66,7 @@ internal class MapViewerUnitEditDialog(
             contentMinimumWidth = ::minimumContentWidth,
             contentHeight = ::contentHeight,
             actions = listOf(
-                MapViewerDialogAction("Save") { saveAndClose() },
+                MapViewerDialogAction("Save", enabled = { canSave() }) { saveAndClose() },
                 MapViewerDialogAction("Cancel") { close() },
             ),
             onClose = { close() },
@@ -142,9 +149,23 @@ internal class MapViewerUnitEditDialog(
         nameLabel.xy(0.0, 90.0)
         MapViewerTextViews.label(nameLabel, "Instance Name", color = Palette.Colours.WHITE)
 
-        nameInput = MapViewerTextInputs.input(parent, nameValue, fieldWidth, MapViewerDialogSpacing.INPUT_HEIGHT, 0.0, 118.0)
+        nameInput = MapViewerTextInputs.input(
+            parent = parent,
+            text = nameValue,
+            width = fieldWidth,
+            height = MapViewerDialogSpacing.INPUT_HEIGHT,
+            x = 0.0,
+            y = 118.0,
+            frameStyle = MapViewerTextInputValidation.frameStyle(MapViewerTextInputValidation.isPresent(nameValue)),
+        )
         nameInput?.controller?.onTextUpdated?.add {
+            val wasValid = nameWasValid
             nameValue = nameInput?.text.orEmpty()
+            nameWasValid = MapViewerTextInputValidation.isPresent(nameValue)
+            if (nameWasValid != wasValid) {
+                pendingNameFocus = true
+                window?.refresh()
+            }
         }
 
         val positionLabel = parent.container()
@@ -159,9 +180,11 @@ internal class MapViewerUnitEditDialog(
             y = 194.0,
             width = compactFieldWidth,
             onFieldCreated = { positionXInput = it },
+            frameStyle = MapViewerTextInputValidation.frameStyle(isPositionValid(positionXValue, positionYValue)),
         ) { input ->
             positionXValue = input.text
             refreshPositionPreview()
+            refreshIfPositionValidityChanged()
         }
 
         addField(
@@ -172,9 +195,11 @@ internal class MapViewerUnitEditDialog(
             y = 194.0,
             width = compactFieldWidth,
             onFieldCreated = { positionYInput = it },
+            frameStyle = MapViewerTextInputValidation.frameStyle(isPositionValid(positionXValue, positionYValue)),
         ) { input ->
             positionYValue = input.text
             refreshPositionPreview()
+            refreshIfPositionValidityChanged()
         }
 
         val facingX = if (compactRow) (compactFieldWidth + MapViewerDialogSpacing.FIELD_GAP) * 2.0 else 0.0
@@ -186,9 +211,11 @@ internal class MapViewerUnitEditDialog(
             x = facingX,
             y = facingY,
             width = compactFieldWidth,
+            frameStyle = MapViewerTextInputValidation.frameStyle(isFacingValid(facingValue)),
         ) { input ->
             facingValue = input.text
             onFacingPreviewChanged(facingValue)
+            refreshIfFacingValidityChanged()
         }
 
         val destroyedTop = if (compactRow) 262.0 else 330.0
@@ -215,6 +242,10 @@ internal class MapViewerUnitEditDialog(
             nameInput?.focus()
             initialFocusApplied = true
         }
+        if (pendingNameFocus) {
+            nameInput?.focus()
+            pendingNameFocus = false
+        }
     }
 
     private fun syncFields(sync: MapViewerDialogPositionSync) {
@@ -232,12 +263,21 @@ internal class MapViewerUnitEditDialog(
         y: Double,
         width: Double,
         onFieldCreated: (MapViewerInputField) -> Unit = {},
+        frameStyle: (Boolean) -> UiFrameStyle = MapViewerUiBoxes::defaultStyle,
         onTextUpdated: (MapViewerInputField) -> Unit,
     ) {
         val labelContainer = parent.container()
         labelContainer.xy(x, y)
         MapViewerTextViews.label(labelContainer, label, color = Palette.Colours.WHITE)
-        val input = MapViewerTextInputs.input(parent, text, width, MapViewerDialogSpacing.INPUT_HEIGHT, x, y + MapViewerDialogSpacing.LABEL_TO_FIELD_GAP)
+        val input = MapViewerTextInputs.input(
+            parent = parent,
+            text = text,
+            width = width,
+            height = MapViewerDialogSpacing.INPUT_HEIGHT,
+            x = x,
+            y = y + MapViewerDialogSpacing.LABEL_TO_FIELD_GAP,
+            frameStyle = frameStyle,
+        )
         onFieldCreated(input)
         input.controller.onTextUpdated.add {
             onTextUpdated(input)
@@ -260,8 +300,24 @@ internal class MapViewerUnitEditDialog(
         onPositionPreviewChanged(positionXValue, positionYValue)
     }
 
+    private fun refreshIfPositionValidityChanged() {
+        val isValid = isPositionValid(positionXValue, positionYValue)
+        if (isValid != positionWasValid) {
+            positionWasValid = isValid
+            window?.refresh()
+        }
+    }
+
+    private fun refreshIfFacingValidityChanged() {
+        val isValid = isFacingValid(facingValue)
+        if (isValid != facingWasValid) {
+            facingWasValid = isValid
+            window?.refresh()
+        }
+    }
+
     private fun saveAndClose() {
-        if (nameValue.trim().isBlank()) {
+        if (!canSave()) {
             return
         }
 
@@ -280,6 +336,12 @@ internal class MapViewerUnitEditDialog(
 
     private fun contentHeight(width: Double): Double =
         customPropertiesTop(width) + customPropertiesEditor.height()
+
+    private fun canSave(): Boolean =
+        MapViewerTextInputValidation.isPresent(nameValue) &&
+                isPositionValid(positionXValue, positionYValue) &&
+                isFacingValid(facingValue) &&
+                customPropertiesEditor.isValid
 
     private fun customPropertiesTop(width: Double): Double =
         if (width >= COMPACT_ROW_MIN_WIDTH) {
@@ -340,6 +402,7 @@ internal class MapViewerUnitEditDialog(
         const val COMPACT_CONTENT_HEIGHT = 320.0
         const val STACKED_CONTENT_HEIGHT = 392.0
         val UNIT_FIELD_KEYS = setOf(
+            "type",
             "unitTemplateId",
             "instanceName",
             "destroyed",

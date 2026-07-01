@@ -35,4 +35,18 @@ class MapViewerDialogActionsTest {
     fun `footer minimum width is a single button width`() {
         assertThat(MapViewerDialogActions.minimumWidth(2), equalTo(MapViewerDialogActions.BUTTON_WIDTH))
     }
+
+    @Test
+    fun `dialog actions are enabled by default`() {
+        val action = MapViewerDialogAction("Save") {}
+
+        assertThat(action.enabled(), equalTo(true))
+    }
+
+    @Test
+    fun `dialog actions can be disabled by predicate`() {
+        val action = MapViewerDialogAction("Save", enabled = { false }) {}
+
+        assertThat(action.enabled(), equalTo(false))
+    }
 }
