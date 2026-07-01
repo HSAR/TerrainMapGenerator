@@ -10,6 +10,7 @@ import korlibs.korge.view.container
 import korlibs.korge.view.graphics
 import korlibs.korge.view.xy
 import korlibs.math.geom.radians
+import org.apache.logging.log4j.LogManager
 import kotlin.math.atan2
 import kotlin.math.hypot
 
@@ -18,6 +19,8 @@ internal class GridOverlayView(
     private val gridLayer: GridLayer,
 ) : Container() {
     private val labelContainer = container()
+    private val logger = LogManager.getLogger(GridOverlayView::class.java)
+    private var lastLayout: GridOverlayLayout? = null
 
     init {
         addChild(labelContainer)
@@ -28,6 +31,18 @@ internal class GridOverlayView(
             state.copy(gridLayer = gridLayer),
         )
 
+        update(layout)
+    }
+
+    fun update(render: GridOverlayRender) =
+        update(render.layout)
+
+    private fun update(layout: GridOverlayLayout) {
+        if (layout == lastLayout) {
+            return
+        }
+
+        val startedAt = System.nanoTime()
         labelContainer.removeChildren()
         layout.overlayArrows.forEach { arrow ->
             drawChevronArrow(arrow)
@@ -46,6 +61,15 @@ internal class GridOverlayView(
                 x = label.x - bounds.width / 2
                 y = label.y - bounds.height / 2
             }
+        }
+        lastLayout = layout
+        logSlowUpdate(startedAt, layout.labels.size, layout.overlayArrows.size)
+    }
+
+    private fun logSlowUpdate(startedAt: Long, labelCount: Int, arrowCount: Int) {
+        val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+        if (elapsedMs >= SLOW_UPDATE_MS) {
+            logger.info("Grid label overlay update took {}ms for {} labels and {} arrows", elapsedMs, labelCount, arrowCount)
         }
     }
 
@@ -86,6 +110,7 @@ internal class GridOverlayView(
     }
 
     private companion object {
+        private const val SLOW_UPDATE_MS = 16
         private const val ARROW_HALF_HEIGHT = 5.0
         private const val ARROW_HEAD_LENGTH = 10.0
         private const val ARROW_TAIL_LENGTH = 10.0

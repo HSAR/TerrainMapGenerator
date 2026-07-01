@@ -317,6 +317,21 @@ class GridOverlayLayoutBuilderTest {
     }
 
     @Test
+    fun `overlay rect count stays bounded for normal and fine grid states`() {
+        val normalLayout = GridOverlayLayoutBuilder.build(
+            state = state(mapOffsetX = 0.0, mapOffsetY = 0.0),
+            measureText = ::measureText,
+        )
+        val fineLayout = GridOverlayLayoutBuilder.build(
+            state = state(mapOffsetX = 0.0, mapOffsetY = 0.0, pixelsPerLine = 100.0, scale = 4.0),
+            measureText = ::measureText,
+        )
+
+        assertThat(normalLayout.lineRects.size < 360, equalTo(true))
+        assertThat(fineLayout.lineRects.size < 1_600, equalTo(true))
+    }
+
+    @Test
     fun `active reference draws red crosshair and label`() {
         val layout = GridOverlayLayoutBuilder.build(
             state = state(

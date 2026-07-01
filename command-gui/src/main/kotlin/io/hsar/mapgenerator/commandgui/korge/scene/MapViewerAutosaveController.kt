@@ -4,10 +4,16 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 
 internal class MapViewerAutosaveController(
     private val saveIntervalMs: Long = 60_000L,
-    private val saveOperation: () -> Boolean,
+    private val saveOperation: ((Boolean) -> Unit) -> Unit,
 ) {
+    constructor(
+        saveIntervalMs: Long = 60_000L,
+        saveOperation: () -> Boolean,
+    ) : this(saveIntervalMs, { complete -> complete(saveOperation()) })
+
     private val queuedEntries = ArrayDeque<LedgerEntry>()
     private var queuedAtMs: Long? = null
+    private var saveInProgress = false
 
     fun enqueue(entry: LedgerEntry, nowMs: Long = System.currentTimeMillis()) {
         if (queuedEntries.isEmpty()) {
@@ -18,28 +24,31 @@ internal class MapViewerAutosaveController(
 
     fun update(nowMs: Long = System.currentTimeMillis()) {
         val queuedAt = queuedAtMs ?: return
-        if (queuedEntries.isEmpty() || nowMs - queuedAt < saveIntervalMs) {
+        if (queuedEntries.isEmpty() || saveInProgress || nowMs - queuedAt < saveIntervalMs) {
             return
         }
 
-        if (saveOperation()) {
-            queuedEntries.clear()
-            queuedAtMs = null
-        } else {
-            queuedAtMs = nowMs
-        }
+        startSave(nowMs)
     }
 
     fun flush(force: Boolean = false, nowMs: Long = System.currentTimeMillis()) {
-        if (!force && queuedEntries.isEmpty()) {
+        if ((!force && queuedEntries.isEmpty()) || saveInProgress) {
             return
         }
 
-        if (saveOperation()) {
-            queuedEntries.clear()
-            queuedAtMs = null
-        } else {
-            queuedAtMs = nowMs
+        startSave(nowMs)
+    }
+
+    private fun startSave(nowMs: Long) {
+        saveInProgress = true
+        saveOperation { success ->
+            if (success) {
+                queuedEntries.clear()
+                queuedAtMs = null
+            } else {
+                queuedAtMs = nowMs
+            }
+            saveInProgress = false
         }
     }
 }

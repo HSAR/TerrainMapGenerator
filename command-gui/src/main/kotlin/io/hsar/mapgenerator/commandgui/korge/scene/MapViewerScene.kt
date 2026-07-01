@@ -43,6 +43,7 @@ import io.hsar.mapgenerator.commandgui.korge.launch.OperationMapImage
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
 import io.hsar.mapgenerator.commandgui.korge.render.MapViewerRenderer
+import io.hsar.mapgenerator.commandgui.korge.render.RenderedMap
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerLedgerPanel
@@ -84,6 +85,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import java.util.*
+import java.util.concurrent.ConcurrentLinkedQueue
 import javax.swing.JFileChooser
 import javax.swing.JFrame
 import javax.swing.filechooser.FileNameExtensionFilter
@@ -111,11 +113,28 @@ internal class MapViewerScene(
                     displayMode = KorgeDisplayMode.TOP_LEFT_NO_CLIP,
                 ) {
                     (gameWindow as? AwtGameWindow)?.frame?.extendedState = JFrame.MAXIMIZED_BOTH
+                    val pendingUiActions = ConcurrentLinkedQueue<() -> Unit>()
+                    views.stage.addUpdater {
+                        generateSequence { pendingUiActions.poll() }
+                            .forEach { action -> action() }
+                    }
+                    fun runOnUiThread(action: () -> Unit) {
+                        pendingUiActions.add(action)
+                    }
+
                     val launchFlow = MapViewerLaunchFlow()
                     var launchpadView: MapViewerLaunchpadView? = null
                     var newOperationView: MapViewerNewOperationView? = null
                     lateinit var showLaunchpad: () -> Unit
                     lateinit var showNewOperation: () -> Unit
+                    lateinit var showPreparedViewer: (
+                        MapViewerSettings,
+                        List<LedgerEntry>,
+                        OperationMapImage?,
+                        LoadedOperation?,
+                        MapViewerRenderData,
+                        RenderedMap,
+                    ) -> Unit
                     val exitProgram = {
                         gameWindow.exit(0)
                     }
@@ -126,8 +145,42 @@ internal class MapViewerScene(
                         operationMapImage: OperationMapImage? = null,
                         loadedOperation: LoadedOperation? = null,
                     ) {
-                        val renderData = renderMap(settings)
-                        val renderedMap = renderer.render(renderData)
+                        val loadingLayer = views.stage.container().also { layer ->
+                            layer.zIndex = 50_000.0
+                            layer.solidRect(gameWindow.width, gameWindow.height, Colors.BLACK)
+                            MapViewerTextViews.box(
+                                layer,
+                                "Rendering map...",
+                                gameWindow.width.toDouble(),
+                                gameWindow.height.toDouble(),
+                                color = io.hsar.mapgenerator.image.Palette.Colours.WHITE,
+                            )
+                        }
+
+                        thread(name = "command-gui-map-render", isDaemon = true) {
+                            val startedAt = System.nanoTime()
+                            runCatching {
+                                val renderData = renderMap(settings)
+                                val renderedMap = renderer.render(renderData)
+                                renderData to renderedMap
+                            }.onSuccess { (renderData, renderedMap) ->
+                                val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+                                logger.info("Viewer map render took {}ms for {}x{}", elapsedMs, renderedMap.bitmap.width, renderedMap.bitmap.height)
+                                runOnUiThread {
+                                    loadingLayer.parent?.removeChild(loadingLayer)
+                                    showPreparedViewer(settings, initialLedgerEntries, operationMapImage, loadedOperation, renderData, renderedMap)
+                                }
+                            }.onFailure { throwable ->
+                                logger.error("Failed to render viewer map", throwable)
+                                runOnUiThread {
+                                    loadingLayer.parent?.removeChild(loadingLayer)
+                                    showLaunchpad()
+                                }
+                            }
+                        }
+                    }
+
+                    showPreparedViewer = { settings, initialLedgerEntries, operationMapImage, loadedOperation, renderData, renderedMap ->
                         var currentViewport = loadedOperation?.camera?.let { camera ->
                             camera.toViewport(
                                 geometry = renderedMap.geometry,
@@ -201,15 +254,6 @@ internal class MapViewerScene(
                                 currentTool
                             }
 
-                        fun renderOperationThumbnail() =
-                            thumbnailRenderer.renderOperationThumbnail(
-                                mapImage = renderData.baseImage,
-                                geometry = renderedMap.geometry,
-                                viewport = currentViewport,
-                                gridLayer = renderData.gridLayer,
-                                snapshots = objectController.snapshots(),
-                            )
-
                         fun renderTurnThumbnailAsset(): GeneratedImageAsset {
                             val assetId = UUID.randomUUID()
                             return GeneratedImageAsset(
@@ -241,24 +285,10 @@ internal class MapViewerScene(
                             return generatedThumbnailBitmaps.getOrPut(id) { asset.image.toBitmap32() }
                         }
 
-                        fun saveOperation(noticePrefix: String = "Saved"): Boolean {
-                            val thumbnailImage = renderOperationThumbnail()
-                            val target = saveWriter.write(
-                                OperationSaveRequest(
-                                    operationId = operationId,
-                                    operationName = settings.operationName ?: "Operation",
-                                    createdAt = operationCreatedAt,
-                                    updatedAt = Instant.now(),
-                                    camera = currentViewport,
-                                    settings = settings,
-                                    mapImage = renderData.baseImage,
-                                    thumbnailImage = thumbnailImage,
-                                    mapAssetSource = operationMapImage?.assetSource ?: loadedOperation?.mapAssetSource,
-                                    ledgerEntries = actionHistory.fullTimelineEntries,
-                                    generatedImageAssets = generatedImageAssets.values.toList(),
-                                ),
-                            )
-                            saveNoticeMessage = "$noticePrefix ${target.fileName}"
+                        var saveInProgress = false
+
+                        fun showSaveNotice(message: String) {
+                            saveNoticeMessage = message
                             saveNoticeExpiresAtMs = System.currentTimeMillis() + 10_000L
                             saveNoticeLayer.removeChildren()
                             val noticeBounds = MapViewerTextViews.bounds(saveNoticeMessage!!)
@@ -273,11 +303,69 @@ internal class MapViewerScene(
                             }
                             saveNoticeLayer.visible = true
                             saveNoticeLayer.xy(16.0, gameWindow.height - (noticeBounds.height + 16) - 16.0)
+                        }
+
+                        fun saveOperation(
+                            noticePrefix: String = "Saved",
+                            showNotice: Boolean = true,
+                            onComplete: (Boolean) -> Unit = {},
+                        ): Boolean {
+                            if (saveInProgress) {
+                                onComplete(false)
+                                return false
+                            }
+
+                            saveInProgress = true
+                            val saveViewport = currentViewport
+                            val snapshots = objectController.snapshots()
+                            val request = OperationSaveRequest(
+                                operationId = operationId,
+                                operationName = settings.operationName ?: "Operation",
+                                createdAt = operationCreatedAt,
+                                updatedAt = Instant.now(),
+                                camera = saveViewport,
+                                settings = settings,
+                                mapImage = renderData.baseImage,
+                                thumbnailImage = null,
+                                mapAssetSource = operationMapImage?.assetSource ?: loadedOperation?.mapAssetSource,
+                                ledgerEntries = actionHistory.fullTimelineEntries,
+                                generatedImageAssets = generatedImageAssets.values.toList(),
+                            )
+
+                            thread(name = "command-gui-save", isDaemon = true) {
+                                val startedAt = System.nanoTime()
+                                runCatching {
+                                    val thumbnailImage = thumbnailRenderer.renderOperationThumbnail(
+                                        mapImage = renderData.baseImage,
+                                        geometry = renderedMap.geometry,
+                                        viewport = saveViewport,
+                                        gridLayer = renderData.gridLayer,
+                                        snapshots = snapshots,
+                                    )
+                                    saveWriter.write(request.copy(thumbnailImage = thumbnailImage))
+                                }.onSuccess { target ->
+                                    val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+                                    logger.info("Operation save took {}ms for {}", elapsedMs, target.fileName)
+                                    runOnUiThread {
+                                        saveInProgress = false
+                                        if (showNotice) {
+                                            showSaveNotice("$noticePrefix ${target.fileName}")
+                                        }
+                                        onComplete(true)
+                                    }
+                                }.onFailure { throwable ->
+                                    logger.error("Failed to save operation", throwable)
+                                    runOnUiThread {
+                                        saveInProgress = false
+                                        onComplete(false)
+                                    }
+                                }
+                            }
                             return true
                         }
 
-                        val autosaveController = MapViewerAutosaveController {
-                            saveOperation("Autosaved")
+                        val autosaveController = MapViewerAutosaveController { complete ->
+                            saveOperation("Autosaved") { success -> complete(success) }
                         }
 
                         fun clearTransientInteractionState() {
@@ -675,9 +763,10 @@ internal class MapViewerScene(
                             onReturnToLaunchpad = {
                                 clearTransientInteractionState()
                                 escapeMenu?.close()
-                                saveOperation()
-                                sceneLayers.destroy()
-                                showLaunchpad()
+                                saveOperation(showNotice = false) {
+                                    sceneLayers.destroy()
+                                    showLaunchpad()
+                                }
                             },
                             onExitProgram = exitProgram,
                         )

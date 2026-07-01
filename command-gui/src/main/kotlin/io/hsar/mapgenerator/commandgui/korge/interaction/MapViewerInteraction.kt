@@ -14,6 +14,8 @@ import io.hsar.mapgenerator.commandgui.korge.input.CameraPanner
 import io.hsar.mapgenerator.commandgui.korge.input.PanState
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridCursorReference
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridMeasurement
+import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLayoutBuilder
+import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayRender
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
@@ -29,6 +31,7 @@ import korlibs.korge.view.View
 import korlibs.korge.view.addUpdater
 import korlibs.math.geom.Vector2D
 import korlibs.render.GameWindow
+import org.apache.logging.log4j.LogManager
 import java.awt.Color
 import kotlin.math.hypot
 import kotlin.math.pow
@@ -58,7 +61,7 @@ internal class MapViewerInteraction(
     private val onRedoRequested: () -> Unit = {},
     private val onViewportChanged: (CameraViewport) -> Unit = {},
     private val onTitleChanged: (String) -> Unit = {},
-    private val onOverlayStateChanged: (GridOverlayState) -> Unit,
+    private val onOverlayStateChanged: (GridOverlayRender) -> Unit,
     private val onDrawingStateChanged: (MapDrawingState) -> Unit = {},
 ) {
     private val coordinateSpace = MapCoordinateSpace(geometry, mapWidth, mapHeight)
@@ -87,6 +90,7 @@ internal class MapViewerInteraction(
         updateCursor = { root.cursor = it },
     )
     private val toolGestureGate = MapToolGestureGate()
+    private val logger = LogManager.getLogger(MapViewerInteraction::class.java)
 
     fun install() {
         val stage = root.stage ?: error("MapViewerInteraction requires the root to be attached to a stage")
@@ -235,7 +239,10 @@ internal class MapViewerInteraction(
         )
 
         if (state != lastOverlayState) {
-            onOverlayStateChanged(state)
+            val startedAt = System.nanoTime()
+            val layout = GridOverlayLayoutBuilder.build(state)
+            logSlowOverlayFlush(startedAt, layout)
+            onOverlayStateChanged(GridOverlayRender(state, layout))
             lastOverlayState = state
         }
 
@@ -244,6 +251,19 @@ internal class MapViewerInteraction(
 
     private fun markOverlayDirty() {
         overlayDirty = true
+    }
+
+    private fun logSlowOverlayFlush(startedAt: Long, layout: io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLayout) {
+        val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+        if (elapsedMs >= SLOW_OVERLAY_FLUSH_MS) {
+            logger.info(
+                "Grid overlay layout build took {}ms for {} rects, {} labels and {} arrows",
+                elapsedMs,
+                layout.lineRects.size,
+                layout.labels.size,
+                layout.overlayArrows.size,
+            )
+        }
     }
 
     private fun updateHoverCursor(
@@ -487,6 +507,7 @@ internal class MapViewerInteraction(
     private companion object {
         private const val ZOOM_STEP = 1.4
         private const val MIN_FREEFORM_POINT_DISTANCE_PX = 2.0
+        private const val SLOW_OVERLAY_FLUSH_MS = 16
 
         private fun zoomFactor(scrollDeltaYLines: Double): Double =
             ZOOM_STEP.pow(-scrollDeltaYLines)
