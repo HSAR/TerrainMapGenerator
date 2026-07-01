@@ -13,5 +13,4 @@
 
 ## Bugs
 
-- Too many callbacks warning in game log.
 - Consistency pass, launchpad UI should behave the same as the map viewer UI (ref `MapViewerUiBoxes.kt`) and use shared handlers

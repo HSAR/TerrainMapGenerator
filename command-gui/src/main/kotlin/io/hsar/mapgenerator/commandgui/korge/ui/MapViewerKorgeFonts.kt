@@ -23,6 +23,10 @@ internal object MapViewerKorgeFonts {
 
     fun font(role: MapViewerFontRole): TtfFont =
         resolver.font(role)
+
+    fun preloadAll() {
+        resolver.preloadAll()
+    }
 }
 
 internal class MapViewerKorgeFontResolver(
@@ -42,6 +46,10 @@ internal class MapViewerKorgeFontResolver(
                 ?: loadSystemFont(spec)
                 ?: fallbackFont(spec)
         }
+
+    fun preloadAll() {
+        MapViewerFontRole.entries.forEach(::font)
+    }
 
     private fun loadSystemFont(spec: FontSpec): TtfFont? =
         if (!allowSystemFonts) {

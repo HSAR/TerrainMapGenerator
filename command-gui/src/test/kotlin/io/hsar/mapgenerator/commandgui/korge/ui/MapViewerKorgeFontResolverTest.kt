@@ -75,6 +75,21 @@ class MapViewerKorgeFontResolverTest {
     }
 
     @Test
+    fun `preloads all command GUI font roles`() {
+        val resolver = MapViewerKorgeFontResolver(
+            classLoader = MapViewerKorgeFontResolver::class.java.classLoader,
+            localFontDirectory = null,
+            allowSystemFonts = false,
+        )
+
+        resolver.preloadAll()
+
+        assertThat(resolver.font(MapViewerFontRole.MAIN), not(sameInstance(DefaultTtfFont)))
+        assertThat(resolver.font(MapViewerFontRole.STRONG), not(sameInstance(DefaultTtfFont)))
+        assertThat(resolver.font(MapViewerFontRole.FLAVOUR), not(sameInstance(DefaultTtfFont)))
+    }
+
+    @Test
     fun `text helper creates native autosized KorGE labels and explicit boxed labels`() {
         val text = MapViewerTextViews.label(
             parent = korlibs.korge.view.Container(),

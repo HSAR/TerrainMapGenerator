@@ -46,6 +46,7 @@ import io.hsar.mapgenerator.commandgui.korge.render.MapViewerRenderer
 import io.hsar.mapgenerator.commandgui.korge.render.RenderedMap
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerKorgeFonts
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerLedgerPanel
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSidebar
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
@@ -104,6 +105,9 @@ internal class MapViewerScene(
     fun showWindow() {
         thread(name = "command-gui-korge", isDaemon = false) {
             val screenSize = Toolkit.getDefaultToolkit().screenSize
+            val fontPreloadStartedAt = System.nanoTime()
+            MapViewerKorgeFonts.preloadAll()
+            logger.info("Viewer font preload took {}ms", (System.nanoTime() - fontPreloadStartedAt) / 1_000_000)
 
             runBlocking {
                 Korge(
