@@ -17,7 +17,7 @@ class GridReferenceFormatterTest {
             mapY = 340.0,
         )
 
-        assertThat(reference, equalTo("0720 3900"))
+        assertThat(reference, equalTo("0840 3820"))
     }
 
     @Test
@@ -30,11 +30,11 @@ class GridReferenceFormatterTest {
             mapY = 340.0,
         )
 
-        assertThat(reference, equalTo("0120 -0400"))
+        assertThat(reference, equalTo("0240 -0480"))
     }
 
     @Test
-    fun `formatting can use viewport gutters independently of map size`() {
+    fun `formatting ignores viewport gutters because coordinates are map local`() {
         val reference = GridReferenceFormatter.format(
             layer = layer(),
             mapWidth = 2560,
@@ -45,7 +45,7 @@ class GridReferenceFormatterTest {
             gutterHeight = 900,
         )
 
-        assertThat(reference, equalTo("0783 3870"))
+        assertThat(reference, equalTo("0840 3820"))
     }
 
     @Test
@@ -58,7 +58,7 @@ class GridReferenceFormatterTest {
             mapY = 340.0,
         )
 
-        assertThat(reference, equalTo("0120 -0800"))
+        assertThat(reference, equalTo("0240 -0880"))
     }
 
     private fun layer(

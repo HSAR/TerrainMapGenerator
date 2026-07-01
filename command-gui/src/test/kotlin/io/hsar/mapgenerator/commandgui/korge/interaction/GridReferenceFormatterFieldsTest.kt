@@ -19,8 +19,8 @@ class GridReferenceFormatterFieldsTest {
             mapY = 340.0,
         )
 
-        assertThat(fields.easting, equalTo("0720"))
-        assertThat(fields.northing, equalTo("3900"))
+        assertThat(fields.easting, equalTo("0840"))
+        assertThat(fields.northing, equalTo("3820"))
     }
 
     @Test
@@ -29,8 +29,8 @@ class GridReferenceFormatterFieldsTest {
             layer = layer(),
             mapWidth = 2560,
             mapHeight = 1440,
-            easting = "0720",
-            northing = "3900",
+            easting = "0840",
+            northing = "3820",
         )
 
         assertThat(pixels?.x, closeTo(170.0, 0.0001))
@@ -43,8 +43,8 @@ class GridReferenceFormatterFieldsTest {
             layer = layer(verticalLineNumberStart = -1.0, horizontalLineNumberStart = -2.0),
             mapWidth = 2560,
             mapHeight = 1440,
-            easting = "0120",
-            northing = "-0800",
+            easting = "0240",
+            northing = "-0880",
         )
 
         assertThat(pixels?.x, closeTo(170.0, 0.0001))
@@ -52,19 +52,19 @@ class GridReferenceFormatterFieldsTest {
     }
 
     @Test
-    fun `parses fields using viewport gutters when provided`() {
+    fun `parses fields independently of viewport gutters`() {
         val pixels = GridReferenceFormatter.parseFields(
             layer = layer(),
             mapWidth = 2560,
             mapHeight = 1440,
-            easting = "0720",
-            northing = "3900",
+            easting = "0840",
+            northing = "3820",
             gutterWidth = 1200,
             gutterHeight = 900,
         )
 
-        assertThat(pixels?.x, closeTo(138.125, 0.0001))
-        assertThat(pixels?.y, closeTo(325.0, 0.0001))
+        assertThat(pixels?.x, closeTo(170.0, 0.0001))
+        assertThat(pixels?.y, closeTo(340.0, 0.0001))
     }
 
     @Test

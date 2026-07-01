@@ -76,14 +76,64 @@ internal class MapViewerLaunchFlow {
 internal fun NewOperationDraft.isLaunchable(): Boolean =
     operationName.isNotBlank() && mapImage != null && pixelsPerMetre > 0.0 && gridConfiguration != null
 
+internal object OperationNameGenerator {
+    private val adjectives = listOf(
+        "Amber",
+        "Argent",
+        "Azure",
+        "Aquiline",
+        "Brass",
+        "Corvine",
+        "Falcon",
+        "Iron",
+        "Onyx",
+        "Penumbral",
+        "Rampant",
+        "Raven",
+        "Sable",
+        "Sanguine",
+        "Stalwart",
+        "Steel",
+    )
+    private val nouns = listOf(
+        "Bastion",
+        "Beacon",
+        "Citadel",
+        "Dawn",
+        "Ember",
+        "Frontier",
+        "Gateway",
+        "Horizon",
+        "Lance",
+        "Meridian",
+        "Night",
+        "Sentinel",
+        "Shield",
+        "Summit",
+        "Tempest",
+        "Vanguard",
+    )
+
+    fun generate(random: Random = Random()): String =
+        "${adjectives[random.nextInt(adjectives.size)]} ${nouns[random.nextInt(nouns.size)]}"
+}
+
 internal fun defaultGridConfiguration(
     mapImage: BufferedImage,
     metresPerPixel: Double,
     seed: Long,
 ): GridConfiguration =
+    defaultGridConfiguration(mapImage.width, mapImage.height, metresPerPixel, seed)
+
+internal fun defaultGridConfiguration(
+    width: Int,
+    height: Int,
+    metresPerPixel: Double,
+    seed: Long,
+): GridConfiguration =
     GridLayerBuilder.build(
-        width = mapImage.width,
-        height = mapImage.height,
+        width = width,
+        height = height,
         gridScale = 1_000,
         metresPerPixel = metresPerPixel,
         random = Random(seed),

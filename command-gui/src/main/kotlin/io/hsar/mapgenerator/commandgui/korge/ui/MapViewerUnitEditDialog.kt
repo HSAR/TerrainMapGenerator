@@ -49,6 +49,7 @@ internal class MapViewerUnitEditDialog(
         reservedKeys = UNIT_FIELD_KEYS,
         onRowsChanged = { window?.refresh() },
         onValidationChanged = { window?.refresh() },
+        tooltipRoot = root,
     )
 
     fun show(viewportWidth: Int, viewportHeight: Int) {
@@ -104,6 +105,7 @@ internal class MapViewerUnitEditDialog(
 
         isOpen = false
         dialogManager.unregister(this)
+        customPropertiesEditor.hideTooltip()
         window?.close()
         window = null
         onDismiss()

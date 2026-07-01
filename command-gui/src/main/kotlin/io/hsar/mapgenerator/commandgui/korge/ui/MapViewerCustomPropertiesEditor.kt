@@ -1,22 +1,22 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.image.Palette
-import korlibs.image.color.RGBA
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
+import korlibs.korge.internal.KorgeInternal
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
-import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Vector2D
 import kotlin.math.max
 
-@OptIn(KorgeExperimental::class)
+@OptIn(KorgeExperimental::class, KorgeInternal::class)
 internal class MapViewerCustomPropertiesEditor(
     initialProperties: Map<String, String>,
     private val reservedKeys: Set<String> = emptySet(),
     private val onRowsChanged: () -> Unit = {},
     private val onValidationChanged: () -> Unit = {},
+    private val tooltipRoot: Container? = null,
 ) {
     private val rows = initialProperties
         .filterKeys { it !in reservedKeys }
@@ -156,19 +156,16 @@ internal class MapViewerCustomPropertiesEditor(
     private fun renderConflictWarning(parent: Container, keyWidth: Double, top: Double, key: String) {
         val marker = parent.container()
         marker.xy(keyWidth - WARNING_MARKER_WIDTH, top)
-        MapViewerTextViews.box(
-            parent = marker,
-            text = "!",
-            width = WARNING_MARKER_WIDTH,
-            height = MapViewerDialogSpacing.INPUT_HEIGHT,
-            role = MapViewerFontRole.STRONG,
-            color = Palette.Colours.RED,
+        val icon = marker.container()
+        icon.xy(
+            (WARNING_MARKER_WIDTH - WARNING_ICON_SIZE) * 0.5,
+            (MapViewerDialogSpacing.INPUT_HEIGHT - WARNING_ICON_SIZE) * 0.5,
         )
+        MapViewerTextInputValidation.validationFailedIndicator(icon, WARNING_ICON_SIZE)
         marker.mouse {
             onOver {
                 showTooltip(
-                    parent = parent,
-                    anchor = Vector2D(keyWidth, top),
+                    anchor = marker.globalPos + Vector2D(WARNING_MARKER_WIDTH, 0.0),
                     text = "Property \"$key\" is reserved by the app and cannot be used here.",
                 )
             }
@@ -178,36 +175,13 @@ internal class MapViewerCustomPropertiesEditor(
         }
     }
 
-    private fun showTooltip(parent: Container, anchor: Vector2D, text: String) {
+    private fun showTooltip(anchor: Vector2D, text: String) {
         hideTooltip()
-        val width = max(TOOLTIP_MIN_WIDTH, MapViewerTextViews.measure(text).width + TOOLTIP_PADDING_X * 2.0)
-        val height = TOOLTIP_HEIGHT
-        tooltip = parent.container().also { layer ->
-            layer.xy((anchor.x - width).coerceAtLeast(0.0), anchor.y - height - TOOLTIP_GAP)
-            layer.zIndex = TOOLTIP_Z_INDEX
-            layer.solidRect(width, height, RGBA(0, 0, 0, 220))
-            MapViewerUiBoxes.frame(
-                parent = layer,
-                width = width,
-                height = height,
-                fillColor = Palette.Colours.DARK,
-                fillAlpha = 245,
-                borderColor = Palette.Colours.RED,
-                borderAlpha = 220,
-            )
-            MapViewerTextViews.leftBox(
-                parent = layer,
-                text = text,
-                width = width - TOOLTIP_PADDING_X * 2.0,
-                height = height,
-                color = Palette.Colours.WHITE,
-            ) {
-                x = TOOLTIP_PADDING_X
-            }
-        }
+        val parent = tooltipRoot ?: renderedParent ?: return
+        tooltip = MapViewerTextInputValidation.validationExplanationTooltip(parent, anchor, text)
     }
 
-    private fun hideTooltip() {
+    fun hideTooltip() {
         tooltip?.removeFromParent()
         tooltip = null
     }
@@ -265,10 +239,6 @@ internal class MapViewerCustomPropertiesEditor(
         const val KEY_WIDTH_RATIO = 0.36
         const val INPUTS_PER_ROW = 2
         const val WARNING_MARKER_WIDTH = 24.0
-        const val TOOLTIP_GAP = 8.0
-        const val TOOLTIP_HEIGHT = 34.0
-        const val TOOLTIP_MIN_WIDTH = 260.0
-        const val TOOLTIP_PADDING_X = 10.0
-        const val TOOLTIP_Z_INDEX = 1000.0
+        const val WARNING_ICON_SIZE = 20.0
     }
 }

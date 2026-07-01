@@ -55,11 +55,14 @@ internal class MapViewerNewOperationView(
 ) {
     private val layer = root.container()
     private val unitRows = mutableListOf<UnitRow>()
-    private var operationName = ""
+    private val initialGridConfiguration = initialSetupInputs.mapImage
+        ?.let { defaultGridConfiguration(it, initialPixelsPerMetre, initialSeed) }
+        ?: defaultGridConfiguration(DEFAULT_GRID_WIDTH, DEFAULT_GRID_HEIGHT, initialPixelsPerMetre, initialSeed)
+    private var operationName = OperationNameGenerator.generate(Random(initialSeed))
     private var pixelsPerMetreText = initialPixelsPerMetre.toString()
-    private var mapIdText = ""
-    private var gridStartXText = ""
-    private var gridStartYText = ""
+    private var mapIdText = initialGridConfiguration.mapId
+    private var gridStartXText = initialGridConfiguration.startX.formatGridCoordinate()
+    private var gridStartYText = initialGridConfiguration.startY.formatGridCoordinate()
     private var operationNameInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
     private var pixelsPerMetreInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
     private var mapIdInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
@@ -85,10 +88,10 @@ internal class MapViewerNewOperationView(
     }
     private var statusContainer: Container? = null
     private var launchButtonContainer: Container? = null
+    private var mapImageValidationTooltip: Container? = null
     private var layout = MapViewerNewOperationLayoutBuilder.build(viewportWidth, viewportHeight)
     private var dragState: ReorderDragState? = null
     private var nextRowId = 1L
-    private var reseedGridDefaults = mapImage != null
     private var operationNameWasValid = MapViewerTextInputValidation.isPresent(operationName)
     private var pendingOperationNameFocus = false
 
@@ -102,7 +105,6 @@ internal class MapViewerNewOperationView(
             updateDrag(layer.stage?.views?.input?.mousePos, layer.stage?.views?.input?.mouseButtonPressed(MouseButton.LEFT) == true)
             updatePreviewIfNeeded()
         }
-        mapImage?.let { applyGridDefaults(it) }
         render(viewportWidth, viewportHeight)
     }
 
@@ -112,10 +114,7 @@ internal class MapViewerNewOperationView(
 
     private fun render(viewportWidth: Int, viewportHeight: Int) {
         captureInputs()
-        if (reseedGridDefaults) {
-            mapImage?.let(::applyGridDefaults)
-            reseedGridDefaults = false
-        }
+        hideMapImageValidationTooltip()
         layout = MapViewerNewOperationLayoutBuilder.build(viewportWidth, viewportHeight)
         layer.removeChildren()
         layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 255))
@@ -136,20 +135,24 @@ internal class MapViewerNewOperationView(
         val panel = MapViewerLaunchUi.panel(layer, layout.mapPanelBounds)
         val panelWidth = layout.mapPanelBounds.width
         val fieldWidth = (panelWidth - (CONTENT_PADDING * 2.0) - (FIELD_GAP * 3.0)) / 4.0
-        val imageButtonTop = 128.0
-        val fieldsTop = 186.0
-        val inputsTop = 210.0
-        val previewTop = 292.0
+        val imageButtonWidth = 160.0
+        val imageButtonLeft = panelWidth - CONTENT_PADDING - imageButtonWidth
+        val imageValidationWidth = MapViewerTextInputValidation.VALIDATION_ICON_SIZE + FIELD_GAP
+        val operationNameWidth = imageButtonLeft - CONTENT_PADDING - FIELD_GAP - imageValidationWidth
+        val fieldsTop = 144.0
+        val inputsTop = 168.0
+        val previewTop = 250.0
 
         MapViewerLaunchUi.label(panel, "Operational Details", strong = true).xy(CONTENT_PADDING, CONTENT_PADDING)
         MapViewerLaunchUi.label(panel, "Operation Name").xy(CONTENT_PADDING, 60.0)
+        MapViewerLaunchUi.label(panel, "Map Image").xy(imageButtonLeft, 60.0)
         operationNameInput = textInput(
             parent = panel,
             text = operationName,
             bounds = ScreenBounds(
                 left = CONTENT_PADDING,
                 top = 84.0,
-                width = panelWidth - CONTENT_PADDING * 2.0,
+                width = operationNameWidth,
                 height = INPUT_HEIGHT,
             ),
             frameStyle = MapViewerTextInputValidation.frameStyle(MapViewerTextInputValidation.isPresent(operationName)),
@@ -157,12 +160,18 @@ internal class MapViewerNewOperationView(
         focusOperationNameIfPending()
         wireOperationNameValidation(operationNameInput)
 
-        MapViewerLaunchUi.button(panel, 160.0, 36.0, "Choose Map Image") {
+        MapViewerLaunchUi.button(panel, imageButtonWidth, 36.0, "Choose Map Image") {
             chooseMapImage()
-        }.xy(CONTENT_PADDING, imageButtonTop)
+        }.xy(imageButtonLeft, 84.0)
 
         mapImage?.let { image ->
-            MapViewerLaunchUi.label(panel, image.name, color = Palette.Colours.LIGHT).xy(208.0, 132.0)
+            MapViewerLaunchUi.label(panel, image.name, color = Palette.Colours.LIGHT, scale = 0.85).xy(imageButtonLeft, 124.0)
+        } ?: run {
+            renderMapImageValidationIndicator(
+                parent = panel,
+                left = imageButtonLeft - imageValidationWidth,
+                top = 84.0,
+            )
         }
 
         MapViewerLaunchUi.label(panel, "Map ID").xy(CONTENT_PADDING, fieldsTop)
@@ -327,7 +336,6 @@ internal class MapViewerNewOperationView(
             previewBitmap = image.toBMP32().premultipliedIfRequired(),
             assetSource = AssetSource.fromFile(file),
         )
-        reseedGridDefaults = true
         mapPreviewDirty = true
         render(layout.viewportWidth, layout.viewportHeight)
     }
@@ -388,15 +396,6 @@ internal class MapViewerNewOperationView(
         unitRows.forEach { row ->
             row.name = row.input?.text?.trim().orEmpty().ifBlank { row.name }
         }
-    }
-
-    private fun applyGridDefaults(image: MapImageRow) {
-        val metresPerPixel = pixelsPerMetreText.toDoubleOrNull() ?: initialPixelsPerMetre
-        val defaults = defaultGridConfiguration(image.image, metresPerPixel, initialSeed)
-        mapIdText = defaults.mapId
-        gridStartXText = defaults.startX.formatGridCoordinate()
-        gridStartYText = defaults.startY.formatGridCoordinate()
-        mapPreviewDirty = true
     }
 
     private fun parseGridConfiguration(): GridConfiguration? {
@@ -536,6 +535,38 @@ internal class MapViewerNewOperationView(
         statusContainer?.let { MapViewerLaunchUi.label(it, text, color = Palette.Colours.RED) }
     }
 
+    private fun renderMapImageValidationIndicator(parent: Container, left: Double, top: Double) {
+        val marker = parent.container()
+        marker.xy(left, top)
+        MapViewerTextInputValidation.validationFailedIndicator(marker).xy(
+            (MAP_IMAGE_VALIDATION_WIDTH - MapViewerTextInputValidation.VALIDATION_ICON_SIZE) * 0.5,
+            (36.0 - MapViewerTextInputValidation.VALIDATION_ICON_SIZE) * 0.5,
+        )
+        marker.mouse {
+            onOver {
+                showMapImageValidationTooltip(marker.globalPos + Vector2D(MAP_IMAGE_VALIDATION_WIDTH, 0.0))
+            }
+            onOut {
+                hideMapImageValidationTooltip()
+            }
+        }
+    }
+
+    private fun showMapImageValidationTooltip(anchor: Vector2D) {
+        hideMapImageValidationTooltip()
+        mapImageValidationTooltip = MapViewerTextInputValidation.validationExplanationTooltip(
+            parent = layer,
+            anchor = anchor,
+            text = "Choose a map image to start the operation.",
+            anchorHeight = 36.0,
+        )
+    }
+
+    private fun hideMapImageValidationTooltip() {
+        mapImageValidationTooltip?.removeFromParent()
+        mapImageValidationTooltip = null
+    }
+
     private fun refreshLaunchButton() {
         val container = launchButtonContainer ?: return
         container.removeChildren()
@@ -661,6 +692,9 @@ internal class MapViewerNewOperationView(
         const val HANDLE_WIDTH = 28.0
         const val HANDLE_HEIGHT = 28.0
         const val FIELD_GAP = 12.0
+        const val MAP_IMAGE_VALIDATION_WIDTH = 24.0
+        const val DEFAULT_GRID_WIDTH = 1_000
+        const val DEFAULT_GRID_HEIGHT = 1_000
         private fun <T> MutableList<T>.move(fromIndex: Int, toIndex: Int) {
             if (fromIndex == toIndex) return
             val item = removeAt(fromIndex)

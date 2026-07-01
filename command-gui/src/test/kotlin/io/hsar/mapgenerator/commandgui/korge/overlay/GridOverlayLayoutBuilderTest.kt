@@ -172,7 +172,7 @@ class GridOverlayLayoutBuilderTest {
 
 
     @Test
-    fun `first visible vertical line can render at the gutter edge`() {
+    fun `first visible vertical line renders from map origin`() {
         val layout = GridOverlayLayoutBuilder.build(
             state = state(mapOffsetX = 0.0, mapOffsetY = 0.0),
             measureText = ::measureText,
@@ -184,7 +184,7 @@ class GridOverlayLayoutBuilderTest {
 
         assertThat(
             firstVerticalLine.x,
-            closeTo(GridStyles.gridLineIdPadding(1200, 900).x - 0.5, 0.0001),
+            closeTo(-0.5, 0.0001),
         )
     }
 
@@ -197,8 +197,8 @@ class GridOverlayLayoutBuilderTest {
         val scale = 3.0
         val layout = GridOverlayLayoutBuilder.build(
             state = state(
-                mapOffsetX = axisRightEdge - gridLinePadding.x * scale,
-                mapOffsetY = axisBottomEdge - gridLinePadding.y * scale,
+                mapOffsetX = gridLinePadding.x,
+                mapOffsetY = gridLinePadding.y,
                 pixelsPerLine = 100.0,
                 scale = scale,
                 gridStartX = 61.3,
@@ -212,7 +212,7 @@ class GridOverlayLayoutBuilderTest {
             .groupBy { it.x + it.width / 2.0 }
             .values
             .first { segments ->
-                abs(segments.first().x + segments.first().width / 2.0 - gridLinePadding.x) < 0.0001
+                abs(segments.first().x + segments.first().width / 2.0) < 0.0001
             }
             .maxBy { it.height }
         val boundaryHorizontalLine = layout.lineRects
@@ -220,7 +220,7 @@ class GridOverlayLayoutBuilderTest {
             .groupBy { it.y + it.height / 2.0 }
             .values
             .first { segments ->
-                abs(segments.first().y + segments.first().height / 2.0 - gridLinePadding.y) < 0.0001
+                abs(segments.first().y + segments.first().height / 2.0) < 0.0001
             }
             .maxBy { it.width }
 
@@ -286,13 +286,13 @@ class GridOverlayLayoutBuilderTest {
         val verticalLineSegments = layout.lineRects
             .groupBy { it.x to it.width }
             .values
-            .first { it.first().height > it.first().width && it.first().x > 200.0 }
+            .first { it.first().height > it.first().width && it.first().x > 100.0 }
             .sortedBy { it.y }
 
         val horizontalLineSegments = layout.lineRects
             .groupBy { it.y to it.height }
             .values
-            .first { it.first().width > it.first().height && it.first().y > 200.0 }
+            .first { it.first().width > it.first().height && it.first().y > 100.0 }
             .sortedBy { it.x }
 
         assertThat(verticalLineSegments.first().color.alpha, lessThan(verticalLineSegments.last().color.alpha))
@@ -311,7 +311,7 @@ class GridOverlayLayoutBuilderTest {
         val verticalLineSegments = layout.lineRects
             .groupBy { it.x to it.width }
             .values
-            .first { it.first().height > it.first().width && it.first().x > 200.0 }
+            .first { it.first().height > it.first().width && it.first().x > 100.0 }
 
         assertThat(verticalLineSegments.size, equalTo(8))
     }

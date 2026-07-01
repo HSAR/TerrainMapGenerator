@@ -1,7 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.grid.GridLayer
-import io.hsar.mapgenerator.grid.GridStyles
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 
@@ -41,28 +40,24 @@ internal object GridReferenceFormatter {
     ): MapReferencePixels? {
         val parsedEasting = parseCoordinate(easting) ?: return null
         val parsedNorthing = parseCoordinate(northing) ?: return null
-        val padding = GridStyles.gridLineIdPadding(gutterWidth, gutterHeight)
         val eastingMetres = parsedEasting * METRES_PER_REFERENCE_DIGIT
         val northingMetres = parsedNorthing * METRES_PER_REFERENCE_DIGIT
         return MapReferencePixels(
-            x = padding.x +
-                    (eastingMetres - layer.verticalLineNumberStart * layer.gridScale) / layer.metresPerPixel,
-            y = padding.y +
-                    (layer.horizontalLineNumberStart * layer.gridScale - northingMetres) / layer.metresPerPixel,
+            x = (eastingMetres - layer.verticalLineNumberStart * layer.gridScale) / layer.metresPerPixel,
+            y = (layer.horizontalLineNumberStart * layer.gridScale - northingMetres) / layer.metresPerPixel,
         )
     }
 
     private fun formatReference(layer: GridLayer, gutterWidth: Int, gutterHeight: Int, mapX: Double, mapY: Double): GridReferenceFields {
-        val padding = GridStyles.gridLineIdPadding(gutterWidth, gutterHeight)
         val eastingMetres = (
             layer.verticalLineNumberStart * layer.gridScale +
-                    ((mapX - padding.x) * layer.metresPerPixel)
+                    (mapX * layer.metresPerPixel)
             )
             .roundToInt()
             .coerceIn(MIN_REFERENCE_METRES, MAX_REFERENCE_METRES)
         val northingMetres = (
             layer.horizontalLineNumberStart * layer.gridScale -
-                    ((mapY - padding.y) * layer.metresPerPixel)
+                    (mapY * layer.metresPerPixel)
             )
             .roundToInt()
             .coerceIn(MIN_REFERENCE_METRES, MAX_REFERENCE_METRES)

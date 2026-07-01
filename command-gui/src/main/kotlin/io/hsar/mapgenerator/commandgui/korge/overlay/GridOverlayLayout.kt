@@ -11,8 +11,6 @@ import io.hsar.mapgenerator.random.GridGenerator.padZeroes
 import java.awt.Color
 import kotlin.math.abs
 import kotlin.math.absoluteValue
-import kotlin.math.ceil
-import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -94,6 +92,7 @@ internal object GridOverlayLayoutBuilder {
         val xLabelFadeStart = max(yAxisRightEdge, mapIdCenterX + mapIdBounds.width / 2)
         val yLabelFadeStart = max(xAxisBottomEdge, mapIdCenterY + mapIdBounds.height / 2)
         val fineMode = isFineMode(state, layer)
+        val linePlacement = GridLinePlacementBuilder.build(state.viewport, layer)
 
         val labels = mutableListOf<GridLabel>()
         val lineRects = mutableListOf<GridRect>()
@@ -106,12 +105,10 @@ internal object GridOverlayLayoutBuilder {
             style = mapIdStyle,
         )
 
-        verticalLineIndices(state.viewport, layer, gridLinePadding).forEach { lineIndex ->
-            val lineId = layer.verticalLineNumberStart.ceilWhole() + lineIndex
+        linePlacement.verticalLines.forEach { line ->
+            val lineId = line.id
             val lineText = lineId.padZeroes(layer.detailLevel)
-            val lineMapX = lineBasePositionVertical(layer.verticalLineNumberStart, gridLinePadding.x, layer.pixelsPerLine) +
-                    lineIndex * layer.pixelsPerLine
-            val lineCanvasX = mapLeft + lineMapX * state.scale
+            val lineCanvasX = mapLeft + line.mapPosition * state.scale
             val labelAlpha = edgeOpacity(lineCanvasX - xLabelFadeStart, edgeFadeDistance)
             val isMajorLine = isMajorLine(lineId)
 
@@ -138,12 +135,10 @@ internal object GridOverlayLayoutBuilder {
             )
         }
 
-        horizontalLineIndices(state.viewport, layer, gridLinePadding).forEach { lineIndex ->
-            val lineId = layer.horizontalLineNumberStart.floorWhole() - lineIndex
+        linePlacement.horizontalLines.forEach { line ->
+            val lineId = line.id
             val lineText = lineId.padZeroes(layer.detailLevel)
-            val lineMapY = lineBasePositionHorizontal(layer.horizontalLineNumberStart, gridLinePadding.y, layer.pixelsPerLine) +
-                    lineIndex * layer.pixelsPerLine
-            val lineCanvasY = mapTop + lineMapY * state.scale
+            val lineCanvasY = mapTop + line.mapPosition * state.scale
             val labelAlpha = edgeOpacity(lineCanvasY - yLabelFadeStart, edgeFadeDistance)
             val isMajorLine = isMajorLine(lineId)
             val labelStyle = if (isMajorLine) majorAxisStyle else minorAxisStyle
@@ -360,32 +355,6 @@ internal object GridOverlayLayoutBuilder {
             fadedRects + create(fadeEnd, lineEnd, normalAlpha)
         }
     }
-
-    private fun verticalLineIndices(viewport: Rectangle, layer: GridLayer, gridLinePadding: Point): IntRange {
-        val lineStart = lineBasePositionVertical(layer.verticalLineNumberStart, gridLinePadding.x, layer.pixelsPerLine)
-        val start = max(0, ceil((viewport.topLeft.x - lineStart) / layer.pixelsPerLine).toInt())
-        val end = min(layer.verticalLineCount, floor((viewport.topRight.x - lineStart) / layer.pixelsPerLine).toInt())
-        return if (start <= end) start..end else IntRange.EMPTY
-    }
-
-    private fun horizontalLineIndices(viewport: Rectangle, layer: GridLayer, gridLinePadding: Point): IntRange {
-        val lineStart = lineBasePositionHorizontal(layer.horizontalLineNumberStart, gridLinePadding.y, layer.pixelsPerLine)
-        val start = max(0, ceil((viewport.topLeft.y - lineStart) / layer.pixelsPerLine).toInt())
-        val end = min(layer.horizontalLineCount, floor((viewport.bottomRight.y - lineStart) / layer.pixelsPerLine).toInt())
-        return if (start <= end) start..end else IntRange.EMPTY
-    }
-
-    private fun Double.ceilWhole(): Double =
-        kotlin.math.ceil(this)
-
-    private fun Double.floorWhole(): Double =
-        kotlin.math.floor(this)
-
-    private fun lineBasePositionVertical(lineStart: Double, gutterStart: Double, pixelsPerLine: Double): Double =
-        gutterStart + (lineStart.ceilWhole() - lineStart) * pixelsPerLine
-
-    private fun lineBasePositionHorizontal(lineStart: Double, gutterStart: Double, pixelsPerLine: Double): Double =
-        gutterStart + (lineStart - lineStart.floorWhole()) * pixelsPerLine
 
     private fun isMajorLine(lineId: Double): Boolean =
         abs(lineId % MAJOR_LINE_DIVISOR) < 1e-6

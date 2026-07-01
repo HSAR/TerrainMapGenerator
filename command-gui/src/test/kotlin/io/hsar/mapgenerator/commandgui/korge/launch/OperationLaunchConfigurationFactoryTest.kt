@@ -16,6 +16,29 @@ import java.util.*
 class OperationLaunchConfigurationFactoryTest {
 
     @Test
+    fun `operation name generator creates a two word name`() {
+        val name = OperationNameGenerator.generate(Random(1234L))
+        val words = name.split(" ")
+
+        assertThat(words.size, equalTo(2))
+        assertThat(words.all { it.first().isUpperCase() && it.drop(1).all(Char::isLowerCase) }, equalTo(true))
+    }
+
+    @Test
+    fun `default grid configuration can be generated before map image selection`() {
+        val configuration = defaultGridConfiguration(
+            width = 1_000,
+            height = 1_000,
+            metresPerPixel = 20.0,
+            seed = 1234L,
+        )
+
+        assertThat(configuration.mapId.isNotBlank(), equalTo(true))
+        assertThat(configuration.startX >= 1.0, equalTo(true))
+        assertThat(configuration.startY >= 1.0, equalTo(true))
+    }
+
+    @Test
     fun `map image retains display name and drives the viewer size`() {
         val draft = NewOperationDraft(
             operationName = "Operation Copperhead",
