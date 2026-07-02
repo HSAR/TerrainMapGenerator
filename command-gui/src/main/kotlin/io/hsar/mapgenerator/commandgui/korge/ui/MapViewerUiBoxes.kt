@@ -5,7 +5,6 @@ import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
-import korlibs.korge.view.image
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Rectangle
@@ -142,7 +141,7 @@ internal object MapViewerUiBoxes {
             inset = inset,
         ).also { box ->
             val fitted = imageFit(bitmap, maxWidth, maxHeight, inset)
-            box.image(bitmap) {
+            MapViewerImageViews.icon(box, bitmap) {
                 scale = fitted.scale
                 x = fitted.x
                 y = fitted.y

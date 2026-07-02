@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandline
 import io.hsar.mapgenerator.commandgui.MapLayer
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
+import io.hsar.mapgenerator.grid.MgrsCoord
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.not
@@ -60,16 +61,16 @@ class MainLayerSelectionTest {
     fun `resolveGridConfiguration preserves explicit values when present`() {
         val settings = MapViewerSettings(
             mapId = "25F XK",
-            gridStartX = 7.5,
-            gridStartY = 30.25,
+            gridStartX = MgrsCoord.fromLineNumber(7.5, 1000),
+            gridStartY = MgrsCoord.fromLineNumber(30.25, 1000),
         )
         val image = BufferedImage(8, 6, BufferedImage.TYPE_INT_ARGB)
 
         val configuration = resolveGridConfiguration(settings, image, seed = 1234L)
 
         assertThat(configuration.mapId, equalTo("25F XK"))
-        assertThat(configuration.startX, equalTo(7.5))
-        assertThat(configuration.startY, equalTo(30.25))
+        assertThat(configuration.startX, equalTo(MgrsCoord.fromLineNumber(7.5, 1000)))
+        assertThat(configuration.startY, equalTo(MgrsCoord.fromLineNumber(30.25, 1000)))
     }
 
     @Test
@@ -81,8 +82,8 @@ class MainLayerSelectionTest {
 
         assertThat(configuration.mapId, not(nullValue()))
         assertThat(configuration.mapId.isNotBlank(), equalTo(true))
-        assertThat(configuration.startX >= 0, equalTo(true))
-        assertThat(configuration.startY >= 0, equalTo(true))
+        assertThat(configuration.startX.metres >= 0, equalTo(true))
+        assertThat(configuration.startY.metres >= 0, equalTo(true))
     }
 
     private fun imageFor(layer: MapLayer): BufferedImage =

@@ -6,6 +6,7 @@ import io.hsar.mapgenerator.commandgui.StaticImageLayer
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
+import io.hsar.mapgenerator.grid.MgrsCoord
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -34,8 +35,8 @@ class OperationLaunchConfigurationFactoryTest {
         )
 
         assertThat(configuration.mapId.isNotBlank(), equalTo(true))
-        assertThat(configuration.startX >= 1.0, equalTo(true))
-        assertThat(configuration.startY >= 1.0, equalTo(true))
+        assertThat(configuration.startX.lineNumber(1000) >= 1.0, equalTo(true))
+        assertThat(configuration.startY.lineNumber(1000) >= 1.0, equalTo(true))
     }
 
     @Test
@@ -91,16 +92,16 @@ class OperationLaunchConfigurationFactoryTest {
             mapImage = OperationMapImage("Satellite", "satellite.png", image(100, 50)),
             gridConfiguration = GridConfiguration(
                 mapId = "29UPA",
-                startX = 123.0,
-                startY = 456.0,
+                startX = MgrsCoord.fromMetres(12_300),
+                startY = MgrsCoord.fromMetres(45_600),
             ),
         )
 
         val configuration = OperationLaunchConfigurationFactory.create(draft, MapViewerSettings())
 
         assertThat(configuration.settings.mapId, equalTo("29UPA"))
-        assertThat(configuration.settings.gridStartX, equalTo(123.0))
-        assertThat(configuration.settings.gridStartY, equalTo(456.0))
+        assertThat(configuration.settings.gridStartX, equalTo(MgrsCoord.fromMetres(12_300)))
+        assertThat(configuration.settings.gridStartY, equalTo(MgrsCoord.fromMetres(45_600)))
     }
 
     @Test

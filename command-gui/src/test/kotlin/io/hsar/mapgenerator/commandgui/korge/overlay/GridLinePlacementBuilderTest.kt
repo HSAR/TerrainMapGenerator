@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.overlay
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.grid.GridLayer
+import io.hsar.mapgenerator.grid.MgrsCoord
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
@@ -58,8 +59,8 @@ class GridLinePlacementBuilderTest {
         metresPerPixel = 10.0,
         detailLevel = 2,
         pixelsPerLine = 100.0,
-        verticalLineNumberStart = verticalLineNumberStart,
-        horizontalLineNumberStart = horizontalLineNumberStart,
+        verticalLineNumberStart = MgrsCoord.fromLineNumber(verticalLineNumberStart, 1000),
+        horizontalLineNumberStart = MgrsCoord.fromLineNumber(horizontalLineNumberStart, 1000),
         verticalLineCount = 20,
         horizontalLineCount = 20,
     )

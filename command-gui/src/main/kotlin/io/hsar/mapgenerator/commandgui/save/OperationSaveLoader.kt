@@ -32,6 +32,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.launch.GridConfiguration
 import io.hsar.mapgenerator.commandgui.korge.launch.defaultGridConfiguration
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
+import io.hsar.mapgenerator.grid.MgrsCoord
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.nio.file.Path
@@ -62,8 +63,15 @@ internal class OperationSaveLoader {
                 ?.let { mapId ->
                     val startX = save.game.map.gridStartX
                     val startY = save.game.map.gridStartY
-                    if (startX != null && startY != null) {
-                        GridConfiguration(mapId = mapId, startX = startX, startY = startY)
+                    val parsedStartX = startX?.let(MgrsCoord::parse)
+                    val parsedStartY = startY?.let(MgrsCoord::parse)
+                    if (parsedStartX != null && parsedStartY != null) {
+                        GridConfiguration(
+                            mapId = mapId,
+                            referenceSystem = save.game.map.referenceSystem,
+                            startX = parsedStartX,
+                            startY = parsedStartY,
+                        )
                     } else {
                         null
                     }
@@ -85,6 +93,7 @@ internal class OperationSaveLoader {
                 height = mapImage.height,
                 metresPerPixel = save.game.map.metresPerPixel,
                 mapId = gridConfiguration.mapId,
+                referenceSystem = gridConfiguration.referenceSystem,
                 gridStartX = gridConfiguration.startX,
                 gridStartY = gridConfiguration.startY,
                 gridColour = GridColourSelector.resolve(save.game.map.gridColour, mapImage),
@@ -188,7 +197,7 @@ internal class OperationSaveLoader {
         }
 
     private companion object {
-        const val FORMAT_VERSION = 2
+        const val FORMAT_VERSION = 3
         const val ASSET_ROLE_TURN_THUMBNAIL = "turn-thumbnail"
     }
 }

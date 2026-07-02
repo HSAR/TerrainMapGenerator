@@ -78,7 +78,7 @@ class OperationSaveCatalogueTest {
             zip.write(
                 OperationSaveJson.objectMapper.writeValueAsBytes(
                     GameSaveDto(
-                        formatVersion = 2,
+                        formatVersion = 3,
                         id = "00000000-0000-0000-0000-000000000004",
                         name = "Summary Only",
                         createdAt = "2026-06-18T09:00:00Z",

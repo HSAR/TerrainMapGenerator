@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogPositionSync
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerImageViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitEditDialog
 import io.hsar.mapgenerator.grid.GridLayer
@@ -16,7 +17,6 @@ import korlibs.korge.view.Image
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
 import korlibs.korge.view.graphics
-import korlibs.korge.view.image
 import korlibs.math.geom.Point
 import korlibs.math.geom.Vector2D
 import java.awt.Color
@@ -579,7 +579,7 @@ internal class MapPlacedUnitManager(
         var worldHeight: Double,
     ) : MapPlacedObject {
         private var facingLayer: Container = view.container().also { it.zIndex = 0.0 }
-        var icon: Image = view.image(template.bitmap).also { it.zIndex = 1.0 }
+        var icon: Image = MapViewerImageViews.icon(view, template.bitmap).also { it.zIndex = 1.0 }
             private set
         private var overlayLayer: Container = view.container().also { it.zIndex = 2.0 }
 
@@ -636,7 +636,7 @@ internal class MapPlacedUnitManager(
         fun rebuildVisual(bitmap: Bitmap32) {
             view.removeChildren()
             facingLayer = view.container().also { it.zIndex = 0.0 }
-            icon = view.image(bitmap).also { it.zIndex = 1.0 }
+            icon = MapViewerImageViews.icon(view, bitmap).also { it.zIndex = 1.0 }
             overlayLayer = view.container().also { it.zIndex = 2.0 }
             updateFacingOverlay()
             updateStateOverlay()
@@ -720,7 +720,7 @@ internal class MapPlacedUnitManager(
     ): UnitVisual {
         val container = parent.container()
         val facingLayer = container.container().also { it.zIndex = 0.0 }
-        val icon = container.image(bitmap).also { it.zIndex = 1.0 }
+        val icon = MapViewerImageViews.icon(container, bitmap).also { it.zIndex = 1.0 }
         facingDegrees?.let { degrees ->
             facingLayer.alpha = facingOverlayAlpha(facingActive)
             drawFacingIndicator(facingLayer, bitmap.width.toDouble(), bitmap.height.toDouble(), degrees)

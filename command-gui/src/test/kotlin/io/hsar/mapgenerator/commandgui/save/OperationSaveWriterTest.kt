@@ -10,6 +10,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.launch.defaultGridConfiguration
+import io.hsar.mapgenerator.grid.ReferenceSystem
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import org.hamcrest.MatcherAssert.assertThat
@@ -66,21 +67,23 @@ class OperationSaveWriterTest {
         val save = OperationSaveReader().read(savePath)
 
         assertThat(save.game.id, equalTo(operationId.toString()))
-        assertThat(save.game.formatVersion, equalTo(2))
+        assertThat(save.game.formatVersion, equalTo(3))
         assertThat(save.game.thumbnailAssetId, equalTo(operationId.toString()))
         assertThat(save.game.map.assetId, equalTo("00000000-0000-0000-0000-000000000001"))
         val expectedGrid = defaultGridConfiguration(mapImage, 20.0, 1234L)
+        assertThat(save.game.map.referenceSystem, equalTo(ReferenceSystem.MGRS))
         assertThat(save.game.map.mapId, equalTo(expectedGrid.mapId))
-        assertThat(save.game.map.gridStartX, equalTo(expectedGrid.startX))
-        assertThat(save.game.map.gridStartY, equalTo(expectedGrid.startY))
+        assertThat(save.game.map.gridStartX, equalTo(expectedGrid.startX.format()))
+        assertThat(save.game.map.gridStartY, equalTo(expectedGrid.startY.format()))
         ZipFile(savePath.toFile()).use { zip ->
             val gameJson = OperationSaveJson.objectMapper.readTree(zip.getInputStream(zip.getEntry("game.json")))
             assertThat(gameJson["map"].has("name"), equalTo(false))
             assertThat(gameJson["map"].has("width"), equalTo(false))
             assertThat(gameJson["map"].has("height"), equalTo(false))
+            assertThat(gameJson["map"]["referenceSystem"].asText(), equalTo("MGRS"))
             assertThat(gameJson["map"]["mapId"].asText(), equalTo(expectedGrid.mapId))
-            assertThat(gameJson["map"]["gridStartX"].asDouble(), equalTo(expectedGrid.startX))
-            assertThat(gameJson["map"]["gridStartY"].asDouble(), equalTo(expectedGrid.startY))
+            assertThat(gameJson["map"]["gridStartX"].asText(), equalTo(expectedGrid.startX.format()))
+            assertThat(gameJson["map"]["gridStartY"].asText(), equalTo(expectedGrid.startY.format()))
         }
         assertThat((save.ledger.entries.single() as CreateUnitTemplateEntrySaveDto).unitTemplate.template.assetId, equalTo("00000000-0000-0000-0000-000000000002"))
         assertThat((save.ledger.entries.single() as CreateUnitTemplateEntrySaveDto).unitTemplate.template.affiliation, equalTo(UnitAffiliation.Friend))

@@ -15,7 +15,6 @@ import korlibs.korge.ui.uiMaterialLayer
 import korlibs.korge.view.Container
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
-import korlibs.korge.view.image
 import korlibs.korge.view.onStageResized
 import korlibs.korge.view.size
 import korlibs.korge.view.solidRect
@@ -215,7 +214,7 @@ internal class MapViewerSidebar(
         iconFrame.xy(iconInset, (UNIT_ITEM_HEIGHT - iconSize) * 0.5)
         iconFrame.solidRect(iconSlotWidth, iconSize, RGBA(0, 0, 0, 0))
         val fittedIcon = MapViewerIconFit.inside(row.template.bitmap, iconSlotWidth, iconSize)
-        iconFrame.image(row.template.bitmap) {
+        MapViewerImageViews.icon(iconFrame, row.template.bitmap) {
             scale = fittedIcon.scale
             x = fittedIcon.x
             y = fittedIcon.y

@@ -23,14 +23,14 @@ internal object GridLinePlacementBuilder {
             verticalLines = lineIndices(viewport.topLeft.x, viewport.topRight.x, layer.verticalLineCount, verticalLineStart(layer), layer)
                 .map { lineIndex ->
                     GridPlacedLine(
-                        id = layer.verticalLineNumberStart.ceilWhole() + lineIndex,
+                        id = layer.verticalLineNumberStart.lineNumberCeil(layer.gridScale) + lineIndex,
                         mapPosition = verticalLineStart(layer) + lineIndex * layer.pixelsPerLine,
                     )
                 },
             horizontalLines = lineIndices(viewport.topLeft.y, viewport.bottomRight.y, layer.horizontalLineCount, horizontalLineStart(layer), layer)
                 .map { lineIndex ->
                     GridPlacedLine(
-                        id = layer.horizontalLineNumberStart.floorWhole() - lineIndex,
+                        id = layer.horizontalLineNumberStart.lineNumberFloor(layer.gridScale) - lineIndex,
                         mapPosition = horizontalLineStart(layer) + lineIndex * layer.pixelsPerLine,
                     )
                 },
@@ -43,14 +43,10 @@ internal object GridLinePlacementBuilder {
     }
 
     private fun verticalLineStart(layer: GridLayer): Double =
-        (layer.verticalLineNumberStart.ceilWhole() - layer.verticalLineNumberStart) * layer.pixelsPerLine
+        (layer.verticalLineNumberStart.lineNumberCeil(layer.gridScale) - layer.verticalLineNumberStart.lineNumber(layer.gridScale)) *
+                layer.pixelsPerLine
 
     private fun horizontalLineStart(layer: GridLayer): Double =
-        (layer.horizontalLineNumberStart - layer.horizontalLineNumberStart.floorWhole()) * layer.pixelsPerLine
-
-    private fun Double.ceilWhole(): Double =
-        ceil(this)
-
-    private fun Double.floorWhole(): Double =
-        floor(this)
+        (layer.horizontalLineNumberStart.lineNumber(layer.gridScale) - layer.horizontalLineNumberStart.lineNumberFloor(layer.gridScale)) *
+                layer.pixelsPerLine
 }

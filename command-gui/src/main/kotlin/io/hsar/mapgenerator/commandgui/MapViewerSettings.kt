@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.commandgui
 
+import io.hsar.mapgenerator.grid.MgrsCoord
+import io.hsar.mapgenerator.grid.ReferenceSystem
 import java.awt.Color
 import java.awt.image.BufferedImage
 
@@ -9,8 +11,9 @@ data class MapViewerSettings(
     val enabledLayerIds: Set<String> = availableLayers.map { it.id }.toSet(),
     val staticLayerImages: Map<String, BufferedImage> = emptyMap(),
     val mapId: String? = null,
-    val gridStartX: Double? = null,
-    val gridStartY: Double? = null,
+    val referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
+    val gridStartX: MgrsCoord? = null,
+    val gridStartY: MgrsCoord? = null,
     val gridColour: Color? = null,
     val zoom: Double = 1.0,
     val metresPerPixel: Double = 20.0,

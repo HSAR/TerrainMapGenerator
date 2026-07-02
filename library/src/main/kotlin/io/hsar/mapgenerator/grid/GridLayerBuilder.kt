@@ -17,8 +17,9 @@ object GridLayerBuilder {
         metresPerPixel: Double,
         random: Random = Random(),
         mapId: String? = null,
-        verticalLineNumberStart: Double? = null,
-        horizontalLineNumberStart: Double? = null,
+        referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
+        verticalLineNumberStart: MgrsCoord? = null,
+        horizontalLineNumberStart: MgrsCoord? = null,
         colour: Color = GridPalettes.DEFAULT.lineColour,
     ): GridLayer {
         val pixelsPerLine = gridScale / metresPerPixel
@@ -28,6 +29,7 @@ object GridLayerBuilder {
 
         return GridLayer(
             mapId = mapId ?: GridGenerator.randomMGRSMapId(random),
+            referenceSystem = referenceSystem,
             gridScale = gridScale,
             metresPerPixel = metresPerPixel,
             detailLevel = detailLevel,
@@ -46,7 +48,7 @@ object GridLayerBuilder {
         return 5 - gridScaleMagnitude
     }
 
-    private fun generateLineNumberStart(detailLevel: Int, totalLines: Int, random: Random): Double {
+    private fun generateLineNumberStart(detailLevel: Int, totalLines: Int, random: Random): MgrsCoord {
         val maxCoordinate = 10.0.pow(detailLevel).toInt() - 1
         val minLineNumberStart = totalLines
         val maxLineNumberStart = maxCoordinate - totalLines
@@ -55,6 +57,9 @@ object GridLayerBuilder {
             "Grid has too many visible lines ($totalLines) for detail level $detailLevel."
         }
 
-        return RandomGenerator.generateUniform(minLineNumberStart, maxLineNumberStart, random).toDouble()
+        return MgrsCoord.fromLineNumber(
+            lineNumber = RandomGenerator.generateUniform(minLineNumberStart, maxLineNumberStart, random).toDouble(),
+            gridScale = 10.0.pow(5 - detailLevel).toInt(),
+        )
     }
 }

@@ -8,8 +8,11 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDropdownMenu
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDropdownOption
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconFit
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerImageViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputValidation
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputs
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
@@ -18,6 +21,8 @@ import io.hsar.mapgenerator.commandgui.korge.ui.UiFrameStyle
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.grid.GridLayerBuilder
+import io.hsar.mapgenerator.grid.MgrsCoord
+import io.hsar.mapgenerator.grid.ReferenceSystem
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.image.awt.toBMP32
@@ -28,7 +33,6 @@ import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
-import korlibs.korge.view.image
 import korlibs.korge.view.onStageResized
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
@@ -60,9 +64,23 @@ internal class MapViewerNewOperationView(
         ?: defaultGridConfiguration(DEFAULT_GRID_WIDTH, DEFAULT_GRID_HEIGHT, initialPixelsPerMetre, initialSeed)
     private var operationName = OperationNameGenerator.generate(Random(initialSeed))
     private var pixelsPerMetreText = initialPixelsPerMetre.toString()
+    private var referenceSystem = initialGridConfiguration.referenceSystem
     private var mapIdText = initialGridConfiguration.mapId
-    private var gridStartXText = initialGridConfiguration.startX.formatGridCoordinate()
-    private var gridStartYText = initialGridConfiguration.startY.formatGridCoordinate()
+    private var gridStartXText = initialGridConfiguration.startX.format()
+    private var gridStartYText = initialGridConfiguration.startY.format()
+    private val referenceSystemDropdown = MapViewerDropdownMenu(
+        root = root,
+        options = ReferenceSystem.values().map { system ->
+            MapViewerDropdownOption(system, system.label())
+        },
+        onSelected = { selected ->
+            referenceSystem = selected ?: ReferenceSystem.MGRS
+            mapPreviewDirty = true
+            refreshLaunchButton()
+        },
+        labelForValue = { value -> (value ?: ReferenceSystem.MGRS).label() },
+        menuWidth = 180.0,
+    )
     private var operationNameInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
     private var pixelsPerMetreInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
     private var mapIdInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
@@ -109,6 +127,7 @@ internal class MapViewerNewOperationView(
     }
 
     fun close() {
+        referenceSystemDropdown.close()
         layer.removeFromParent()
     }
 
@@ -134,7 +153,7 @@ internal class MapViewerNewOperationView(
     private fun renderMapSection() {
         val panel = MapViewerLaunchUi.panel(layer, layout.mapPanelBounds)
         val panelWidth = layout.mapPanelBounds.width
-        val fieldWidth = (panelWidth - (CONTENT_PADDING * 2.0) - (FIELD_GAP * 3.0)) / 4.0
+        val fieldWidth = (panelWidth - (CONTENT_PADDING * 2.0) - (FIELD_GAP * 4.0)) / 5.0
         val imageButtonWidth = 160.0
         val imageButtonLeft = panelWidth - CONTENT_PADDING - imageButtonWidth
         val imageValidationWidth = MapViewerTextInputValidation.VALIDATION_ICON_SIZE + FIELD_GAP
@@ -174,12 +193,22 @@ internal class MapViewerNewOperationView(
             )
         }
 
-        MapViewerLaunchUi.label(panel, "Map ID").xy(CONTENT_PADDING, fieldsTop)
+        referenceSystemDropdown.renderField(
+            parent = panel,
+            label = "Coordinate System",
+            value = referenceSystem,
+            x = CONTENT_PADDING,
+            y = fieldsTop,
+            width = fieldWidth,
+            height = INPUT_HEIGHT,
+        )
+
+        MapViewerLaunchUi.label(panel, "Map ID").xy(CONTENT_PADDING + fieldWidth + FIELD_GAP, fieldsTop)
         mapIdInput = textInput(
             parent = panel,
             text = mapIdText,
             bounds = ScreenBounds(
-                left = CONTENT_PADDING,
+                left = CONTENT_PADDING + fieldWidth + FIELD_GAP,
                 top = inputsTop,
                 width = fieldWidth,
                 height = INPUT_HEIGHT,
@@ -187,14 +216,14 @@ internal class MapViewerNewOperationView(
         )
         wirePreviewRefresh(mapIdInput)
 
-        MapViewerLaunchUi.label(panel, "Starting X").xy(CONTENT_PADDING + fieldWidth + FIELD_GAP, fieldsTop)
-        MapViewerLaunchUi.label(panel, "Starting Y").xy(CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 2, fieldsTop)
-        MapViewerLaunchUi.label(panel, "Pixels Per Metre").xy(CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 3, fieldsTop)
+        MapViewerLaunchUi.label(panel, "Starting X").xy(CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 2, fieldsTop)
+        MapViewerLaunchUi.label(panel, "Starting Y").xy(CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 3, fieldsTop)
+        MapViewerLaunchUi.label(panel, "Pixels Per Metre").xy(CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 4, fieldsTop)
         gridStartXInput = textInput(
             parent = panel,
             text = gridStartXText,
             bounds = ScreenBounds(
-                left = CONTENT_PADDING + fieldWidth + FIELD_GAP,
+                left = CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 2,
                 top = inputsTop,
                 width = fieldWidth,
                 height = INPUT_HEIGHT,
@@ -205,7 +234,7 @@ internal class MapViewerNewOperationView(
             parent = panel,
             text = gridStartYText,
             bounds = ScreenBounds(
-                left = CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 2,
+                left = CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 3,
                 top = inputsTop,
                 width = fieldWidth,
                 height = INPUT_HEIGHT,
@@ -217,7 +246,7 @@ internal class MapViewerNewOperationView(
             parent = panel,
             text = pixelsPerMetreText,
             bounds = ScreenBounds(
-                left = CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 3,
+                left = CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 4,
                 top = inputsTop,
                 width = fieldWidth,
                 height = INPUT_HEIGHT,
@@ -297,7 +326,7 @@ internal class MapViewerNewOperationView(
         frame.xy(left, top)
         MapViewerUiBoxes.box(frame, PREVIEW_WIDTH, PREVIEW_HEIGHT)
         val fittedIcon = MapViewerIconFit.inside(bitmap, PREVIEW_WIDTH - 12.0, PREVIEW_HEIGHT - 12.0)
-        frame.image(bitmap) {
+        MapViewerImageViews.icon(frame, bitmap) {
             scale = fittedIcon.scale
             this.x = 6.0 + fittedIcon.x
             this.y = 6.0 + fittedIcon.y
@@ -376,6 +405,7 @@ internal class MapViewerNewOperationView(
                 )
             },
             pixelsPerMetre = pixelsPerMetreText.toDoubleOrNull() ?: -1.0,
+            referenceSystem = referenceSystem,
             gridConfiguration = parseGridConfiguration(),
             unitTemplates = unitRows.map { row ->
                 MapViewerUnitTemplate(
@@ -400,11 +430,12 @@ internal class MapViewerNewOperationView(
 
     private fun parseGridConfiguration(): GridConfiguration? {
         val mapId = mapIdText.trim()
-        val startX = gridStartXText.trim().toDoubleOrNull()
-        val startY = gridStartYText.trim().toDoubleOrNull()
+        val startX = MgrsCoord.parse(gridStartXText)
+        val startY = MgrsCoord.parse(gridStartYText)
         return if (mapId.isNotBlank() && startX != null && startY != null) {
             GridConfiguration(
                 mapId = mapId,
+                referenceSystem = referenceSystem,
                 startX = startX,
                 startY = startY,
             )
@@ -430,7 +461,7 @@ internal class MapViewerNewOperationView(
         val imageContainer = parent.container().also {
             it.xy(8.0 + fittedIcon.x, 8.0 + fittedIcon.y)
         }
-        imageContainer.image(bitmap) {
+        MapViewerImageViews.icon(imageContainer, bitmap) {
             scale = fittedIcon.scale
         }
 
@@ -501,6 +532,7 @@ internal class MapViewerNewOperationView(
     private fun previewSignature(): String =
         buildString {
             append(mapImage?.imagePath.orEmpty()).append('|')
+            append(referenceSystem.name).append('|')
             append(pixelsPerMetreInput?.text?.trim().orEmpty()).append('|')
             append(mapIdInput?.text?.trim().orEmpty()).append('|')
             append(gridStartXInput?.text?.trim().orEmpty()).append('|')
@@ -593,14 +625,12 @@ internal class MapViewerNewOperationView(
                 )
             },
             pixelsPerMetre = pixelsPerMetreText.toDoubleOrNull() ?: -1.0,
+            referenceSystem = referenceSystem,
             gridConfiguration = parseGridConfiguration(),
         ).isLaunchable()
 
     private fun screenTitle(): String =
         "New Operation"
-
-    private fun Double.formatGridCoordinate(): String =
-        toString().removeSuffix(".0")
 
     private fun textInput(
         parent: Container,
@@ -695,6 +725,11 @@ internal class MapViewerNewOperationView(
         const val MAP_IMAGE_VALIDATION_WIDTH = 24.0
         const val DEFAULT_GRID_WIDTH = 1_000
         const val DEFAULT_GRID_HEIGHT = 1_000
+        private fun ReferenceSystem.label(): String =
+            when (this) {
+                ReferenceSystem.MGRS -> "MGRS"
+            }
+
         private fun <T> MutableList<T>.move(fromIndex: Int, toIndex: Int) {
             if (fromIndex == toIndex) return
             val item = removeAt(fromIndex)

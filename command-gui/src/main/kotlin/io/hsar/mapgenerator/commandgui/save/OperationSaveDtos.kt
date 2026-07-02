@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.databind.JsonNode
 import io.hsar.mapgenerator.commandgui.CustomPropertyJson
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
+import io.hsar.mapgenerator.grid.ReferenceSystem
 import java.util.*
 
 internal data class GameSaveDto(
@@ -35,9 +36,10 @@ internal data class CameraSaveDto(
 internal data class MapSaveDto(
     val metresPerPixel: Double,
     val assetId: String,
+    val referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
     val mapId: String? = null,
-    val gridStartX: Double? = null,
-    val gridStartY: Double? = null,
+    val gridStartX: String? = null,
+    val gridStartY: String? = null,
     val gridColour: String? = null,
 )
 

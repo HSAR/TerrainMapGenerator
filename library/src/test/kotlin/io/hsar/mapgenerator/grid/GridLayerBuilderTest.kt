@@ -40,10 +40,10 @@ class GridLayerBuilderTest {
             random = Random(42L),
         )
 
-        assertThat(layer.verticalLineNumberStart >= layer.verticalLineCount.toDouble(), equalTo(true))
-        assertThat(layer.horizontalLineNumberStart >= layer.horizontalLineCount.toDouble(), equalTo(true))
-        assertThat(layer.verticalLineNumberStart + layer.verticalLineCount <= 99.0, equalTo(true))
-        assertThat(layer.horizontalLineNumberStart - layer.horizontalLineCount >= 0.0, equalTo(true))
+        assertThat(layer.verticalLineNumberStart.lineNumber(layer.gridScale) >= layer.verticalLineCount.toDouble(), equalTo(true))
+        assertThat(layer.horizontalLineNumberStart.lineNumber(layer.gridScale) >= layer.horizontalLineCount.toDouble(), equalTo(true))
+        assertThat(layer.verticalLineNumberStart.lineNumber(layer.gridScale) + layer.verticalLineCount <= 99.0, equalTo(true))
+        assertThat(layer.horizontalLineNumberStart.lineNumber(layer.gridScale) - layer.horizontalLineCount >= 0.0, equalTo(true))
     }
 
     @Test

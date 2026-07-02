@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.grid.GridLayer
+import io.hsar.mapgenerator.grid.MgrsCoord
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -70,8 +71,8 @@ class GridReferenceFormatterTest {
         metresPerPixel = 20.0,
         detailLevel = 2,
         pixelsPerLine = 100.0,
-        verticalLineNumberStart = verticalLineNumberStart,
-        horizontalLineNumberStart = horizontalLineNumberStart,
+        verticalLineNumberStart = MgrsCoord.fromLineNumber(verticalLineNumberStart, 1000),
+        horizontalLineNumberStart = MgrsCoord.fromLineNumber(horizontalLineNumberStart, 1000),
         verticalLineCount = 20,
         horizontalLineCount = 20,
     )

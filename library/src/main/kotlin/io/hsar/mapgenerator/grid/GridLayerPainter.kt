@@ -331,8 +331,8 @@ object GridLayerPainter {
 
     private fun GridAxis.lineId(layer: GridLayer, lineIndex: Int): Double =
         when (this) {
-            GridAxis.VERTICAL -> layer.verticalLineNumberStart.ceilWhole() + lineIndex
-            GridAxis.HORIZONTAL -> layer.horizontalLineNumberStart.floorWhole() - lineIndex
+            GridAxis.VERTICAL -> layer.verticalLineNumberStart.lineNumberCeil(layer.gridScale) + lineIndex
+            GridAxis.HORIZONTAL -> layer.horizontalLineNumberStart.lineNumberFloor(layer.gridScale) - lineIndex
         }
 
     private fun GridAxis.linePosition(layer: GridLayer, lineIndex: Int, gridLinePadding: Point): Double =
@@ -343,8 +343,15 @@ object GridLayerPainter {
 
     private fun GridAxis.lineBasePosition(layer: GridLayer, gridLinePadding: Point): Double =
         when (this) {
-            GridAxis.VERTICAL -> gridLinePadding.x + (layer.verticalLineNumberStart.ceilWhole() - layer.verticalLineNumberStart) * layer.pixelsPerLine
-            GridAxis.HORIZONTAL -> gridLinePadding.y + (layer.horizontalLineNumberStart - layer.horizontalLineNumberStart.floorWhole()) * layer.pixelsPerLine
+            GridAxis.VERTICAL -> gridLinePadding.x + (
+                    layer.verticalLineNumberStart.lineNumberCeil(layer.gridScale) -
+                            layer.verticalLineNumberStart.lineNumber(layer.gridScale)
+                    ) * layer.pixelsPerLine
+
+            GridAxis.HORIZONTAL -> gridLinePadding.y + (
+                    layer.horizontalLineNumberStart.lineNumber(layer.gridScale) -
+                            layer.horizontalLineNumberStart.lineNumberFloor(layer.gridScale)
+                    ) * layer.pixelsPerLine
         }
 
     private fun GridAxis.isMajorLine(lineId: Double): Boolean =

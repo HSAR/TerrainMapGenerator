@@ -20,14 +20,14 @@ class OperationSaveLoaderTest {
     lateinit var tempDir: Path
 
     @Test
-    fun `old save format is rejected`() {
+    fun `version two numeric grid start save format is rejected`() {
         val savePath = tempDir.resolve("legacy.oct.zip")
         ZipOutputStream(Files.newOutputStream(savePath)).use { zip ->
             zip.putNextEntry(ZipEntry("game.json"))
             zip.write(
                 """
                 {
-                  "formatVersion": 1,
+                  "formatVersion": 2,
                   "id": "00000000-0000-0000-0000-000000000001",
                   "name": "Legacy",
                   "createdAt": "2026-06-19T10:00:00Z",
@@ -50,7 +50,7 @@ class OperationSaveLoaderTest {
             OperationSaveLoader().load(savePath)
         }
 
-        assertThat(error.message ?: "", containsString("Unsupported save format version 1"))
+        assertThat(error.message ?: "", containsString("Unsupported save format version 2"))
     }
 
     @Test
@@ -67,7 +67,7 @@ class OperationSaveLoaderTest {
             zip.write(
                 """
                 {
-                  "formatVersion": 2,
+                  "formatVersion": 3,
                   "id": "$operationId",
                   "name": "No Camera",
                   "createdAt": "2026-06-19T10:00:00Z",
@@ -120,7 +120,7 @@ class OperationSaveLoaderTest {
             zip.write(
                 """
                 {
-                  "formatVersion": 2,
+                  "formatVersion": 3,
                   "id": "$operationId",
                   "name": "Grid Enabled",
                   "createdAt": "2026-06-19T10:00:00Z",
@@ -128,9 +128,10 @@ class OperationSaveLoaderTest {
                   "map": {
                     "metresPerPixel": 20.0,
                     "assetId": "$assetId",
+                    "referenceSystem": "MGRS",
                     "mapId": "25F XK",
-                    "gridStartX": 10.5,
-                    "gridStartY": 20.25
+                    "gridStartX": "10500",
+                    "gridStartY": "20250"
                   }
                 }
                 """.trimIndent().toByteArray(),

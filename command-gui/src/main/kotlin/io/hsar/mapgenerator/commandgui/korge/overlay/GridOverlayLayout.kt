@@ -6,6 +6,7 @@ import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.GridStyles
+import io.hsar.mapgenerator.grid.MgrsCoord
 import io.hsar.mapgenerator.image.Palette
 import io.hsar.mapgenerator.random.GridGenerator.padZeroes
 import java.awt.Color
@@ -373,12 +374,13 @@ internal object GridOverlayLayoutBuilder {
         return if (shouldUseFineGrid(state, layer)) {
             GridLayer(
                 mapId = layer.mapId,
+                referenceSystem = layer.referenceSystem,
                 gridScale = (layer.gridScale / FINE_GRID_SUBDIVISIONS).coerceAtLeast(1),
                 metresPerPixel = layer.metresPerPixel,
                 detailLevel = layer.detailLevel + 1,
                 pixelsPerLine = layer.pixelsPerLine / FINE_GRID_SUBDIVISIONS,
-                verticalLineNumberStart = layer.verticalLineNumberStart * FINE_GRID_SUBDIVISIONS,
-                horizontalLineNumberStart = layer.horizontalLineNumberStart * FINE_GRID_SUBDIVISIONS,
+                verticalLineNumberStart = MgrsCoord.fromMetres(layer.verticalLineNumberStart.metres),
+                horizontalLineNumberStart = MgrsCoord.fromMetres(layer.horizontalLineNumberStart.metres),
                 verticalLineCount = layer.verticalLineCount * FINE_GRID_SUBDIVISIONS,
                 horizontalLineCount = layer.horizontalLineCount * FINE_GRID_SUBDIVISIONS,
                 colour = layer.colour,

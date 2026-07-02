@@ -57,7 +57,12 @@ internal class OperationSaveWriter(
                 val startX = request.settings.gridStartX
                 val startY = request.settings.gridStartY
                 if (startX != null && startY != null) {
-                    GridConfiguration(mapId = mapId, startX = startX, startY = startY)
+                    GridConfiguration(
+                        mapId = mapId,
+                        referenceSystem = request.settings.referenceSystem,
+                        startX = startX,
+                        startY = startY,
+                    )
                 } else {
                     null
                 }
@@ -73,9 +78,10 @@ internal class OperationSaveWriter(
             map = MapSaveDto(
                 metresPerPixel = request.settings.metresPerPixel,
                 assetId = mapAsset.id.toString(),
+                referenceSystem = gridConfiguration.referenceSystem,
                 mapId = gridConfiguration.mapId,
-                gridStartX = gridConfiguration.startX,
-                gridStartY = gridConfiguration.startY,
+                gridStartX = gridConfiguration.startX.format(),
+                gridStartY = gridConfiguration.startY.format(),
                 gridColour = GridColourSelector.toHex(
                     request.settings.gridColour ?: GridColourSelector.bestPresetFor(request.mapImage),
                 ),
@@ -113,7 +119,7 @@ internal class OperationSaveWriter(
             .ifBlank { "Operation" }
 
     private companion object {
-        const val FORMAT_VERSION = 2
+        const val FORMAT_VERSION = 3
         const val GAME_JSON = "game.json"
         const val LEDGER_JSON = "ledger.json"
         const val ASSET_ROLE_MAP = "map"

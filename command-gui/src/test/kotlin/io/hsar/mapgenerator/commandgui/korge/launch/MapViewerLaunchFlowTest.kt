@@ -68,7 +68,11 @@ class MapViewerLaunchFlowTest {
                 operationName = "Test",
                 mapImage = OperationMapImage("Map", "map.png", image()),
                 pixelsPerMetre = 20.0,
-                gridConfiguration = GridConfiguration("AA", 1.0, 2.0),
+                gridConfiguration = GridConfiguration(
+                    mapId = "AA",
+                    startX = io.hsar.mapgenerator.grid.MgrsCoord.fromLineNumber(1.0, 1000),
+                    startY = io.hsar.mapgenerator.grid.MgrsCoord.fromLineNumber(2.0, 1000),
+                ),
             ),
         )
 

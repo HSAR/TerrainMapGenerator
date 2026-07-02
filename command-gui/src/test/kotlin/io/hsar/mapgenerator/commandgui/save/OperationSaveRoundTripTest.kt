@@ -23,6 +23,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
+import io.hsar.mapgenerator.grid.ReferenceSystem
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
@@ -153,6 +154,7 @@ class OperationSaveRoundTripTest {
         assertThat(reread.game.id, equalTo(operationId.toString()))
         assertThat(reread.game.name, equalTo("Round Trip"))
         assertThat(reread.game.map.metresPerPixel, equalTo(20.0))
+        assertThat(reread.game.map.referenceSystem, equalTo(ReferenceSystem.MGRS))
         assertThat(reread.game.map.assetId.isNotBlank(), equalTo(true))
         assertThat(reread.game.map.mapId.isNullOrBlank(), equalTo(false))
         assertThat(reread.game.map.gridStartX != null, equalTo(true))

@@ -13,6 +13,8 @@ import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
 import io.hsar.mapgenerator.grid.GridLayerBuilder
+import io.hsar.mapgenerator.grid.MgrsCoord
+import io.hsar.mapgenerator.grid.ReferenceSystem
 import io.hsar.mapgenerator.gui.ImageFrame
 import io.hsar.mapgenerator.image.GridRenderer
 import io.hsar.mapgenerator.image.ImageUtils.compose
@@ -324,6 +326,7 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewe
             metresPerPixel = renderMetresPerPixel,
             metresPerContour = settings.metresPerContour,
             mapId = gridConfiguration.mapId,
+            referenceSystem = gridConfiguration.referenceSystem,
             gridStartX = gridConfiguration.startX,
             gridStartY = gridConfiguration.startY,
             gridColour = GridColourSelector.toHex(gridColour),
@@ -336,6 +339,7 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewe
                 metresPerPixel = renderMetresPerPixel,
                 random = Random(gridSeed(seed)),
                 mapId = gridConfiguration.mapId,
+                referenceSystem = gridConfiguration.referenceSystem,
                 verticalLineNumberStart = gridConfiguration.startX,
                 horizontalLineNumberStart = gridConfiguration.startY,
                 colour = gridColour,
@@ -365,7 +369,12 @@ internal fun resolveGridConfiguration(
             val startX = settings.gridStartX
             val startY = settings.gridStartY
             if (startX != null && startY != null) {
-                RenderGridConfiguration(mapId = mapId, startX = startX, startY = startY)
+                RenderGridConfiguration(
+                    mapId = mapId,
+                    referenceSystem = settings.referenceSystem,
+                    startX = startX,
+                    startY = startY,
+                )
             } else {
                 null
             }
@@ -394,15 +403,17 @@ private data class GridRenderKey(
     val metresPerPixel: Double,
     val metresPerContour: Double,
     val mapId: String?,
-    val gridStartX: Double?,
-    val gridStartY: Double?,
+    val referenceSystem: ReferenceSystem,
+    val gridStartX: MgrsCoord?,
+    val gridStartY: MgrsCoord?,
     val gridColour: String,
 )
 
 internal data class RenderGridConfiguration(
     val mapId: String,
-    val startX: Double,
-    val startY: Double,
+    val referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
+    val startX: MgrsCoord,
+    val startY: MgrsCoord,
 )
 
 private object RenderCache {
@@ -424,6 +435,7 @@ private fun fallbackGridConfiguration(
     ).let { gridLayer ->
         RenderGridConfiguration(
             mapId = gridLayer.mapId,
+            referenceSystem = gridLayer.referenceSystem,
             startX = gridLayer.verticalLineNumberStart,
             startY = gridLayer.horizontalLineNumberStart,
         )

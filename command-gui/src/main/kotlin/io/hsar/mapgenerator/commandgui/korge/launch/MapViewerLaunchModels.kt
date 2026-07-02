@@ -12,6 +12,8 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.OPERATION_START_TURN_NAME
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.grid.GridLayerBuilder
+import io.hsar.mapgenerator.grid.MgrsCoord
+import io.hsar.mapgenerator.grid.ReferenceSystem
 import java.awt.image.BufferedImage
 import java.io.File
 import java.util.*
@@ -33,14 +35,16 @@ internal data class NewOperationDraft(
     val operationName: String = "",
     val mapImage: OperationMapImage? = null,
     val pixelsPerMetre: Double = 20.0,
+    val referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
     val gridConfiguration: GridConfiguration? = null,
     val unitTemplates: List<MapViewerUnitTemplate> = emptyList(),
 )
 
 internal data class GridConfiguration(
     val mapId: String,
-    val startX: Double,
-    val startY: Double,
+    val referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
+    val startX: MgrsCoord,
+    val startY: MgrsCoord,
 )
 
 internal data class OperationLaunchConfiguration(
@@ -140,6 +144,7 @@ internal fun defaultGridConfiguration(
     ).let { gridLayer ->
         GridConfiguration(
             mapId = gridLayer.mapId,
+            referenceSystem = gridLayer.referenceSystem,
             startX = gridLayer.verticalLineNumberStart,
             startY = gridLayer.horizontalLineNumberStart,
         )
@@ -182,6 +187,7 @@ internal object OperationLaunchConfigurationFactory {
                 height = mapImage.image.height,
                 metresPerPixel = draft.pixelsPerMetre,
                 mapId = gridConfiguration.mapId,
+                referenceSystem = gridConfiguration.referenceSystem,
                 gridStartX = gridConfiguration.startX,
                 gridStartY = gridConfiguration.startY,
                 gridColour = GridColourSelector.bestPresetFor(mapImage.image),
