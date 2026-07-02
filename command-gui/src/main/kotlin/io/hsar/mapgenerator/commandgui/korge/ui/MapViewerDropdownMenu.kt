@@ -59,6 +59,7 @@ internal class MapViewerDropdownMenu<T>(
 ) {
     private val layer = root.container()
     private val controller = MapViewerDropdownController(onSelected)
+    private val hasOptionIcon = options.any { it.swatchColor != null }
     private var triggerLabel: Text? = null
     private var triggerSwatch: Container? = null
     private var ignoreOutsideUntilRelease = false
@@ -99,14 +100,23 @@ internal class MapViewerDropdownMenu<T>(
         field.xy(x, y + 28.0)
         MapViewerUiBoxes.button(field, width, height)
 
-        val swatchHost = field.container().also { it.xy(TEXT_LEFT_PADDING, (height - TRIGGER_SWATCH_SIZE) * 0.5) }
-        MapViewerSwatchViews.render(swatchHost, swatchForValue(value), TRIGGER_SWATCH_SIZE)
+        val hasTriggerIcon = swatchForValue(value) != null
+        val labelLeft = TEXT_LEFT_PADDING + if (hasTriggerIcon) TRIGGER_SWATCH_SLOT_WIDTH else 0.0
+        val labelWidth = width - TRAILING_AREA_WIDTH - labelLeft
+        val swatchHost = if (hasTriggerIcon) {
+            field.container().also {
+                it.xy(TEXT_LEFT_PADDING, (height - TRIGGER_SWATCH_SIZE) * 0.5)
+                MapViewerSwatchViews.render(it, swatchForValue(value), TRIGGER_SWATCH_SIZE)
+            }
+        } else {
+            null
+        }
 
-        val labelHost = field.container().also { it.xy(TEXT_LEFT_PADDING + TRIGGER_SWATCH_SLOT_WIDTH, 0.0) }
+        val labelHost = field.container().also { it.xy(labelLeft, 0.0) }
         triggerLabel = MapViewerTextViews.leftBox(
             parent = labelHost,
             text = labelForValue(value),
-            width = width - TRAILING_AREA_WIDTH - TRIGGER_SWATCH_SLOT_WIDTH - TEXT_LEFT_PADDING,
+            width = labelWidth,
             height = height,
             color = Palette.Colours.WHITE,
         )
@@ -145,7 +155,10 @@ internal class MapViewerDropdownMenu<T>(
         val resolvedMenuWidth = maxOf(
             menuWidth,
             triggerWidth,
-            MapViewerDropdownLayoutBuilder.minimumMenuWidth(options.map { it.label }),
+            MapViewerDropdownLayoutBuilder.minimumMenuWidth(
+                labels = options.map { it.label },
+                hasIcons = hasOptionIcon,
+            ),
         )
         val menuHeight = MENU_PADDING * 2.0 + (options.size * OPTION_HEIGHT)
         val bounds = MapViewerDropdownLayoutBuilder.menuBounds(
@@ -187,15 +200,18 @@ internal class MapViewerDropdownMenu<T>(
             rowBacking.y = OPTION_ROW_INSET * 0.5
             rowBacking.mouseEnabled = false
 
-            val chip = optionRow.container()
-            chip.xy(10.0, (OPTION_HEIGHT - CHIP_SIZE) * 0.5)
-            MapViewerSwatchViews.render(chip, option.swatchColor, CHIP_SIZE)
+            option.swatchColor?.let { color ->
+                val chip = optionRow.container()
+                chip.xy(10.0, (OPTION_HEIGHT - CHIP_SIZE) * 0.5)
+                MapViewerSwatchViews.render(chip, color, CHIP_SIZE)
+            }
 
-            val optionTextHost = optionRow.container().also { it.xy(OPTION_TEXT_LEFT, 0.0) }
+            val optionTextLeft = optionTextLeft()
+            val optionTextHost = optionRow.container().also { it.xy(optionTextLeft, 0.0) }
             MapViewerTextViews.leftBox(
                 parent = optionTextHost,
                 text = option.label,
-                width = bounds.width - MENU_PADDING * 2.0 - OPTION_TEXT_LEFT,
+                width = bounds.width - MENU_PADDING * 2.0 - optionTextLeft,
                 height = OPTION_HEIGHT - OPTION_ROW_INSET,
                 color = Palette.Colours.WHITE,
             )
@@ -266,8 +282,13 @@ internal class MapViewerDropdownMenu<T>(
 
     private fun updateTriggerDisplay(value: T?) {
         triggerLabel?.text = labelForValue(value)
-        triggerSwatch?.let { MapViewerSwatchViews.render(it, swatchForValue(value), TRIGGER_SWATCH_SIZE) }
+        triggerSwatch?.let { swatch ->
+            swatchForValue(value)?.let { color -> MapViewerSwatchViews.render(swatch, color, TRIGGER_SWATCH_SIZE) }
+        }
     }
+
+    private fun optionTextLeft(): Double =
+        if (hasOptionIcon) OPTION_TEXT_LEFT else OPTION_TEXT_LEFT_WITHOUT_ICON
 
     private fun closePopup() {
         ignoreOutsideUntilRelease = false
@@ -298,6 +319,7 @@ internal class MapViewerDropdownMenu<T>(
         private const val TRIGGER_SWATCH_SLOT_WIDTH = 40.0
         private const val TEXT_LEFT_PADDING = 8.0
         private const val OPTION_TEXT_LEFT = 30.0
+        private const val OPTION_TEXT_LEFT_WITHOUT_ICON = 10.0
         private const val CARET_WIDTH = 18.0
         private const val CARET_RIGHT_PADDING = 8.0
         private const val TRAILING_AREA_WIDTH = 44.0
@@ -308,15 +330,17 @@ internal object MapViewerDropdownLayoutBuilder {
     const val MENU_GAP = 6.0
     const val MENU_PADDING = 4.0
     const val OPTION_TEXT_LEFT = 30.0
+    const val OPTION_TEXT_LEFT_WITHOUT_ICON = 10.0
     private const val OPTION_RIGHT_PADDING = 24.0
 
     fun minimumMenuWidth(
         labels: List<String>,
         textSize: Double = MapViewerTextViews.DEFAULT_TEXT_SIZE,
+        hasIcons: Boolean = true,
     ): Double {
         val longestLabelWidth = labels.maxOfOrNull { label -> MapViewerTextViews.measure(label, size = textSize).width } ?: 0.0
         return MENU_PADDING * 2.0 +
-                OPTION_TEXT_LEFT +
+                (if (hasIcons) OPTION_TEXT_LEFT else OPTION_TEXT_LEFT_WITHOUT_ICON) +
                 longestLabelWidth +
                 OPTION_RIGHT_PADDING
     }

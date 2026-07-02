@@ -87,4 +87,13 @@ class MapViewerDropdownMenuTest {
 
         assertThat(longWidth, greaterThan(shortWidth))
     }
+
+    @Test
+    fun `minimum menu width can omit icon spacing`() {
+        val labels = listOf("MGRS", "Custom")
+        val iconWidth = MapViewerDropdownLayoutBuilder.minimumMenuWidth(labels, hasIcons = true)
+        val iconlessWidth = MapViewerDropdownLayoutBuilder.minimumMenuWidth(labels, hasIcons = false)
+
+        assertThat(iconlessWidth, equalTo(iconWidth - 20.0))
+    }
 }

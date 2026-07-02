@@ -65,20 +65,22 @@ internal class MapViewerNewOperationView(
     private var operationName = OperationNameGenerator.generate(Random(initialSeed))
     private var pixelsPerMetreText = initialPixelsPerMetre.toString()
     private var referenceSystem = initialGridConfiguration.referenceSystem
+    private var coordinateSystemSelection = CoordinateSystemSelection.MGRS
     private var mapIdText = initialGridConfiguration.mapId
     private var gridStartXText = initialGridConfiguration.startX.format()
     private var gridStartYText = initialGridConfiguration.startY.format()
     private val referenceSystemDropdown = MapViewerDropdownMenu(
         root = root,
-        options = ReferenceSystem.values().map { system ->
-            MapViewerDropdownOption(system, system.label())
+        options = CoordinateSystemSelection.values().map { system ->
+            MapViewerDropdownOption(system, system.label)
         },
         onSelected = { selected ->
-            referenceSystem = selected ?: ReferenceSystem.MGRS
+            coordinateSystemSelection = selected ?: CoordinateSystemSelection.MGRS
+            referenceSystem = coordinateSystemSelection.referenceSystem
             mapPreviewDirty = true
             refreshLaunchButton()
         },
-        labelForValue = { value -> (value ?: ReferenceSystem.MGRS).label() },
+        labelForValue = { value -> (value ?: CoordinateSystemSelection.MGRS).label },
         menuWidth = 180.0,
     )
     private var operationNameInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
@@ -196,7 +198,7 @@ internal class MapViewerNewOperationView(
         referenceSystemDropdown.renderField(
             parent = panel,
             label = "Coordinate System",
-            value = referenceSystem,
+            value = coordinateSystemSelection,
             x = CONTENT_PADDING,
             y = fieldsTop,
             width = fieldWidth,
@@ -532,7 +534,7 @@ internal class MapViewerNewOperationView(
     private fun previewSignature(): String =
         buildString {
             append(mapImage?.imagePath.orEmpty()).append('|')
-            append(referenceSystem.name).append('|')
+            append(coordinateSystemSelection.name).append('|')
             append(pixelsPerMetreInput?.text?.trim().orEmpty()).append('|')
             append(mapIdInput?.text?.trim().orEmpty()).append('|')
             append(gridStartXInput?.text?.trim().orEmpty()).append('|')
@@ -710,6 +712,14 @@ internal class MapViewerNewOperationView(
         var name: String
     }
 
+    private enum class CoordinateSystemSelection(
+        val label: String,
+        val referenceSystem: ReferenceSystem,
+    ) {
+        MGRS("MGRS", ReferenceSystem.MGRS),
+        CUSTOM("Custom", ReferenceSystem.MGRS),
+    }
+
     private companion object {
         const val Z_INDEX = 60_000.0
         const val CONTENT_PADDING = 24.0
@@ -725,10 +735,6 @@ internal class MapViewerNewOperationView(
         const val MAP_IMAGE_VALIDATION_WIDTH = 24.0
         const val DEFAULT_GRID_WIDTH = 1_000
         const val DEFAULT_GRID_HEIGHT = 1_000
-        private fun ReferenceSystem.label(): String =
-            when (this) {
-                ReferenceSystem.MGRS -> "MGRS"
-            }
 
         private fun <T> MutableList<T>.move(fromIndex: Int, toIndex: Int) {
             if (fromIndex == toIndex) return
