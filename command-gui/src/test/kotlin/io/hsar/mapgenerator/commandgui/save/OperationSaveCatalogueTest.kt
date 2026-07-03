@@ -78,7 +78,7 @@ class OperationSaveCatalogueTest {
             zip.write(
                 OperationSaveJson.objectMapper.writeValueAsBytes(
                     GameSaveDto(
-                        formatVersion = 3,
+                        formatVersion = 4,
                         id = "00000000-0000-0000-0000-000000000004",
                         name = "Summary Only",
                         createdAt = "2026-06-18T09:00:00Z",
@@ -86,7 +86,7 @@ class OperationSaveCatalogueTest {
                         thumbnailAssetId = null,
                         camera = null,
                         map = MapSaveDto(
-                            metresPerPixel = 20.0,
+                            unitsPerPixel = 20.0,
                             assetId = "00000000-0000-0000-0000-000000000005",
                         ),
                     ),
@@ -121,7 +121,7 @@ class OperationSaveCatalogueTest {
             operationName = operationName,
             width = mapImage.width,
             height = mapImage.height,
-            metresPerPixel = 20.0,
+            unitsPerPixel = 20.0,
         ),
         mapImage = mapImage,
         mapAssetSource = null,

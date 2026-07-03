@@ -8,6 +8,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogSpacing
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDropdownMenu
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDropdownOption
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconFit
@@ -20,8 +21,8 @@ import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.commandgui.korge.ui.UiFrameStyle
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
+import io.hsar.mapgenerator.grid.CoordAxis
 import io.hsar.mapgenerator.grid.GridLayerBuilder
-import io.hsar.mapgenerator.grid.MgrsCoord
 import io.hsar.mapgenerator.grid.ReferenceSystem
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
@@ -51,7 +52,7 @@ internal class MapViewerNewOperationView(
     viewportWidth: Int,
     viewportHeight: Int,
     initialSetupInputs: MapViewerSetupInputs = MapViewerSetupInputs(),
-    private val initialPixelsPerMetre: Double = 20.0,
+    private val initialUnitsPerPixel: Double = 20.0,
     private val initialSeed: Long = System.currentTimeMillis(),
     private val onLaunch: (NewOperationDraft) -> Unit,
     private val onBack: () -> Unit,
@@ -60,34 +61,29 @@ internal class MapViewerNewOperationView(
     private val layer = root.container()
     private val unitRows = mutableListOf<UnitRow>()
     private val initialGridConfiguration = initialSetupInputs.mapImage
-        ?.let { defaultGridConfiguration(it, initialPixelsPerMetre, initialSeed) }
-        ?: defaultGridConfiguration(DEFAULT_GRID_WIDTH, DEFAULT_GRID_HEIGHT, initialPixelsPerMetre, initialSeed)
+        ?.let { defaultGridConfiguration(it, initialUnitsPerPixel, initialSeed) }
+        ?: defaultGridConfiguration(DEFAULT_GRID_WIDTH, DEFAULT_GRID_HEIGHT, initialUnitsPerPixel, initialSeed)
     private var operationName = OperationNameGenerator.generate(Random(initialSeed))
-    private var pixelsPerMetreText = initialPixelsPerMetre.toString()
-    private var referenceSystem = initialGridConfiguration.referenceSystem
     private var coordinateSystemSelection = CoordinateSystemSelection.MGRS
-    private var mapIdText = initialGridConfiguration.mapId
-    private var gridStartXText = initialGridConfiguration.startX.format()
-    private var gridStartYText = initialGridConfiguration.startY.format()
+    private val coordinateSystemInputs = mutableMapOf(
+        CoordinateSystemSelection.MGRS to CoordinateInputState.from(initialGridConfiguration, initialUnitsPerPixel.toString()),
+    )
     private val referenceSystemDropdown = MapViewerDropdownMenu(
         root = root,
         options = CoordinateSystemSelection.values().map { system ->
             MapViewerDropdownOption(system, system.label)
         },
         onSelected = { selected ->
-            coordinateSystemSelection = selected ?: CoordinateSystemSelection.MGRS
-            referenceSystem = coordinateSystemSelection.referenceSystem
+            selectCoordinateSystem(selected ?: CoordinateSystemSelection.MGRS)
             mapPreviewDirty = true
             refreshLaunchButton()
+            render(layout.viewportWidth, layout.viewportHeight)
         },
         labelForValue = { value -> (value ?: CoordinateSystemSelection.MGRS).label },
         menuWidth = 180.0,
     )
     private var operationNameInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
-    private var pixelsPerMetreInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
-    private var mapIdInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
-    private var gridStartXInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
-    private var gridStartYInput: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null
+    private val coordinateInputFields = mutableMapOf<CoordinateSystemSelection, CoordinateInputFields>()
     private var mapPreviewContainer: Container? = null
     private var mapPreviewBounds: ScreenBounds? = null
     private var mapPreviewSignature: String? = null
@@ -138,6 +134,7 @@ internal class MapViewerNewOperationView(
         hideMapImageValidationTooltip()
         layout = MapViewerNewOperationLayoutBuilder.build(viewportWidth, viewportHeight)
         layer.removeChildren()
+        coordinateInputFields.clear()
         layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 255))
 
         renderHeader()
@@ -155,13 +152,16 @@ internal class MapViewerNewOperationView(
     private fun renderMapSection() {
         val panel = MapViewerLaunchUi.panel(layer, layout.mapPanelBounds)
         val panelWidth = layout.mapPanelBounds.width
-        val fieldWidth = (panelWidth - (CONTENT_PADDING * 2.0) - (FIELD_GAP * 4.0)) / 5.0
+        val coordinateRowLayout = MapViewerNewOperationCoordinateRowLayoutBuilder.build(
+            panelWidth = panelWidth,
+            labelTop = COORDINATE_LABEL_TOP,
+            inputHeight = INPUT_HEIGHT,
+            leftPadding = CONTENT_PADDING,
+        )
         val imageButtonWidth = 160.0
         val imageButtonLeft = panelWidth - CONTENT_PADDING - imageButtonWidth
         val imageValidationWidth = MapViewerTextInputValidation.VALIDATION_ICON_SIZE + FIELD_GAP
         val operationNameWidth = imageButtonLeft - CONTENT_PADDING - FIELD_GAP - imageValidationWidth
-        val fieldsTop = 144.0
-        val inputsTop = 168.0
         val previewTop = 250.0
 
         MapViewerLaunchUi.label(panel, "Operational Details", strong = true).xy(CONTENT_PADDING, CONTENT_PADDING)
@@ -199,62 +199,49 @@ internal class MapViewerNewOperationView(
             parent = panel,
             label = "Coordinate System",
             value = coordinateSystemSelection,
-            x = CONTENT_PADDING,
-            y = fieldsTop,
-            width = fieldWidth,
-            height = INPUT_HEIGHT,
+            x = coordinateRowLayout.coordinateSystem.labelBounds.left,
+            y = coordinateRowLayout.coordinateSystem.labelBounds.top,
+            width = coordinateRowLayout.coordinateSystem.inputBounds.width,
+            height = coordinateRowLayout.coordinateSystem.inputBounds.height,
         )
 
-        MapViewerLaunchUi.label(panel, "Map ID").xy(CONTENT_PADDING + fieldWidth + FIELD_GAP, fieldsTop)
-        mapIdInput = textInput(
+        val coordinateInputs = currentCoordinateInputs()
+        MapViewerLaunchUi.label(panel, "Map ID").xy(coordinateRowLayout.mapId.labelBounds.left, coordinateRowLayout.mapId.labelBounds.top)
+        val mapIdInput = textInput(
             parent = panel,
-            text = mapIdText,
-            bounds = ScreenBounds(
-                left = CONTENT_PADDING + fieldWidth + FIELD_GAP,
-                top = inputsTop,
-                width = fieldWidth,
-                height = INPUT_HEIGHT,
-            ),
+            text = coordinateInputs.mapIdText,
+            bounds = coordinateRowLayout.mapId.inputBounds,
         )
         wirePreviewRefresh(mapIdInput)
 
-        MapViewerLaunchUi.label(panel, "Starting X").xy(CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 2, fieldsTop)
-        MapViewerLaunchUi.label(panel, "Starting Y").xy(CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 3, fieldsTop)
-        MapViewerLaunchUi.label(panel, "Pixels Per Metre").xy(CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 4, fieldsTop)
-        gridStartXInput = textInput(
+        MapViewerLaunchUi.label(panel, "Starting X").xy(coordinateRowLayout.startX.labelBounds.left, coordinateRowLayout.startX.labelBounds.top)
+        MapViewerLaunchUi.label(panel, "Starting Y").xy(coordinateRowLayout.startY.labelBounds.left, coordinateRowLayout.startY.labelBounds.top)
+        MapViewerLaunchUi.label(panel, scaleLabel()).xy(coordinateRowLayout.scale.labelBounds.left, coordinateRowLayout.scale.labelBounds.top)
+        val gridStartXInput = textInput(
             parent = panel,
-            text = gridStartXText,
-            bounds = ScreenBounds(
-                left = CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 2,
-                top = inputsTop,
-                width = fieldWidth,
-                height = INPUT_HEIGHT,
-            ),
+            text = coordinateInputs.gridStartXText,
+            bounds = coordinateRowLayout.startX.inputBounds,
         )
         wirePreviewRefresh(gridStartXInput)
-        gridStartYInput = textInput(
+        val gridStartYInput = textInput(
             parent = panel,
-            text = gridStartYText,
-            bounds = ScreenBounds(
-                left = CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 3,
-                top = inputsTop,
-                width = fieldWidth,
-                height = INPUT_HEIGHT,
-            ),
+            text = coordinateInputs.gridStartYText,
+            bounds = coordinateRowLayout.startY.inputBounds,
         )
         wirePreviewRefresh(gridStartYInput)
 
-        pixelsPerMetreInput = textInput(
+        val unitsPerPixelInput = textInput(
             parent = panel,
-            text = pixelsPerMetreText,
-            bounds = ScreenBounds(
-                left = CONTENT_PADDING + (fieldWidth + FIELD_GAP) * 4,
-                top = inputsTop,
-                width = fieldWidth,
-                height = INPUT_HEIGHT,
-            ),
+            text = coordinateInputs.scaleText,
+            bounds = coordinateRowLayout.scale.inputBounds,
         )
-        wirePreviewRefresh(pixelsPerMetreInput)
+        wirePreviewRefresh(unitsPerPixelInput)
+        coordinateInputFields[coordinateSystemSelection] = CoordinateInputFields(
+            mapId = mapIdInput,
+            gridStartX = gridStartXInput,
+            gridStartY = gridStartYInput,
+            scale = unitsPerPixelInput,
+        )
 
         mapPreviewBounds = ScreenBounds(
             left = CONTENT_PADDING,
@@ -389,7 +376,7 @@ internal class MapViewerNewOperationView(
         when {
             !MapViewerTextInputValidation.isPresent(draft.operationName) -> showStatus("Enter an operation name")
             draft.mapImage == null -> showStatus("Choose a map image")
-            draft.pixelsPerMetre <= 0.0 -> showStatus("Enter a pixels-per-metre value")
+            draft.unitsPerPixel <= 0.0 -> showStatus("Enter a ${referenceSystem().displayUnit}-per-pixel value")
             draft.gridConfiguration == null -> showStatus("Enter a map ID and starting coordinates")
             else -> onLaunch(draft)
         }
@@ -406,8 +393,8 @@ internal class MapViewerNewOperationView(
                     assetSource = image.assetSource,
                 )
             },
-            pixelsPerMetre = pixelsPerMetreText.toDoubleOrNull() ?: -1.0,
-            referenceSystem = referenceSystem,
+            unitsPerPixel = currentUnitsPerPixel() ?: -1.0,
+            referenceSystem = referenceSystem(),
             gridConfiguration = parseGridConfiguration(),
             unitTemplates = unitRows.map { row ->
                 MapViewerUnitTemplate(
@@ -421,19 +408,25 @@ internal class MapViewerNewOperationView(
 
     private fun captureInputs() {
         operationNameInput?.text?.trim()?.let { operationName = it }
-        pixelsPerMetreInput?.text?.trim()?.let { pixelsPerMetreText = it }
-        mapIdInput?.text?.trim()?.let { mapIdText = it }
-        gridStartXInput?.text?.trim()?.let { gridStartXText = it }
-        gridStartYInput?.text?.trim()?.let { gridStartYText = it }
+        coordinateInputFields[coordinateSystemSelection]?.let { fields ->
+            coordinateSystemInputs[coordinateSystemSelection] = CoordinateInputState(
+                mapIdText = fields.mapId.text.trim(),
+                gridStartXText = fields.gridStartX.text.trim(),
+                gridStartYText = fields.gridStartY.text.trim(),
+                scaleText = fields.scale.text.trim(),
+            )
+        }
         unitRows.forEach { row ->
             row.name = row.input?.text?.trim().orEmpty().ifBlank { row.name }
         }
     }
 
     private fun parseGridConfiguration(): GridConfiguration? {
-        val mapId = mapIdText.trim()
-        val startX = MgrsCoord.parse(gridStartXText)
-        val startY = MgrsCoord.parse(gridStartYText)
+        val inputs = currentCoordinateInputs()
+        val referenceSystem = referenceSystem()
+        val mapId = inputs.mapIdText.trim()
+        val startX = referenceSystem.parseCoord(inputs.gridStartXText, CoordAxis.X, referenceSystem.gridScale)
+        val startY = referenceSystem.parseCoord(inputs.gridStartYText, CoordAxis.Y, referenceSystem.gridScale)
         return if (mapId.isNotBlank() && startX != null && startY != null) {
             GridConfiguration(
                 mapId = mapId,
@@ -471,12 +464,13 @@ internal class MapViewerNewOperationView(
         val gridLayer = GridLayerBuilder.build(
             width = previewWidth,
             height = previewHeight,
-            gridScale = 1_000,
-            metresPerPixel = previewMetresPerPixel(
-                metresPerPixel = pixelsPerMetreText.toDoubleOrNull() ?: initialPixelsPerMetre,
+            gridScale = gridConfiguration.referenceSystem.gridScale,
+            unitsPerPixel = previewUnitsPerPixel(
+                unitsPerPixel = currentUnitsPerPixel() ?: initialScaleInputAsUnitsPerPixel(),
                 previewScale = fittedIcon.scale,
             ),
             mapId = gridConfiguration.mapId,
+            referenceSystem = gridConfiguration.referenceSystem,
             verticalLineNumberStart = gridConfiguration.startX,
             horizontalLineNumberStart = gridConfiguration.startY,
             colour = GridColourSelector.bestPresetFor(mapImage.image),
@@ -513,8 +507,9 @@ internal class MapViewerNewOperationView(
         val image = mapImage ?: return null
         return defaultGridConfiguration(
             mapImage = image.image,
-            metresPerPixel = pixelsPerMetreText.toDoubleOrNull() ?: initialPixelsPerMetre,
+            unitsPerPixel = currentUnitsPerPixel() ?: initialScaleInputAsUnitsPerPixel(),
             seed = initialSeed,
+            referenceSystem = referenceSystem(),
         )
     }
 
@@ -531,14 +526,58 @@ internal class MapViewerNewOperationView(
         renderMapPreview(preview, bounds, mapImage)
     }
 
+    private fun selectCoordinateSystem(selection: CoordinateSystemSelection) {
+        if (selection == coordinateSystemSelection) {
+            return
+        }
+        captureInputs()
+        val previousGridConfiguration = parseGridConfiguration()
+        coordinateSystemSelection = selection
+        translatedGridConfiguration(previousGridConfiguration).let { gridConfiguration ->
+            coordinateSystemInputs[selection] = currentCoordinateInputs().copy(
+                mapIdText = gridConfiguration.mapId,
+                gridStartXText = gridConfiguration.formatStartX(),
+                gridStartYText = gridConfiguration.formatStartY(),
+            )
+            coordinateInputFields.remove(selection)
+        }
+    }
+
+    private fun translatedGridConfiguration(previousGridConfiguration: GridConfiguration?): GridConfiguration {
+        val fallback = regeneratedGridConfiguration()
+        return previousGridConfiguration
+            ?.let { gridConfiguration -> translateGridConfiguration(gridConfiguration, fallback.mapId, referenceSystem()) }
+            ?: fallback
+    }
+
+    private fun regeneratedGridConfiguration(): GridConfiguration =
+        mapImage
+            ?.let { image ->
+                defaultGridConfiguration(
+                    mapImage = image.image,
+                    unitsPerPixel = currentUnitsPerPixel() ?: initialScaleInputAsUnitsPerPixel(),
+                    seed = initialSeed,
+                    referenceSystem = referenceSystem(),
+                )
+            }
+            ?: defaultGridConfiguration(
+                width = DEFAULT_GRID_WIDTH,
+                height = DEFAULT_GRID_HEIGHT,
+                unitsPerPixel = currentUnitsPerPixel() ?: initialScaleInputAsUnitsPerPixel(),
+                seed = initialSeed,
+                referenceSystem = referenceSystem(),
+            )
+
     private fun previewSignature(): String =
-        buildString {
-            append(mapImage?.imagePath.orEmpty()).append('|')
-            append(coordinateSystemSelection.name).append('|')
-            append(pixelsPerMetreInput?.text?.trim().orEmpty()).append('|')
-            append(mapIdInput?.text?.trim().orEmpty()).append('|')
-            append(gridStartXInput?.text?.trim().orEmpty()).append('|')
-            append(gridStartYInput?.text?.trim().orEmpty())
+        currentCoordinateInputs().let { inputs ->
+            buildString {
+                append(mapImage?.imagePath.orEmpty()).append('|')
+                append(coordinateSystemSelection.name).append('|')
+                append(inputs.scaleText).append('|')
+                append(inputs.mapIdText).append('|')
+                append(inputs.gridStartXText).append('|')
+                append(inputs.gridStartYText)
+            }
         }
 
     private fun updateDrag(mousePos: Vector2D?, leftHeld: Boolean) {
@@ -626,13 +665,57 @@ internal class MapViewerNewOperationView(
                     assetSource = image.assetSource,
                 )
             },
-            pixelsPerMetre = pixelsPerMetreText.toDoubleOrNull() ?: -1.0,
-            referenceSystem = referenceSystem,
+            unitsPerPixel = currentUnitsPerPixel() ?: -1.0,
+            referenceSystem = referenceSystem(),
             gridConfiguration = parseGridConfiguration(),
         ).isLaunchable()
 
     private fun screenTitle(): String =
         "New Operation"
+
+    private fun scaleLabel(): String =
+        when (referenceSystem()) {
+            ReferenceSystem.MGRS -> "Pixels Per Metre"
+            ReferenceSystem.EPSILON -> "Pixels Per U"
+        }
+
+    private fun currentUnitsPerPixel(): Double? =
+        currentCoordinateInputs()
+            .scaleText
+            .toDoubleOrNull()
+            ?.takeIf { it > 0.0 }
+            ?.let(referenceSystem()::scaleInputToUnitsPerPixel)
+
+    private fun initialScaleInputAsUnitsPerPixel(): Double =
+        referenceSystem().scaleInputToUnitsPerPixel(initialUnitsPerPixel)
+
+    private fun referenceSystem(): ReferenceSystem =
+        coordinateSystemSelection.referenceSystem
+
+    private fun currentCoordinateInputs(): CoordinateInputState =
+        coordinateSystemInputs.getOrPut(coordinateSystemSelection) {
+            defaultCoordinateInputs().let { gridConfiguration ->
+                CoordinateInputState.from(gridConfiguration, initialUnitsPerPixel.toString())
+            }
+        }
+
+    private fun defaultCoordinateInputs(): GridConfiguration =
+        mapImage
+            ?.let { image ->
+                defaultGridConfiguration(
+                    mapImage = image.image,
+                    unitsPerPixel = initialScaleInputAsUnitsPerPixel(),
+                    seed = initialSeed,
+                    referenceSystem = referenceSystem(),
+                )
+            }
+            ?: defaultGridConfiguration(
+                width = DEFAULT_GRID_WIDTH,
+                height = DEFAULT_GRID_HEIGHT,
+                unitsPerPixel = initialScaleInputAsUnitsPerPixel(),
+                seed = initialSeed,
+                referenceSystem = referenceSystem(),
+            )
 
     private fun textInput(
         parent: Container,
@@ -707,6 +790,30 @@ internal class MapViewerNewOperationView(
         val startIndex: Int,
     )
 
+    private data class CoordinateInputState(
+        val mapIdText: String,
+        val gridStartXText: String,
+        val gridStartYText: String,
+        val scaleText: String,
+    ) {
+        companion object {
+            fun from(gridConfiguration: GridConfiguration, scaleText: String): CoordinateInputState =
+                CoordinateInputState(
+                    mapIdText = gridConfiguration.mapId,
+                    gridStartXText = gridConfiguration.formatStartX(),
+                    gridStartYText = gridConfiguration.formatStartY(),
+                    scaleText = scaleText,
+                )
+        }
+    }
+
+    private data class CoordinateInputFields(
+        val mapId: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField,
+        val gridStartX: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField,
+        val gridStartY: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField,
+        val scale: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField,
+    )
+
     private interface ReorderRow {
         val id: Long
         var name: String
@@ -717,7 +824,7 @@ internal class MapViewerNewOperationView(
         val referenceSystem: ReferenceSystem,
     ) {
         MGRS("MGRS", ReferenceSystem.MGRS),
-        CUSTOM("Custom", ReferenceSystem.MGRS),
+        EPSILON("Epsilon", ReferenceSystem.EPSILON),
     }
 
     private companion object {
@@ -729,13 +836,13 @@ internal class MapViewerNewOperationView(
         const val PREVIEW_HEIGHT = 36.0
         const val PREVIEW_LEFT = 0.0
         const val INPUT_HEIGHT = 40.0
+        const val COORDINATE_LABEL_TOP = 144.0
         const val HANDLE_WIDTH = 28.0
         const val HANDLE_HEIGHT = 28.0
         const val FIELD_GAP = 12.0
         const val MAP_IMAGE_VALIDATION_WIDTH = 24.0
         const val DEFAULT_GRID_WIDTH = 1_000
         const val DEFAULT_GRID_HEIGHT = 1_000
-
         private fun <T> MutableList<T>.move(fromIndex: Int, toIndex: Int) {
             if (fromIndex == toIndex) return
             val item = removeAt(fromIndex)
@@ -743,6 +850,12 @@ internal class MapViewerNewOperationView(
         }
     }
 }
+
+private fun GridConfiguration.formatStartX(): String =
+    referenceSystem.formatCoord(startX, CoordAxis.X, referenceSystem.gridScale)
+
+private fun GridConfiguration.formatStartY(): String =
+    referenceSystem.formatCoord(startY, CoordAxis.Y, referenceSystem.gridScale)
 
 internal data class MapViewerNewOperationLayout(
     val viewportWidth: Int,
@@ -786,6 +899,60 @@ internal object MapViewerNewOperationLayoutBuilder {
             unitsPanelBounds = ScreenBounds(sidebarLeft, shellContentTop, sidebarWidth, shellContentHeight),
             backButtonBounds = ScreenBounds(shellLeft + shellPadding, shellTop + shellPadding, 120.0, 42.0),
             launchButtonBounds = ScreenBounds(shellLeft + shellWidth - shellPadding - 190.0, shellTop + shellPadding, 190.0, 42.0),
+        )
+    }
+}
+
+internal data class MapViewerNewOperationCoordinateRowLayout(
+    val coordinateSystem: MapViewerNewOperationFieldLayout,
+    val mapId: MapViewerNewOperationFieldLayout,
+    val startX: MapViewerNewOperationFieldLayout,
+    val startY: MapViewerNewOperationFieldLayout,
+    val scale: MapViewerNewOperationFieldLayout,
+) {
+    val fields: List<MapViewerNewOperationFieldLayout>
+        get() = listOf(coordinateSystem, mapId, startX, startY, scale)
+}
+
+internal data class MapViewerNewOperationFieldLayout(
+    val labelBounds: ScreenBounds,
+    val inputBounds: ScreenBounds,
+)
+
+internal object MapViewerNewOperationCoordinateRowLayoutBuilder {
+    fun build(
+        panelWidth: Double,
+        labelTop: Double,
+        inputHeight: Double,
+        leftPadding: Double = 24.0,
+        fieldGap: Double = MapViewerDialogSpacing.FIELD_GAP,
+    ): MapViewerNewOperationCoordinateRowLayout {
+        val fieldWidth = (panelWidth - (leftPadding * 2.0) - (fieldGap * 4.0)) / 5.0
+        val inputTop = MapViewerDialogSpacing.inputTop(labelTop)
+        fun field(index: Int): MapViewerNewOperationFieldLayout {
+            val left = leftPadding + ((fieldWidth + fieldGap) * index)
+            return MapViewerNewOperationFieldLayout(
+                labelBounds = ScreenBounds(
+                    left = left,
+                    top = labelTop,
+                    width = fieldWidth,
+                    height = inputTop - labelTop,
+                ),
+                inputBounds = ScreenBounds(
+                    left = left,
+                    top = inputTop,
+                    width = fieldWidth,
+                    height = inputHeight,
+                ),
+            )
+        }
+
+        return MapViewerNewOperationCoordinateRowLayout(
+            coordinateSystem = field(0),
+            mapId = field(1),
+            startX = field(2),
+            startY = field(3),
+            scale = field(4),
         )
     }
 }

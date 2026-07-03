@@ -21,7 +21,7 @@ class MapPlacedUnitManagerTest {
             root = root,
             unitLayer = unitLayer,
             geometry = ViewerGeometry(backgroundWidth = 1660, backgroundHeight = 1660, mapOffsetX = 330, mapOffsetY = 330),
-            mapMetresPerPixel = 1.0,
+            mapUnitsPerPixel = 1.0,
             mapWidth = 1000,
             mapHeight = 1000,
             viewportProvider = {
@@ -74,7 +74,7 @@ class MapPlacedUnitManagerTest {
             root = root,
             unitLayer = unitLayer,
             geometry = ViewerGeometry(backgroundWidth = 1660, backgroundHeight = 1660, mapOffsetX = 330, mapOffsetY = 330),
-            mapMetresPerPixel = 1.0,
+            mapUnitsPerPixel = 1.0,
             mapWidth = 1000,
             mapHeight = 1000,
             viewportProvider = {

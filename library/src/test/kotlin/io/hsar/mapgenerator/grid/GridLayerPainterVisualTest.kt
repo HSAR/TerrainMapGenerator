@@ -31,7 +31,7 @@ class GridLayerPainterVisualTest {
             layer = GridLayer(
                 mapId = "TEST",
                 gridScale = 1000,
-                metresPerPixel = 1.0,
+                unitsPerPixel = 1.0,
                 detailLevel = 1,
                 pixelsPerLine = 50.0,
                 verticalLineNumberStart = MgrsCoord.fromLineNumber(9.0, 1000),

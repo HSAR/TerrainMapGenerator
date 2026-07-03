@@ -2,7 +2,7 @@ package io.hsar.mapgenerator.image
 
 import io.hsar.mapgenerator.grid.GridLayerBuilder
 import io.hsar.mapgenerator.grid.GridLayerPainter
-import java.util.Random
+import java.util.*
 
 class GridRenderer(
     private val imageBuilder: io.hsar.mapgenerator.image.ImageBuilder,
@@ -18,7 +18,7 @@ class GridRenderer(
             width = imageBuilder.width,
             height = imageBuilder.height,
             gridScale = gridScale,
-            metresPerPixel = metresPerPixel,
+            unitsPerPixel = metresPerPixel,
             random = random,
             mapId = GZDand100kmGSID.ifBlank { null }
         )

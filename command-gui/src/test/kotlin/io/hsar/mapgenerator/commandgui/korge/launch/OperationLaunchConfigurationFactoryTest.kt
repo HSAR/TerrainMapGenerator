@@ -6,7 +6,9 @@ import io.hsar.mapgenerator.commandgui.StaticImageLayer
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
+import io.hsar.mapgenerator.grid.CoordAxis
 import io.hsar.mapgenerator.grid.MgrsCoord
+import io.hsar.mapgenerator.grid.ReferenceSystem
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -30,7 +32,7 @@ class OperationLaunchConfigurationFactoryTest {
         val configuration = defaultGridConfiguration(
             width = 1_000,
             height = 1_000,
-            metresPerPixel = 20.0,
+            unitsPerPixel = 20.0,
             seed = 1234L,
         )
 
@@ -40,11 +42,58 @@ class OperationLaunchConfigurationFactoryTest {
     }
 
     @Test
+    fun `default epsilon grid configuration creates displayable axis starts`() {
+        val configuration = defaultGridConfiguration(
+            width = 1_000,
+            height = 1_000,
+            unitsPerPixel = ReferenceSystem.EPSILON.scaleInputToUnitsPerPixel(20.0),
+            seed = 1234L,
+            referenceSystem = ReferenceSystem.EPSILON,
+        )
+
+        assertThat(configuration.referenceSystem, equalTo(ReferenceSystem.EPSILON))
+        assertThat(configuration.referenceSystem.formatCoord(configuration.startX, CoordAxis.X, ReferenceSystem.EPSILON.gridScale).toInt() in 1..100, equalTo(true))
+        assertThat(configuration.referenceSystem.formatCoord(configuration.startY, CoordAxis.Y, ReferenceSystem.EPSILON.gridScale).matches(Regex("[A-Z]{1,2}")), equalTo(true))
+    }
+
+    @Test
+    fun `epsilon grid configuration uses twenty unit squares and pixels per unit input`() {
+        val gridLayer = io.hsar.mapgenerator.grid.GridLayerBuilder.build(
+            width = 1_000,
+            height = 1_000,
+            gridScale = ReferenceSystem.EPSILON.gridScale,
+            unitsPerPixel = ReferenceSystem.EPSILON.scaleInputToUnitsPerPixel(20.0),
+            referenceSystem = ReferenceSystem.EPSILON,
+            random = Random(1234L),
+        )
+
+        assertThat(gridLayer.gridScale, equalTo(20))
+        assertThat(gridLayer.pixelsPerLine, equalTo(400.0))
+    }
+
+    @Test
+    fun `grid configuration translation preserves line numbers for epsilon input display`() {
+        val translated = translateGridConfiguration(
+            gridConfiguration = GridConfiguration(
+                mapId = "25F XK",
+                referenceSystem = ReferenceSystem.MGRS,
+                startX = MgrsCoord.fromLineNumber(39.0, ReferenceSystem.MGRS.gridScale),
+                startY = MgrsCoord.fromLineNumber(45.0, ReferenceSystem.MGRS.gridScale),
+            ),
+            mapId = "EPSILON",
+            referenceSystem = ReferenceSystem.EPSILON,
+        )
+
+        assertThat(translated.referenceSystem.formatCoord(translated.startX, CoordAxis.X, ReferenceSystem.EPSILON.gridScale), equalTo("40"))
+        assertThat(translated.referenceSystem.formatCoord(translated.startY, CoordAxis.Y, ReferenceSystem.EPSILON.gridScale), equalTo("AT"))
+    }
+
+    @Test
     fun `map image retains display name and drives the viewer size`() {
         val draft = NewOperationDraft(
             operationName = "Operation Copperhead",
             mapImage = OperationMapImage("Satellite", "same-path.png", image(200, 80)),
-            pixelsPerMetre = 15.0,
+            unitsPerPixel = 15.0,
         )
 
         val configuration = OperationLaunchConfigurationFactory.create(draft, MapViewerSettings())
@@ -56,7 +105,7 @@ class OperationLaunchConfigurationFactoryTest {
         assertThat(configuration.settings.staticLayerImages.values.map { it.height }.toSet(), equalTo(setOf(80)))
         assertThat(configuration.settings.width, equalTo(200))
         assertThat(configuration.settings.height, equalTo(80))
-        assertThat(configuration.settings.metresPerPixel, equalTo(15.0))
+        assertThat(configuration.settings.unitsPerPixel, equalTo(15.0))
     }
 
     @Test
@@ -117,13 +166,13 @@ class OperationLaunchConfigurationFactoryTest {
     }
 
     @Test
-    fun `preview metres per pixel preserves map scale when image is fitted smaller`() {
-        val metresPerPixel = previewMetresPerPixel(
-            metresPerPixel = 20.0,
+    fun `preview units per pixel preserves map scale when image is fitted smaller`() {
+        val unitsPerPixel = previewUnitsPerPixel(
+            unitsPerPixel = 20.0,
             previewScale = 0.25,
         )
 
-        assertThat(metresPerPixel, equalTo(80.0))
+        assertThat(unitsPerPixel, equalTo(80.0))
     }
 
     @Test

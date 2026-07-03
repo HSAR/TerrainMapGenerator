@@ -1,8 +1,10 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.grid.EpsilonCoord
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.MgrsCoord
+import io.hsar.mapgenerator.grid.ReferenceSystem
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
@@ -69,6 +71,33 @@ class GridReferenceFormatterFieldsTest {
     }
 
     @Test
+    fun `epsilon reference fields parse back to map pixels`() {
+        val pixels = GridReferenceFormatter.parseFields(
+            layer = epsilonLayer(),
+            mapWidth = 2560,
+            mapHeight = 1440,
+            easting = "CD4",
+            northing = "30-40",
+        )
+
+        assertThat(pixels?.x, closeTo(15.0, 0.0001))
+        assertThat(pixels?.y, closeTo(30.0, 0.0001))
+    }
+
+    @Test
+    fun `epsilon reference fields reject invalid percentages`() {
+        val pixels = GridReferenceFormatter.parseFields(
+            layer = epsilonLayer(),
+            mapWidth = 2560,
+            mapHeight = 1440,
+            easting = "CD4",
+            northing = "100-40",
+        )
+
+        assertThat(pixels, equalTo(null))
+    }
+
+    @Test
     fun `map pixels round trip through normalized coordinates without offset drift`() {
         val space = MapCoordinateSpace(
             geometry = ViewerGeometry(
@@ -96,11 +125,24 @@ class GridReferenceFormatterFieldsTest {
     ) = GridLayer(
         mapId = "25F XK",
         gridScale = 1000,
-        metresPerPixel = 20.0,
+        unitsPerPixel = 20.0,
         detailLevel = 2,
         pixelsPerLine = 100.0,
         verticalLineNumberStart = MgrsCoord.fromLineNumber(verticalLineNumberStart, 1000),
         horizontalLineNumberStart = MgrsCoord.fromLineNumber(horizontalLineNumberStart, 1000),
+        verticalLineCount = 20,
+        horizontalLineCount = 20,
+    )
+
+    private fun epsilonLayer() = GridLayer(
+        mapId = "EPSILON",
+        referenceSystem = ReferenceSystem.EPSILON,
+        gridScale = 1000,
+        unitsPerPixel = 20.0,
+        detailLevel = 2,
+        pixelsPerLine = 50.0,
+        verticalLineNumberStart = EpsilonCoord.fromUnits(3_000),
+        horizontalLineNumberStart = EpsilonCoord.fromUnits(82_000),
         verticalLineCount = 20,
         horizontalLineCount = 20,
     )

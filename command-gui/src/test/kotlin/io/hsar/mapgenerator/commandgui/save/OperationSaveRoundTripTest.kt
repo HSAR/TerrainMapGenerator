@@ -153,7 +153,7 @@ class OperationSaveRoundTripTest {
         val reread = OperationSaveReader().read(secondSave)
         assertThat(reread.game.id, equalTo(operationId.toString()))
         assertThat(reread.game.name, equalTo("Round Trip"))
-        assertThat(reread.game.map.metresPerPixel, equalTo(20.0))
+        assertThat(reread.game.map.unitsPerPixel, equalTo(20.0))
         assertThat(reread.game.map.referenceSystem, equalTo(ReferenceSystem.MGRS))
         assertThat(reread.game.map.assetId.isNotBlank(), equalTo(true))
         assertThat(reread.game.map.mapId.isNullOrBlank(), equalTo(false))
@@ -679,7 +679,7 @@ class OperationSaveRoundTripTest {
                     staticLayerImages = emptyMap(),
                     width = 64,
                     height = 64,
-                    metresPerPixel = 20.0,
+                    unitsPerPixel = 20.0,
                     gridColour = Palette.Colours.DARK,
                 ),
                 ledgerEntries = emptyList(),
@@ -715,7 +715,7 @@ class OperationSaveRoundTripTest {
             staticLayerImages = emptyMap(),
             width = 960,
             height = 540,
-            metresPerPixel = 20.0,
+            unitsPerPixel = 20.0,
         ),
         mapImage: BufferedImage,
         mapSource: AssetSource?,

@@ -82,8 +82,8 @@ class MainLayerSelectionTest {
 
         assertThat(configuration.mapId, not(nullValue()))
         assertThat(configuration.mapId.isNotBlank(), equalTo(true))
-        assertThat(configuration.startX.metres >= 0, equalTo(true))
-        assertThat(configuration.startY.metres >= 0, equalTo(true))
+        assertThat(configuration.startX.units >= 0, equalTo(true))
+        assertThat(configuration.startY.units >= 0, equalTo(true))
     }
 
     private fun imageFor(layer: MapLayer): BufferedImage =

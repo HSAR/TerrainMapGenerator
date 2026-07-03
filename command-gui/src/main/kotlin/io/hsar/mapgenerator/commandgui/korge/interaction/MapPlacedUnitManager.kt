@@ -30,7 +30,7 @@ internal class MapPlacedUnitManager(
     private val root: Container,
     private val unitLayer: Container,
     private val geometry: ViewerGeometry,
-    private val mapMetresPerPixel: Double,
+    private val mapUnitsPerPixel: Double,
     private val mapWidth: Int,
     private val mapHeight: Int,
     private val gridLayer: GridLayer? = null,
@@ -837,7 +837,7 @@ internal class MapPlacedUnitManager(
     }
 
     private fun worldUnitSize(bitmap: korlibs.image.bitmap.Bitmap32): WorldUnitSize {
-        val worldWidth = UNIT_ICON_WIDTH_METRES / mapMetresPerPixel
+        val worldWidth = UNIT_ICON_WIDTH_UNITS / mapUnitsPerPixel
         val worldScale = worldWidth / bitmap.width
         return WorldUnitSize(
             worldWidth = worldWidth,
@@ -856,7 +856,7 @@ internal class MapPlacedUnitManager(
         RGBA(color.red, color.green, color.blue, alpha)
 
     private companion object {
-        const val UNIT_ICON_WIDTH_METRES = 250.0
+        const val UNIT_ICON_WIDTH_UNITS = 250.0
         const val DRAG_PREVIEW_Z_INDEX = 15_000.0
         private const val FACING_RING_SEGMENTS = 48
         private const val HIT_TOLERANCE = 8.0

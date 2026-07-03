@@ -5,11 +5,12 @@ internal data class GridMeasurement(
     val originMapY: Double,
     val destinationMapX: Double,
     val destinationMapY: Double,
-    val distanceMetres: Int,
+    val distanceUnits: Int,
+    val unitLabel: String,
     val bearingDegrees: Int,
 ) {
     val distanceText: String
-        get() = "${distanceMetres}m"
+        get() = "$distanceUnits$unitLabel"
 
     val bearingText: String
         get() = "${bearingDegrees.toString().padStart(3, '0')}\u00b0"

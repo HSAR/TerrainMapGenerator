@@ -15,10 +15,10 @@ class MapViewerSettingsTest {
     }
 
     @Test
-    fun `default settings use twenty metres per pixel`() {
+    fun `default settings use twenty units per pixel`() {
         val settings = MapViewerSettings()
 
-        assertThat(settings.metresPerPixel, equalTo(20.0))
+        assertThat(settings.unitsPerPixel, equalTo(20.0))
     }
 
     @Test

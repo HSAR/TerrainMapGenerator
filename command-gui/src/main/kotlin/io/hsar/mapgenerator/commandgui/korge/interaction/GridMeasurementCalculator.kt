@@ -18,13 +18,14 @@ internal object GridMeasurementCalculator {
         originMapY = originMapY,
         destinationMapX = destinationMapX,
         destinationMapY = destinationMapY,
-        distanceMetres = distanceMetres(
+        distanceUnits = distanceUnits(
             layer = layer,
             originMapX = originMapX,
             originMapY = originMapY,
             destinationMapX = destinationMapX,
             destinationMapY = destinationMapY,
         ),
+        unitLabel = layer.referenceSystem.displayUnit,
         bearingDegrees = bearingDegrees(
             originMapX = originMapX,
             originMapY = originMapY,
@@ -33,7 +34,7 @@ internal object GridMeasurementCalculator {
         ),
     )
 
-    private fun distanceMetres(
+    private fun distanceUnits(
         layer: GridLayer,
         originMapX: Double,
         originMapY: Double,
@@ -43,7 +44,7 @@ internal object GridMeasurementCalculator {
             sqrt(
                 ((destinationMapX - originMapX) * (destinationMapX - originMapX)) +
                         ((destinationMapY - originMapY) * (destinationMapY - originMapY))
-            ) * layer.metresPerPixel
+            ) * layer.unitsPerPixel
             )
         .roundToInt()
 

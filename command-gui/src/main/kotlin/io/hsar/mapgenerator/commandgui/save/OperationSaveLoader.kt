@@ -32,7 +32,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.launch.GridConfiguration
 import io.hsar.mapgenerator.commandgui.korge.launch.defaultGridConfiguration
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
-import io.hsar.mapgenerator.grid.MgrsCoord
+import io.hsar.mapgenerator.grid.CoordAxis
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.nio.file.Path
@@ -63,8 +63,12 @@ internal class OperationSaveLoader {
                 ?.let { mapId ->
                     val startX = save.game.map.gridStartX
                     val startY = save.game.map.gridStartY
-                    val parsedStartX = startX?.let(MgrsCoord::parse)
-                    val parsedStartY = startY?.let(MgrsCoord::parse)
+                    val parsedStartX = startX?.let {
+                        save.game.map.referenceSystem.parseCoord(it, CoordAxis.X, save.game.map.referenceSystem.gridScale)
+                    }
+                    val parsedStartY = startY?.let {
+                        save.game.map.referenceSystem.parseCoord(it, CoordAxis.Y, save.game.map.referenceSystem.gridScale)
+                    }
                     if (parsedStartX != null && parsedStartY != null) {
                         GridConfiguration(
                             mapId = mapId,
@@ -77,8 +81,9 @@ internal class OperationSaveLoader {
                     }
                 } ?: defaultGridConfiguration(
                 mapImage = mapImage,
-                metresPerPixel = save.game.map.metresPerPixel,
+                unitsPerPixel = save.game.map.unitsPerPixel,
                 seed = operationUuid.mostSignificantBits xor operationUuid.leastSignificantBits,
+                referenceSystem = save.game.map.referenceSystem,
             )
 
             val settings = MapViewerSettings(
@@ -91,7 +96,7 @@ internal class OperationSaveLoader {
                 staticLayerImages = mapOf(save.game.map.assetId to mapImage),
                 width = mapImage.width,
                 height = mapImage.height,
-                metresPerPixel = save.game.map.metresPerPixel,
+                unitsPerPixel = save.game.map.unitsPerPixel,
                 mapId = gridConfiguration.mapId,
                 referenceSystem = gridConfiguration.referenceSystem,
                 gridStartX = gridConfiguration.startX,
@@ -197,7 +202,7 @@ internal class OperationSaveLoader {
         }
 
     private companion object {
-        const val FORMAT_VERSION = 3
+        const val FORMAT_VERSION = 4
         const val ASSET_ROLE_TURN_THUMBNAIL = "turn-thumbnail"
     }
 }

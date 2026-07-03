@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogSpacing
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -34,5 +35,21 @@ class MapViewerLaunchLayoutTest {
         assertThat(layout.backButtonBounds.left < layout.launchButtonBounds.left, equalTo(true))
         assertThat(layout.launchButtonBounds.left > layout.unitsPanelBounds.left, equalTo(true))
         assertThat(layout.launchButtonBounds.top, equalTo(132.0))
+    }
+
+    @Test
+    fun `new operation coordinate row aligns dropdown and input fields`() {
+        val labelTop = 144.0
+        val inputTop = MapViewerDialogSpacing.inputTop(labelTop)
+        val layout = MapViewerNewOperationCoordinateRowLayoutBuilder.build(
+            panelWidth = 760.0,
+            labelTop = labelTop,
+            inputHeight = 40.0,
+            leftPadding = 24.0,
+        )
+
+        assertThat(layout.fields.map { it.labelBounds.top }.toSet(), equalTo(setOf(labelTop)))
+        assertThat(layout.fields.map { it.inputBounds.top }.toSet(), equalTo(setOf(inputTop)))
+        assertThat(layout.fields.map { it.inputBounds.height }.toSet(), equalTo(setOf(40.0)))
     }
 }

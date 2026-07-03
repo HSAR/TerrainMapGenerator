@@ -1,7 +1,10 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.grid.EpsilonCoord
+import io.hsar.mapgenerator.grid.EpsilonGridDesignators
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.MgrsCoord
+import io.hsar.mapgenerator.grid.ReferenceSystem
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -62,17 +65,58 @@ class GridReferenceFormatterTest {
         assertThat(reference, equalTo("0240 -0880"))
     }
 
+    @Test
+    fun `formats an epsilon reference with square designator and percent offsets`() {
+        val reference = GridReferenceFormatter.format(
+            layer = epsilonLayer(),
+            mapWidth = 2560,
+            mapHeight = 1440,
+            mapX = 15.0,
+            mapY = 30.0,
+        )
+
+        assertThat(reference, equalTo("CD4 30-40"))
+    }
+
+    @Test
+    fun `epsilon y designators advance through single and double letters`() {
+        assertThat(EpsilonGridDesignators.yDesignator(0), equalTo("A"))
+        assertThat(EpsilonGridDesignators.yDesignator(25), equalTo("Z"))
+        assertThat(EpsilonGridDesignators.yDesignator(26), equalTo("AA"))
+        assertThat(EpsilonGridDesignators.yDesignator(27), equalTo("AB"))
+        assertThat(EpsilonGridDesignators.yDesignator(701), equalTo("ZZ"))
+    }
+
+    @Test
+    fun `epsilon x designators are one to one hundred`() {
+        assertThat(EpsilonGridDesignators.xDesignator(0), equalTo("1"))
+        assertThat(EpsilonGridDesignators.xDesignator(99), equalTo("100"))
+    }
+
     private fun layer(
         verticalLineNumberStart: Double = 5.0,
         horizontalLineNumberStart: Double = 45.0,
     ) = GridLayer(
         mapId = "25F XK",
         gridScale = 1000,
-        metresPerPixel = 20.0,
+        unitsPerPixel = 20.0,
         detailLevel = 2,
         pixelsPerLine = 100.0,
         verticalLineNumberStart = MgrsCoord.fromLineNumber(verticalLineNumberStart, 1000),
         horizontalLineNumberStart = MgrsCoord.fromLineNumber(horizontalLineNumberStart, 1000),
+        verticalLineCount = 20,
+        horizontalLineCount = 20,
+    )
+
+    private fun epsilonLayer() = GridLayer(
+        mapId = "EPSILON",
+        referenceSystem = ReferenceSystem.EPSILON,
+        gridScale = 1000,
+        unitsPerPixel = 20.0,
+        detailLevel = 2,
+        pixelsPerLine = 50.0,
+        verticalLineNumberStart = EpsilonCoord.fromUnits(3_000),
+        horizontalLineNumberStart = EpsilonCoord.fromUnits(82_000),
         verticalLineCount = 20,
         horizontalLineCount = 20,
     )

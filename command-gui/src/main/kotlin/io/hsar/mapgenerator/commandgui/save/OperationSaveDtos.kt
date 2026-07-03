@@ -34,7 +34,7 @@ internal data class CameraSaveDto(
 )
 
 internal data class MapSaveDto(
-    val metresPerPixel: Double,
+    val unitsPerPixel: Double,
     val assetId: String,
     val referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
     val mapId: String? = null,

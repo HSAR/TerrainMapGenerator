@@ -14,28 +14,28 @@ object GridLayerBuilder {
         width: Int,
         height: Int,
         gridScale: Int,
-        metresPerPixel: Double,
+        unitsPerPixel: Double,
         random: Random = Random(),
         mapId: String? = null,
         referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
-        verticalLineNumberStart: MgrsCoord? = null,
-        horizontalLineNumberStart: MgrsCoord? = null,
+        verticalLineNumberStart: Coord? = null,
+        horizontalLineNumberStart: Coord? = null,
         colour: Color = GridPalettes.DEFAULT.lineColour,
     ): GridLayer {
-        val pixelsPerLine = gridScale / metresPerPixel
+        val pixelsPerLine = gridScale / unitsPerPixel
         val detailLevel = getDetailLevel(gridScale)
         val verticalLineCount = (width / pixelsPerLine).toInt()
         val horizontalLineCount = (height / pixelsPerLine).toInt()
 
         return GridLayer(
-            mapId = mapId ?: GridGenerator.randomMGRSMapId(random),
+            mapId = mapId ?: defaultMapId(referenceSystem, random),
             referenceSystem = referenceSystem,
             gridScale = gridScale,
-            metresPerPixel = metresPerPixel,
+            unitsPerPixel = unitsPerPixel,
             detailLevel = detailLevel,
             pixelsPerLine = pixelsPerLine,
-            verticalLineNumberStart = verticalLineNumberStart ?: generateLineNumberStart(detailLevel, verticalLineCount, random),
-            horizontalLineNumberStart = horizontalLineNumberStart ?: generateLineNumberStart(detailLevel, horizontalLineCount, random),
+            verticalLineNumberStart = verticalLineNumberStart ?: generateLineNumberStart(referenceSystem, CoordAxis.X, detailLevel, verticalLineCount, gridScale, random),
+            horizontalLineNumberStart = horizontalLineNumberStart ?: generateLineNumberStart(referenceSystem, CoordAxis.Y, detailLevel, horizontalLineCount, gridScale, random),
             verticalLineCount = verticalLineCount,
             horizontalLineCount = horizontalLineCount,
             colour = colour,
@@ -48,8 +48,15 @@ object GridLayerBuilder {
         return 5 - gridScaleMagnitude
     }
 
-    private fun generateLineNumberStart(detailLevel: Int, totalLines: Int, random: Random): MgrsCoord {
-        val maxCoordinate = 10.0.pow(detailLevel).toInt() - 1
+    private fun generateLineNumberStart(
+        referenceSystem: ReferenceSystem,
+        axis: CoordAxis,
+        detailLevel: Int,
+        totalLines: Int,
+        gridScale: Int,
+        random: Random,
+    ): Coord {
+        val maxCoordinate = maxLineNumberStart(referenceSystem, axis, detailLevel)
         val minLineNumberStart = totalLines
         val maxLineNumberStart = maxCoordinate - totalLines
 
@@ -57,9 +64,24 @@ object GridLayerBuilder {
             "Grid has too many visible lines ($totalLines) for detail level $detailLevel."
         }
 
-        return MgrsCoord.fromLineNumber(
+        return referenceSystem.coordFromLineNumber(
             lineNumber = RandomGenerator.generateUniform(minLineNumberStart, maxLineNumberStart, random).toDouble(),
-            gridScale = 10.0.pow(5 - detailLevel).toInt(),
+            gridScale = gridScale,
         )
     }
+
+    private fun maxLineNumberStart(referenceSystem: ReferenceSystem, axis: CoordAxis, detailLevel: Int): Int =
+        when (referenceSystem) {
+            ReferenceSystem.MGRS -> 10.0.pow(detailLevel).toInt() - 1
+            ReferenceSystem.EPSILON -> when (axis) {
+                CoordAxis.X -> EpsilonGridDesignators.MAX_X_SQUARES - 1
+                CoordAxis.Y -> EpsilonGridDesignators.MAX_Y_SQUARES - 1
+            }
+        }
+
+    private fun defaultMapId(referenceSystem: ReferenceSystem, random: Random): String =
+        when (referenceSystem) {
+            ReferenceSystem.MGRS -> GridGenerator.randomMGRSMapId(random)
+            ReferenceSystem.EPSILON -> "EPSILON"
+        }
 }

@@ -10,9 +10,9 @@ import io.hsar.mapgenerator.graph.scale
 import io.hsar.mapgenerator.graph.toLine
 import io.hsar.mapgenerator.graph.toPoint
 import io.hsar.mapgenerator.graph.toPointD
+import io.hsar.mapgenerator.grid.Coord
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.GridLayerBuilder
-import io.hsar.mapgenerator.grid.MgrsCoord
 import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
 import io.hsar.mapgenerator.image.PathRenderer
 import io.hsar.mapgenerator.image.TerrainGenerator
@@ -101,21 +101,21 @@ class TerrainMapGenerator(
         width = width,
         height = height,
         gridScale = io.hsar.mapgenerator.image.GridRenderer.ONE_KM_GRID_SQUARES,
-        metresPerPixel = metresPerPixel,
+        unitsPerPixel = metresPerPixel,
         random = Random(gridSeed),
         colour = colour,
     )
 
     fun generateGridLayer(
         mapId: String?,
-        verticalLineNumberStart: MgrsCoord?,
-        horizontalLineNumberStart: MgrsCoord?,
+        verticalLineNumberStart: Coord?,
+        horizontalLineNumberStart: Coord?,
         colour: Color = io.hsar.mapgenerator.grid.GridPalettes.DEFAULT.lineColour,
     ): GridLayer = GridLayerBuilder.build(
         width = width,
         height = height,
         gridScale = io.hsar.mapgenerator.image.GridRenderer.ONE_KM_GRID_SQUARES,
-        metresPerPixel = metresPerPixel,
+        unitsPerPixel = metresPerPixel,
         random = Random(gridSeed),
         mapId = mapId,
         verticalLineNumberStart = verticalLineNumberStart,

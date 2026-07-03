@@ -12,11 +12,10 @@ import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
+import io.hsar.mapgenerator.grid.Coord
 import io.hsar.mapgenerator.grid.GridLayerBuilder
-import io.hsar.mapgenerator.grid.MgrsCoord
 import io.hsar.mapgenerator.grid.ReferenceSystem
 import io.hsar.mapgenerator.gui.ImageFrame
-import io.hsar.mapgenerator.image.GridRenderer
 import io.hsar.mapgenerator.image.ImageUtils.compose
 import io.hsar.mapgenerator.image.ImageWriter
 import org.apache.logging.log4j.LogManager
@@ -56,7 +55,7 @@ object LaunchGuiCommand : Command("show-gui") {
         enabledLayerIds = defaultEnabledLayerIds(selectedLayers, staticLayers),
         staticLayerImages = staticLayers.associate { it.layer.id to it.image },
         seed = seed,
-        metresPerPixel = metresPerPixel,
+        unitsPerPixel = metresPerPixel,
         metresPerContour = metresPerContour,
         width = width,
         height = height,
@@ -263,9 +262,9 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewe
 
     val renderWidth = (settings.width * settings.zoom).roundToInt().coerceAtLeast(1)
     val renderHeight = (settings.height * settings.zoom).roundToInt().coerceAtLeast(1)
-    val renderMetresPerPixel = settings.metresPerPixel / settings.zoom
-    val graphMapWidthMetres = settings.width * settings.metresPerPixel
-    val graphMapHeightMetres = settings.height * settings.metresPerPixel
+    val renderMetresPerPixel = settings.unitsPerPixel / settings.zoom
+    val graphMapWidthMetres = settings.width * settings.unitsPerPixel
+    val graphMapHeightMetres = settings.height * settings.unitsPerPixel
 
     val selectedLayers = settings.availableLayers.filter { it.id in settings.enabledLayerIds }
     val baseLayers = selectedLayers.filterNot { it.id == MapLayer.GRID.id }
@@ -335,8 +334,8 @@ private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewe
             GridLayerBuilder.build(
                 width = renderWidth,
                 height = renderHeight,
-                gridScale = GridRenderer.ONE_KM_GRID_SQUARES,
-                metresPerPixel = renderMetresPerPixel,
+                gridScale = gridConfiguration.referenceSystem.gridScale,
+                unitsPerPixel = renderMetresPerPixel,
                 random = Random(gridSeed(seed)),
                 mapId = gridConfiguration.mapId,
                 referenceSystem = gridConfiguration.referenceSystem,
@@ -378,7 +377,7 @@ internal fun resolveGridConfiguration(
             } else {
                 null
             }
-        } ?: fallbackGridConfiguration(fallbackImage, settings.metresPerPixel, seed)
+        } ?: fallbackGridConfiguration(fallbackImage, settings.unitsPerPixel, seed, settings.referenceSystem)
 
 internal fun renderSelectedLayers(
     selectedLayers: List<MapViewerLayer>,
@@ -404,16 +403,16 @@ private data class GridRenderKey(
     val metresPerContour: Double,
     val mapId: String?,
     val referenceSystem: ReferenceSystem,
-    val gridStartX: MgrsCoord?,
-    val gridStartY: MgrsCoord?,
+    val gridStartX: Coord?,
+    val gridStartY: Coord?,
     val gridColour: String,
 )
 
 internal data class RenderGridConfiguration(
     val mapId: String,
     val referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
-    val startX: MgrsCoord,
-    val startY: MgrsCoord,
+    val startX: Coord,
+    val startY: Coord,
 )
 
 private object RenderCache {
@@ -425,12 +424,14 @@ private fun fallbackGridConfiguration(
     mapImage: BufferedImage,
     metresPerPixel: Double,
     seed: Long,
+    referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
 ): RenderGridConfiguration =
     GridLayerBuilder.build(
         width = mapImage.width,
         height = mapImage.height,
-        gridScale = GridRenderer.ONE_KM_GRID_SQUARES,
-        metresPerPixel = metresPerPixel,
+        gridScale = referenceSystem.gridScale,
+        unitsPerPixel = metresPerPixel,
+        referenceSystem = referenceSystem,
         random = Random(gridSeed(seed)),
     ).let { gridLayer ->
         RenderGridConfiguration(

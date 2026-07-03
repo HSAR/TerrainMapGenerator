@@ -29,7 +29,7 @@ class MapViewerRendererTest {
                 gridLayer = GridLayer(
                     mapId = "25F XK",
                     gridScale = 25,
-                    metresPerPixel = 20.0,
+                    unitsPerPixel = 20.0,
                     detailLevel = 2,
                     pixelsPerLine = 100.0,
                     verticalLineNumberStart = io.hsar.mapgenerator.grid.MgrsCoord.fromLineNumber(1.0, 1000),

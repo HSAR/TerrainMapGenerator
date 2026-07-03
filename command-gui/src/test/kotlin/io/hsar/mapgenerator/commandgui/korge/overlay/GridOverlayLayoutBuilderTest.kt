@@ -4,6 +4,7 @@ import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.GridStyles
+import io.hsar.mapgenerator.grid.ReferenceSystem
 import io.hsar.mapgenerator.image.Palette
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
@@ -60,6 +61,23 @@ class GridOverlayLayoutBuilderTest {
         val yAxisLabel = layout.labels.first { it.text == "44" }
 
         assertThat(yAxisLabel.x, closeTo(GridStyles.gridLineIdPadding(1200, 900).x, 0.0001))
+    }
+
+    @Test
+    fun `epsilon y axis grid labels use letter designators`() {
+        val layout = GridOverlayLayoutBuilder.build(
+            state = state(
+                mapOffsetX = 0.0,
+                mapOffsetY = 0.0,
+                referenceSystem = ReferenceSystem.EPSILON,
+                mapId = "EPSILON",
+                gridStartY = 82.0,
+            ),
+            measureText = ::measureText,
+        )
+
+        assertThat(layout.labels.any { it.text == "CE" }, equalTo(true))
+        assertThat(layout.labels.any { it.text == "82" }, equalTo(false))
     }
 
     @Test
@@ -386,7 +404,8 @@ class GridOverlayLayoutBuilderTest {
                     originMapY = 180.0,
                     destinationMapX = 260.0,
                     destinationMapY = 280.0,
-                    distanceMetres = 344,
+                    distanceUnits = 344,
+                    unitLabel = "m",
                     bearingDegrees = 125,
                 ),
             ),
@@ -427,7 +446,8 @@ class GridOverlayLayoutBuilderTest {
                     originMapY = 60.0,
                     destinationMapX = 70.0,
                     destinationMapY = 90.0,
-                    distanceMetres = 0,
+                    distanceUnits = 0,
+                    unitLabel = "m",
                     bearingDegrees = 0,
                 ),
             ),
@@ -459,7 +479,8 @@ class GridOverlayLayoutBuilderTest {
                     originMapY = 180.0,
                     destinationMapX = 260.0,
                     destinationMapY = 280.0,
-                    distanceMetres = 344,
+                    distanceUnits = 344,
+                    unitLabel = "m",
                     bearingDegrees = 125,
                 ),
             ),
@@ -485,6 +506,8 @@ class GridOverlayLayoutBuilderTest {
         scale: Double = 1.0,
         gridStartX: Double = 5.0,
         gridStartY: Double = 45.0,
+        referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
+        mapId: String = "25F XK",
         gridColour: java.awt.Color = io.hsar.mapgenerator.grid.GridPalettes.DEFAULT.lineColour,
         activeReference: GridCursorReference? = null,
         measurement: GridMeasurement? = null,
@@ -506,13 +529,14 @@ class GridOverlayLayoutBuilderTest {
         activeReference = activeReference,
         measurement = measurement,
         gridLayer = GridLayer(
-            mapId = "25F XK",
-            gridScale = 1000,
-            metresPerPixel = 20.0,
+            mapId = mapId,
+            referenceSystem = referenceSystem,
+            gridScale = referenceSystem.gridScale,
+            unitsPerPixel = 20.0,
             detailLevel = 2,
             pixelsPerLine = pixelsPerLine,
-            verticalLineNumberStart = io.hsar.mapgenerator.grid.MgrsCoord.fromLineNumber(gridStartX, 1000),
-            horizontalLineNumberStart = io.hsar.mapgenerator.grid.MgrsCoord.fromLineNumber(gridStartY, 1000),
+            verticalLineNumberStart = referenceSystem.coordFromLineNumber(gridStartX, referenceSystem.gridScale),
+            horizontalLineNumberStart = referenceSystem.coordFromLineNumber(gridStartY, referenceSystem.gridScale),
             verticalLineCount = 20,
             horizontalLineCount = 20,
             colour = gridColour,

@@ -10,6 +10,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.launch.defaultGridConfiguration
+import io.hsar.mapgenerator.grid.EpsilonCoord
 import io.hsar.mapgenerator.grid.ReferenceSystem
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
@@ -67,7 +68,7 @@ class OperationSaveWriterTest {
         val save = OperationSaveReader().read(savePath)
 
         assertThat(save.game.id, equalTo(operationId.toString()))
-        assertThat(save.game.formatVersion, equalTo(3))
+        assertThat(save.game.formatVersion, equalTo(4))
         assertThat(save.game.thumbnailAssetId, equalTo(operationId.toString()))
         assertThat(save.game.map.assetId, equalTo("00000000-0000-0000-0000-000000000001"))
         val expectedGrid = defaultGridConfiguration(mapImage, 20.0, 1234L)
@@ -190,12 +191,55 @@ class OperationSaveWriterTest {
         assertThat(path.fileName.toString(), equalTo("Test_Operation_12345678.oct.zip"))
     }
 
+    @Test
+    fun `save writes epsilon reference system and designator starts`() {
+        val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000cc")
+        val mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB)
+        val writer = writerWithUuids(UUID.fromString("00000000-0000-0000-0000-000000000031"))
+
+        val savePath = writer.write(
+            request(
+                operationId = operationId,
+                mapImage = mapImage,
+                mapSource = null,
+                ledgerEntries = emptyList(),
+                settings = MapViewerSettings(
+                    operationName = "Test Operation",
+                    width = mapImage.width,
+                    height = mapImage.height,
+                    unitsPerPixel = 10.0,
+                    referenceSystem = ReferenceSystem.EPSILON,
+                    mapId = "EPSILON",
+                    gridStartX = EpsilonCoord.fromUnits(60),
+                    gridStartY = EpsilonCoord.fromUnits(1_120),
+                    seed = 1234L,
+                ),
+            ),
+            tempDir.resolve("epsilon.oct.zip"),
+        )
+
+        val save = OperationSaveReader().read(savePath)
+
+        assertThat(save.game.formatVersion, equalTo(4))
+        assertThat(save.game.map.referenceSystem, equalTo(ReferenceSystem.EPSILON))
+        assertThat(save.game.map.unitsPerPixel, equalTo(10.0))
+        assertThat(save.game.map.gridStartX, equalTo("4"))
+        assertThat(save.game.map.gridStartY, equalTo("BE"))
+    }
+
     private fun request(
         operationId: UUID,
         mapImage: BufferedImage,
         thumbnailImage: BufferedImage? = null,
         mapSource: AssetSource?,
         ledgerEntries: List<io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry>,
+        settings: MapViewerSettings = MapViewerSettings(
+            operationName = "Test Operation",
+            width = mapImage.width,
+            height = mapImage.height,
+            unitsPerPixel = 20.0,
+            seed = 1234L,
+        ),
         camera: CameraViewport = CameraViewport.centeredOnMap(
             geometry = geometryFor(mapImage),
             mapWidth = mapImage.width,
@@ -209,13 +253,7 @@ class OperationSaveWriterTest {
         createdAt = Instant.parse("2026-06-18T10:00:00Z"),
         updatedAt = Instant.parse("2026-06-18T10:05:00Z"),
         camera = camera,
-        settings = MapViewerSettings(
-            operationName = "Test Operation",
-            width = mapImage.width,
-            height = mapImage.height,
-            metresPerPixel = 20.0,
-            seed = 1234L,
-        ),
+        settings = settings,
         mapImage = mapImage,
         thumbnailImage = thumbnailImage,
         mapAssetSource = mapSource,

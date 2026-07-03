@@ -4,9 +4,10 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
+import io.hsar.mapgenerator.grid.EpsilonGridDesignators
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.GridStyles
-import io.hsar.mapgenerator.grid.MgrsCoord
+import io.hsar.mapgenerator.grid.ReferenceSystem
 import io.hsar.mapgenerator.image.Palette
 import io.hsar.mapgenerator.random.GridGenerator.padZeroes
 import java.awt.Color
@@ -82,7 +83,7 @@ internal object GridOverlayLayoutBuilder {
         val referenceColor = state.activeReference?.color ?: Palette.Colours.RED
         val referenceStyle = GridLabelStyle(MapViewerFontRole.MAIN, minorAxisFont.first.size2D.toDouble(), referenceColor)
         val mapIdBounds = measureText(layer.mapId, mapIdStyle)
-        val axisBounds = measureText("0".repeat(layer.detailLevel), minorAxisStyle)
+        val axisBounds = measureText(axisMeasurementText(layer), minorAxisStyle)
 
         val topGutterY = max(state.visibleCanvasTop + mapIdPadding.y, mapTop + mapIdPadding.y)
         val leftGutterX = max(state.visibleCanvasLeft + gridLinePadding.x, mapLeft + gridLinePadding.x)
@@ -108,7 +109,7 @@ internal object GridOverlayLayoutBuilder {
 
         linePlacement.verticalLines.forEach { line ->
             val lineId = line.id
-            val lineText = lineId.padZeroes(layer.detailLevel)
+            val lineText = verticalLineText(layer, state.gridLayer, lineId)
             val lineCanvasX = mapLeft + line.mapPosition * state.scale
             val labelAlpha = edgeOpacity(lineCanvasX - xLabelFadeStart, edgeFadeDistance)
             val isMajorLine = isMajorLine(lineId)
@@ -138,7 +139,7 @@ internal object GridOverlayLayoutBuilder {
 
         linePlacement.horizontalLines.forEach { line ->
             val lineId = line.id
-            val lineText = lineId.padZeroes(layer.detailLevel)
+            val lineText = horizontalLineText(layer, state.gridLayer, lineId)
             val lineCanvasY = mapTop + line.mapPosition * state.scale
             val labelAlpha = edgeOpacity(lineCanvasY - yLabelFadeStart, edgeFadeDistance)
             val isMajorLine = isMajorLine(lineId)
@@ -376,11 +377,11 @@ internal object GridOverlayLayoutBuilder {
                 mapId = layer.mapId,
                 referenceSystem = layer.referenceSystem,
                 gridScale = (layer.gridScale / FINE_GRID_SUBDIVISIONS).coerceAtLeast(1),
-                metresPerPixel = layer.metresPerPixel,
+                unitsPerPixel = layer.unitsPerPixel,
                 detailLevel = layer.detailLevel + 1,
                 pixelsPerLine = layer.pixelsPerLine / FINE_GRID_SUBDIVISIONS,
-                verticalLineNumberStart = MgrsCoord.fromMetres(layer.verticalLineNumberStart.metres),
-                horizontalLineNumberStart = MgrsCoord.fromMetres(layer.horizontalLineNumberStart.metres),
+                verticalLineNumberStart = layer.referenceSystem.coordFromUnits(layer.verticalLineNumberStart.units),
+                horizontalLineNumberStart = layer.referenceSystem.coordFromUnits(layer.horizontalLineNumberStart.units),
                 verticalLineCount = layer.verticalLineCount * FINE_GRID_SUBDIVISIONS,
                 horizontalLineCount = layer.horizontalLineCount * FINE_GRID_SUBDIVISIONS,
                 colour = layer.colour,
@@ -401,6 +402,30 @@ internal object GridOverlayLayoutBuilder {
 
     private fun isEvenFineLine(lineId: Double): Boolean =
         abs(lineId % 2.0) < 1e-6
+
+    private fun axisMeasurementText(layer: GridLayer): String =
+        if (layer.referenceSystem == ReferenceSystem.EPSILON) {
+            "AA"
+        } else {
+            "0".repeat(layer.detailLevel)
+        }
+
+    private fun verticalLineText(layer: GridLayer, baseLayer: GridLayer, lineId: Double): String =
+        if (layer.referenceSystem == ReferenceSystem.EPSILON) {
+            EpsilonGridDesignators.xDesignator(squareIndex(layer, baseLayer, lineId))
+        } else {
+            lineId.padZeroes(layer.detailLevel)
+        }
+
+    private fun horizontalLineText(layer: GridLayer, baseLayer: GridLayer, lineId: Double): String =
+        if (layer.referenceSystem == ReferenceSystem.EPSILON) {
+            EpsilonGridDesignators.yDesignator(squareIndex(layer, baseLayer, lineId))
+        } else {
+            lineId.padZeroes(layer.detailLevel)
+        }
+
+    private fun squareIndex(layer: GridLayer, baseLayer: GridLayer, lineId: Double): Int =
+        Math.floorDiv((lineId * layer.gridScale).roundToInt(), baseLayer.gridScale)
 
     private fun accentLabelShadows(): List<GridLabelShadow> =
         listOf(

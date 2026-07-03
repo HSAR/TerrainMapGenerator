@@ -1,6 +1,6 @@
 package io.hsar.mapgenerator.commandgui
 
-import io.hsar.mapgenerator.grid.MgrsCoord
+import io.hsar.mapgenerator.grid.Coord
 import io.hsar.mapgenerator.grid.ReferenceSystem
 import java.awt.Color
 import java.awt.image.BufferedImage
@@ -12,11 +12,11 @@ data class MapViewerSettings(
     val staticLayerImages: Map<String, BufferedImage> = emptyMap(),
     val mapId: String? = null,
     val referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
-    val gridStartX: MgrsCoord? = null,
-    val gridStartY: MgrsCoord? = null,
+    val gridStartX: Coord? = null,
+    val gridStartY: Coord? = null,
     val gridColour: Color? = null,
     val zoom: Double = 1.0,
-    val metresPerPixel: Double = 20.0,
+    val unitsPerPixel: Double = 20.0,
     val metresPerContour: Double = 10.0,
     val width: Int = 1920,
     val height: Int = 1080,

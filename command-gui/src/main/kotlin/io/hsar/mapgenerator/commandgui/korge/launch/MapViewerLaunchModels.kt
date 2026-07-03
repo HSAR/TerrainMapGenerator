@@ -11,8 +11,8 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.OPERATION_START_TURN_NAME
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
+import io.hsar.mapgenerator.grid.Coord
 import io.hsar.mapgenerator.grid.GridLayerBuilder
-import io.hsar.mapgenerator.grid.MgrsCoord
 import io.hsar.mapgenerator.grid.ReferenceSystem
 import java.awt.image.BufferedImage
 import java.io.File
@@ -34,7 +34,7 @@ internal data class OperationMapImage(
 internal data class NewOperationDraft(
     val operationName: String = "",
     val mapImage: OperationMapImage? = null,
-    val pixelsPerMetre: Double = 20.0,
+    val unitsPerPixel: Double = 20.0,
     val referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
     val gridConfiguration: GridConfiguration? = null,
     val unitTemplates: List<MapViewerUnitTemplate> = emptyList(),
@@ -43,8 +43,8 @@ internal data class NewOperationDraft(
 internal data class GridConfiguration(
     val mapId: String,
     val referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
-    val startX: MgrsCoord,
-    val startY: MgrsCoord,
+    val startX: Coord,
+    val startY: Coord,
 )
 
 internal data class OperationLaunchConfiguration(
@@ -78,7 +78,7 @@ internal class MapViewerLaunchFlow {
 }
 
 internal fun NewOperationDraft.isLaunchable(): Boolean =
-    operationName.isNotBlank() && mapImage != null && pixelsPerMetre > 0.0 && gridConfiguration != null
+    operationName.isNotBlank() && mapImage != null && unitsPerPixel > 0.0 && gridConfiguration != null
 
 internal object OperationNameGenerator {
     private val adjectives = listOf(
@@ -124,22 +124,25 @@ internal object OperationNameGenerator {
 
 internal fun defaultGridConfiguration(
     mapImage: BufferedImage,
-    metresPerPixel: Double,
+    unitsPerPixel: Double,
     seed: Long,
+    referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
 ): GridConfiguration =
-    defaultGridConfiguration(mapImage.width, mapImage.height, metresPerPixel, seed)
+    defaultGridConfiguration(mapImage.width, mapImage.height, unitsPerPixel, seed, referenceSystem)
 
 internal fun defaultGridConfiguration(
     width: Int,
     height: Int,
-    metresPerPixel: Double,
+    unitsPerPixel: Double,
     seed: Long,
+    referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
 ): GridConfiguration =
     GridLayerBuilder.build(
         width = width,
         height = height,
-        gridScale = 1_000,
-        metresPerPixel = metresPerPixel,
+        gridScale = referenceSystem.gridScale,
+        unitsPerPixel = unitsPerPixel,
+        referenceSystem = referenceSystem,
         random = Random(seed),
     ).let { gridLayer ->
         GridConfiguration(
@@ -150,10 +153,28 @@ internal fun defaultGridConfiguration(
         )
     }
 
-internal fun previewMetresPerPixel(metresPerPixel: Double, previewScale: Double): Double {
+internal fun previewUnitsPerPixel(unitsPerPixel: Double, previewScale: Double): Double {
     require(previewScale > 0.0) { "Preview scale must be positive." }
-    return metresPerPixel / previewScale
+    return unitsPerPixel / previewScale
 }
+
+internal fun translateGridConfiguration(
+    gridConfiguration: GridConfiguration,
+    mapId: String,
+    referenceSystem: ReferenceSystem,
+): GridConfiguration =
+    GridConfiguration(
+        mapId = mapId,
+        referenceSystem = referenceSystem,
+        startX = referenceSystem.coordFromLineNumber(
+            lineNumber = gridConfiguration.startX.lineNumber(gridConfiguration.referenceSystem.gridScale),
+            gridScale = referenceSystem.gridScale,
+        ),
+        startY = referenceSystem.coordFromLineNumber(
+            lineNumber = gridConfiguration.startY.lineNumber(gridConfiguration.referenceSystem.gridScale),
+            gridScale = referenceSystem.gridScale,
+        ),
+    )
 
 internal object OperationLaunchConfigurationFactory {
     fun create(
@@ -175,7 +196,7 @@ internal object OperationLaunchConfigurationFactory {
         val availableLayers = baseSettings.availableLayers + staticLayer.first
         val layerImages = baseSettings.staticLayerImages + (staticLayer.first.id to staticLayer.second)
         val gridConfiguration = draft.gridConfiguration
-            ?: defaultGridConfiguration(mapImage.image, draft.pixelsPerMetre, baseSettings.seed)
+            ?: defaultGridConfiguration(mapImage.image, draft.unitsPerPixel, baseSettings.seed, draft.referenceSystem)
 
         return OperationLaunchConfiguration(
             settings = baseSettings.copy(
@@ -185,7 +206,7 @@ internal object OperationLaunchConfigurationFactory {
                 staticLayerImages = layerImages,
                 width = mapImage.image.width,
                 height = mapImage.image.height,
-                metresPerPixel = draft.pixelsPerMetre,
+                unitsPerPixel = draft.unitsPerPixel,
                 mapId = gridConfiguration.mapId,
                 referenceSystem = gridConfiguration.referenceSystem,
                 gridStartX = gridConfiguration.startX,

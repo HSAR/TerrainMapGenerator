@@ -62,10 +62,10 @@ class GridMeasurementCalculatorTest {
             originMapY = 0.0,
             destinationMapX = 3.0,
             destinationMapY = 4.0,
-            metresPerPixel = 20.0,
+            unitsPerPixel = 20.0,
         )
 
-        assertThat(measurement.distanceMetres, equalTo(100))
+        assertThat(measurement.distanceUnits, equalTo(100))
         assertThat(measurement.distanceText, equalTo("100m"))
         assertThat(measurement.bearingText, equalTo("143\u00b0"))
     }
@@ -75,12 +75,12 @@ class GridMeasurementCalculatorTest {
         originMapY: Double,
         destinationMapX: Double,
         destinationMapY: Double,
-        metresPerPixel: Double = 10.0,
+        unitsPerPixel: Double = 10.0,
     ) = GridMeasurementCalculator.calculate(
         layer = GridLayer(
             mapId = "25F XK",
             gridScale = 1000,
-            metresPerPixel = metresPerPixel,
+            unitsPerPixel = unitsPerPixel,
             detailLevel = 2,
             pixelsPerLine = 50.0,
             verticalLineNumberStart = io.hsar.mapgenerator.grid.MgrsCoord.fromMetres(0),

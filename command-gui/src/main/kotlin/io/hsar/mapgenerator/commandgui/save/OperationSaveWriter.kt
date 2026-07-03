@@ -6,6 +6,7 @@ import io.hsar.mapgenerator.commandgui.geometryFor
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.launch.GridConfiguration
 import io.hsar.mapgenerator.commandgui.korge.launch.defaultGridConfiguration
+import io.hsar.mapgenerator.grid.CoordAxis
 import korlibs.image.bitmap.Bitmap32
 import java.awt.Graphics2D
 import java.awt.RenderingHints
@@ -66,7 +67,12 @@ internal class OperationSaveWriter(
                 } else {
                     null
                 }
-            } ?: defaultGridConfiguration(request.mapImage, request.settings.metresPerPixel, request.settings.seed)
+            } ?: defaultGridConfiguration(
+            mapImage = request.mapImage,
+            unitsPerPixel = request.settings.unitsPerPixel,
+            seed = request.settings.seed,
+            referenceSystem = request.settings.referenceSystem,
+        )
         val game = GameSaveDto(
             formatVersion = FORMAT_VERSION,
             id = request.operationId.toString(),
@@ -76,12 +82,20 @@ internal class OperationSaveWriter(
             thumbnailAssetId = thumbnailAsset.id.toString(),
             camera = request.camera.toSaveCamera(geometry, request.mapImage.width, request.mapImage.height),
             map = MapSaveDto(
-                metresPerPixel = request.settings.metresPerPixel,
+                unitsPerPixel = request.settings.unitsPerPixel,
                 assetId = mapAsset.id.toString(),
                 referenceSystem = gridConfiguration.referenceSystem,
                 mapId = gridConfiguration.mapId,
-                gridStartX = gridConfiguration.startX.format(),
-                gridStartY = gridConfiguration.startY.format(),
+                gridStartX = gridConfiguration.referenceSystem.formatCoord(
+                    gridConfiguration.startX,
+                    CoordAxis.X,
+                    gridConfiguration.referenceSystem.gridScale,
+                ),
+                gridStartY = gridConfiguration.referenceSystem.formatCoord(
+                    gridConfiguration.startY,
+                    CoordAxis.Y,
+                    gridConfiguration.referenceSystem.gridScale,
+                ),
                 gridColour = GridColourSelector.toHex(
                     request.settings.gridColour ?: GridColourSelector.bestPresetFor(request.mapImage),
                 ),
@@ -119,7 +133,7 @@ internal class OperationSaveWriter(
             .ifBlank { "Operation" }
 
     private companion object {
-        const val FORMAT_VERSION = 3
+        const val FORMAT_VERSION = 4
         const val GAME_JSON = "game.json"
         const val LEDGER_JSON = "ledger.json"
         const val ASSET_ROLE_MAP = "map"

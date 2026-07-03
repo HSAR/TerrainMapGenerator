@@ -56,7 +56,7 @@ class GridLinePlacementBuilderTest {
     ) = GridLayer(
         mapId = "25F XK",
         gridScale = 1000,
-        metresPerPixel = 10.0,
+        unitsPerPixel = 10.0,
         detailLevel = 2,
         pixelsPerLine = 100.0,
         verticalLineNumberStart = MgrsCoord.fromLineNumber(verticalLineNumberStart, 1000),

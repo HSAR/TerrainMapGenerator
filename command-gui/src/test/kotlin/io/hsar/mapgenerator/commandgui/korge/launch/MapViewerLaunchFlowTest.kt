@@ -50,7 +50,7 @@ class MapViewerLaunchFlowTest {
             NewOperationDraft(
                 operationName = "Test",
                 mapImage = OperationMapImage("Map", "map.png", image()),
-                pixelsPerMetre = 20.0,
+                unitsPerPixel = 20.0,
                 gridConfiguration = null,
             ),
         )
@@ -67,7 +67,7 @@ class MapViewerLaunchFlowTest {
             NewOperationDraft(
                 operationName = "Test",
                 mapImage = OperationMapImage("Map", "map.png", image()),
-                pixelsPerMetre = 20.0,
+                unitsPerPixel = 20.0,
                 gridConfiguration = GridConfiguration(
                     mapId = "AA",
                     startX = io.hsar.mapgenerator.grid.MgrsCoord.fromLineNumber(1.0, 1000),
