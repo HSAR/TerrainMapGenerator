@@ -44,6 +44,7 @@ import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
 import io.hsar.mapgenerator.commandgui.korge.render.MapViewerRenderer
 import io.hsar.mapgenerator.commandgui.korge.render.RenderedMap
+import io.hsar.mapgenerator.commandgui.korge.ui.DestroyedUnitsDisplay
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerKorgeFonts
@@ -58,6 +59,7 @@ import io.hsar.mapgenerator.commandgui.save.OperationSaveCatalogue
 import io.hsar.mapgenerator.commandgui.save.OperationSaveLoader
 import io.hsar.mapgenerator.commandgui.save.OperationSaveRequest
 import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
+import io.hsar.mapgenerator.commandgui.save.OperationToolStorage
 import io.hsar.mapgenerator.commandgui.save.toViewport
 import korlibs.event.Key
 import korlibs.image.bitmap.Bitmap32
@@ -83,7 +85,6 @@ import kotlinx.coroutines.runBlocking
 import org.apache.logging.log4j.LogManager
 import java.awt.Component
 import java.awt.Toolkit
-import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import java.util.*
@@ -234,7 +235,9 @@ internal class MapViewerScene(
                         val actionHistory = MapActionHistory()
                         val operationId = loadedOperation?.operationId ?: UUID.randomUUID()
                         val operationCreatedAt = loadedOperation?.createdAt ?: Instant.now()
-                        val saveWriter = OperationSaveWriter()
+                        val toolStorage = OperationToolStorage()
+                        val saveWriter = OperationSaveWriter(storage = toolStorage)
+                        val toolSettings = toolStorage.readSettings()
                         val thumbnailRenderer = MapThumbnailRenderer()
                         val generatedImageAssets = loadedOperation
                             ?.generatedImageAssets
@@ -725,6 +728,16 @@ internal class MapViewerScene(
                                 turnMode = TurnPanelMode.Edit
                                 refreshHistoryUi()
                             },
+                            initialDestroyedUnitsDisplay = DestroyedUnitsDisplay.fromSettingsValue(toolSettings.displayDestroyedUnits),
+                            onDestroyedUnitsDisplayChanged = { displayMode ->
+                                runCatching {
+                                    toolStorage.writeSettings(
+                                        toolStorage.readSettings().copy(displayDestroyedUnits = displayMode.label),
+                                    )
+                                }.onFailure { throwable ->
+                                    logger.error("Failed to save operation tool settings", throwable)
+                                }
+                            },
                             turnThumbnail = ::turnThumbnailBitmap,
                         )
                         toolbar = MapViewerToolbar(
@@ -953,8 +966,9 @@ internal class MapViewerScene(
                     }
 
                     fun browseForExistingOperation() {
-                        val defaultSaveDirectory = OperationSaveWriter().defaultSaveDirectory()
-                        Files.createDirectories(defaultSaveDirectory)
+                        val saveWriter = OperationSaveWriter()
+                        saveWriter.ensureDefaultStorage()
+                        val defaultSaveDirectory = saveWriter.defaultSaveDirectory()
                         val chooser = JFileChooser().apply {
                             isAcceptAllFileFilterUsed = true
                             currentDirectory = defaultSaveDirectory.toFile()
@@ -972,9 +986,9 @@ internal class MapViewerScene(
                         val loadGeneration = ++saveCatalogueLoadGeneration
                         thread(name = "command-gui-save-catalogue", isDaemon = true) {
                             val savedOperations = runCatching {
-                                val saveDirectory = OperationSaveWriter().defaultSaveDirectory()
-                                Files.createDirectories(saveDirectory)
-                                OperationSaveCatalogue().list(saveDirectory)
+                                val saveWriter = OperationSaveWriter()
+                                saveWriter.ensureDefaultStorage()
+                                OperationSaveCatalogue().list(saveWriter.defaultSaveDirectory())
                             }.onFailure { throwable ->
                                 logger.error("Failed to list saved operations", throwable)
                             }.getOrElse { emptyList() }

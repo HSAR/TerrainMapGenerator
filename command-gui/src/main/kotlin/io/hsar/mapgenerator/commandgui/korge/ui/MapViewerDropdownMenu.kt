@@ -98,13 +98,21 @@ internal class MapViewerDropdownMenu<T>(
 
         val field = parent.container()
         field.xy(x, y + 28.0)
-        MapViewerUiBoxes.button(field, width, height)
+        renderTrigger(field, value, width, height)
+    }
 
+    fun renderTrigger(
+        parent: Container,
+        value: T?,
+        width: Double,
+        height: Double = DEFAULT_FIELD_HEIGHT,
+    ) {
+        MapViewerUiBoxes.button(parent, width, height)
         val hasTriggerIcon = swatchForValue(value) != null
         val labelLeft = TEXT_LEFT_PADDING + if (hasTriggerIcon) TRIGGER_SWATCH_SLOT_WIDTH else 0.0
         val labelWidth = width - TRAILING_AREA_WIDTH - labelLeft
         val swatchHost = if (hasTriggerIcon) {
-            field.container().also {
+            parent.container().also {
                 it.xy(TEXT_LEFT_PADDING, (height - TRIGGER_SWATCH_SIZE) * 0.5)
                 MapViewerSwatchViews.render(it, swatchForValue(value), TRIGGER_SWATCH_SIZE)
             }
@@ -112,7 +120,7 @@ internal class MapViewerDropdownMenu<T>(
             null
         }
 
-        val labelHost = field.container().also { it.xy(labelLeft, 0.0) }
+        val labelHost = parent.container().also { it.xy(labelLeft, 0.0) }
         triggerLabel = MapViewerTextViews.leftBox(
             parent = labelHost,
             text = labelForValue(value),
@@ -122,7 +130,7 @@ internal class MapViewerDropdownMenu<T>(
         )
         triggerSwatch = swatchHost
 
-        val caretHost = field.container().also { it.xy(width - CARET_WIDTH - CARET_RIGHT_PADDING, 0.0) }
+        val caretHost = parent.container().also { it.xy(width - CARET_WIDTH - CARET_RIGHT_PADDING, 0.0) }
         MapViewerTextViews.box(
             parent = caretHost,
             text = "v",
@@ -131,10 +139,10 @@ internal class MapViewerDropdownMenu<T>(
             color = Palette.Colours.WHITE,
         )
 
-        field.mouse {
+        parent.mouse {
             onClick {
                 openPopup(
-                    anchorSource = field,
+                    anchorSource = parent,
                     triggerWidth = width,
                     triggerHeight = height,
                     selectedValue = value,

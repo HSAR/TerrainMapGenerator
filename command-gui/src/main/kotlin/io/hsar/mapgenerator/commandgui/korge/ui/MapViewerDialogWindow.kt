@@ -21,6 +21,8 @@ internal class MapViewerDialogWindow(
     private val root: Container,
     private val title: String,
     private val titleProvider: () -> String = { title },
+    private val titleTabs: () -> List<MapViewerDialogTitleTab> = { emptyList() },
+    private val initialPosition: ((MapViewerDialogBounds) -> Vector2D?) = { null },
     private val preferredWidth: Double,
     private val preferredHeight: Double,
     private val contentMinimumWidth: () -> Double = { 0.0 },
@@ -49,7 +51,7 @@ internal class MapViewerDialogWindow(
         layer.mouseEnabled = true
         this.viewportWidth = viewportWidth
         this.viewportHeight = viewportHeight
-        bounds = MapViewerDialogLayoutBuilder.defaultBounds(
+        val defaultBounds = MapViewerDialogLayoutBuilder.defaultBounds(
             viewportWidth = viewportWidth,
             viewportHeight = viewportHeight,
             preferredWidth = preferredWidth,
@@ -58,6 +60,10 @@ internal class MapViewerDialogWindow(
             actionButtonCount = actions.size,
             contentHeight = contentHeight,
         )
+        bounds = initialPosition(defaultBounds)
+            ?.let { position -> defaultBounds.movedTo(position.x, position.y) }
+            ?.let { with(MapViewerDialogLayoutBuilder) { it.clampedTo(viewportWidth, viewportHeight, minimumWidth()) } }
+            ?: defaultBounds
         installInputHandlers()
         render()
     }
@@ -174,6 +180,7 @@ internal class MapViewerDialogWindow(
             parent = panel,
             layout = layout,
             title = titleProvider(),
+            titleTabs = titleTabs(),
             onClose = onClose,
             onBeginMove = { beginDrag(DialogDragMode.MOVE) },
             onBeginResize = { beginDrag(DialogDragMode.RESIZE) },
@@ -238,7 +245,10 @@ internal class MapViewerDialogWindow(
         point.x in left..right && point.y in top..bottom
 
     private fun minimumWidth(): Double =
-        MapViewerDialogLayoutBuilder.minimumShellWidth(contentMinimumWidth(), actions.size)
+        maxOf(
+            MapViewerDialogLayoutBuilder.minimumShellWidth(contentMinimumWidth(), actions.size),
+            MapViewerDialogTitleTabLayoutBuilder.minimumShellWidth(titleTabs().map { it.label }),
+        )
 
     private sealed interface DialogDragState {
         val startPointer: Vector2D

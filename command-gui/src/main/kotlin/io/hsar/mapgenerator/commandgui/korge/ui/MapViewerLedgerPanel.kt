@@ -6,19 +6,13 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelState
 import io.hsar.mapgenerator.commandgui.korge.interaction.nextTurnNumber
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
-import korlibs.image.color.RGBA
 import korlibs.image.text.TextAlignment
 import korlibs.korge.input.mouse
-import korlibs.korge.ui.uiMaterialLayer
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.onStageResized
-import korlibs.korge.view.size
-import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
-import korlibs.math.geom.RectCorners
 import korlibs.math.geom.Vector2D
-import java.awt.Color
 import java.util.*
 
 internal class MapViewerLedgerPanel(
@@ -34,24 +28,28 @@ internal class MapViewerLedgerPanel(
     private val onAddTurn: (String) -> Unit,
     private val onRevertToTurn: (TurnMarker) -> Unit,
     private val onSelectCurrent: () -> Unit,
+    initialDestroyedUnitsDisplay: DestroyedUnitsDisplay = DestroyedUnitsDisplay.Full,
+    private val onDestroyedUnitsDisplayChanged: (DestroyedUnitsDisplay) -> Unit = {},
     private val turnThumbnail: (UUID) -> Bitmap32? = { null },
 ) {
     private val overlay = root.container()
-    private val panel = overlay.uiMaterialLayer()
-    private val content = overlay.container()
     private val toggleButton = overlay.container()
     private val destroyedUnitsDropdown = MapViewerDropdownMenu(
         root = overlay,
         options = DestroyedUnitsDisplay.entries.map { MapViewerDropdownOption(it, it.label) },
-        onSelected = { value -> destroyedUnitsDisplay = value ?: DestroyedUnitsDisplay.Full },
+        onSelected = { value ->
+            destroyedUnitsDisplay = value ?: DestroyedUnitsDisplay.Full
+            onDestroyedUnitsDisplayChanged(destroyedUnitsDisplay)
+        },
         labelForValue = { value -> (value ?: DestroyedUnitsDisplay.Full).label },
-        menuWidth = 160.0,
+        menuWidth = DESTROYED_UNITS_DROPDOWN_MINIMUM_WIDTH,
     )
     private var collapsed = true
     private var activeTab = LedgerPanelTab.Turns
-    private var destroyedUnitsDisplay = DestroyedUnitsDisplay.Full
+    private var destroyedUnitsDisplay = initialDestroyedUnitsDisplay
     private var markerInput: MapViewerStyledTextInput? = null
     private var inputActive = false
+    private var dialogWindow: MapViewerDialogWindow? = null
     private var layout = MapViewerLedgerPanelLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
 
     val isTextInputActive: Boolean
@@ -59,17 +57,15 @@ internal class MapViewerLedgerPanel(
 
     init {
         overlay.zIndex = Z_INDEX
-        panel.radius = RectCorners(0.0)
-        panel.bgColor = toRgba(Palette.Colours.DARK, 220)
-        panel.borderSize = 2.0
-        panel.borderColor = MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, MapViewerUiStateStyle.ACTIVE_ALPHA)
-        panel.shadowColor = MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, 0)
-        panel.shadowRadius = 0.0
 
         toggleButton.mouse {
             onClick {
                 inputActive = false
-                collapsed = !collapsed
+                if (collapsed) {
+                    openDialog()
+                } else {
+                    closeDialog()
+                }
                 relayout(layoutViewportWidth(), layoutViewportHeight())
             }
         }
@@ -81,80 +77,89 @@ internal class MapViewerLedgerPanel(
     }
 
     fun blocksScreenPoint(point: Vector2D): Boolean =
-        layout.blocks(point).also { blocked ->
+        (layout.toggleBounds.contains(point) || dialogWindow?.blocksScreenPoint(point) == true).also { blocked ->
             if (!blocked) {
                 inputActive = false
             }
         }
 
     fun refresh() {
-        relayout(layoutViewportWidth(), layoutViewportHeight())
+        dialogWindow?.refresh()
     }
 
     private fun relayout(viewportWidth: Int, viewportHeight: Int) {
-        layout = MapViewerLedgerPanelLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
+        layout = MapViewerLedgerPanelLayoutBuilder.build(viewportWidth, viewportHeight, collapsed = true)
 
         MapViewerSidePanelChrome.renderToggle(
             parent = toggleButton,
             bounds = layout.toggleBounds,
             label = "Game",
         )
+    }
 
-        val panelBounds = layout.panelBounds
-        panel.visible = panelBounds != null
-        content.visible = panelBounds != null
+    private fun openDialog() {
+        val stage = overlay.stage ?: return
+        collapsed = false
         markerInput = null
-
-        if (panelBounds != null) {
-            panel.xy(panelBounds.left, panelBounds.top)
-            panel.size(panelBounds.width, panelBounds.height)
-
-            content.removeChildren()
-            content.xy(panelBounds.left + CONTENT_PADDING, panelBounds.top + CONTENT_PADDING)
-            renderContent()
-        }
+        dialogWindow = MapViewerDialogWindow(
+            root = overlay,
+            title = "Game",
+            titleTabs = ::titleTabs,
+            initialPosition = ::initialDialogPosition,
+            preferredWidth = MapViewerLedgerPanelLayoutBuilder.PANEL_WIDTH,
+            preferredHeight = PREFERRED_DIALOG_HEIGHT,
+            contentMinimumWidth = ::contentMinimumWidth,
+            contentHeight = ::contentHeight,
+            onClose = ::closeDialog,
+            renderContent = ::renderContent,
+            mode = MapViewerDialogMode.FLOATING,
+        )
+        dialogWindow?.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
     }
 
-    private fun renderContent() {
-        val itemWidth = MapViewerLedgerPanelLayoutBuilder.PANEL_WIDTH - (CONTENT_PADDING * 2)
-        renderTabs(itemWidth)
-        when (activeTab) {
-            LedgerPanelTab.Turns -> renderTurnsContent(itemWidth, TABS_HEIGHT + SECTION_GAP)
-            LedgerPanelTab.Settings -> renderSettingsContent(itemWidth, TABS_HEIGHT + SECTION_GAP)
-        }
+    private fun initialDialogPosition(defaultBounds: MapViewerDialogBounds): Vector2D =
+        MapViewerLedgerPanelLayoutBuilder.build(
+            viewportWidth = layoutViewportWidth(),
+            viewportHeight = layoutViewportHeight(),
+            collapsed = false,
+        ).panelBounds
+            ?.let { Vector2D(it.left, it.top) }
+            ?: Vector2D(defaultBounds.left, defaultBounds.top)
+
+    private fun closeDialog() {
+        collapsed = true
+        markerInput = null
+        dialogWindow?.close()
+        dialogWindow = null
     }
 
-    private fun renderTabs(width: Double) {
-        val titleBar = content.container()
-        titleBar.solidRect(width, TABS_HEIGHT, MapViewerUiBoxes.toRgba(Palette.Colours.DARK, MapViewerDialogChrome.TITLE_BAR_ALPHA))
-        LedgerPanelTab.entries.forEachIndexed { index, tab ->
-            val tabWidth = width / LedgerPanelTab.entries.size
-            val tabButton = titleBar.container()
-            tabButton.xy(index * tabWidth, 0.0)
-            MapViewerUiBoxes.button(tabButton, tabWidth, TABS_HEIGHT, active = activeTab == tab)
-            MapViewerTextViews.box(
-                parent = tabButton,
-                text = tab.label,
-                width = tabWidth,
-                height = TABS_HEIGHT,
-                role = MapViewerFontRole.STRONG,
-                color = MapViewerUiStateStyle.text(activeTab == tab),
-            )
-            tabButton.mouse {
-                onClick {
+    private fun titleTabs(): List<MapViewerDialogTitleTab> =
+        LedgerPanelTab.entries.map { tab ->
+            MapViewerDialogTitleTab(
+                label = tab.label,
+                active = activeTab == tab,
+                onSelected = {
                     inputActive = false
                     activeTab = tab
-                    relayout(layoutViewportWidth(), layoutViewportHeight())
-                }
-            }
+                    markerInput = null
+                    dialogWindow?.refresh()
+                },
+            )
+        }
+
+    private fun renderContent(parent: Container, itemWidth: Double) {
+        markerInput = null
+        when (activeTab) {
+            LedgerPanelTab.Turns -> renderTurnsContent(parent, itemWidth, 0.0)
+            LedgerPanelTab.Settings -> renderSettingsContent(parent, itemWidth, 0.0)
         }
     }
 
-    private fun renderTurnsContent(itemWidth: Double, top: Double) {
+    private fun renderTurnsContent(parent: Container, itemWidth: Double, top: Double) {
         val turnPanel = turnPanelState()
         val headerLabel = if (isReadOnly()) "Turns (Read-Only)" else "Turns"
         MapViewerTextViews.leftBox(
-            parent = content,
+            parent = parent,
             text = headerLabel,
             width = itemWidth,
             height = HEADER_HEIGHT,
@@ -164,7 +169,7 @@ internal class MapViewerLedgerPanel(
             y = top
         }
 
-        val undoButton = content.container()
+        val undoButton = parent.container()
         undoButton.xy(0.0, top + HEADER_HEIGHT + HEADER_GAP)
         val undo = MapViewerUiBoxes.button(undoButton, CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, active = canUndo())
         MapViewerTextViews.box(undo, "Undo", CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(canUndo()))
@@ -177,7 +182,7 @@ internal class MapViewerLedgerPanel(
             }
         }
 
-        val redoButton = content.container()
+        val redoButton = parent.container()
         redoButton.xy(CONTROL_BUTTON_WIDTH + BUTTON_GAP, top + HEADER_HEIGHT + HEADER_GAP)
         val redo = MapViewerUiBoxes.button(redoButton, CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, active = canRedo())
         MapViewerTextViews.box(redo, "Redo", CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(canRedo()))
@@ -194,7 +199,7 @@ internal class MapViewerLedgerPanel(
         val addButtonWidth = 120.0
         val markerInputWidth = itemWidth - addButtonWidth - BUTTON_GAP
         markerInput = MapViewerStyledTextInput(
-            parent = content,
+            parent = parent,
             width = markerInputWidth,
             height = CONTROL_BUTTON_HEIGHT,
             x = addButtonWidth + BUTTON_GAP,
@@ -209,7 +214,7 @@ internal class MapViewerLedgerPanel(
             }
         }
 
-        val addButton = content.container()
+        val addButton = parent.container()
         addButton.xy(0.0, markerRowTop)
         val addTurn = MapViewerUiBoxes.button(addButton, addButtonWidth, CONTROL_BUTTON_HEIGHT, active = !isReadOnly())
         MapViewerTextViews.box(addTurn, "Add Turn", addButtonWidth, CONTROL_BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(!isReadOnly()))
@@ -224,30 +229,32 @@ internal class MapViewerLedgerPanel(
         }
 
         val markersTop = markerRowTop + CONTROL_BUTTON_HEIGHT + SECTION_GAP
-        renderRows(markersTop, turnPanel)
+        renderRows(parent, markersTop, turnPanel, itemWidth)
     }
 
-    private fun renderSettingsContent(itemWidth: Double, top: Double) {
-        destroyedUnitsDropdown.renderField(
-            parent = content,
+    private fun renderSettingsContent(parent: Container, itemWidth: Double, top: Double) {
+        MapViewerInlineInputs.dropdown(
+            parent = parent,
+            dropdown = destroyedUnitsDropdown,
             label = "Destroyed Units",
             value = destroyedUnitsDisplay,
             x = 0.0,
             y = top,
             width = itemWidth,
+            inputMinimumWidth = DESTROYED_UNITS_DROPDOWN_MINIMUM_WIDTH,
             height = CONTROL_BUTTON_HEIGHT,
         )
     }
 
-    private fun renderRows(top: Double, turnPanel: TurnPanelState) {
+    private fun renderRows(parent: Container, top: Double, turnPanel: TurnPanelState, itemWidth: Double) {
         turnPanel.rows.forEachIndexed { index, rowData ->
             val rowTop = top + index * (MARKER_ROW_HEIGHT + MARKER_ROW_GAP)
-            val row = content.container()
+            val row = parent.container()
             row.xy(0.0, rowTop)
             when (rowData) {
                 is TurnPanelRow.Marker -> buildMarkerRow(
                     parent = row,
-                    width = MapViewerLedgerPanelLayoutBuilder.PANEL_WIDTH - (CONTENT_PADDING * 2),
+                    width = itemWidth,
                     height = MARKER_ROW_HEIGHT,
                     marker = rowData.marker,
                     active = rowData.active,
@@ -258,7 +265,7 @@ internal class MapViewerLedgerPanel(
 
                 is TurnPanelRow.Current -> buildCurrentTurnRow(
                     parent = row,
-                    width = MapViewerLedgerPanelLayoutBuilder.PANEL_WIDTH - (CONTENT_PADDING * 2),
+                    width = itemWidth,
                     height = MARKER_ROW_HEIGHT,
                     current = rowData,
                 ) {
@@ -385,21 +392,51 @@ internal class MapViewerLedgerPanel(
             (turnPanelState().rows.size * MARKER_ROW_HEIGHT) + ((turnPanelState().rows.size - 1) * MARKER_ROW_GAP)
         }
 
+    private fun contentHeight(width: Double): Double =
+        when (activeTab) {
+            LedgerPanelTab.Turns -> HEADER_HEIGHT +
+                    HEADER_GAP +
+                    CONTROL_BUTTON_HEIGHT +
+                    SECTION_GAP +
+                    CONTROL_BUTTON_HEIGHT +
+                    SECTION_GAP +
+                    renderMarkersHeight()
+
+            LedgerPanelTab.Settings -> 28.0 + CONTROL_BUTTON_HEIGHT
+        }
+
+    private fun contentMinimumWidth(): Double =
+        maxOf(
+            CONTENT_MINIMUM_WIDTH,
+            if (activeTab == LedgerPanelTab.Settings) {
+                MapViewerInlineInputs.minimumWidth("Destroyed Units", DESTROYED_UNITS_DROPDOWN_MINIMUM_WIDTH)
+            } else {
+                0.0
+            },
+        )
+
     private fun layoutViewportWidth(): Int =
         overlay.stage?.views?.actualVirtualWidth ?: 0
 
     private fun layoutViewportHeight(): Int =
         overlay.stage?.views?.actualVirtualHeight ?: 0
 
-    private fun toRgba(color: Color, alpha: Int = color.alpha): RGBA =
-        RGBA(color.red, color.green, color.blue, alpha)
+    companion object {
+        fun destroyedUnitsDropdownMinimumWidth(): Double =
+            DESTROYED_UNITS_DROPDOWN_MINIMUM_WIDTH
 
-    private companion object {
         const val Z_INDEX = 10_000.0
-        const val CONTENT_PADDING = 20.0
+        private const val CONTENT_MINIMUM_WIDTH = 320.0
+        val DESTROYED_UNITS_DROPDOWN_MINIMUM_WIDTH = maxOf(
+            160.0,
+            MapViewerDropdownLayoutBuilder.minimumMenuWidth(
+                labels = DestroyedUnitsDisplay.entries.map { it.label },
+                hasIcons = false,
+            ),
+        )
+        const val PREFERRED_DIALOG_HEIGHT = 520.0
         const val HEADER_HEIGHT = 40.0
         const val HEADER_GAP = 12.0
-        const val TABS_HEIGHT = 40.0
         const val SECTION_GAP = 16.0
         const val BUTTON_GAP = 12.0
         const val CONTROL_BUTTON_WIDTH = 134.0
@@ -422,5 +459,11 @@ internal enum class LedgerPanelTab(val label: String) {
 internal enum class DestroyedUnitsDisplay(val label: String) {
     Full("Full"),
     Partial("Partial"),
-    Hide("Hide"),
+    Hide("Hide");
+
+    companion object {
+        fun fromSettingsValue(value: String?): DestroyedUnitsDisplay =
+            entries.firstOrNull { it.label.equals(value, ignoreCase = true) || it.name.equals(value, ignoreCase = true) }
+                ?: Full
+    }
 }

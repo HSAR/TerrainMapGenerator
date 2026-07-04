@@ -12,6 +12,7 @@ internal object MapViewerDialogChrome {
         parent: Container,
         layout: MapViewerDialogLayout,
         title: String,
+        titleTabs: List<MapViewerDialogTitleTab> = emptyList(),
         onClose: () -> Unit,
         onBeginMove: () -> Unit,
         onBeginResize: () -> Unit,
@@ -22,21 +23,31 @@ internal object MapViewerDialogChrome {
         titleBar.xy(layout.titleBar.left, layout.titleBar.top)
         titleBar.solidRect(layout.titleBar.width, layout.titleBar.height, MapViewerUiBoxes.toRgba(Palette.Colours.DARK, TITLE_BAR_ALPHA))
         val titleWidth = (layout.titleBar.width - layout.closeButton.width - TITLE_TEXT_RIGHT_GAP - TITLE_TEXT_LEFT).coerceAtLeast(0.0)
-        val fittedTitle = MapViewerTextViews.ellipsize(
-            text = title,
-            maxWidth = titleWidth,
-            role = MapViewerFontRole.STRONG,
-            size = MapViewerTextViews.DEFAULT_TEXT_SIZE,
-        )
-        MapViewerTextViews.leftBox(
-            parent = titleBar,
-            text = fittedTitle,
-            width = titleWidth,
-            height = layout.titleBar.height,
-            role = MapViewerFontRole.STRONG,
-            color = Palette.Colours.WHITE,
-        ) {
-            x = TITLE_TEXT_LEFT
+        if (titleTabs.isEmpty()) {
+            val fittedTitle = MapViewerTextViews.ellipsize(
+                text = title,
+                maxWidth = titleWidth,
+                role = MapViewerFontRole.STRONG,
+                size = MapViewerTextViews.DEFAULT_TEXT_SIZE,
+            )
+            MapViewerTextViews.leftBox(
+                parent = titleBar,
+                text = fittedTitle,
+                width = titleWidth,
+                height = layout.titleBar.height,
+                role = MapViewerFontRole.STRONG,
+                color = Palette.Colours.WHITE,
+            ) {
+                x = TITLE_TEXT_LEFT
+            }
+        } else {
+            renderTitleTabs(
+                parent = titleBar,
+                tabs = titleTabs,
+                width = titleWidth,
+                height = layout.titleBar.height,
+                onBeginMove = onBeginMove,
+            )
         }
         titleBar.mouse {
             onDown {
@@ -84,7 +95,74 @@ internal object MapViewerDialogChrome {
         }
     }
 
+    private fun renderTitleTabs(
+        parent: Container,
+        tabs: List<MapViewerDialogTitleTab>,
+        width: Double,
+        height: Double,
+        onBeginMove: () -> Unit,
+    ) {
+        val tabWidth = MapViewerDialogTitleTabLayoutBuilder.tabWidth(tabs.map { it.label })
+        tabs.forEachIndexed { index, tab ->
+            val tabButton = parent.container()
+            tabButton.xy(index * tabWidth, 0.0)
+            tabButton.solidRect(
+                tabWidth,
+                height,
+                MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, if (tab.active) ACTIVE_TAB_FILL_ALPHA else INACTIVE_TAB_FILL_ALPHA),
+            )
+            if (index > 0) {
+                tabButton.solidRect(1.0, height, MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, MapViewerUiStateStyle.ACTIVE_ALPHA))
+            }
+            MapViewerTextViews.box(
+                parent = tabButton,
+                text = tab.label,
+                width = tabWidth,
+                height = height,
+                role = MapViewerFontRole.STRONG,
+                color = Palette.Colours.WHITE,
+            )
+            tabButton.mouse {
+                onDown {
+                    tab.onSelected()
+                    onBeginMove()
+                }
+            }
+        }
+        parent.solidRect(1.0, height, MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, MapViewerUiStateStyle.ACTIVE_ALPHA)) {
+            x = (tabWidth * tabs.size).coerceAtMost(width)
+        }
+    }
+
     const val TITLE_BAR_ALPHA = 235
-    private const val TITLE_TEXT_LEFT = 14.0
-    private const val TITLE_TEXT_RIGHT_GAP = 56.0
+    internal const val TITLE_TEXT_LEFT = 14.0
+    internal const val TITLE_TEXT_RIGHT_GAP = 56.0
+    private const val ACTIVE_TAB_FILL_ALPHA = 0
+    private const val INACTIVE_TAB_FILL_ALPHA = 30
 }
+
+internal object MapViewerDialogTitleTabLayoutBuilder {
+    fun tabWidth(labels: List<String>): Double =
+        labels.maxOfOrNull { label -> MapViewerTextViews.measure(label, role = MapViewerFontRole.STRONG).width }
+            ?.let { labelWidth -> labelWidth + TAB_HORIZONTAL_PADDING * 2.0 }
+            ?: 0.0
+
+    fun minimumShellWidth(labels: List<String>): Double =
+        if (labels.isEmpty()) {
+            0.0
+        } else {
+            tabWidth(labels) * labels.size +
+                    MapViewerDialogLayoutBuilder.CLOSE_BUTTON_SIZE +
+                    MapViewerDialogChrome.TITLE_TEXT_RIGHT_GAP +
+                    MapViewerDialogChrome.TITLE_TEXT_LEFT +
+                    MapViewerDialogLayoutBuilder.BORDER_INSET * 2.0
+        }
+
+    private const val TAB_HORIZONTAL_PADDING = 20.0
+}
+
+internal data class MapViewerDialogTitleTab(
+    val label: String,
+    val active: Boolean,
+    val onSelected: () -> Unit,
+)

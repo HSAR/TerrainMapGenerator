@@ -176,6 +176,15 @@ class OperationSaveWriterTest {
 
         val directory = writer.defaultSaveDirectory()
 
+        assertThat(directory.endsWith(Path.of("Documents", "My Games", "OperationalCommandTool", "saves")), equalTo(true))
+    }
+
+    @Test
+    fun `default storage directory is under documents operational command tool`() {
+        val writer = OperationSaveWriter()
+
+        val directory = writer.defaultStorageDirectory()
+
         assertThat(directory.endsWith(Path.of("Documents", "My Games", "OperationalCommandTool")), equalTo(true))
     }
 
@@ -189,6 +198,56 @@ class OperationSaveWriterTest {
         )
 
         assertThat(path.fileName.toString(), equalTo("Test_Operation_12345678.oct.zip"))
+        assertThat(path.parent.fileName.toString(), equalTo("saves"))
+    }
+
+    @Test
+    fun `default storage creates saves folder and versioned settings file`() {
+        val writer = OperationSaveWriter(storage = OperationToolStorage(tempDir))
+
+        writer.ensureDefaultStorage()
+
+        assertThat(Files.isDirectory(tempDir.resolve("saves")), equalTo(true))
+        val settings = OperationSaveJson.objectMapper.readValue(
+            tempDir.resolve("settings.json").toFile(),
+            OperationToolSettingsDto::class.java,
+        )
+        assertThat(settings.formatVersion, equalTo(1))
+    }
+
+    @Test
+    fun `tool settings persist destroyed units display mode`() {
+        val storage = OperationToolStorage(tempDir)
+
+        storage.writeSettings(OperationToolSettingsDto(formatVersion = 99, displayDestroyedUnits = "Partial"))
+        val settings = storage.readSettings()
+        val settingsJson = OperationSaveJson.objectMapper.readTree(tempDir.resolve("settings.json").toFile())
+
+        assertThat(settings.formatVersion, equalTo(1))
+        assertThat(settings.displayDestroyedUnits, equalTo("Partial"))
+        assertThat(settingsJson["displayDestroyedUnits"].asText(), equalTo("Partial"))
+    }
+
+    @Test
+    fun `default save path writes into saves folder and creates settings file`() {
+        val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000dd")
+        val writer = writerWithUuids(
+            UUID.fromString("00000000-0000-0000-0000-000000000041"),
+            storage = OperationToolStorage(tempDir),
+        )
+
+        val savePath = writer.write(
+            request(
+                operationId = operationId,
+                mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                ledgerEntries = emptyList(),
+            ),
+        )
+
+        assertThat(savePath.parent, equalTo(tempDir.resolve("saves")))
+        assertThat(Files.exists(savePath), equalTo(true))
+        assertThat(Files.exists(tempDir.resolve("settings.json")), equalTo(true))
     }
 
     @Test
@@ -260,9 +319,12 @@ class OperationSaveWriterTest {
         ledgerEntries = ledgerEntries,
     )
 
-    private fun writerWithUuids(vararg uuids: UUID): OperationSaveWriter {
+    private fun writerWithUuids(
+        vararg uuids: UUID,
+        storage: OperationToolStorage = OperationToolStorage(),
+    ): OperationSaveWriter {
         val iterator = uuids.iterator()
-        return OperationSaveWriter(uuidGenerator = { iterator.next() })
+        return OperationSaveWriter(uuidGenerator = { iterator.next() }, storage = storage)
     }
 
     private fun ZipFile.read(name: String): ByteArray =

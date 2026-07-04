@@ -27,9 +27,14 @@ import kotlin.math.roundToInt
 internal class OperationSaveWriter(
     private val clock: Clock = Clock.systemUTC(),
     private val uuidGenerator: () -> UUID = UUID::randomUUID,
+    private val storage: OperationToolStorage = OperationToolStorage(),
 ) {
     fun write(request: OperationSaveRequest, targetPath: Path = defaultSavePath(request.operationName, request.operationId)): Path {
-        targetPath.parent?.let(Files::createDirectories)
+        if (targetPath.parent == defaultSaveDirectory()) {
+            storage.ensureExists()
+        } else {
+            targetPath.parent?.let(Files::createDirectories)
+        }
 
         val assets = OperationAssetRegistry(uuidGenerator)
         val mapAsset = assets.registerBufferedImage(
@@ -124,7 +129,13 @@ internal class OperationSaveWriter(
         defaultSaveDirectory().resolve("${operationName.sanitizedFilename()}_${operationId.toString().take(8)}.oct.zip")
 
     fun defaultSaveDirectory(): Path =
-        Path.of(System.getProperty("user.home"), "Documents", "My Games", "OperationalCommandTool")
+        storage.savesDirectory
+
+    fun defaultStorageDirectory(): Path =
+        storage.rootDirectory
+
+    fun ensureDefaultStorage() =
+        storage.ensureExists()
 
     private fun String.sanitizedFilename(): String =
         trim()
