@@ -145,7 +145,7 @@ internal class MapViewerSidebar(
         MapViewerSidePanelChrome.renderToggle(
             parent = toggleButton,
             bounds = layout.toggleBounds,
-            label = if (collapsed) "Show Units" else "Hide Units",
+            label = "Units",
         )
 
         val panelBounds = layout.panelBounds

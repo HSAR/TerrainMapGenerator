@@ -77,7 +77,7 @@ class GridReferenceFormatterFieldsTest {
             mapWidth = 2560,
             mapHeight = 1440,
             easting = "CD4",
-            northing = "30-40",
+            northing = "300-400",
         )
 
         assertThat(pixels?.x, closeTo(15.0, 0.0001))
@@ -85,13 +85,13 @@ class GridReferenceFormatterFieldsTest {
     }
 
     @Test
-    fun `epsilon reference fields reject invalid percentages`() {
+    fun `epsilon reference fields reject invalid thousandth offsets`() {
         val pixels = GridReferenceFormatter.parseFields(
             layer = epsilonLayer(),
             mapWidth = 2560,
             mapHeight = 1440,
             easting = "CD4",
-            northing = "100-40",
+            northing = "1000-400",
         )
 
         assertThat(pixels, equalTo(null))

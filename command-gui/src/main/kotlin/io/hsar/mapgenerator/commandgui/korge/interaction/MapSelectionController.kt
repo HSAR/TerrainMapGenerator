@@ -245,7 +245,7 @@ internal class MapSelectionController(
             MapObjectMovePreview(
                 origin = before,
                 destination = after,
-                color = state.originalSnapshots.selectionAccentColor(),
+                color = state.originalSnapshots.measureTextColor(),
             ),
         )
     }
@@ -308,7 +308,12 @@ internal class MapSelectionController(
                     ?.let { ScreenSelectionBox(it.start, it.current) },
                 groupFrame = groupFrame,
                 pivotHandle = selectedSnapshots
-                    .takeIf { boxState == null }
+                    .takeIf {
+                        shouldPublishSelectionPivotHandle(
+                            boxSelectionActive = boxState != null,
+                            moveActive = moveState != null,
+                        )
+                    }
                     ?.pivotHandle(groupFrame = groupFrame),
             ),
         )
@@ -354,6 +359,12 @@ internal class MapSelectionController(
         private const val BOX_DRAG_THRESHOLD = 4.0
     }
 }
+
+internal fun shouldPublishSelectionPivotHandle(
+    boxSelectionActive: Boolean,
+    moveActive: Boolean,
+): Boolean =
+    !boxSelectionActive && !moveActive
 
 private fun MapPlacedObjectSnapshot.moveBy(delta: MapCoordinateDelta): MapPlacedObjectSnapshot =
     when (this) {

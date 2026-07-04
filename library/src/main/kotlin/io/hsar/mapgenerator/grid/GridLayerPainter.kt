@@ -101,9 +101,10 @@ object GridLayerPainter {
 
         (startIndex..endIndex).forEach { lineIndex ->
             val lineID = axis.lineId(layer, lineIndex)
-            val lineIDString = lineID.padZeroes(layer.detailLevel)
+            val lineIDString = axis.lineText(layer, lineID)
             val linePosition = axis.linePosition(layer, lineIndex, gridLinePadding)
             val isMajorLine = axis.isMajorLine(lineID)
+            val shouldDrawLabel = layer.referenceSystem.shouldDrawLabel(isMajorLine)
             val fontAndColour = if (isMajorLine) majorGridLineFont else gridLineFont
             val labelLayout = labelLayout(
                 surface = surface,
@@ -145,11 +146,13 @@ object GridLayerPainter {
             )
 
             if (lineBounds.isVisible(axis)) {
-                surface.drawCenteredString(
-                    point = labelLayout.point,
-                    text = lineIDString,
-                    fontAndColour = fontAndColour.first to labelColour,
-                )
+                if (shouldDrawLabel) {
+                    surface.drawCenteredString(
+                        point = labelLayout.point,
+                        text = lineIDString,
+                        fontAndColour = fontAndColour.first to labelColour,
+                    )
+                }
                 drawLineWithOptionalFade(
                     surface = surface,
                     start = lineBounds.start,
@@ -356,6 +359,28 @@ object GridLayerPainter {
 
     private fun GridAxis.isMajorLine(lineId: Double): Boolean =
         abs(lineId % 10.0) < 1e-6
+
+    private fun GridAxis.lineText(layer: GridLayer, lineId: Double): String =
+        when (layer.referenceSystem) {
+            ReferenceSystem.MGRS -> lineId.padZeroes(layer.detailLevel)
+            ReferenceSystem.EPSILON -> layer.referenceSystem.formatCoord(
+                coord = layer.referenceSystem.coordFromLineNumber(lineId, layer.gridScale),
+                axis = coordAxis(),
+                gridScale = layer.gridScale,
+            )
+        }
+
+    private fun GridAxis.coordAxis(): CoordAxis =
+        when (this) {
+            GridAxis.VERTICAL -> CoordAxis.X
+            GridAxis.HORIZONTAL -> CoordAxis.Y
+        }
+
+    private fun ReferenceSystem.shouldDrawLabel(isMajorLine: Boolean): Boolean =
+        when (this) {
+            ReferenceSystem.MGRS -> true
+            ReferenceSystem.EPSILON -> isMajorLine
+        }
 
     private fun Double.ceilWhole(): Double =
         kotlin.math.ceil(this)

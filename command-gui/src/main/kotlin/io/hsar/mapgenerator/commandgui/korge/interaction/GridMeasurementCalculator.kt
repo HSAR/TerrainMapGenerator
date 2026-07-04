@@ -46,7 +46,6 @@ internal object GridMeasurementCalculator {
                         ((destinationMapY - originMapY) * (destinationMapY - originMapY))
             ) * layer.unitsPerPixel
             )
-        .roundToInt()
 
     private fun bearingDegrees(
         originMapX: Double,

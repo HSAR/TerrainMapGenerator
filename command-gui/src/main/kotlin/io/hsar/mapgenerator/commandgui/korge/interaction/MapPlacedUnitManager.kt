@@ -7,6 +7,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerImageViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitEditDialog
 import io.hsar.mapgenerator.grid.GridLayer
+import io.hsar.mapgenerator.grid.ReferenceSystem
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.image.bitmap.Bitmap32
@@ -192,13 +193,14 @@ internal class MapPlacedUnitManager(
             destroyed = destroyed,
             facingDegrees = facingDegrees,
             mapCoordinate = mapCoordinate,
-            normalizedWidth = unitSize.worldWidth / mapWidth,
-            normalizedHeight = unitSize.worldHeight / mapHeight,
+            normalizedWidth = unitSize.normalizedWidth,
+            normalizedHeight = unitSize.normalizedHeight,
             customProperties = customProperties,
         )
     }
 
     fun upsert(snapshot: UnitSnapshot) {
+        val unitSize = worldUnitSize(snapshot.template.bitmap)
         val existing = units.firstOrNull { it.id == snapshot.id }
         if (existing != null) {
             existing.unitTemplateId = snapshot.unitTemplateId
@@ -207,10 +209,9 @@ internal class MapPlacedUnitManager(
             existing.destroyed = snapshot.destroyed
             existing.facingDegrees = snapshot.facingDegrees
             existing.mapCoordinate = snapshot.mapCoordinate
-            existing.normalizedWidth = snapshot.normalizedWidth
-            existing.normalizedHeight = snapshot.normalizedHeight
+            existing.normalizedWidth = unitSize.normalizedWidth
+            existing.normalizedHeight = unitSize.normalizedHeight
             existing.customProperties = snapshot.customProperties
-            val unitSize = worldUnitSize(snapshot.template.bitmap)
             existing.worldWidth = unitSize.worldWidth
             existing.worldHeight = unitSize.worldHeight
             existing.rebuildVisual(snapshot.template.bitmap)
@@ -221,7 +222,6 @@ internal class MapPlacedUnitManager(
             return
         }
 
-        val unitSize = worldUnitSize(snapshot.template.bitmap)
         val placedUnit = PlacedUnit(
             id = snapshot.id,
             view = unitLayer.container(),
@@ -231,8 +231,8 @@ internal class MapPlacedUnitManager(
             destroyed = snapshot.destroyed,
             facingDegrees = snapshot.facingDegrees,
             mapCoordinate = snapshot.mapCoordinate,
-            normalizedWidth = snapshot.normalizedWidth,
-            normalizedHeight = snapshot.normalizedHeight,
+            normalizedWidth = unitSize.normalizedWidth,
+            normalizedHeight = unitSize.normalizedHeight,
             customProperties = snapshot.customProperties,
             worldWidth = unitSize.worldWidth,
             worldHeight = unitSize.worldHeight,
@@ -318,7 +318,7 @@ internal class MapPlacedUnitManager(
             MapObjectMovePreview(
                 origin = unit.snapshot().mapCoordinate,
                 destination = mapCoordinate,
-                color = unit.snapshot().selectionAccentColor(),
+                color = unit.snapshot().measureTextColor(),
             ),
         )
     }
@@ -365,7 +365,7 @@ internal class MapPlacedUnitManager(
             MapObjectMovePreview(
                 origin = state.originalSnapshot.mapCoordinate,
                 destination = mapCoordinate,
-                color = state.unit.snapshot().selectionAccentColor(),
+                color = state.unit.snapshot().measureTextColor(),
             ),
         )
     }
@@ -420,7 +420,7 @@ internal class MapPlacedUnitManager(
                             origin = session.baselineSnapshot.mapCoordinate,
                             destination = updatedCoordinate,
                             referenceText = "${previewPositionX.trim()} ${previewPositionY.trim()}",
-                            color = unit.snapshot().selectionAccentColor(),
+                            color = unit.snapshot().measureTextColor(),
                         ),
                     )
                 } else {
@@ -837,12 +837,14 @@ internal class MapPlacedUnitManager(
     }
 
     private fun worldUnitSize(bitmap: korlibs.image.bitmap.Bitmap32): WorldUnitSize {
-        val worldWidth = UNIT_ICON_WIDTH_UNITS / mapUnitsPerPixel
+        val worldWidth = unitIconWidthUnits() / mapUnitsPerPixel
         val worldScale = worldWidth / bitmap.width
         return WorldUnitSize(
             worldWidth = worldWidth,
             worldHeight = bitmap.height * worldScale,
             worldScale = worldScale,
+            normalizedWidth = worldWidth / mapWidth,
+            normalizedHeight = bitmap.height * worldScale / mapHeight,
         )
     }
 
@@ -850,13 +852,17 @@ internal class MapPlacedUnitManager(
         val worldWidth: Double,
         val worldHeight: Double,
         val worldScale: Double,
+        val normalizedWidth: Double,
+        val normalizedHeight: Double,
     )
+
+    private fun unitIconWidthUnits(): Double =
+        (gridLayer?.referenceSystem ?: ReferenceSystem.MGRS).defaultUnitIconWidthUnits
 
     private fun toRgba(color: Color, alpha: Int = color.alpha): RGBA =
         RGBA(color.red, color.green, color.blue, alpha)
 
     private companion object {
-        const val UNIT_ICON_WIDTH_UNITS = 250.0
         const val DRAG_PREVIEW_Z_INDEX = 15_000.0
         private const val FACING_RING_SEGMENTS = 48
         private const val HIT_TOLERANCE = 8.0

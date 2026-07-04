@@ -96,12 +96,42 @@ class GridLayerPainterTest {
         )
     }
 
-    private fun testSurface(): GridRenderSurface =
+    @Test
+    fun `epsilon image grid draws major designator labels but omits minor labels`() {
+        val drawnText = mutableListOf<String>()
+        val surface = testSurface(drawnText)
+
+        GridLayerPainter.draw(
+            surface = surface,
+            layer = GridLayer(
+                mapId = "EPSILON",
+                referenceSystem = ReferenceSystem.EPSILON,
+                gridScale = ReferenceSystem.EPSILON.gridScale,
+                unitsPerPixel = 1.0,
+                detailLevel = 2,
+                pixelsPerLine = 20.0,
+                verticalLineNumberStart = ReferenceSystem.EPSILON.coordFromLineNumber(0.0, ReferenceSystem.EPSILON.gridScale),
+                horizontalLineNumberStart = ReferenceSystem.EPSILON.coordFromLineNumber(20.0, ReferenceSystem.EPSILON.gridScale),
+                verticalLineCount = 20,
+                horizontalLineCount = 20,
+            ),
+        )
+
+        assertThat(drawnText.contains("EPSILON"), equalTo(true))
+        assertThat(drawnText.contains("1"), equalTo(true))
+        assertThat(drawnText.contains("U"), equalTo(true))
+        assertThat(drawnText.contains("2"), equalTo(false))
+        assertThat(drawnText.contains("T"), equalTo(false))
+    }
+
+    private fun testSurface(drawnText: MutableList<String> = mutableListOf()): GridRenderSurface =
         object : GridRenderSurface {
             override val width = 200
             override val height = 200
 
-            override fun drawString(point: Point, string: String, fontAndColour: Pair<Font, Color>) = Unit
+            override fun drawString(point: Point, string: String, fontAndColour: Pair<Font, Color>) {
+                drawnText += string
+            }
             override fun drawLine(point1: Point, point2: Point, width: Float, color: Color) = Unit
             override fun getTextSize(text: String, font: Font): Rectangle = Rectangle(Point.ORIGIN, Point(20.0, 10.0))
         }

@@ -62,14 +62,14 @@ internal class MapSelectionOverlayView(
     }
 
     private fun drawHighlight(snapshot: MapPlacedObjectSnapshot) {
-        val bounds = snapshot.selectionBounds(coordinateSpace).expanded(HIGHLIGHT_MAP_PADDING)
         val viewport = viewportProvider()
-        val topLeft = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(bounds.left, bounds.top)), viewport)
-        val bottomRight = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(bounds.right, bounds.bottom)), viewport)
-        val left = minOf(topLeft.x, bottomRight.x)
-        val top = minOf(topLeft.y, bottomRight.y)
-        val width = kotlin.math.abs(bottomRight.x - topLeft.x)
-        val height = kotlin.math.abs(bottomRight.y - topLeft.y)
+        val frame = snapshot.selectionFrame(coordinateSpace, viewport, HIGHLIGHT_SCREEN_PADDING)
+        val left = frame.corners.minOf { it.x }
+        val top = frame.corners.minOf { it.y }
+        val right = frame.corners.maxOf { it.x }
+        val bottom = frame.corners.maxOf { it.y }
+        val width = right - left
+        val height = bottom - top
 
         if (width <= 0.0 || height <= 0.0) {
             return
@@ -162,7 +162,7 @@ internal class MapSelectionOverlayView(
     private companion object {
         private const val SELECTION_STROKE_WIDTH = 2.0
         private const val HIGHLIGHT_STROKE_WIDTH = 2.0
-        private const val HIGHLIGHT_MAP_PADDING = 0.002
+        private const val HIGHLIGHT_SCREEN_PADDING = 4.0
         private const val GROUP_FILL_ALPHA = 28
         private const val GROUP_STROKE_ALPHA = 150
         private const val HIGHLIGHT_STROKE_ALPHA = 210

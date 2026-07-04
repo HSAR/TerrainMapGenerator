@@ -1,25 +1,31 @@
 package io.hsar.mapgenerator.grid
 
-import kotlin.math.roundToInt
-
 data class MgrsCoord(
-    override val units: Int,
+    override val preciseUnits: Double,
 ) : Coord {
-    val metres: Int
-        get() = units
+    val metres: Double
+        get() = preciseUnits
 
     override fun format(): String =
-        if (units < 0) {
-            "-${(-units).formatDigits()}"
+        if (preciseUnits < 0) {
+            "-${(-preciseUnits).formatDigits()}"
         } else {
-            units.formatDigits()
+            preciseUnits.formatDigits()
         }
 
-    private fun Int.formatDigits(): String =
-        toString()
+    private fun Double.formatDigits(): String =
+        formatNumber()
             .padStart(MAX_DIGITS, '0')
             .trimEnd('0')
+            .removeSuffix(".")
             .ifBlank { "0" }
+
+    private fun Double.formatNumber(): String =
+        if (this % 1.0 == 0.0) {
+            toInt().toString()
+        } else {
+            toString().trimEnd('0').removeSuffix(".")
+        }
 
     fun formatForGridScale(gridScale: Int): String =
         lineNumber(gridScale)
@@ -48,13 +54,16 @@ data class MgrsCoord(
                 }
                 ?.let(::fromUnits)
 
-        fun fromUnits(units: Int): MgrsCoord =
+        fun fromUnits(units: Double): MgrsCoord =
             MgrsCoord(units)
+
+        fun fromUnits(units: Int): MgrsCoord =
+            fromUnits(units.toDouble())
 
         fun fromMetres(metres: Int): MgrsCoord =
             fromUnits(metres)
 
         fun fromLineNumber(lineNumber: Double, gridScale: Int): MgrsCoord =
-            fromUnits((lineNumber * gridScale).roundToInt())
+            fromUnits(lineNumber * gridScale)
     }
 }

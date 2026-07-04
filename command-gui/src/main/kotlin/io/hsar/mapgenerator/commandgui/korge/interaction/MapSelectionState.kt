@@ -41,6 +41,19 @@ internal data class ScreenSelectionFrame(
             bottomLeft = bottomLeft.rotateAround(pivot, deltaRadians),
         )
 
+    fun expanded(amount: Double): ScreenSelectionFrame {
+        val left = corners.minOf { it.x } - amount
+        val top = corners.minOf { it.y } - amount
+        val right = corners.maxOf { it.x } + amount
+        val bottom = corners.maxOf { it.y } + amount
+        return ScreenSelectionFrame(
+            topLeft = Vector2D(left, top),
+            topRight = Vector2D(right, top),
+            bottomRight = Vector2D(right, bottom),
+            bottomLeft = Vector2D(left, bottom),
+        )
+    }
+
     companion object {
         fun fromBounds(bounds: MapSelectionBounds, coordinateSpace: MapCoordinateSpace, viewport: CameraViewport): ScreenSelectionFrame {
             val topLeft = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(bounds.left, bounds.top)), viewport)

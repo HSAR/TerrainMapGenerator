@@ -8,16 +8,16 @@ class MgrsCoordTest {
 
     @Test
     fun `parsing right pads significant digits to metres`() {
-        assertThat(MgrsCoord.parse("8")?.metres, equalTo(80_000))
-        assertThat(MgrsCoord.parse("80")?.metres, equalTo(80_000))
-        assertThat(MgrsCoord.parse("800")?.metres, equalTo(80_000))
-        assertThat(MgrsCoord.parse("8000")?.metres, equalTo(80_000))
-        assertThat(MgrsCoord.parse("80000")?.metres, equalTo(80_000))
+        assertThat(MgrsCoord.parse("8")?.metres, equalTo(80_000.0))
+        assertThat(MgrsCoord.parse("80")?.metres, equalTo(80_000.0))
+        assertThat(MgrsCoord.parse("800")?.metres, equalTo(80_000.0))
+        assertThat(MgrsCoord.parse("8000")?.metres, equalTo(80_000.0))
+        assertThat(MgrsCoord.parse("80000")?.metres, equalTo(80_000.0))
     }
 
     @Test
     fun `parsing preserves leading zero precision`() {
-        assertThat(MgrsCoord.parse("0840")?.metres, equalTo(8_400))
+        assertThat(MgrsCoord.parse("0840")?.metres, equalTo(8_400.0))
     }
 
     @Test

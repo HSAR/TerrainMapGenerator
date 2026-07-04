@@ -1,23 +1,27 @@
 package io.hsar.mapgenerator.grid
 
-import kotlin.math.roundToInt
+import kotlin.math.floor
 
 data class EpsilonCoord(
-    override val units: Int,
+    override val preciseUnits: Double,
 ) : Coord {
     override fun format(): String =
-        units.toString()
+        if (preciseUnits % 1.0 == 0.0) {
+            preciseUnits.toInt().toString()
+        } else {
+            preciseUnits.toString().trimEnd('0').removeSuffix(".")
+        }
 
     override fun toString(): String =
         format()
 
     companion object {
-        private val PATTERN = Regex("[+-]?\\d+")
+        private val PATTERN = Regex("[+-]?\\d+(\\.\\d+)?")
 
         fun parse(value: String): EpsilonCoord? =
             value.trim()
                 .takeIf { it.matches(PATTERN) }
-                ?.toIntOrNull()
+                ?.toDoubleOrNull()
                 ?.let(::fromUnits)
 
         fun parseDesignator(value: String, axis: CoordAxis, gridScale: Int): EpsilonCoord? =
@@ -28,14 +32,17 @@ data class EpsilonCoord(
 
         fun formatDesignator(coord: Coord, axis: CoordAxis, gridScale: Int): String =
             when (axis) {
-                CoordAxis.X -> EpsilonGridDesignators.xDesignator(Math.floorDiv(coord.units, gridScale))
-                CoordAxis.Y -> EpsilonGridDesignators.yDesignator(Math.floorDiv(coord.units, gridScale))
+                CoordAxis.X -> EpsilonGridDesignators.xDesignator(floor(coord.preciseUnits / gridScale).toInt())
+                CoordAxis.Y -> EpsilonGridDesignators.yDesignator(floor(coord.preciseUnits / gridScale).toInt())
             }
 
-        fun fromUnits(units: Int): EpsilonCoord =
+        fun fromUnits(units: Double): EpsilonCoord =
             EpsilonCoord(units)
 
+        fun fromUnits(units: Int): EpsilonCoord =
+            fromUnits(units.toDouble())
+
         fun fromLineNumber(lineNumber: Double, gridScale: Int): EpsilonCoord =
-            fromUnits((lineNumber * gridScale).roundToInt())
+            fromUnits(lineNumber * gridScale)
     }
 }

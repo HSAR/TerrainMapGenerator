@@ -17,6 +17,12 @@ enum class ReferenceSystem {
             EPSILON -> 20
         }
 
+    val defaultUnitIconWidthUnits: Double
+        get() = when (this) {
+            MGRS -> gridScale * 0.1
+            EPSILON -> gridScale * 0.1
+        }
+
     fun scaleInputToUnitsPerPixel(value: Double): Double =
         when (this) {
             MGRS -> value
@@ -42,6 +48,9 @@ enum class ReferenceSystem {
         }
 
     fun coordFromUnits(units: Int): Coord =
+        coordFromUnits(units.toDouble())
+
+    fun coordFromUnits(units: Double): Coord =
         when (this) {
             MGRS -> MgrsCoord.fromUnits(units)
             EPSILON -> EpsilonCoord.fromUnits(units)

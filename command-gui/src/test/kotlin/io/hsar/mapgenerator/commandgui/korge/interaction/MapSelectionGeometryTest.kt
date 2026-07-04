@@ -6,8 +6,10 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
+import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
 import org.hamcrest.MatcherAssert.assertThat
+import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import java.awt.Color
@@ -38,6 +40,41 @@ class MapSelectionGeometryTest {
 
         assertThat(bounds.overlaps(MapSelectionBounds(0.59, 0.59, 0.7, 0.7)), equalTo(true))
         assertThat(bounds.overlaps(MapSelectionBounds(0.7, 0.7, 0.8, 0.8)), equalTo(false))
+    }
+
+    @Test
+    fun `unit selection frame follows dynamic icon size`() {
+        val smallIconCoordinateSpace = MapCoordinateSpace(
+            geometry = ViewerGeometry(backgroundWidth = 1000, backgroundHeight = 1000, mapOffsetX = 0, mapOffsetY = 0),
+            mapWidth = 1000,
+            mapHeight = 1000,
+        )
+        val viewport = CameraViewport.centeredOnMap(
+            geometry = ViewerGeometry(backgroundWidth = 1000, backgroundHeight = 1000, mapOffsetX = 0, mapOffsetY = 0),
+            mapWidth = 1000,
+            mapHeight = 1000,
+            viewportWidth = 1000,
+            viewportHeight = 1000,
+            zoom = 1.0,
+        )
+        val unit = UnitSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000003")),
+            unitTemplateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
+            template = MapViewerUnitTemplate(UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")), "Unit", Bitmap32(4, 8)),
+            instanceName = "Unit",
+            destroyed = false,
+            facingDegrees = null,
+            mapCoordinate = MapCoordinate(0.5, 0.5),
+            normalizedWidth = 0.004,
+            normalizedHeight = 0.008,
+        )
+
+        val frame = unit.selectionFrame(smallIconCoordinateSpace, viewport, screenPadding = 4.0)
+
+        assertThat(frame.topLeft.x, closeTo(494.0, 0.0001))
+        assertThat(frame.topLeft.y, closeTo(492.0, 0.0001))
+        assertThat(frame.bottomRight.x, closeTo(506.0, 0.0001))
+        assertThat(frame.bottomRight.y, closeTo(508.0, 0.0001))
     }
 
     @Test
@@ -112,6 +149,12 @@ class MapSelectionGeometryTest {
 
         assertThat(handle?.center?.x, equalTo(616.0))
         assertThat(handle?.center?.y, equalTo(384.0))
+    }
+
+    @Test
+    fun `pivot handle is hidden while moving a selection`() {
+        assertThat(shouldPublishSelectionPivotHandle(boxSelectionActive = false, moveActive = false), equalTo(true))
+        assertThat(shouldPublishSelectionPivotHandle(boxSelectionActive = false, moveActive = true), equalTo(false))
     }
 
     @Test
@@ -219,6 +262,20 @@ class MapSelectionGeometryTest {
     }
 
     @Test
+    fun `measure text colour uses light for units with no affiliation`() {
+        val unit = unitSnapshot(id = "00000000-0000-0000-0000-000000000032", x = 0.5, y = 0.5, affiliation = null)
+
+        assertThat(unit.measureTextColor(), equalTo(Palette.Colours.LIGHT))
+    }
+
+    @Test
+    fun `measure text colour follows selected unit affiliation when present`() {
+        val unit = unitSnapshot(id = "00000000-0000-0000-0000-000000000033", x = 0.5, y = 0.5, affiliation = UnitAffiliation.Hostile)
+
+        assertThat(unit.measureTextColor(), equalTo(UnitAffiliationUi.swatchColor(UnitAffiliation.Hostile)))
+    }
+
+    @Test
     fun `multi selection ignores drawings and treats null affiliations as wildcards`() {
         val friend = unitSnapshot(id = "00000000-0000-0000-0000-000000000041", x = 0.2, y = 0.2, affiliation = UnitAffiliation.Friend)
         val unknown = unitSnapshot(id = "00000000-0000-0000-0000-000000000042", x = 0.8, y = 0.2, affiliation = null)
@@ -253,6 +310,14 @@ class MapSelectionGeometryTest {
             listOf(unitSnapshot(id = "00000000-0000-0000-0000-000000000054", x = 0.5, y = 0.5, affiliation = null)).selectionAccentColor(),
             equalTo(UnitAffiliationUi.swatchColor(null))
         )
+    }
+
+    @Test
+    fun `multi selection measure text colour uses light when affiliations are missing`() {
+        val first = unitSnapshot(id = "00000000-0000-0000-0000-000000000055", x = 0.2, y = 0.2, affiliation = null)
+        val second = unitSnapshot(id = "00000000-0000-0000-0000-000000000056", x = 0.8, y = 0.2, affiliation = null)
+
+        assertThat(listOf(first, second).measureTextColor(), equalTo(Palette.Colours.LIGHT))
     }
 
     private fun unitSnapshot(id: String, x: Double, y: Double, affiliation: UnitAffiliation? = null) =

@@ -104,6 +104,15 @@ internal fun List<MapPlacedObjectSnapshot>.groupSelectionFrame(
         ScreenSelectionFrame.fromBounds(bounds, coordinateSpace, viewport)
     }
 
+internal fun MapPlacedObjectSnapshot.selectionFrame(
+    coordinateSpace: MapCoordinateSpace,
+    viewport: CameraViewport,
+    screenPadding: Double = 0.0,
+): ScreenSelectionFrame =
+    selectionBounds(coordinateSpace)
+        .let { ScreenSelectionFrame.fromBounds(it, coordinateSpace, viewport) }
+        .expanded(screenPadding)
+
 internal fun MapPlacedObjectSnapshot.overlapsSelectionBox(
     box: MapSelectionBounds,
     coordinateSpace: MapCoordinateSpace,

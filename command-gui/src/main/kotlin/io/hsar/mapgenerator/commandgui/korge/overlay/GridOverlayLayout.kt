@@ -114,7 +114,7 @@ internal object GridOverlayLayoutBuilder {
             val labelAlpha = edgeOpacity(lineCanvasX - xLabelFadeStart, edgeFadeDistance)
             val isMajorLine = isMajorLine(lineId)
 
-            if (shouldRenderVerticalLabel(fineMode, lineId, isMajorLine)) {
+            if (shouldRenderLabel(layer.referenceSystem, fineMode, lineId, isMajorLine)) {
                 val labelStyle = if (isMajorLine) majorAxisStyle else minorAxisStyle
                 labels += GridLabel(
                     text = lineText,
@@ -143,14 +143,16 @@ internal object GridOverlayLayoutBuilder {
             val lineCanvasY = mapTop + line.mapPosition * state.scale
             val labelAlpha = edgeOpacity(lineCanvasY - yLabelFadeStart, edgeFadeDistance)
             val isMajorLine = isMajorLine(lineId)
-            val labelStyle = if (isMajorLine) majorAxisStyle else minorAxisStyle
 
-            labels += GridLabel(
-                text = lineText,
-                x = leftGutterX,
-                y = lineCanvasY,
-                style = labelStyle.copy(color = labelStyle.color.withAlpha(labelAlpha)),
-            )
+            if (shouldRenderLabel(layer.referenceSystem, fineMode, lineId, isMajorLine)) {
+                val labelStyle = if (isMajorLine) majorAxisStyle else minorAxisStyle
+                labels += GridLabel(
+                    text = lineText,
+                    x = leftGutterX,
+                    y = lineCanvasY,
+                    style = labelStyle.copy(color = labelStyle.color.withAlpha(labelAlpha)),
+                )
+            }
 
             lineRects += buildHorizontalLineRects(
                 screenY = lineCanvasY,
@@ -380,8 +382,8 @@ internal object GridOverlayLayoutBuilder {
                 unitsPerPixel = layer.unitsPerPixel,
                 detailLevel = layer.detailLevel + 1,
                 pixelsPerLine = layer.pixelsPerLine / FINE_GRID_SUBDIVISIONS,
-                verticalLineNumberStart = layer.referenceSystem.coordFromUnits(layer.verticalLineNumberStart.units),
-                horizontalLineNumberStart = layer.referenceSystem.coordFromUnits(layer.horizontalLineNumberStart.units),
+                verticalLineNumberStart = layer.referenceSystem.coordFromUnits(layer.verticalLineNumberStart.preciseUnits),
+                horizontalLineNumberStart = layer.referenceSystem.coordFromUnits(layer.horizontalLineNumberStart.preciseUnits),
                 verticalLineCount = layer.verticalLineCount * FINE_GRID_SUBDIVISIONS,
                 horizontalLineCount = layer.horizontalLineCount * FINE_GRID_SUBDIVISIONS,
                 colour = layer.colour,
@@ -392,13 +394,22 @@ internal object GridOverlayLayoutBuilder {
     }
 
     private fun shouldUseFineGrid(state: GridOverlayState, layer: GridLayer): Boolean =
-        layer.pixelsPerLine * state.scale >= FINE_GRID_THRESHOLD_PX
+        layer.pixelsPerLine * state.scale >= fineGridThreshold(layer.referenceSystem)
+
+    private fun fineGridThreshold(referenceSystem: ReferenceSystem): Double =
+        when (referenceSystem) {
+            ReferenceSystem.MGRS -> FINE_GRID_THRESHOLD_PX
+            ReferenceSystem.EPSILON -> FINE_GRID_THRESHOLD_PX * 2.0
+        }
 
     private fun isFineMode(state: GridOverlayState, layer: GridLayer): Boolean =
         layer.gridScale < state.gridLayer.gridScale
 
-    private fun shouldRenderVerticalLabel(fineMode: Boolean, lineId: Double, isMajorLine: Boolean): Boolean =
-        !fineMode || isMajorLine || isEvenFineLine(lineId)
+    private fun shouldRenderLabel(referenceSystem: ReferenceSystem, fineMode: Boolean, lineId: Double, isMajorLine: Boolean): Boolean =
+        when (referenceSystem) {
+            ReferenceSystem.EPSILON -> !fineMode || isMajorLine
+            ReferenceSystem.MGRS -> !fineMode || isMajorLine || isEvenFineLine(lineId)
+        }
 
     private fun isEvenFineLine(lineId: Double): Boolean =
         abs(lineId % 2.0) < 1e-6

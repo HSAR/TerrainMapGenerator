@@ -14,6 +14,7 @@ import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.onStageResized
 import korlibs.korge.view.size
+import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.RectCorners
 import korlibs.math.geom.Vector2D
@@ -39,7 +40,16 @@ internal class MapViewerLedgerPanel(
     private val panel = overlay.uiMaterialLayer()
     private val content = overlay.container()
     private val toggleButton = overlay.container()
+    private val destroyedUnitsDropdown = MapViewerDropdownMenu(
+        root = overlay,
+        options = DestroyedUnitsDisplay.entries.map { MapViewerDropdownOption(it, it.label) },
+        onSelected = { value -> destroyedUnitsDisplay = value ?: DestroyedUnitsDisplay.Full },
+        labelForValue = { value -> (value ?: DestroyedUnitsDisplay.Full).label },
+        menuWidth = 160.0,
+    )
     private var collapsed = true
+    private var activeTab = LedgerPanelTab.Turns
+    private var destroyedUnitsDisplay = DestroyedUnitsDisplay.Full
     private var markerInput: MapViewerStyledTextInput? = null
     private var inputActive = false
     private var layout = MapViewerLedgerPanelLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
@@ -87,7 +97,7 @@ internal class MapViewerLedgerPanel(
         MapViewerSidePanelChrome.renderToggle(
             parent = toggleButton,
             bounds = layout.toggleBounds,
-            label = if (collapsed) "Show Turns" else "Hide Turns",
+            label = "Game",
         )
 
         val panelBounds = layout.panelBounds
@@ -107,6 +117,40 @@ internal class MapViewerLedgerPanel(
 
     private fun renderContent() {
         val itemWidth = MapViewerLedgerPanelLayoutBuilder.PANEL_WIDTH - (CONTENT_PADDING * 2)
+        renderTabs(itemWidth)
+        when (activeTab) {
+            LedgerPanelTab.Turns -> renderTurnsContent(itemWidth, TABS_HEIGHT + SECTION_GAP)
+            LedgerPanelTab.Settings -> renderSettingsContent(itemWidth, TABS_HEIGHT + SECTION_GAP)
+        }
+    }
+
+    private fun renderTabs(width: Double) {
+        val titleBar = content.container()
+        titleBar.solidRect(width, TABS_HEIGHT, MapViewerUiBoxes.toRgba(Palette.Colours.DARK, MapViewerDialogChrome.TITLE_BAR_ALPHA))
+        LedgerPanelTab.entries.forEachIndexed { index, tab ->
+            val tabWidth = width / LedgerPanelTab.entries.size
+            val tabButton = titleBar.container()
+            tabButton.xy(index * tabWidth, 0.0)
+            MapViewerUiBoxes.button(tabButton, tabWidth, TABS_HEIGHT, active = activeTab == tab)
+            MapViewerTextViews.box(
+                parent = tabButton,
+                text = tab.label,
+                width = tabWidth,
+                height = TABS_HEIGHT,
+                role = MapViewerFontRole.STRONG,
+                color = MapViewerUiStateStyle.text(activeTab == tab),
+            )
+            tabButton.mouse {
+                onClick {
+                    inputActive = false
+                    activeTab = tab
+                    relayout(layoutViewportWidth(), layoutViewportHeight())
+                }
+            }
+        }
+    }
+
+    private fun renderTurnsContent(itemWidth: Double, top: Double) {
         val turnPanel = turnPanelState()
         val headerLabel = if (isReadOnly()) "Turns (Read-Only)" else "Turns"
         MapViewerTextViews.leftBox(
@@ -116,10 +160,12 @@ internal class MapViewerLedgerPanel(
             height = HEADER_HEIGHT,
             role = MapViewerFontRole.STRONG,
             color = Palette.Colours.WHITE,
-        )
+        ) {
+            y = top
+        }
 
         val undoButton = content.container()
-        undoButton.xy(0.0, HEADER_HEIGHT + HEADER_GAP)
+        undoButton.xy(0.0, top + HEADER_HEIGHT + HEADER_GAP)
         val undo = MapViewerUiBoxes.button(undoButton, CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, active = canUndo())
         MapViewerTextViews.box(undo, "Undo", CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(canUndo()))
         undo.mouse {
@@ -132,7 +178,7 @@ internal class MapViewerLedgerPanel(
         }
 
         val redoButton = content.container()
-        redoButton.xy(CONTROL_BUTTON_WIDTH + BUTTON_GAP, HEADER_HEIGHT + HEADER_GAP)
+        redoButton.xy(CONTROL_BUTTON_WIDTH + BUTTON_GAP, top + HEADER_HEIGHT + HEADER_GAP)
         val redo = MapViewerUiBoxes.button(redoButton, CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, active = canRedo())
         MapViewerTextViews.box(redo, "Redo", CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(canRedo()))
         redo.mouse {
@@ -144,7 +190,7 @@ internal class MapViewerLedgerPanel(
             }
         }
 
-        val markerRowTop = HEADER_HEIGHT + HEADER_GAP + CONTROL_BUTTON_HEIGHT + SECTION_GAP
+        val markerRowTop = top + HEADER_HEIGHT + HEADER_GAP + CONTROL_BUTTON_HEIGHT + SECTION_GAP
         val addButtonWidth = 120.0
         val markerInputWidth = itemWidth - addButtonWidth - BUTTON_GAP
         markerInput = MapViewerStyledTextInput(
@@ -179,6 +225,18 @@ internal class MapViewerLedgerPanel(
 
         val markersTop = markerRowTop + CONTROL_BUTTON_HEIGHT + SECTION_GAP
         renderRows(markersTop, turnPanel)
+    }
+
+    private fun renderSettingsContent(itemWidth: Double, top: Double) {
+        destroyedUnitsDropdown.renderField(
+            parent = content,
+            label = "Destroyed Units",
+            value = destroyedUnitsDisplay,
+            x = 0.0,
+            y = top,
+            width = itemWidth,
+            height = CONTROL_BUTTON_HEIGHT,
+        )
     }
 
     private fun renderRows(top: Double, turnPanel: TurnPanelState) {
@@ -341,6 +399,7 @@ internal class MapViewerLedgerPanel(
         const val CONTENT_PADDING = 20.0
         const val HEADER_HEIGHT = 40.0
         const val HEADER_GAP = 12.0
+        const val TABS_HEIGHT = 40.0
         const val SECTION_GAP = 16.0
         const val BUTTON_GAP = 12.0
         const val CONTROL_BUTTON_WIDTH = 134.0
@@ -353,4 +412,15 @@ internal class MapViewerLedgerPanel(
         const val TURN_INDEX_WIDTH = 64.0
         const val TURN_INDEX_INSET = 10.0
     }
+}
+
+internal enum class LedgerPanelTab(val label: String) {
+    Turns("Turns"),
+    Settings("Settings"),
+}
+
+internal enum class DestroyedUnitsDisplay(val label: String) {
+    Full("Full"),
+    Partial("Partial"),
+    Hide("Hide"),
 }

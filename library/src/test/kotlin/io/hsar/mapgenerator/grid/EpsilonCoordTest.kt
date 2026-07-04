@@ -12,9 +12,14 @@ class EpsilonCoordTest {
     }
 
     @Test
-    fun `rejects non integer coordinates`() {
+    fun `parses sub unit coordinates`() {
+        assertThat(EpsilonCoord.parse("12.75")?.preciseUnits, equalTo(12.75))
+        assertThat(EpsilonCoord.fromUnits(12.75).format(), equalTo("12.75"))
+    }
+
+    @Test
+    fun `rejects non numeric coordinates`() {
         assertThat(EpsilonCoord.parse(""), equalTo(null))
-        assertThat(EpsilonCoord.parse("12.3"), equalTo(null))
         assertThat(EpsilonCoord.parse("ABC"), equalTo(null))
     }
 

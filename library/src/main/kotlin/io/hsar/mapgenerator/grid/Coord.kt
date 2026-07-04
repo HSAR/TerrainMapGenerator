@@ -4,10 +4,13 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 interface Coord {
+    val preciseUnits: Double
+
     val units: Int
+        get() = floor(preciseUnits).toInt()
 
     fun lineNumber(gridScale: Int): Double =
-        units.toDouble() / gridScale
+        preciseUnits / gridScale
 
     fun lineNumberCeil(gridScale: Int): Double =
         ceil(lineNumber(gridScale))

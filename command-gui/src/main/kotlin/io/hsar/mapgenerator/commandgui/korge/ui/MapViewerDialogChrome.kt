@@ -84,7 +84,7 @@ internal object MapViewerDialogChrome {
         }
     }
 
-    private const val TITLE_BAR_ALPHA = 235
+    const val TITLE_BAR_ALPHA = 235
     private const val TITLE_TEXT_LEFT = 14.0
     private const val TITLE_TEXT_RIGHT_GAP = 56.0
 }

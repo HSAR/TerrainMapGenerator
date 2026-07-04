@@ -66,7 +66,7 @@ class GridReferenceFormatterTest {
     }
 
     @Test
-    fun `formats an epsilon reference with square designator and percent offsets`() {
+    fun `formats an epsilon reference with square designator and thousandth offsets`() {
         val reference = GridReferenceFormatter.format(
             layer = epsilonLayer(),
             mapWidth = 2560,
@@ -75,7 +75,20 @@ class GridReferenceFormatterTest {
             mapY = 30.0,
         )
 
-        assertThat(reference, equalTo("CD4 30-40"))
+        assertThat(reference, equalTo("CD4 300-400"))
+    }
+
+    @Test
+    fun `epsilon thousandth offsets are truncated rather than rounded`() {
+        val reference = GridReferenceFormatter.format(
+            layer = epsilonLayer(),
+            mapWidth = 2560,
+            mapHeight = 1440,
+            mapX = 15.49,
+            mapY = 29.51,
+        )
+
+        assertThat(reference, equalTo("CD4 309-409"))
     }
 
     @Test
