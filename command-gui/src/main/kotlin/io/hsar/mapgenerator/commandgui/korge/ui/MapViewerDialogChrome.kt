@@ -17,7 +17,12 @@ internal object MapViewerDialogChrome {
         onBeginMove: () -> Unit,
         onBeginResize: () -> Unit,
     ) {
-        MapViewerUiBoxes.box(parent, layout.bounds.width, layout.bounds.height)
+        MapViewerUiBoxes.box(
+            parent = parent,
+            width = layout.bounds.width,
+            height = layout.bounds.height,
+            style = ::dialogPanelStyle,
+        )
 
         val titleBar = parent.container()
         titleBar.xy(layout.titleBar.left, layout.titleBar.top)
@@ -137,6 +142,16 @@ internal object MapViewerDialogChrome {
     const val TITLE_BAR_ALPHA = 235
     internal const val TITLE_TEXT_LEFT = 14.0
     internal const val TITLE_TEXT_RIGHT_GAP = 56.0
+    internal const val DIALOG_PANEL_FILL_ALPHA = 220
+
+    internal fun dialogPanelStyle(active: Boolean): UiFrameStyle =
+        UiFrameStyle(
+            fillColor = Palette.Colours.DARK,
+            fillAlpha = DIALOG_PANEL_FILL_ALPHA,
+            borderColor = Palette.Colours.WHITE,
+            borderAlpha = MapViewerUiStateStyle.ACTIVE_ALPHA,
+        )
+
     private const val ACTIVE_TAB_FILL_ALPHA = 0
     private const val INACTIVE_TAB_FILL_ALPHA = 30
 }

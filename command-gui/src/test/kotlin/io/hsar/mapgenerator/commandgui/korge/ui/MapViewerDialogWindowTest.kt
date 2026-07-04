@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.view.Container
 import korlibs.math.geom.Vector2D
 import org.hamcrest.MatcherAssert.assertThat
@@ -90,5 +91,15 @@ class MapViewerDialogWindowTest {
             MapViewerDialogTitleTabLayoutBuilder.tabWidth(listOf("Turns", "Much Longer Settings", "A")),
             equalTo(tabWidth),
         )
+    }
+
+    @Test
+    fun `dialog panel uses the semi transparent side panel background style`() {
+        val style = MapViewerDialogChrome.dialogPanelStyle(active = true)
+
+        assertThat(style.fillColor, equalTo(Palette.Colours.DARK))
+        assertThat(style.fillAlpha, equalTo(220))
+        assertThat(style.borderColor, equalTo(Palette.Colours.WHITE))
+        assertThat(style.borderAlpha, equalTo(255))
     }
 }
