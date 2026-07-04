@@ -10,6 +10,7 @@ internal class MapSelectionController(
     private val objectController: MapObjectController,
     private val contextMenuManager: ContextMenuManager,
     private val objectAt: (Vector2D) -> MapPlacedObjectSelection?,
+    private val isSelectableObject: (MapPlacedObjectSnapshot) -> Boolean = { true },
     private val onStateChanged: (MapSelectionState) -> Unit,
     private val onMovePreviewChanged: (MapObjectMovePreview?) -> Unit = {},
     private val onLedgerEntry: (LedgerEntry) -> Unit,
@@ -139,7 +140,7 @@ internal class MapSelectionController(
     }
 
     private fun beginGroupMove(screenPoint: Vector2D): Boolean {
-        val snapshots = selectedIds.mapNotNull(objectController::snapshot)
+        val snapshots = selectedIds.mapNotNull(objectController::snapshot).filter(isSelectableObject)
         if (snapshots.isEmpty()) {
             clear()
             return false
@@ -279,6 +280,7 @@ internal class MapSelectionController(
         val bottomRight = coordinateSpace.screenToMap(Vector2D(box.right, box.bottom), viewport)
         val selectionBounds = MapSelectionBounds.fromPoints(topLeft, bottomRight)
         return objectController.snapshots()
+            .filter(isSelectableObject)
             .filter { it.overlapsSelectionBox(selectionBounds, coordinateSpace) }
     }
 

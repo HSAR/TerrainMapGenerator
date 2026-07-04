@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.korge.ui.DestroyedUnitsDisplay
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.grid.EpsilonCoord
 import io.hsar.mapgenerator.grid.GridLayer
@@ -10,6 +11,7 @@ import korlibs.image.color.RGBA
 import korlibs.korge.view.Container
 import korlibs.korge.view.Image
 import korlibs.korge.view.container
+import korlibs.math.geom.Vector2D
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
@@ -229,8 +231,124 @@ class MapPlacedUnitManagerTest {
         assertThat(manager.snapshot(unitId)?.normalizedHeight, closeTo(0.008, 0.0000001))
     }
 
+    @Test
+    fun `full destroyed display leaves destroyed units visible and selectable`() {
+        val unitLayer = Container()
+        val manager = unitManager(unitLayer = unitLayer, destroyedUnitsDisplay = DestroyedUnitsDisplay.Full)
+
+        manager.upsert(destroyedUnitSnapshot())
+
+        val image = unitLayer.images().single()
+        assertThat(image.alpha, equalTo(1.0))
+        assertThat(image.parent?.visible, equalTo(true))
+        assertThat(manager.selectionAt(CENTER_SCREEN_POINT)?.kind, equalTo(MapPlacedObjectSelectionKind.UNIT))
+        assertThat(manager.hasDragCandidate(CENTER_SCREEN_POINT), equalTo(true))
+    }
+
+    @Test
+    fun `partial destroyed display fades only the icon and blocks movement while allowing context menus`() {
+        val unitLayer = Container()
+        val manager = unitManager(unitLayer = unitLayer, destroyedUnitsDisplay = DestroyedUnitsDisplay.Partial)
+
+        manager.upsert(destroyedUnitSnapshot())
+
+        val image = unitLayer.images().single()
+        assertThat(image.alpha, equalTo(0.5))
+        assertThat(image.parent?.visible, equalTo(true))
+        assertThat(manager.selectionAt(CENTER_SCREEN_POINT), equalTo(null))
+        assertThat(manager.hasDragCandidate(CENTER_SCREEN_POINT), equalTo(false))
+        assertThat(manager.openContextMenuAt(CENTER_SCREEN_POINT), equalTo(true))
+    }
+
+    @Test
+    fun `hide destroyed display hides destroyed units and blocks all unit interaction`() {
+        val unitLayer = Container()
+        val manager = unitManager(unitLayer = unitLayer, destroyedUnitsDisplay = DestroyedUnitsDisplay.Hide)
+
+        manager.upsert(destroyedUnitSnapshot())
+
+        val image = unitLayer.images().single()
+        assertThat(image.parent?.visible, equalTo(false))
+        assertThat(manager.selectionAt(CENTER_SCREEN_POINT), equalTo(null))
+        assertThat(manager.hasDragCandidate(CENTER_SCREEN_POINT), equalTo(false))
+        assertThat(manager.openContextMenuAt(CENTER_SCREEN_POINT), equalTo(false))
+    }
+
+    @Test
+    fun `changing destroyed display updates existing unit visuals`() {
+        val unitLayer = Container()
+        val manager = unitManager(unitLayer = unitLayer, destroyedUnitsDisplay = DestroyedUnitsDisplay.Full)
+
+        manager.upsert(destroyedUnitSnapshot())
+        manager.updateDestroyedUnitsDisplay(DestroyedUnitsDisplay.Partial)
+
+        val image = unitLayer.images().single()
+        assertThat(image.alpha, equalTo(0.5))
+        assertThat(image.parent?.visible, equalTo(true))
+
+        manager.updateDestroyedUnitsDisplay(DestroyedUnitsDisplay.Hide)
+
+        assertThat(image.parent?.visible, equalTo(false))
+    }
+
     private fun Container.images(): List<Image> =
         children.flatMap { child ->
             listOfNotNull(child as? Image) + ((child as? Container)?.images().orEmpty())
         }
+
+    private fun unitManager(
+        unitLayer: Container,
+        destroyedUnitsDisplay: DestroyedUnitsDisplay,
+    ): MapPlacedUnitManager =
+        MapPlacedUnitManager(
+            root = Container(),
+            unitLayer = unitLayer,
+            geometry = CENTERED_GEOMETRY,
+            mapUnitsPerPixel = 1.0,
+            mapWidth = 1000,
+            mapHeight = 1000,
+            viewportProvider = {
+                CameraViewport.centeredOnMap(
+                    geometry = CENTERED_GEOMETRY,
+                    mapWidth = 1000,
+                    mapHeight = 1000,
+                    viewportWidth = 1000,
+                    viewportHeight = 1000,
+                    zoom = 1.0,
+                )
+            },
+            contextMenuManager = ContextMenuManager(Container()),
+            deferredActionRunner = ContextMenuDeferredActionRunner(Container()),
+            dialogManager = MapViewerDialogManager(),
+            initialDestroyedUnitsDisplay = destroyedUnitsDisplay,
+        )
+
+    private fun destroyedUnitSnapshot(): UnitSnapshot {
+        val template = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000051")),
+            name = "Destroyed",
+            bitmap = Bitmap32(64, 64) { _, _ -> RGBA(255, 0, 0, 255) },
+        )
+        return UnitSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000052")),
+            unitTemplateId = template.id,
+            template = template,
+            instanceName = "Destroyed",
+            destroyed = true,
+            facingDegrees = null,
+            mapCoordinate = MapCoordinate(0.5, 0.5),
+            normalizedWidth = 0.1,
+            normalizedHeight = 0.1,
+        )
+    }
+
+    private companion object {
+        val CENTER_SCREEN_POINT = Vector2D(500.0, 500.0)
+        val CENTERED_GEOMETRY = ViewerGeometry(
+            backgroundWidth = 1000,
+            backgroundHeight = 1000,
+            mapOffsetX = 0,
+            mapOffsetY = 0,
+        )
+    }
 }

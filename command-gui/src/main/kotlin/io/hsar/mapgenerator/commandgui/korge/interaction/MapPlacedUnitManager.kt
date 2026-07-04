@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.korge.ui.DestroyedUnitsDisplay
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogPositionSync
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerImageViews
@@ -39,6 +40,7 @@ internal class MapPlacedUnitManager(
     private val contextMenuManager: ContextMenuManager,
     private val deferredActionRunner: ContextMenuDeferredActionRunner,
     private val dialogManager: MapViewerDialogManager,
+    initialDestroyedUnitsDisplay: DestroyedUnitsDisplay = DestroyedUnitsDisplay.Full,
     private val canInteractWithUnits: () -> Boolean = { true },
     private val isHigherPriorityDragInProgress: () -> Boolean = { false },
     private val onMovePreviewChanged: (MapObjectMovePreview?) -> Unit = {},
@@ -51,6 +53,7 @@ internal class MapPlacedUnitManager(
     private val units = mutableListOf<PlacedUnit>()
     private val dragPreviewLayer = unitLayer.container()
     private var selectedUnitIds = emptySet<MapPlacedObjectId>()
+    private var destroyedUnitsDisplay = initialDestroyedUnitsDisplay
     private var dragState: DragState? = null
     private val editSessions = mutableMapOf<MapPlacedObjectId, UnitEditSession>()
 
@@ -78,6 +81,14 @@ internal class MapPlacedUnitManager(
         units.forEach { it.updateFacingOverlay() }
     }
 
+    fun updateDestroyedUnitsDisplay(display: DestroyedUnitsDisplay) {
+        destroyedUnitsDisplay = display
+        units.forEach { it.applyDestroyedUnitsDisplay() }
+        if (display != DestroyedUnitsDisplay.Full) {
+            cancelTransientState()
+        }
+    }
+
     fun replaceUnitTemplate(snapshot: UnitTemplateSnapshot) {
         units
             .filter { it.unitTemplateId == snapshot.id }
@@ -97,7 +108,7 @@ internal class MapPlacedUnitManager(
 
         val viewport = viewportProvider()
         val mapCoordinate = coordinateSpace.screenToMap(point, viewport)
-        return units.any { unit -> unit.containsMapCoordinate(mapCoordinate) }
+        return units.any { unit -> unit.canMove() && unit.containsMapCoordinate(mapCoordinate) }
     }
 
     fun resolvePlacement(screenPoint: Vector2D): MapCoordinate? =
@@ -117,6 +128,7 @@ internal class MapPlacedUnitManager(
         val tolerance = coordinateSpace.screenToleranceToMapTolerance(HIT_TOLERANCE, viewport)
         return units
             .asSequence()
+            .filter { it.canMove() }
             .filter { it.containsMapCoordinate(mapCoordinate, tolerance, coordinateSpace) }
             .minByOrNull {
                 val center = coordinateSpace.worldToScreen(coordinateSpace.toWorld(it.mapCoordinate), viewport)
@@ -144,6 +156,7 @@ internal class MapPlacedUnitManager(
         val tolerance = coordinateSpace.screenToleranceToMapTolerance(HIT_TOLERANCE, viewport)
         val target = units
             .asSequence()
+            .filter { it.canMove() }
             .filter { it.containsMapCoordinate(mapCoordinate, tolerance, coordinateSpace) }
             .minByOrNull {
                 val center = coordinateSpace.worldToScreen(coordinateSpace.toWorld(it.mapCoordinate), viewport)
@@ -164,6 +177,7 @@ internal class MapPlacedUnitManager(
         val tolerance = coordinateSpace.screenToleranceToMapTolerance(HIT_TOLERANCE, viewport)
         val target = units
             .asSequence()
+            .filter { it.canOpenContextMenu() }
             .filter { it.containsMapCoordinate(mapCoordinate, tolerance, coordinateSpace) }
             .minByOrNull {
                 val center = coordinateSpace.worldToScreen(coordinateSpace.toWorld(it.mapCoordinate), viewport)
@@ -216,6 +230,7 @@ internal class MapPlacedUnitManager(
             existing.worldHeight = unitSize.worldHeight
             existing.rebuildVisual(snapshot.template.bitmap)
             existing.view.scale = unitSize.worldScale
+            existing.applyDestroyedUnitsDisplay()
             positionView(existing)
             syncEditDialog(existing)
             onUnitsChanged()
@@ -238,6 +253,7 @@ internal class MapPlacedUnitManager(
             worldHeight = unitSize.worldHeight,
         )
         placedUnit.view.scale = unitSize.worldScale
+        placedUnit.applyDestroyedUnitsDisplay()
         positionView(placedUnit)
         units += placedUnit
         onUnitsChanged()
@@ -652,6 +668,7 @@ internal class MapPlacedUnitManager(
             normalizedHeight = unitSize.worldHeight / mapHeight
             rebuildVisual(template.bitmap)
             view.scale = unitSize.worldScale
+            applyDestroyedUnitsDisplay()
             positionView(this)
         }
 
@@ -667,11 +684,28 @@ internal class MapPlacedUnitManager(
             overlayLayer.removeChildren()
             overlayLayer.alpha = 1.0
             if (!destroyed) {
+                applyDestroyedUnitsDisplay()
                 return
             }
             overlayLayer.alpha = 0.5
             drawStateCross(overlayLayer, icon.bitmap.width.toDouble(), icon.bitmap.height.toDouble(), toRgba(Palette.Colours.RED))
+            applyDestroyedUnitsDisplay()
         }
+
+        fun applyDestroyedUnitsDisplay() {
+            view.visible = !destroyed || destroyedUnitsDisplay != DestroyedUnitsDisplay.Hide
+            icon.alpha = if (destroyed && destroyedUnitsDisplay == DestroyedUnitsDisplay.Partial) {
+                DESTROYED_PARTIAL_ICON_ALPHA
+            } else {
+                1.0
+            }
+        }
+
+        fun canMove(): Boolean =
+            !destroyed || destroyedUnitsDisplay == DestroyedUnitsDisplay.Full
+
+        fun canOpenContextMenu(): Boolean =
+            !destroyed || destroyedUnitsDisplay != DestroyedUnitsDisplay.Hide
     }
 
     private data class DragState(
@@ -866,6 +900,7 @@ internal class MapPlacedUnitManager(
         const val DRAG_PREVIEW_Z_INDEX = 15_000.0
         private const val FACING_RING_SEGMENTS = 48
         private const val HIT_TOLERANCE = 8.0
+        private const val DESTROYED_PARTIAL_ICON_ALPHA = 0.5
     }
 }
 

@@ -25,7 +25,6 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapActionHistory
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapObjectController
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectPatch
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelectionKind
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelectionResolver
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedUnitManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapSelectionController
@@ -34,6 +33,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplatePatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelMode
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchFlow
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchpadView
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerNewOperationView
@@ -237,7 +237,7 @@ internal class MapViewerScene(
                         val operationCreatedAt = loadedOperation?.createdAt ?: Instant.now()
                         val toolStorage = OperationToolStorage()
                         val saveWriter = OperationSaveWriter(storage = toolStorage)
-                        val toolSettings = toolStorage.readSettings()
+                        var destroyedUnitsDisplay = DestroyedUnitsDisplay.fromSettingsValue(toolStorage.readSettings().displayDestroyedUnits)
                         val thumbnailRenderer = MapThumbnailRenderer()
                         val generatedImageAssets = loadedOperation
                             ?.generatedImageAssets
@@ -495,6 +495,7 @@ internal class MapViewerScene(
                             contextMenuManager = contextMenuManager,
                             deferredActionRunner = deferredContextMenuActions,
                             dialogManager = dialogManager,
+                            initialDestroyedUnitsDisplay = destroyedUnitsDisplay,
                             canInteractWithUnits = { effectiveTool() == MapViewerTool.SELECT },
                             isHigherPriorityDragInProgress = { drawingManager.isDragging },
                             onMovePreviewChanged = { preview ->
@@ -586,6 +587,9 @@ internal class MapViewerScene(
                             objectController = objectController,
                             contextMenuManager = contextMenuManager,
                             objectAt = ::objectSelectionAt,
+                            isSelectableObject = { snapshot ->
+                                snapshot !is UnitSnapshot || !snapshot.destroyed || destroyedUnitsDisplay == DestroyedUnitsDisplay.Full
+                            },
                             onStateChanged = { state ->
                                 selectionOverlay.update(state)
                                 unitManager.updateSelectedUnits(selectionController.selectedIds())
@@ -728,8 +732,12 @@ internal class MapViewerScene(
                                 turnMode = TurnPanelMode.Edit
                                 refreshHistoryUi()
                             },
-                            initialDestroyedUnitsDisplay = DestroyedUnitsDisplay.fromSettingsValue(toolSettings.displayDestroyedUnits),
+                            initialDestroyedUnitsDisplay = destroyedUnitsDisplay,
                             onDestroyedUnitsDisplayChanged = { displayMode ->
+                                destroyedUnitsDisplay = displayMode
+                                clearTransientInteractionState()
+                                selectionController.clear()
+                                unitManager.updateDestroyedUnitsDisplay(displayMode)
                                 runCatching {
                                     toolStorage.writeSettings(
                                         toolStorage.readSettings().copy(displayDestroyedUnits = displayMode.label),
@@ -822,12 +830,10 @@ internal class MapViewerScene(
                                     selectionController.beginLeftDrag(pointer)
                                 }
                                 if (rightHeld && !previousRightHeld) {
-                                    if (!selectionController.openContextMenu(pointer)) {
-                                        when (objectSelectionAt(pointer)?.kind) {
-                                            MapPlacedObjectSelectionKind.UNIT -> unitManager.openContextMenuAt(pointer)
-                                            MapPlacedObjectSelectionKind.DRAWING -> drawingManager.openContextMenuAt(pointer)
-                                            null -> Unit
-                                        }
+                                    if (!selectionController.openContextMenu(pointer) &&
+                                        !unitManager.openContextMenuAt(pointer)
+                                    ) {
+                                        drawingManager.openContextMenuAt(pointer)
                                     }
                                 }
                             }
