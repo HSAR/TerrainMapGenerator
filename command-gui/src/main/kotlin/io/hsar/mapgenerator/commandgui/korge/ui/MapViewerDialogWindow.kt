@@ -136,7 +136,7 @@ internal class MapViewerDialogWindow(
                 is DialogDragState.Resize -> state.original.resizedTo(
                     width = state.original.width + pointer.x - state.startPointer.x,
                     height = state.original.height + pointer.y - state.startPointer.y,
-                )
+                ).let { with(MapViewerDialogLayoutBuilder) { it.resizedWithinViewport(viewportWidth, viewportHeight, minimumWidth()) } }
             }.let { with(MapViewerDialogLayoutBuilder) { it.clampedTo(viewportWidth, viewportHeight, minimumWidth()) } }
             render()
         }

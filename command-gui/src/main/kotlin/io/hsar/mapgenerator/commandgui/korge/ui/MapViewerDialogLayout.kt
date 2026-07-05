@@ -226,6 +226,24 @@ internal object MapViewerDialogLayoutBuilder {
         )
     }
 
+    fun MapViewerDialogBounds.resizedWithinViewport(
+        viewportWidth: Int,
+        viewportHeight: Int,
+        minimumWidth: Double = 0.0,
+    ): MapViewerDialogBounds {
+        val maxWidth = (viewportWidth - left - OUTER_PADDING).coerceAtLeast(0.0)
+        val maxHeight = (viewportHeight - top - OUTER_PADDING).coerceAtLeast(0.0)
+        val width = width.coerceIn(
+            minimumWidth.coerceAtLeast(0.0).coerceAtMost(maxWidth),
+            maxWidth,
+        )
+        val height = height.coerceIn(
+            MIN_HEIGHT.coerceAtMost(maxHeight),
+            maxHeight,
+        )
+        return resizedTo(width, height)
+    }
+
     fun MapViewerDialogLayout.containsLocal(point: Vector2D): Boolean =
         point.x in 0.0..bounds.width && point.y in 0.0..bounds.height
 

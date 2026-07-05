@@ -88,6 +88,21 @@ class MapViewerDialogLayoutBuilderTest {
     }
 
     @Test
+    fun `resized bounds keep their origin when they hit the viewport edge`() {
+        val original = MapViewerDialogBounds(left = 520.0, top = 100.0, width = 400.0, height = 320.0)
+
+        val resized = with(MapViewerDialogLayoutBuilder) {
+            original
+                .resizedTo(width = 800.0, height = 360.0)
+                .resizedWithinViewport(viewportWidth = 1000, viewportHeight = 800)
+        }
+
+        assertThat(resized.left, equalTo(original.left))
+        assertThat(resized.top, equalTo(original.top))
+        assertThat(resized.right, equalTo(1000.0 - MapViewerDialogLayoutBuilder.OUTER_PADDING))
+    }
+
+    @Test
     fun `minimum width is honoured when supplied`() {
         val clamped = MapViewerDialogLayoutBuilder.clampSize(
             size = MapViewerDialogSize(100.0, 320.0),
