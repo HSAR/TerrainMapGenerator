@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.drawing
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateDelta
@@ -32,12 +33,19 @@ internal data class RectangleDrawing(
     val start: MapDrawingPoint,
     val end: MapDrawingPoint,
     override val color: Color,
+    val rotationDegrees: Double = 0.0,
 ) : MapDrawing
 
-internal data class CircleDrawing(
+internal data class OvalDrawing(
     val center: MapDrawingPoint,
-    val radius: Double,
+    @get:JsonProperty("xRadius")
+    @param:JsonProperty("xRadius")
+    val xRadius: Double,
+    @get:JsonProperty("yRadius")
+    @param:JsonProperty("yRadius")
+    val yRadius: Double,
     override val color: Color,
+    val rotationDegrees: Double = 0.0,
 ) : MapDrawing
 
 internal data class PlacedDrawing(

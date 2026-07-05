@@ -8,7 +8,7 @@ internal object MapDrawingTranslator {
             is FreeformDrawing -> drawing.copy(points = drawing.points.map { it + delta })
             is LineDrawing -> drawing.copy(start = drawing.start + delta, end = drawing.end + delta)
             is RectangleDrawing -> drawing.copy(start = drawing.start + delta, end = drawing.end + delta)
-            is CircleDrawing -> drawing.copy(center = drawing.center + delta)
+            is OvalDrawing -> drawing.copy(center = drawing.center + delta)
         }
 
     private operator fun MapDrawingPoint.plus(delta: MapCoordinateDelta): MapDrawingPoint =

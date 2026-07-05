@@ -1,6 +1,8 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import korlibs.image.bitmap.Bitmap32
@@ -8,29 +10,16 @@ import korlibs.image.color.RGBA
 import korlibs.korge.view.Container
 import korlibs.math.geom.Vector2D
 import org.hamcrest.MatcherAssert.assertThat
+import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
+import java.awt.Color
 import java.util.*
 
 class MapSelectionControllerTest {
     @Test
     fun `box selection ignores objects rejected by the selectable predicate`() {
-        val unitManager = MapPlacedUnitManager(
-            root = Container(),
-            unitLayer = Container(),
-            geometry = GEOMETRY,
-            mapUnitsPerPixel = 1.0,
-            mapWidth = 1000,
-            mapHeight = 1000,
-            viewportProvider = ::viewport,
-            contextMenuManager = ContextMenuManager(Container()),
-            deferredActionRunner = ContextMenuDeferredActionRunner(Container()),
-            dialogManager = MapViewerDialogManager(),
-        )
-        val objectController = MapObjectController(
-            unitManager = unitManager,
-            drawingStore = MapDrawingStore(),
-        )
+        val objectController = objectController()
         val template = MapViewerUnitTemplate(
             id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000061")),
             name = "Destroyed",
@@ -64,6 +53,184 @@ class MapSelectionControllerTest {
         selectionController.update(Vector2D(900.0, 900.0), leftHeld = false)
 
         assertThat(selectionController.selectedIds(), equalTo(emptySet()))
+    }
+
+    @Test
+    fun `resize handle drag updates selected drawing before object move`() {
+        val objectController = objectController()
+        val drawing = drawingSnapshot("00000000-0000-0000-0000-000000000071")
+        objectController.createObject(drawing)
+        val selectionController = selectionController(
+            objectController = objectController,
+            objectAt = { MapPlacedObjectSelection(MapPlacedObjectSelectionKind.DRAWING, drawing.id, 0.0) },
+        )
+        selectionController.selectOnly(drawing.id)
+
+        selectionController.beginLeftDrag(Vector2D(197.0, 195.0))
+        selectionController.update(Vector2D(100.0, 100.0), leftHeld = true)
+
+        val resized = objectController.snapshot(drawing.id) as DrawingSnapshot
+        assertPoint((resized.drawing as LineDrawing).start, 0.1, 0.1)
+    }
+
+    @Test
+    fun `resize release commits an object edit`() {
+        val objectController = objectController()
+        val ledgerEntries = mutableListOf<LedgerEntry>()
+        val drawing = drawingSnapshot("00000000-0000-0000-0000-000000000072")
+        objectController.createObject(drawing)
+        val selectionController = selectionController(
+            objectController = objectController,
+            onLedgerEntry = ledgerEntries::add,
+        )
+        selectionController.selectOnly(drawing.id)
+
+        selectionController.beginLeftDrag(Vector2D(197.0, 195.0))
+        selectionController.update(Vector2D(100.0, 100.0), leftHeld = true)
+        selectionController.update(Vector2D(100.0, 100.0), leftHeld = false)
+
+        assertThat(ledgerEntries.size, equalTo(1))
+        assertThat(ledgerEntries.single() is EditObjectAction, equalTo(true))
+    }
+
+    @Test
+    fun `multi drawing resize release commits a batch object edit`() {
+        val objectController = objectController()
+        val ledgerEntries = mutableListOf<LedgerEntry>()
+        val first = drawingSnapshot("00000000-0000-0000-0000-000000000077")
+        val second = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000078")),
+            drawing = LineDrawing(
+                start = MapDrawingPoint(0.5, 0.5),
+                end = MapDrawingPoint(0.6, 0.6),
+                color = Color.RED,
+            ),
+        )
+        objectController.createObject(first)
+        objectController.createObject(second)
+        val selectionController = selectionController(
+            objectController = objectController,
+            onLedgerEntry = ledgerEntries::add,
+        )
+        selectionController.beginLeftDrag(Vector2D(0.0, 0.0))
+        selectionController.update(Vector2D(700.0, 700.0), leftHeld = false)
+
+        selectionController.beginLeftDrag(Vector2D(197.0, 197.0))
+        selectionController.update(Vector2D(100.0, 100.0), leftHeld = true)
+        selectionController.update(Vector2D(100.0, 100.0), leftHeld = false)
+
+        val batch = ledgerEntries.single() as BatchLedgerEntry
+        assertThat(batch.entries.size, equalTo(2))
+        assertThat(batch.entries.all { it is EditObjectAction }, equalTo(true))
+    }
+
+    @Test
+    fun `cancel restores original resize snapshots`() {
+        val objectController = objectController()
+        val drawing = drawingSnapshot("00000000-0000-0000-0000-000000000073")
+        objectController.createObject(drawing)
+        val selectionController = selectionController(objectController = objectController)
+        selectionController.selectOnly(drawing.id)
+
+        selectionController.beginLeftDrag(Vector2D(197.0, 195.0))
+        selectionController.update(Vector2D(100.0, 100.0), leftHeld = true)
+        selectionController.cancelTransientState()
+
+        assertThat(objectController.snapshot(drawing.id), equalTo(drawing))
+    }
+
+    @Test
+    fun `unit only selections do not expose resize handles`() {
+        val objectController = objectController()
+        val unit = unitSnapshot("00000000-0000-0000-0000-000000000074", destroyed = false)
+        objectController.createObject(unit)
+        val selectionController = selectionController(objectController = objectController)
+        selectionController.selectOnly(unit.id)
+
+        assertThat(selectionController.hasResizeHandleAt(Vector2D(447.0, 445.0)), equalTo(false))
+    }
+
+    @Test
+    fun `mixed selection resize leaves unit unchanged and resizes drawing`() {
+        val objectController = objectController()
+        val unit = unitSnapshot("00000000-0000-0000-0000-000000000075", destroyed = false)
+        val drawing = drawingSnapshot("00000000-0000-0000-0000-000000000076")
+        objectController.createObject(unit)
+        objectController.createObject(drawing)
+        val storedUnit = objectController.snapshot(unit.id)
+        val selectionController = selectionController(objectController = objectController)
+        selectionController.beginLeftDrag(Vector2D(0.0, 0.0))
+        selectionController.update(Vector2D(600.0, 600.0), leftHeld = false)
+
+        selectionController.beginLeftDrag(Vector2D(197.0, 195.0))
+        selectionController.update(Vector2D(100.0, 100.0), leftHeld = true)
+
+        val resizedDrawing = objectController.snapshot(drawing.id) as DrawingSnapshot
+        assertThat(objectController.snapshot(unit.id), equalTo(storedUnit))
+        assertThat((resizedDrawing.drawing as LineDrawing).start == (drawing.drawing as LineDrawing).start, equalTo(false))
+    }
+
+    private fun selectionController(
+        objectController: MapObjectController,
+        objectAt: (Vector2D) -> MapPlacedObjectSelection? = { null },
+        onLedgerEntry: (LedgerEntry) -> Unit = {},
+    ) = MapSelectionController(
+        coordinateSpace = MapCoordinateSpace(GEOMETRY, mapWidth = 1000, mapHeight = 1000),
+        viewportProvider = ::viewport,
+        objectController = objectController,
+        contextMenuManager = ContextMenuManager(Container()),
+        objectAt = objectAt,
+        onStateChanged = {},
+        onLedgerEntry = onLedgerEntry,
+    )
+
+    private fun objectController(): MapObjectController =
+        MapObjectController(
+            unitManager = MapPlacedUnitManager(
+                root = Container(),
+                unitLayer = Container(),
+                geometry = GEOMETRY,
+                mapUnitsPerPixel = 1.0,
+                mapWidth = 1000,
+                mapHeight = 1000,
+                viewportProvider = ::viewport,
+                contextMenuManager = ContextMenuManager(Container()),
+                deferredActionRunner = ContextMenuDeferredActionRunner(Container()),
+                dialogManager = MapViewerDialogManager(),
+            ),
+            drawingStore = MapDrawingStore(),
+        )
+
+    private fun drawingSnapshot(id: String) =
+        DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString(id)),
+            drawing = LineDrawing(
+                start = MapDrawingPoint(0.2, 0.2),
+                end = MapDrawingPoint(0.4, 0.4),
+                color = Color.RED,
+            ),
+        )
+
+    private fun unitSnapshot(id: String, destroyed: Boolean) =
+        UnitSnapshot(
+            id = MapPlacedObjectId(UUID.fromString(id)),
+            unitTemplateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000061")),
+            template = MapViewerUnitTemplate(
+                id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000061")),
+                name = "Unit",
+                bitmap = Bitmap32(64, 64) { _, _ -> RGBA(255, 0, 0, 255) },
+            ),
+            instanceName = "Unit",
+            destroyed = destroyed,
+            facingDegrees = null,
+            mapCoordinate = MapCoordinate(0.5, 0.5),
+            normalizedWidth = 0.1,
+            normalizedHeight = 0.1,
+        )
+
+    private fun assertPoint(point: MapDrawingPoint, x: Double, y: Double) {
+        assertThat(point.x, closeTo(x, 0.0001))
+        assertThat(point.y, closeTo(y, 0.0001))
     }
 
     private companion object {

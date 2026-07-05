@@ -3,8 +3,8 @@ package io.hsar.mapgenerator.commandgui.save
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.geometryFor
-import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
+import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
@@ -83,9 +83,11 @@ class OperationSaveRoundTripTest {
         )
         val createdDrawing = DrawingSnapshot(
             id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000009")),
-            drawing = CircleDrawing(
+            drawing = OvalDrawing(
                 center = MapDrawingPoint(0.3, 0.4),
-                radius = 0.2,
+                xRadius = 0.2,
+                yRadius = 0.2,
+                rotationDegrees = 25.0,
                 color = java.awt.Color.RED,
             ),
         )
@@ -545,9 +547,10 @@ class OperationSaveRoundTripTest {
         val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000d1")
         val drawing = DrawingSnapshot(
             id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000021")),
-            drawing = CircleDrawing(
+            drawing = OvalDrawing(
                 center = MapDrawingPoint(0.4, 0.6),
-                radius = 0.1,
+                xRadius = 0.1,
+                yRadius = 0.1,
                 color = Color.BLUE,
             ),
         )
@@ -576,9 +579,10 @@ class OperationSaveRoundTripTest {
         val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000d2")
         val drawing = DrawingSnapshot(
             id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000022")),
-            drawing = CircleDrawing(
+            drawing = OvalDrawing(
                 center = MapDrawingPoint(0.4, 0.6),
-                radius = 0.1,
+                xRadius = 0.1,
+                yRadius = 0.1,
                 color = Color.RED,
             ),
         )

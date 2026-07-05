@@ -1,14 +1,15 @@
 # TODO
 
-- Icons should scale independent of map size
-    - When zooming out, tokens should gather appropriately (eg. platoons to companies)
+- When zooming out, tokens should gather appropriately (eg. platoons to companies)
 - Measure tool should lock to the midpoint of a unit when starting and ending, unless shift key is held
 - Universal UI model and switch to corner-only white borders for better aesthetics
 - Support arbitrary states which are independently toggleable instead of mutually exclusive
 - Unit types additional semantic properties
     - Move limits
-- Drawings can be resized with appropriate UI on bounding boxes
 - Dialogs minimise, which remembers their position and size and adds them to a taskbar at top or bottom of screen
+- Shift-click and -drag multi-select support
+- Add notes to screen
+- Dialogs can point to a map object they relate to using a shadow throw effect
 
 ## Bugs
 

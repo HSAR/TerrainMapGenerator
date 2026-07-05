@@ -39,7 +39,7 @@ class MapDrawingStoreTest {
         )
 
         store.upsert(DrawingSnapshot(MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000001")), drawing))
-        store.preview(CircleDrawing(MapDrawingPoint(5.0, 6.0), 0.25, Palette.Colours.RED))
+        store.preview(OvalDrawing(MapDrawingPoint(6.0, 7.0), 1.0, 1.0, Palette.Colours.RED))
         store.clearPreview()
 
         assertThat(store.state.preview, equalTo(null))

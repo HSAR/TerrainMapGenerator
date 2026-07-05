@@ -2,11 +2,11 @@ package io.hsar.mapgenerator.commandgui.save
 
 import com.fasterxml.jackson.databind.node.TextNode
 import io.hsar.mapgenerator.commandgui.CustomPropertyJson
-import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
+import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
@@ -177,13 +177,16 @@ internal class LedgerEntrySaveMapper(
                 color = color.toArgbHex(),
                 start = start.toDto(),
                 end = end.toDto(),
+                rotationDegrees = rotationDegrees,
             )
 
-            is CircleDrawing -> DrawingSaveDto(
-                type = "circle",
+            is OvalDrawing -> DrawingSaveDto(
+                type = "oval",
                 color = color.toArgbHex(),
                 center = center.toDto(),
-                radius = radius,
+                xRadius = xRadius,
+                yRadius = yRadius,
+                rotationDegrees = rotationDegrees,
             )
         }
 

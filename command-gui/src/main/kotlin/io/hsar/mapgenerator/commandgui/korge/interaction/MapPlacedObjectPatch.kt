@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.TextNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.hsar.mapgenerator.commandgui.CustomPropertyJson
-import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import java.awt.Color
 import java.util.*
@@ -63,12 +63,15 @@ internal object MapPlacedObjectPatch {
                 before.drawing is RectangleDrawing && after.drawing is RectangleDrawing -> {
                     putIfChanged("start", before.drawing.start, after.drawing.start)
                     putIfChanged("end", before.drawing.end, after.drawing.end)
+                    putIfChanged("rotationDegrees", before.drawing.rotationDegrees, after.drawing.rotationDegrees)
                     putIfChanged("color", before.drawing.color, after.drawing.color)
                 }
 
-                before.drawing is CircleDrawing && after.drawing is CircleDrawing -> {
+                before.drawing is OvalDrawing && after.drawing is OvalDrawing -> {
                     putIfChanged("center", before.drawing.center, after.drawing.center)
-                    putIfChanged("radius", before.drawing.radius, after.drawing.radius)
+                    putIfChanged("xRadius", before.drawing.xRadius, after.drawing.xRadius)
+                    putIfChanged("yRadius", before.drawing.yRadius, after.drawing.yRadius)
+                    putIfChanged("rotationDegrees", before.drawing.rotationDegrees, after.drawing.rotationDegrees)
                     putIfChanged("color", before.drawing.color, after.drawing.color)
                 }
             }
@@ -100,10 +103,13 @@ internal object MapPlacedObjectPatch {
                 current is LineDrawing && key == "color" -> current.copy(color = value.requireValue().asText().toColor())
                 current is RectangleDrawing && key == "start" -> current.copy(start = fromNode(value.requireValue()))
                 current is RectangleDrawing && key == "end" -> current.copy(end = fromNode(value.requireValue()))
+                current is RectangleDrawing && key == "rotationDegrees" -> current.copy(rotationDegrees = value.requireValue().asDouble())
                 current is RectangleDrawing && key == "color" -> current.copy(color = value.requireValue().asText().toColor())
-                current is CircleDrawing && key == "center" -> current.copy(center = fromNode(value.requireValue()))
-                current is CircleDrawing && key == "radius" -> current.copy(radius = value.requireValue().asDouble())
-                current is CircleDrawing && key == "color" -> current.copy(color = value.requireValue().asText().toColor())
+                current is OvalDrawing && key == "center" -> current.copy(center = fromNode(value.requireValue()))
+                current is OvalDrawing && key == "xRadius" -> current.copy(xRadius = value.requireValue().asDouble())
+                current is OvalDrawing && key == "yRadius" -> current.copy(yRadius = value.requireValue().asDouble())
+                current is OvalDrawing && key == "rotationDegrees" -> current.copy(rotationDegrees = value.requireValue().asDouble())
+                current is OvalDrawing && key == "color" -> current.copy(color = value.requireValue().asText().toColor())
                 else -> current
             }
         })

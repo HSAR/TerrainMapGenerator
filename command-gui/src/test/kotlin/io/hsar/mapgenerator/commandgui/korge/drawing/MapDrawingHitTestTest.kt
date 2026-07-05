@@ -23,7 +23,7 @@ class MapDrawingHitTestTest {
     }
 
     @Test
-    fun `circle hit test tracks the circumference`() {
+    fun `oval hit test tracks the circumference`() {
         val coordinateSpace = MapCoordinateSpace(
             geometry = ViewerGeometry(
                 backgroundWidth = 4000,
@@ -34,9 +34,10 @@ class MapDrawingHitTestTest {
             mapWidth = 2000,
             mapHeight = 1000,
         )
-        val drawing = CircleDrawing(
+        val drawing = OvalDrawing(
             center = MapDrawingPoint(0.5, 0.5),
-            radius = 0.1,
+            xRadius = 0.05,
+            yRadius = 0.1,
             color = Palette.Colours.RED,
         )
 

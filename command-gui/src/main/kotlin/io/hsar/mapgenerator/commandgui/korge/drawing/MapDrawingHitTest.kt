@@ -15,38 +15,32 @@ internal object MapDrawingHitTest {
                 .any { (start, end) -> distanceToSegment(point, start, end) <= tolerance * FREEFORM_TOLERANCE_MULTIPLIER }
 
             is LineDrawing -> distanceToSegment(point, drawing.start, drawing.end) <= tolerance * FREEFORM_TOLERANCE_MULTIPLIER
-            is RectangleDrawing -> rectangleContains(drawing, point, tolerance)
-            is CircleDrawing -> circleContains(drawing, point, tolerance, coordinateSpace)
+            is RectangleDrawing -> outlineContains(drawing, point, tolerance, coordinateSpace)
+            is OvalDrawing -> outlineContains(drawing, point, tolerance, coordinateSpace)
         }
 
-    private fun rectangleContains(drawing: RectangleDrawing, point: MapDrawingPoint, tolerance: Double): Boolean {
-        val topLeft = MapDrawingPoint(minOf(drawing.start.x, drawing.end.x), minOf(drawing.start.y, drawing.end.y))
-        val bottomRight = MapDrawingPoint(maxOf(drawing.start.x, drawing.end.x), maxOf(drawing.start.y, drawing.end.y))
-        val topRight = MapDrawingPoint(bottomRight.x, topLeft.y)
-        val bottomLeft = MapDrawingPoint(topLeft.x, bottomRight.y)
-        return distanceToSegment(point, topLeft, topRight) <= tolerance ||
-                distanceToSegment(point, topRight, bottomRight) <= tolerance ||
-                distanceToSegment(point, bottomRight, bottomLeft) <= tolerance ||
-                distanceToSegment(point, bottomLeft, topLeft) <= tolerance
-    }
-
-    private fun circleContains(
-        drawing: CircleDrawing,
+    private fun outlineContains(
+        drawing: MapDrawing,
         point: MapDrawingPoint,
         tolerance: Double,
         coordinateSpace: MapCoordinateSpace?,
-    ): Boolean {
-        val radius = drawing.radius
-        if (radius <= 0.0) {
-            return false
-        }
+    ): Boolean =
+        when {
+            drawing is RectangleDrawing -> MapDrawingGeometry.rectangleCorners(
+                drawing.start,
+                drawing.end,
+                drawing.rotationDegrees,
+                coordinateSpace?.aspectRatio ?: 1.0,
+            ).closedSegments(drawing.color)
 
-        val aspectRatio = coordinateSpace?.aspectRatio ?: 1.0
-        val dx = (point.x - drawing.center.x) * aspectRatio
-        val dy = point.y - drawing.center.y
-        val distance = hypot(dx, dy)
-        return kotlin.math.abs(distance - radius) <= tolerance
-    }
+            coordinateSpace != null -> MapDrawingOutlineBuilder.build(drawing, zoom = 1.0, coordinateSpace = coordinateSpace)
+            else -> emptyList()
+        }
+            .any { distanceToSegment(point, it.start, it.end) <= tolerance }
+
+    private fun List<MapDrawingPoint>.closedSegments(color: java.awt.Color): List<MapDrawingSegment> =
+        (this + first()).zipWithNext()
+            .map { (start, end) -> MapDrawingSegment(start, end, color) }
 
     private fun distanceToSegment(point: MapDrawingPoint, start: MapDrawingPoint, end: MapDrawingPoint): Double {
         val dx = end.x - start.x

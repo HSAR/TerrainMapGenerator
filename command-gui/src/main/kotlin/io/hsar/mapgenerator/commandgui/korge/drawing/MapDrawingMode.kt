@@ -6,5 +6,5 @@ internal enum class MapDrawingMode(
     FREEFORM("Freeform"),
     LINE("Line"),
     RECTANGLE("Rectangle"),
-    CIRCLE("Circle"),
+    OVAL("Oval"),
 }

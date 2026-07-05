@@ -1,14 +1,12 @@
 package io.hsar.mapgenerator.commandgui.save
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
-import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
-import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
-import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingOutlineBuilder
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
-import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridLabelStyle
@@ -172,14 +170,12 @@ internal class MapThumbnailRenderer {
     ) {
         color = snapshot.drawing.color
         stroke = BasicStroke(THUMBNAIL_DRAWING_STROKE, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
-        when (val drawing = snapshot.drawing) {
-            is FreeformDrawing -> drawing.points.zipWithNext().forEach { (start, end) ->
-                drawLine(start, end, mapImage, geometry, viewport)
-            }
-
-            is LineDrawing -> drawLine(drawing.start, drawing.end, mapImage, geometry, viewport)
-            is RectangleDrawing -> drawRectangle(drawing.start, drawing.end, mapImage, geometry, viewport)
-            is CircleDrawing -> drawCircle(drawing.center, drawing.radius, mapImage, geometry, viewport)
+        MapDrawingOutlineBuilder.build(
+            drawing = snapshot.drawing,
+            zoom = viewport.zoom,
+            coordinateSpace = MapCoordinateSpace(geometry, mapImage.width, mapImage.height),
+        ).forEach { segment ->
+            drawLine(segment.start, segment.end, mapImage, geometry, viewport)
         }
     }
 
@@ -211,37 +207,6 @@ internal class MapThumbnailRenderer {
         val startScreen = start.toScreen(mapImage, geometry, viewport)
         val endScreen = end.toScreen(mapImage, geometry, viewport)
         draw(Line2D.Double(startScreen.x, startScreen.y, endScreen.x, endScreen.y))
-    }
-
-    private fun Graphics2D.drawRectangle(
-        start: MapDrawingPoint,
-        end: MapDrawingPoint,
-        mapImage: BufferedImage,
-        geometry: ViewerGeometry,
-        viewport: CameraViewport,
-    ) {
-        val startScreen = start.toScreen(mapImage, geometry, viewport)
-        val endScreen = end.toScreen(mapImage, geometry, viewport)
-        draw(
-            Rectangle2D.Double(
-                minOf(startScreen.x, endScreen.x),
-                minOf(startScreen.y, endScreen.y),
-                kotlin.math.abs(endScreen.x - startScreen.x),
-                kotlin.math.abs(endScreen.y - startScreen.y),
-            ),
-        )
-    }
-
-    private fun Graphics2D.drawCircle(
-        center: MapDrawingPoint,
-        radius: Double,
-        mapImage: BufferedImage,
-        geometry: ViewerGeometry,
-        viewport: CameraViewport,
-    ) {
-        val centerScreen = center.toScreen(mapImage, geometry, viewport)
-        val screenRadius = radius * mapImage.height * viewport.zoom
-        draw(Ellipse2D.Double(centerScreen.x - screenRadius, centerScreen.y - screenRadius, screenRadius * 2, screenRadius * 2))
     }
 
     private fun Graphics2D.drawFacingIndicator(

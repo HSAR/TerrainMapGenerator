@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonAnyGetter
 import com.fasterxml.jackson.annotation.JsonAnySetter
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.databind.JsonNode
@@ -222,7 +223,13 @@ internal data class DrawingSaveDto(
     val start: MapDrawingPointSaveDto? = null,
     val end: MapDrawingPointSaveDto? = null,
     val center: MapDrawingPointSaveDto? = null,
-    val radius: Double? = null,
+    @get:JsonProperty("xRadius")
+    @param:JsonProperty("xRadius")
+    val xRadius: Double? = null,
+    @get:JsonProperty("yRadius")
+    @param:JsonProperty("yRadius")
+    val yRadius: Double? = null,
+    val rotationDegrees: Double? = null,
 )
 
 internal data class MapDrawingPointSaveDto(

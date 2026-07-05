@@ -68,7 +68,7 @@ class OperationSaveWriterTest {
         val save = OperationSaveReader().read(savePath)
 
         assertThat(save.game.id, equalTo(operationId.toString()))
-        assertThat(save.game.formatVersion, equalTo(4))
+        assertThat(save.game.formatVersion, equalTo(5))
         assertThat(save.game.thumbnailAssetId, equalTo(operationId.toString()))
         assertThat(save.game.map.assetId, equalTo("00000000-0000-0000-0000-000000000001"))
         val expectedGrid = defaultGridConfiguration(mapImage, 20.0, 1234L)
@@ -281,7 +281,7 @@ class OperationSaveWriterTest {
 
         val save = OperationSaveReader().read(savePath)
 
-        assertThat(save.game.formatVersion, equalTo(4))
+        assertThat(save.game.formatVersion, equalTo(5))
         assertThat(save.game.map.referenceSystem, equalTo(ReferenceSystem.EPSILON))
         assertThat(save.game.map.unitsPerPixel, equalTo(10.0))
         assertThat(save.game.map.gridStartX, equalTo("4"))

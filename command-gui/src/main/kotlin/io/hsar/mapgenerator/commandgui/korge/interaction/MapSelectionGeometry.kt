@@ -1,13 +1,12 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
-import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingGeometry
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
+import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
-import korlibs.math.geom.Vector2D
-import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 
@@ -60,24 +59,13 @@ internal fun pivotHandleForSelection(
     }
     groupFrame?.let {
         return ScreenPivotHandle(
-            center = it.topRightCorner,
+            center = it.topRightOffsetCorner(PIVOT_HANDLE_OFFSET_PX),
             radius = PIVOT_HANDLE_RADIUS_PX,
         )
     }
-    if (snapshots.size > 1) {
-        val frame = snapshots.groupSelectionFrame(coordinateSpace, viewport) ?: return null
-        return ScreenPivotHandle(
-            center = frame.topRightCorner,
-            radius = PIVOT_HANDLE_RADIUS_PX,
-        )
-    }
-    val bounds = snapshots.combinedSelectionBounds(coordinateSpace) ?: return null
-    val topLeft = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(bounds.left, bounds.top)), viewport)
-    val bottomRight = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(bounds.right, bounds.bottom)), viewport)
-    val right = max(topLeft.x, bottomRight.x)
-    val top = min(topLeft.y, bottomRight.y)
+    val frame = snapshots.groupSelectionFrame(coordinateSpace, viewport) ?: return null
     return ScreenPivotHandle(
-        center = Vector2D(right + PIVOT_HANDLE_OFFSET_PX, top - PIVOT_HANDLE_OFFSET_PX),
+        center = frame.topRightOffsetCorner(PIVOT_HANDLE_OFFSET_PX),
         radius = PIVOT_HANDLE_RADIUS_PX,
     )
 }
@@ -126,16 +114,8 @@ internal fun MapDrawing.selectionBounds(coordinateSpace: MapCoordinateSpace): Ma
     when (this) {
         is FreeformDrawing -> points.bounds()
         is LineDrawing -> listOf(start, end).bounds()
-        is RectangleDrawing -> listOf(start, end).bounds()
-        is CircleDrawing -> {
-            val xRadius = radius / coordinateSpace.aspectRatio
-            MapSelectionBounds(
-                left = center.x - xRadius,
-                top = center.y - radius,
-                right = center.x + xRadius,
-                bottom = center.y + radius,
-            )
-        }
+        is RectangleDrawing -> MapDrawingGeometry.rectangleCorners(start, end, rotationDegrees, coordinateSpace.aspectRatio).bounds()
+        is OvalDrawing -> ovalPoints(coordinateSpace).bounds()
     }
 
 internal fun MapDrawing.overlapsSelectionBox(
@@ -143,8 +123,8 @@ internal fun MapDrawing.overlapsSelectionBox(
     coordinateSpace: MapCoordinateSpace,
 ): Boolean =
     when (this) {
-        is RectangleDrawing -> rectangleOutlineOverlapsBox(this, box)
-        is CircleDrawing -> circleOutlineOverlapsBox(this, box, coordinateSpace)
+        is RectangleDrawing -> rectangleOutlineOverlapsBox(this, box, coordinateSpace)
+        is OvalDrawing -> ovalOutlineOverlapsBox(this, box, coordinateSpace)
         else -> selectionBounds(coordinateSpace).overlaps(box)
     }
 
@@ -160,59 +140,48 @@ private fun List<MapDrawingPoint>.bounds(): MapSelectionBounds =
         )
     }
 
-private fun rectangleOutlineOverlapsBox(drawing: RectangleDrawing, box: MapSelectionBounds): Boolean {
-    val left = min(drawing.start.x, drawing.end.x)
-    val right = max(drawing.start.x, drawing.end.x)
-    val top = min(drawing.start.y, drawing.end.y)
-    val bottom = max(drawing.start.y, drawing.end.y)
-    return horizontalSegmentOverlapsBox(y = top, left = left, right = right, box = box) ||
-            horizontalSegmentOverlapsBox(y = bottom, left = left, right = right, box = box) ||
-            verticalSegmentOverlapsBox(x = left, top = top, bottom = bottom, box = box) ||
-            verticalSegmentOverlapsBox(x = right, top = top, bottom = bottom, box = box)
-}
-
-private fun horizontalSegmentOverlapsBox(y: Double, left: Double, right: Double, box: MapSelectionBounds): Boolean =
-    y in box.top..box.bottom && right >= box.left && left <= box.right
-
-private fun verticalSegmentOverlapsBox(x: Double, top: Double, bottom: Double, box: MapSelectionBounds): Boolean =
-    x in box.left..box.right && bottom >= box.top && top <= box.bottom
-
-private fun circleOutlineOverlapsBox(
-    drawing: CircleDrawing,
+private fun rectangleOutlineOverlapsBox(
+    drawing: RectangleDrawing,
     box: MapSelectionBounds,
     coordinateSpace: MapCoordinateSpace,
 ): Boolean {
-    val mapSize = coordinateSpace.toMapPixels(MapCoordinate(1.0, 1.0))
-    val center = coordinateSpace.toMapPixels(MapCoordinate(drawing.center.x, drawing.center.y))
-    val radius = drawing.radius * mapSize.y
-    val grace = CIRCLE_SELECTION_GRACE_PX
-    val left = box.left * mapSize.x
-    val top = box.top * mapSize.y
-    val right = box.right * mapSize.x
-    val bottom = box.bottom * mapSize.y
-    val minDistance = distanceFromPointToRectangle(center.x, center.y, left, top, right, bottom)
-    val maxDistance = maxOf(
-        hypot(center.x - left, center.y - top),
-        hypot(center.x - left, center.y - bottom),
-        hypot(center.x - right, center.y - top),
-        hypot(center.x - right, center.y - bottom),
+    val points = MapDrawingGeometry.rectangleCorners(
+        drawing.start,
+        drawing.end,
+        drawing.rotationDegrees,
+        coordinateSpace.aspectRatio,
     )
-    return minDistance <= radius + grace && maxDistance >= maxOf(0.0, radius - grace)
+    return points.closedSegments()
+        .any { (start, end) -> segmentOverlapsBox(start, end, box) }
 }
 
-private fun distanceFromPointToRectangle(
-    pointX: Double,
-    pointY: Double,
-    left: Double,
-    top: Double,
-    right: Double,
-    bottom: Double,
-): Double {
-    val clampedX = pointX.coerceIn(left, right)
-    val clampedY = pointY.coerceIn(top, bottom)
-    return hypot(pointX - clampedX, pointY - clampedY)
-}
+private fun ovalOutlineOverlapsBox(
+    drawing: OvalDrawing,
+    box: MapSelectionBounds,
+    coordinateSpace: MapCoordinateSpace,
+): Boolean =
+    drawing.ovalPoints(coordinateSpace)
+        .closedSegments()
+        .any { (start, end) -> segmentOverlapsBox(start, end, box) }
+
+private fun OvalDrawing.ovalPoints(coordinateSpace: MapCoordinateSpace): List<MapDrawingPoint> =
+    MapDrawingGeometry.ovalPoints(
+        center = center,
+        xRadius = xRadius,
+        yRadius = yRadius,
+        rotationDegrees = rotationDegrees,
+        segmentCount = OVAL_SELECTION_SEGMENTS,
+        aspectRatio = coordinateSpace.aspectRatio,
+    )
+
+private fun List<MapDrawingPoint>.closedSegments(): List<Pair<MapDrawingPoint, MapDrawingPoint>> =
+    takeIf { it.isNotEmpty() }
+        ?.let { (it + it.first()).zipWithNext() }
+        ?: emptyList()
+
+private fun segmentOverlapsBox(start: MapDrawingPoint, end: MapDrawingPoint, box: MapSelectionBounds): Boolean =
+    listOf(start, end).bounds().overlaps(box)
 
 private const val PIVOT_HANDLE_OFFSET_PX = 16.0
 private const val PIVOT_HANDLE_RADIUS_PX = 7.0
-private const val CIRCLE_SELECTION_GRACE_PX = 3.0
+private const val OVAL_SELECTION_SEGMENTS = 48

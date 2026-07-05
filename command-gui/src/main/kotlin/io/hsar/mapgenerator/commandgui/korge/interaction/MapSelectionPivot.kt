@@ -1,10 +1,11 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
-import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingGeometry
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
+import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import korlibs.math.geom.Vector2D
 import kotlin.math.atan2
@@ -83,15 +84,30 @@ internal object MapSelectionPivot {
                 end = end.rotate(pivotCenterWorld, deltaRadians, coordinateSpace),
             )
 
-            is RectangleDrawing -> copy(
-                start = start.rotate(pivotCenterWorld, deltaRadians, coordinateSpace),
-                end = end.rotate(pivotCenterWorld, deltaRadians, coordinateSpace),
-            )
+            is RectangleDrawing -> {
+                val originalCenter = MapDrawingGeometry.center(start, end)
+                val rotatedCenter = originalCenter.rotate(pivotCenterWorld, deltaRadians, coordinateSpace)
+                copy(
+                    start = start.translate(originalCenter, rotatedCenter),
+                    end = end.translate(originalCenter, rotatedCenter),
+                    rotationDegrees = rotatedDegrees(rotationDegrees, deltaRadians),
+                )
+            }
 
-            is CircleDrawing -> copy(
+            is OvalDrawing -> copy(
                 center = center.rotate(pivotCenterWorld, deltaRadians, coordinateSpace),
+                rotationDegrees = rotatedDegrees(rotationDegrees, deltaRadians),
             )
         }
+
+    private fun rotatedDegrees(rotationDegrees: Double, deltaRadians: Double): Double =
+        normalizeDegrees((rotationDegrees + Math.toDegrees(deltaRadians)).roundToInt()).toDouble()
+
+    private fun MapDrawingPoint.translate(fromCenter: MapDrawingPoint, toCenter: MapDrawingPoint): MapDrawingPoint =
+        MapDrawingPoint(
+            x = x + toCenter.x - fromCenter.x,
+            y = y + toCenter.y - fromCenter.y,
+        )
 
     private fun MapDrawingPoint.rotate(
         pivotCenterWorld: Vector2D,

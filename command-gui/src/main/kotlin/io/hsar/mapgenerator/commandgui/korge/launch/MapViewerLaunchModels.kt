@@ -88,7 +88,7 @@ internal object OperationNameGenerator {
         "Aquiline",
         "Brass",
         "Corvine",
-        "Falcon",
+        "Forsaken",
         "Iron",
         "Onyx",
         "Penumbral",

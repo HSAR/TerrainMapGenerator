@@ -1,10 +1,10 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
-import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingGeometry
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingState
@@ -137,7 +137,7 @@ internal class MapViewerInteraction(
             if (updateMeasureState(pointer, toolGesture.leftToolActive, tool)) {
                 markOverlayDirty()
             }
-            if (updateDrawingState(pointer, toolGesture.leftToolActive, tool, drawingMode)) {
+            if (updateDrawingState(pointer, toolGesture.leftToolActive, tool, drawingMode, input.keys[Key.SHIFT])) {
                 notifyDrawingChanged()
             }
             if (placementDragging || movePreview != null) {
@@ -309,6 +309,7 @@ internal class MapViewerInteraction(
         leftHeld: Boolean,
         tool: MapViewerTool,
         mode: MapDrawingMode,
+        shiftHeld: Boolean,
     ): Boolean {
         if (tool != MapViewerTool.DRAW) {
             return clearActiveDrawingPreview()
@@ -333,7 +334,8 @@ internal class MapViewerInteraction(
         val nextDrawing = activeDrawing?.updated(
             point = point,
             minimumFreeformPointDistance = minimumFreeformPointDistance(mapWidth, mapHeight),
-            circleAspectRatio = coordinateSpace.aspectRatio,
+            aspectRatio = coordinateSpace.aspectRatio,
+            shiftHeld = shiftHeld,
         ) ?: mode.startedAt(point, currentDrawingColour())
         if (nextDrawing == activeDrawing) {
             return false
@@ -495,7 +497,7 @@ internal class MapViewerInteraction(
             MapDrawingMode.FREEFORM -> ActiveDrawing.Freeform(points = listOf(point), color = color)
             MapDrawingMode.LINE -> ActiveDrawing.Line(start = point, end = point, color = color)
             MapDrawingMode.RECTANGLE -> ActiveDrawing.Rectangle(start = point, end = point, color = color)
-            MapDrawingMode.CIRCLE -> ActiveDrawing.Circle(center = point, radius = 0.0, color = color)
+            MapDrawingMode.OVAL -> ActiveDrawing.Oval(start = point, end = point, color = color)
         }
 
     private fun currentViewport(viewport: CameraViewport): Rectangle {
@@ -533,7 +535,8 @@ internal class MapViewerInteraction(
         fun updated(
             point: MapDrawingPoint,
             minimumFreeformPointDistance: Double,
-            circleAspectRatio: Double,
+            aspectRatio: Double,
+            shiftHeld: Boolean,
         ): ActiveDrawing
 
         fun committedOrNull(): MapDrawing?
@@ -548,7 +551,8 @@ internal class MapViewerInteraction(
             override fun updated(
                 point: MapDrawingPoint,
                 minimumFreeformPointDistance: Double,
-                circleAspectRatio: Double,
+                aspectRatio: Double,
+                shiftHeld: Boolean,
             ): ActiveDrawing {
                 val lastPoint = points.last()
                 return if (hypot(point.x - lastPoint.x, point.y - lastPoint.y) >= minimumFreeformPointDistance) {
@@ -573,9 +577,10 @@ internal class MapViewerInteraction(
             override fun updated(
                 point: MapDrawingPoint,
                 minimumFreeformPointDistance: Double,
-                circleAspectRatio: Double,
+                aspectRatio: Double,
+                shiftHeld: Boolean,
             ): ActiveDrawing =
-                copy(end = point)
+                copy(end = if (shiftHeld) MapDrawingGeometry.squareEnd(start, point, aspectRatio) else point)
 
             override fun committedOrNull(): MapDrawing? =
                 preview.takeIf { start != end }
@@ -592,7 +597,8 @@ internal class MapViewerInteraction(
             override fun updated(
                 point: MapDrawingPoint,
                 minimumFreeformPointDistance: Double,
-                circleAspectRatio: Double,
+                aspectRatio: Double,
+                shiftHeld: Boolean,
             ): ActiveDrawing =
                 copy(end = point)
 
@@ -600,23 +606,24 @@ internal class MapViewerInteraction(
                 preview.takeIf { start != end }
         }
 
-        data class Circle(
-            val center: MapDrawingPoint,
-            val radius: Double,
+        data class Oval(
+            val start: MapDrawingPoint,
+            val end: MapDrawingPoint,
             val color: Color,
         ) : ActiveDrawing {
             override val preview: MapDrawing
-                get() = CircleDrawing(center, radius, color)
+                get() = MapDrawingGeometry.ovalFromBounds(start, end, color)
 
             override fun updated(
                 point: MapDrawingPoint,
                 minimumFreeformPointDistance: Double,
-                circleAspectRatio: Double,
+                aspectRatio: Double,
+                shiftHeld: Boolean,
             ): ActiveDrawing =
-                copy(radius = hypot((point.x - center.x) * circleAspectRatio, point.y - center.y))
+                copy(end = if (shiftHeld) MapDrawingGeometry.squareEnd(start, point, aspectRatio) else point)
 
             override fun committedOrNull(): MapDrawing? =
-                preview.takeIf { radius > 0.0 }
+                preview.takeIf { start != end }
         }
     }
 }

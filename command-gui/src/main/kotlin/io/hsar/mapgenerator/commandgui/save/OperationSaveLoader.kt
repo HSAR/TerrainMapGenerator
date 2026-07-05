@@ -5,11 +5,11 @@ import io.hsar.mapgenerator.commandgui.GridColourSelector
 import io.hsar.mapgenerator.commandgui.MapLayer
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
-import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
+import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
@@ -202,7 +202,7 @@ internal class OperationSaveLoader {
         }
 
     private companion object {
-        const val FORMAT_VERSION = 4
+        const val FORMAT_VERSION = 5
         const val ASSET_ROLE_TURN_THUMBNAIL = "turn-thumbnail"
     }
 }
@@ -396,8 +396,20 @@ private class RuntimeLedgerReplayer(
         when (type) {
             "freeform" -> FreeformDrawing(points = points.orEmpty().map { it.toRuntime() }, color = color.toColor())
             "line" -> LineDrawing(start = start!!.toRuntime(), end = end!!.toRuntime(), color = color.toColor())
-            "rectangle" -> RectangleDrawing(start = start!!.toRuntime(), end = end!!.toRuntime(), color = color.toColor())
-            "circle" -> CircleDrawing(center = center!!.toRuntime(), radius = radius ?: 0.0, color = color.toColor())
+            "rectangle" -> RectangleDrawing(
+                start = start!!.toRuntime(),
+                end = end!!.toRuntime(),
+                color = color.toColor(),
+                rotationDegrees = rotationDegrees ?: 0.0,
+            )
+
+            "oval" -> OvalDrawing(
+                center = center!!.toRuntime(),
+                xRadius = xRadius!!,
+                yRadius = yRadius!!,
+                color = color.toColor(),
+                rotationDegrees = rotationDegrees ?: 0.0,
+            )
             else -> error("Unsupported drawing type $type")
         }
 

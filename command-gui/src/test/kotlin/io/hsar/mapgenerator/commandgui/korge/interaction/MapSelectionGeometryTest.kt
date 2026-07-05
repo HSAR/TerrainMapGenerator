@@ -1,13 +1,14 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
-import io.hsar.mapgenerator.commandgui.korge.drawing.CircleDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
+import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
+import korlibs.math.geom.Vector2D
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
@@ -100,7 +101,7 @@ class MapSelectionGeometryTest {
     }
 
     @Test
-    fun `pivot handle uses combined bounds for group selection`() {
+    fun `pivot handle appears above right of group selection bounds`() {
         val viewport = CameraViewport.centeredOnMap(
             geometry = ViewerGeometry(backgroundWidth = 1660, backgroundHeight = 1660, mapOffsetX = 330, mapOffsetY = 330),
             mapWidth = 1000,
@@ -121,9 +122,98 @@ class MapSelectionGeometryTest {
         )
 
         val handle = pivotHandleForSelection(listOf(leftUnit, rightUnit), coordinateSpace, viewport)
-        val frame = listOf(leftUnit, rightUnit).groupSelectionFrame(coordinateSpace, viewport)
 
-        assertThat(handle?.center, equalTo(frame?.topRightCorner))
+        assertThat(handle?.center?.x, equalTo(816.0))
+        assertThat(handle?.center?.y, equalTo(184.0))
+    }
+
+    @Test
+    fun `pivot handle offset follows rotated frame orientation`() {
+        val frame = ScreenSelectionFrame(
+            topLeft = Vector2D(0.0, 0.0),
+            topRight = Vector2D(10.0, 0.0),
+            bottomRight = Vector2D(10.0, 20.0),
+            bottomLeft = Vector2D(0.0, 20.0),
+        ).rotatedAround(
+            pivot = Vector2D(0.0, 0.0),
+            deltaRadians = Math.PI * 0.5,
+        )
+
+        val handleCenter = frame.topRightOffsetCorner(5.0)
+
+        assertThat(handleCenter.x, closeTo(5.0, 0.0001))
+        assertThat(handleCenter.y, closeTo(15.0, 0.0001))
+    }
+
+    @Test
+    fun `corner brackets render sharp six point shapes outside each selection frame corner`() {
+        val frame = ScreenSelectionFrame(
+            topLeft = Vector2D(0.0, 0.0),
+            topRight = Vector2D(10.0, 0.0),
+            bottomRight = Vector2D(10.0, 20.0),
+            bottomLeft = Vector2D(0.0, 20.0),
+        )
+
+        val brackets = frame.cornerBrackets(length = 4.0, thickness = 2.0)
+
+        assertThat(
+            brackets.map { it.corner }, equalTo(
+                listOf(
+                    ScreenSelectionCorner.TOP_LEFT,
+                    ScreenSelectionCorner.TOP_RIGHT,
+                    ScreenSelectionCorner.BOTTOM_RIGHT,
+                    ScreenSelectionCorner.BOTTOM_LEFT,
+                )
+            )
+        )
+        assertThat(
+            brackets[0].points, equalTo(
+                listOf(
+                    Vector2D(0.0, 0.0),
+                    Vector2D(4.0, 0.0),
+                    Vector2D(4.0, -2.0),
+                    Vector2D(-2.0, -2.0),
+                    Vector2D(-2.0, 4.0),
+                    Vector2D(0.0, 4.0),
+                )
+            )
+        )
+        assertThat(
+            brackets[3].points, equalTo(
+                listOf(
+                    Vector2D(0.0, 20.0),
+                    Vector2D(4.0, 20.0),
+                    Vector2D(4.0, 22.0),
+                    Vector2D(-2.0, 22.0),
+                    Vector2D(-2.0, 16.0),
+                    Vector2D(0.0, 16.0),
+                )
+            )
+        )
+        assertThat(brackets[0].contains(Vector2D(1.0, -1.0)), equalTo(true))
+        assertThat(brackets[0].contains(Vector2D(3.0, 3.0)), equalTo(false))
+    }
+
+    @Test
+    fun `corner brackets follow rotated frame orientation`() {
+        val frame = ScreenSelectionFrame(
+            topLeft = Vector2D(0.0, 0.0),
+            topRight = Vector2D(10.0, 0.0),
+            bottomRight = Vector2D(10.0, 20.0),
+            bottomLeft = Vector2D(0.0, 20.0),
+        ).rotatedAround(
+            pivot = Vector2D(0.0, 0.0),
+            deltaRadians = Math.PI * 0.5,
+        )
+
+        val topRightBracket = frame.cornerBrackets(length = 4.0, thickness = 2.0)[1]
+
+        assertPoint(topRightBracket.points[0], 0.0, 10.0)
+        assertPoint(topRightBracket.points[1], 0.0, 6.0)
+        assertPoint(topRightBracket.points[2], 2.0, 6.0)
+        assertPoint(topRightBracket.points[3], 2.0, 12.0)
+        assertPoint(topRightBracket.points[4], -4.0, 12.0)
+        assertPoint(topRightBracket.points[5], -4.0, 10.0)
     }
 
     @Test
@@ -175,33 +265,34 @@ class MapSelectionGeometryTest {
     }
 
     @Test
-    fun `circle selection boxes only match the outline with a small grace margin`() {
-        val circle = DrawingSnapshot(
+    fun `oval selection boxes only match the outline`() {
+        val oval = DrawingSnapshot(
             id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000024")),
-            drawing = CircleDrawing(
+            drawing = OvalDrawing(
                 center = MapDrawingPoint(0.5, 0.5),
-                radius = 0.1,
+                xRadius = 0.1,
+                yRadius = 0.1,
                 color = Color.RED,
             ),
         )
 
         assertThat(
-            circle.overlapsSelectionBox(
+            oval.overlapsSelectionBox(
                 MapSelectionBounds(0.48, 0.48, 0.52, 0.52),
                 coordinateSpace,
             ),
             equalTo(false),
         )
         assertThat(
-            circle.overlapsSelectionBox(
-                MapSelectionBounds(0.58, 0.40, 0.60, 0.42),
+            oval.overlapsSelectionBox(
+                MapSelectionBounds(0.595, 0.49, 0.603, 0.51),
                 coordinateSpace,
             ),
-            equalTo(false),
+            equalTo(true),
         )
         assertThat(
-            circle.overlapsSelectionBox(
-                MapSelectionBounds(0.595, 0.49, 0.603, 0.51),
+            oval.overlapsSelectionBox(
+                MapSelectionBounds(0.49, 0.395, 0.51, 0.403),
                 coordinateSpace,
             ),
             equalTo(true),
@@ -332,4 +423,9 @@ class MapSelectionGeometryTest {
             normalizedWidth = 0.2,
             normalizedHeight = 0.2,
         )
+
+    private fun assertPoint(point: Vector2D, x: Double, y: Double) {
+        assertThat(point.x, closeTo(x, 0.0001))
+        assertThat(point.y, closeTo(y, 0.0001))
+    }
 }

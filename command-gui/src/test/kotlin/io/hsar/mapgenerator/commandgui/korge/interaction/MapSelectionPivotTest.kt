@@ -2,6 +2,9 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
 import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingGeometry
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
+import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import korlibs.image.bitmap.Bitmap32
 import korlibs.math.geom.Vector2D
 import org.hamcrest.MatcherAssert.assertThat
@@ -10,6 +13,7 @@ import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import java.util.*
 import kotlin.math.PI
+import kotlin.math.hypot
 
 class MapSelectionPivotTest {
     private val coordinateSpace = MapCoordinateSpace(
@@ -106,6 +110,58 @@ class MapSelectionPivotTest {
         assertThat(points[2].x, closeTo(0.5, 0.0001))
         assertThat(points[2].y, closeTo(0.6, 0.0001))
     }
+
+    @Test
+    fun `rectangle pivot rotates every corner without changing side lengths`() {
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000005")),
+            drawing = RectangleDrawing(
+                start = MapDrawingPoint(0.4, 0.45),
+                end = MapDrawingPoint(0.6, 0.55),
+                color = java.awt.Color.RED,
+            ),
+        )
+        val originalRectangle = drawing.drawing as RectangleDrawing
+        val originalCorners = MapDrawingGeometry.rectangleCorners(
+            originalRectangle.start,
+            originalRectangle.end,
+            originalRectangle.rotationDegrees,
+            coordinateSpace.aspectRatio,
+        )
+
+        val updated = MapSelectionPivot.rotateSnapshots(
+            originalSnapshots = listOf(drawing),
+            pivotCenterWorld = coordinateSpace.toWorld(MapCoordinate(0.5, 0.5)),
+            deltaRadians = PI / 2.0,
+            coordinateSpace = coordinateSpace,
+        ).single() as DrawingSnapshot
+
+        val updatedRectangle = updated.drawing as RectangleDrawing
+        val updatedCorners = MapDrawingGeometry.rectangleCorners(
+            updatedRectangle.start,
+            updatedRectangle.end,
+            updatedRectangle.rotationDegrees,
+            coordinateSpace.aspectRatio,
+        )
+
+        assertPoint(updatedRectangle.start, originalRectangle.start.x, originalRectangle.start.y)
+        assertPoint(updatedRectangle.end, originalRectangle.end.x, originalRectangle.end.y)
+        originalCorners.zip(updatedCorners)
+            .forEach { (before, after) ->
+                assertThat(hypot(after.x - before.x, after.y - before.y), closeTo(0.1581, 0.0001))
+            }
+        sideLengths(updatedCorners).zip(sideLengths(originalCorners))
+            .forEach { (after, before) -> assertThat(after, closeTo(before, 0.0001)) }
+    }
+
+    private fun assertPoint(point: MapDrawingPoint, expectedX: Double, expectedY: Double) {
+        assertThat(point.x, closeTo(expectedX, 0.0001))
+        assertThat(point.y, closeTo(expectedY, 0.0001))
+    }
+
+    private fun sideLengths(corners: List<MapDrawingPoint>): List<Double> =
+        (corners + corners.first()).zipWithNext()
+            .map { (start, end) -> hypot(end.x - start.x, end.y - start.y) }
 
     private fun unitSnapshot(id: String, x: Double, y: Double, facing: Int?) =
         UnitSnapshot(

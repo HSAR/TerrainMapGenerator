@@ -849,7 +849,7 @@ internal class MapViewerScene(
 
                             if (effectiveTool() == MapViewerTool.SELECT && !uiBlocksPointer) {
                                 if (leftHeld && !previousLeftHeld) {
-                                    selectionController.beginLeftDrag(pointer)
+                                    selectionController.beginLeftDrag(pointer, altHeld = input.keys[Key.ALT])
                                 }
                                 if (rightHeld && !previousRightHeld) {
                                     if (!selectionController.openContextMenu(pointer) &&
@@ -952,7 +952,8 @@ internal class MapViewerScene(
                             },
                             isMovableObjectUnderPointer = { point ->
                                 effectiveTool() == MapViewerTool.SELECT &&
-                                        (selectionController.hasPivotHandleAt(point) ||
+                                        (selectionController.hasResizeHandleAt(point) ||
+                                                selectionController.hasPivotHandleAt(point) ||
                                                 MapPlacedObjectSelectionResolver.choose(
                                                     unitManager.selectionAt(point),
                                                     drawingManager.selectionAt(point),
@@ -969,6 +970,7 @@ internal class MapViewerScene(
                                         drawingManager.blocksScreenPoint(point) ||
                                         escapeMenu?.isOpen == true ||
                                         contextMenuManager.blocksScreenPoint(point) ||
+                                        (effectiveTool() == MapViewerTool.SELECT && selectionController.hasResizeHandleAt(point)) ||
                                         (effectiveTool() == MapViewerTool.SELECT && selectionController.hasPivotHandleAt(point)) ||
                                         (effectiveTool() == MapViewerTool.SELECT &&
                                                 MapPlacedObjectSelectionResolver.choose(

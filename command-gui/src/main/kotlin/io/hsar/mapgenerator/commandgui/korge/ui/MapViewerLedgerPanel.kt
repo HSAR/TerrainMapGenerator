@@ -5,7 +5,6 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelRow
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelState
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.korge.interaction.nextTurnNumber
-import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.text.TextAlignment
 import korlibs.korge.annotations.KorgeExperimental
@@ -172,20 +171,9 @@ internal class MapViewerLedgerPanel(
 
     private fun renderTurnsContent(parent: Container, itemWidth: Double, top: Double) {
         val turnPanel = turnPanelState()
-        val headerLabel = if (isReadOnly()) "Turns (Read-Only)" else "Turns"
-        MapViewerTextViews.leftBox(
-            parent = parent,
-            text = headerLabel,
-            width = itemWidth,
-            height = HEADER_HEIGHT,
-            role = MapViewerFontRole.STRONG,
-            color = Palette.Colours.WHITE,
-        ) {
-            y = top
-        }
 
         val undoButton = parent.container()
-        undoButton.xy(0.0, top + HEADER_HEIGHT + HEADER_GAP)
+        undoButton.xy(0.0, top)
         val undo = MapViewerUiBoxes.button(undoButton, CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, active = canUndo())
         MapViewerTextViews.box(undo, "Undo", CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(canUndo()))
         undo.mouse {
@@ -198,7 +186,7 @@ internal class MapViewerLedgerPanel(
         }
 
         val redoButton = parent.container()
-        redoButton.xy(CONTROL_BUTTON_WIDTH + BUTTON_GAP, top + HEADER_HEIGHT + HEADER_GAP)
+        redoButton.xy(CONTROL_BUTTON_WIDTH + BUTTON_GAP, top)
         val redo = MapViewerUiBoxes.button(redoButton, CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, active = canRedo())
         MapViewerTextViews.box(redo, "Redo", CONTROL_BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, color = MapViewerUiStateStyle.text(canRedo()))
         redo.mouse {
@@ -210,7 +198,7 @@ internal class MapViewerLedgerPanel(
             }
         }
 
-        val markerRowTop = top + HEADER_HEIGHT + HEADER_GAP + CONTROL_BUTTON_HEIGHT + SECTION_GAP
+        val markerRowTop = top + CONTROL_BUTTON_HEIGHT + SECTION_GAP
         val addButtonWidth = 120.0
         val markerInputWidth = itemWidth - addButtonWidth - BUTTON_GAP
         markerInput = MapViewerStyledTextInput(
@@ -439,9 +427,7 @@ internal class MapViewerLedgerPanel(
 
     private fun contentHeight(width: Double): Double =
         when (activeTab) {
-            LedgerPanelTab.Turns -> HEADER_HEIGHT +
-                    HEADER_GAP +
-                    CONTROL_BUTTON_HEIGHT +
+            LedgerPanelTab.Turns -> CONTROL_BUTTON_HEIGHT +
                     SECTION_GAP +
                     CONTROL_BUTTON_HEIGHT +
                     SECTION_GAP +
@@ -484,8 +470,6 @@ internal class MapViewerLedgerPanel(
             ),
         )
         const val PREFERRED_DIALOG_HEIGHT = 520.0
-        const val HEADER_HEIGHT = 40.0
-        const val HEADER_GAP = 12.0
         const val SECTION_GAP = 16.0
         const val BUTTON_GAP = 12.0
         const val CONTROL_BUTTON_WIDTH = 134.0

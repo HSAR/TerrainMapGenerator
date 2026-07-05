@@ -89,6 +89,39 @@ class OperationSaveLoaderTest {
     }
 
     @Test
+    fun `version four circle save format is rejected`() {
+        val savePath = tempDir.resolve("version-four.oct.zip")
+        ZipOutputStream(Files.newOutputStream(savePath)).use { zip ->
+            zip.putNextEntry(ZipEntry("game.json"))
+            zip.write(
+                """
+                {
+                  "formatVersion": 4,
+                  "id": "00000000-0000-0000-0000-000000000001",
+                  "name": "Version Four",
+                  "createdAt": "2026-06-19T10:00:00Z",
+                  "updatedAt": "2026-06-19T10:00:00Z",
+                  "map": {
+                    "unitsPerPixel": 20.0,
+                    "assetId": "00000000-0000-0000-0000-000000000002"
+                  }
+                }
+                """.trimIndent().toByteArray(),
+            )
+            zip.closeEntry()
+            zip.putNextEntry(ZipEntry("ledger.json"))
+            zip.write("""{"entries": []}""".toByteArray())
+            zip.closeEntry()
+        }
+
+        val error = assertThrows<IllegalArgumentException> {
+            OperationSaveLoader().load(savePath)
+        }
+
+        assertThat(error.message ?: "", containsString("Unsupported save format version 4"))
+    }
+
+    @Test
     fun `missing camera falls back to fitted startup viewport`() {
         val mapImage = BufferedImage(800, 600, BufferedImage.TYPE_INT_RGB)
         val mapPath = tempDir.resolve("map.png")
@@ -102,7 +135,7 @@ class OperationSaveLoaderTest {
             zip.write(
                 """
                 {
-                  "formatVersion": 4,
+                  "formatVersion": 5,
                   "id": "$operationId",
                   "name": "No Camera",
                   "createdAt": "2026-06-19T10:00:00Z",
@@ -155,7 +188,7 @@ class OperationSaveLoaderTest {
             zip.write(
                 """
                 {
-                  "formatVersion": 4,
+                  "formatVersion": 5,
                   "id": "$operationId",
                   "name": "Grid Enabled",
                   "createdAt": "2026-06-19T10:00:00Z",
@@ -200,7 +233,7 @@ class OperationSaveLoaderTest {
             zip.write(
                 """
                 {
-                  "formatVersion": 4,
+                  "formatVersion": 5,
                   "id": "$operationId",
                   "name": "Epsilon",
                   "createdAt": "2026-06-19T10:00:00Z",

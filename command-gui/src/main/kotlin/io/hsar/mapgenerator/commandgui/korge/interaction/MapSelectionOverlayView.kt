@@ -24,6 +24,7 @@ internal class MapSelectionOverlayView(
         state.groupFrame?.let { drawGroupFrame(it, selectionColor) }
         state.selected.forEach(::drawHighlight)
         state.box?.let(::drawSelectionBox)
+        state.selectionBracketFrame()?.let { drawCornerBrackets(it, selectionColor) }
         state.pivotHandle?.let { drawPivotHandle(it, selectionColor) }
     }
 
@@ -63,7 +64,7 @@ internal class MapSelectionOverlayView(
 
     private fun drawHighlight(snapshot: MapPlacedObjectSnapshot) {
         val viewport = viewportProvider()
-        val frame = snapshot.selectionFrame(coordinateSpace, viewport, HIGHLIGHT_SCREEN_PADDING)
+        val frame = snapshot.selectionFrame(coordinateSpace, viewport, SELECTION_FRAME_SCREEN_PADDING)
         val left = frame.corners.minOf { it.x }
         val top = frame.corners.minOf { it.y }
         val right = frame.corners.maxOf { it.x }
@@ -93,7 +94,26 @@ internal class MapSelectionOverlayView(
         }
     }
 
-    private fun drawFilledQuad(points: List<korlibs.math.geom.Vector2D>, fill: RGBA) {
+    private fun drawCornerBrackets(frame: ScreenSelectionFrame, color: Color) {
+        val bracketColor = MapViewerUiBoxes.toRgba(color, BRACKET_STROKE_ALPHA)
+        frame.cornerBrackets(SELECTION_BRACKET_LENGTH_PX, SELECTION_BRACKET_THICKNESS_PX)
+            .forEach { drawFilledPolygon(it.points, bracketColor) }
+    }
+
+    private fun MapSelectionState.selectionBracketFrame(): ScreenSelectionFrame? =
+        takeIf { selected.any { snapshot -> snapshot is DrawingSnapshot } }
+            ?.let {
+                groupFrame ?: selected.singleOrNull()?.selectionFrame(
+                    coordinateSpace = coordinateSpace,
+                    viewport = viewportProvider(),
+                    screenPadding = SELECTION_FRAME_SCREEN_PADDING,
+                )
+            }
+
+    private fun drawFilledQuad(points: List<korlibs.math.geom.Vector2D>, fill: RGBA) =
+        drawFilledPolygon(points, fill)
+
+    private fun drawFilledPolygon(points: List<korlibs.math.geom.Vector2D>, fill: RGBA) {
         content.graphics {
             fill(fill) {
                 moveTo(points[0].x, points[0].y)
@@ -103,14 +123,19 @@ internal class MapSelectionOverlayView(
         }
     }
 
-    private fun drawEdge(start: korlibs.math.geom.Vector2D, end: korlibs.math.geom.Vector2D, color: RGBA) {
+    private fun drawEdge(
+        start: korlibs.math.geom.Vector2D,
+        end: korlibs.math.geom.Vector2D,
+        color: RGBA,
+        strokeWidth: Double = SELECTION_STROKE_WIDTH,
+    ) {
         val dx = end.x - start.x
         val dy = end.y - start.y
         val length = kotlin.math.hypot(dx, dy)
         if (length <= 0.0) {
             return
         }
-        val halfThickness = SELECTION_STROKE_WIDTH * 0.5
+        val halfThickness = strokeWidth * 0.5
         val unitX = dx / length
         val unitY = dy / length
         val perpX = -unitY * halfThickness
@@ -162,10 +187,10 @@ internal class MapSelectionOverlayView(
     private companion object {
         private const val SELECTION_STROKE_WIDTH = 2.0
         private const val HIGHLIGHT_STROKE_WIDTH = 2.0
-        private const val HIGHLIGHT_SCREEN_PADDING = 4.0
         private const val GROUP_FILL_ALPHA = 28
         private const val GROUP_STROKE_ALPHA = 150
         private const val HIGHLIGHT_STROKE_ALPHA = 210
+        private const val BRACKET_STROKE_ALPHA = 230
         private const val HANDLE_FILL_ALPHA = 230
         private const val HANDLE_CORE_ALPHA = 230
         private val selectionStroke = RGBA(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 170)
