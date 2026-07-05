@@ -11,17 +11,13 @@ import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.image.color.RGBA
 import korlibs.korge.input.mouse
-import korlibs.korge.ui.uiMaterialLayer
 import korlibs.korge.view.Container
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
 import korlibs.korge.view.onStageResized
-import korlibs.korge.view.size
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
-import korlibs.math.geom.RectCorners
 import korlibs.math.geom.Vector2D
-import java.awt.Color
 
 internal class MapViewerSidebar(
     root: Container,
@@ -38,10 +34,6 @@ internal class MapViewerSidebar(
     initialUnitTemplates: List<MapViewerUnitTemplate> = MapViewerUnitTemplateFactory.defaults(),
 ) {
     private val overlay = root.container()
-    private val panel = overlay.uiMaterialLayer()
-    private val content = overlay.container()
-    private val header = content.container()
-    private val unitList = content.container()
     private val toggleButton = overlay.container()
     private val dragLayer = overlay.container()
     private val unitTemplates = initialUnitTemplates.mapIndexed { index, template ->
@@ -50,6 +42,7 @@ internal class MapViewerSidebar(
     private var collapsed = false
     private var dragState: DragState? = null
     private var lastDragPointer: Vector2D? = null
+    private var dialogWindow: MapViewerDialogWindow? = null
     private var layout = MapViewerSidebarLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
 
     internal val isUnitDragging: Boolean
@@ -72,21 +65,21 @@ internal class MapViewerSidebar(
         dragLayer.zIndex = 20_000.0
         dragLayer.mouseEnabled = false
 
-        panel.radius = RectCorners(0.0)
-        panel.bgColor = toRgba(Palette.Colours.DARK, 220)
-        panel.borderSize = 2.0
-        panel.borderColor = RGBA(255, 255, 255, 255)
-        panel.shadowColor = RGBA(0, 0, 0, 0)
-        panel.shadowRadius = 0.0
-
         toggleButton.mouse {
             onClick {
-                collapsed = !collapsed
+                if (collapsed) {
+                    openDialog()
+                } else {
+                    closeDialog()
+                }
                 relayout(layoutViewportWidth(), layoutViewportHeight())
             }
         }
 
         overlay.addUpdater {
+            if (!collapsed && dialogWindow == null && overlay.stage != null) {
+                openDialog()
+            }
             updateDrag(overlay.stage?.views?.input)
         }
 
@@ -98,7 +91,7 @@ internal class MapViewerSidebar(
     }
 
     fun blocksScreenPoint(point: Vector2D): Boolean =
-        layout.blocks(point) || dialogManager.blocksScreenPoint(point)
+        layout.toggleBounds.contains(point) || dialogWindow?.blocksScreenPoint(point) == true || dialogManager.blocksScreenPoint(point)
 
     fun addUnitTemplate(template: MapViewerUnitTemplate, index: Int = unitTemplates.size, notify: Boolean = true): UnitTemplateSnapshot {
         val insertionIndex = index.coerceIn(0, unitTemplates.size)
@@ -117,6 +110,7 @@ internal class MapViewerSidebar(
         val row = UnitTemplateRow(snapshot.id, snapshot.template)
         unitTemplates.add(insertionIndex, row)
         relayout(layoutViewportWidth(), layoutViewportHeight())
+        dialogWindow?.refresh()
         return row.snapshot(insertionIndex).also {
             if (notify) onUnitTemplateCreated(it)
         }
@@ -131,6 +125,7 @@ internal class MapViewerSidebar(
 
         val removed = unitTemplates.removeAt(index)
         relayout(layoutViewportWidth(), layoutViewportHeight())
+        dialogWindow?.refresh()
         return removed.snapshot(index).also { if (notify) onUnitTemplateDeleted(it) }
     }
 
@@ -140,56 +135,68 @@ internal class MapViewerSidebar(
     }
 
     private fun relayout(viewportWidth: Int, viewportHeight: Int) {
-        layout = MapViewerSidebarLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
+        layout = MapViewerSidebarLayoutBuilder.build(viewportWidth, viewportHeight, collapsed = true)
 
         MapViewerSidePanelChrome.renderToggle(
             parent = toggleButton,
             bounds = layout.toggleBounds,
             label = "Units",
         )
-
-        val panelBounds = layout.panelBounds
-        panel.visible = panelBounds != null
-        content.visible = panelBounds != null
-
-        if (panelBounds != null) {
-            panel.xy(panelBounds.left, panelBounds.top)
-            panel.size(panelBounds.width, panelBounds.height)
-
-            content.removeChildren()
-            content.addChild(header)
-            content.addChild(unitList)
-            content.xy(panelBounds.left + CONTENT_PADDING, panelBounds.top + CONTENT_PADDING)
-
-            header.removeChildren()
-            header.xy(0.0, 0.0)
-            MapViewerTextViews.leftBox(
-                parent = header,
-                text = "Unit Types",
-                width = MapViewerSidebarLayoutBuilder.PANEL_WIDTH,
-                height = HEADER_HEIGHT,
-                role = MapViewerFontRole.STRONG,
-                color = Palette.Colours.WHITE,
-            )
-
-            val buttonWidth = 120.0
-            val addButton = header.container()
-            addButton.xy(MapViewerSidebarLayoutBuilder.PANEL_WIDTH - (CONTENT_PADDING * 2) - buttonWidth, 0.0)
-            buildToggleButton(addButton, buttonWidth, HEADER_HEIGHT, "New Type") {
-                openCreateUnitDialog()
-            }
-
-            unitList.removeChildren()
-            unitList.xy(0.0, HEADER_HEIGHT + HEADER_GAP)
-            unitTemplates.forEachIndexed { index, row ->
-                addUnitSource(unitList, row, index)
-            }
-        }
-
     }
 
-    private fun addUnitSource(parent: Container, row: UnitTemplateRow, index: Int) {
-        val itemWidth = MapViewerSidebarLayoutBuilder.PANEL_WIDTH - (CONTENT_PADDING * 2)
+    private fun openDialog() {
+        val stage = overlay.stage ?: return
+        collapsed = false
+        if (dialogWindow != null) {
+            return
+        }
+        dialogWindow = MapViewerDialogWindow(
+            root = overlay,
+            title = "Unit Types",
+            initialPosition = ::initialDialogPosition,
+            preferredWidth = MapViewerSidebarLayoutBuilder.PANEL_WIDTH,
+            preferredHeight = preferredDialogHeight(),
+            contentMinimumWidth = { CONTENT_MINIMUM_WIDTH },
+            contentHeight = ::contentHeight,
+            onClose = ::closeDialog,
+            renderContent = ::renderContent,
+            mode = MapViewerDialogMode.FLOATING,
+        )
+        dialogWindow?.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
+    }
+
+    private fun initialDialogPosition(defaultBounds: MapViewerDialogBounds): Vector2D =
+        MapViewerSidebarLayoutBuilder.build(
+            viewportWidth = layoutViewportWidth(),
+            viewportHeight = layoutViewportHeight(),
+            collapsed = false,
+        ).panelBounds
+            ?.let { Vector2D(it.left, it.top) }
+            ?: Vector2D(defaultBounds.left, defaultBounds.top)
+
+    private fun closeDialog() {
+        collapsed = true
+        dialogWindow?.close()
+        dialogWindow = null
+        relayout(layoutViewportWidth(), layoutViewportHeight())
+    }
+
+    private fun renderContent(parent: Container, itemWidth: Double) {
+        val buttonWidth = 120.0
+        val addButton = parent.container()
+        addButton.xy(itemWidth - buttonWidth, 0.0)
+        buildToggleButton(addButton, buttonWidth, HEADER_HEIGHT, "New Type") {
+            openCreateUnitDialog()
+        }
+
+        val unitList = parent.container()
+        unitList.xy(0.0, HEADER_HEIGHT + HEADER_GAP)
+        unitTemplates.forEachIndexed { index, row ->
+            addUnitSource(unitList, row, index, itemWidth)
+        }
+    }
+
+    private fun addUnitSource(parent: Container, row: UnitTemplateRow, index: Int, itemWidth: Double) {
         val itemTop = index * (UNIT_ITEM_HEIGHT + UNIT_ITEM_GAP)
         val iconSlotWidth = 40.0
         val iconInset = 2.0
@@ -331,6 +338,7 @@ internal class MapViewerSidebar(
         val before = snapshotUnitTemplate(id)
         unitTemplates[index] = unitTemplates[index].copy(template = template)
         relayout(layoutViewportWidth(), layoutViewportHeight())
+        dialogWindow?.refresh()
         val after = snapshotUnitTemplate(id)
         if (notify && before != null && after != null && before != after) {
             onUnitTemplateEdited(before, after)
@@ -373,6 +381,19 @@ internal class MapViewerSidebar(
     private fun layoutViewportHeight(): Int =
         overlay.stage?.views?.actualVirtualHeight ?: 0
 
+    private fun contentHeight(width: Double): Double =
+        HEADER_HEIGHT + HEADER_GAP + unitListHeight()
+
+    private fun unitListHeight(): Double =
+        if (unitTemplates.isEmpty()) {
+            0.0
+        } else {
+            unitTemplates.size * UNIT_ITEM_HEIGHT + (unitTemplates.size - 1) * UNIT_ITEM_GAP
+        }
+
+    private fun preferredDialogHeight(): Double =
+        MapViewerSidebarLayoutBuilder.PANEL_MIN_HEIGHT.coerceAtLeast(contentHeight(MapViewerSidebarLayoutBuilder.PANEL_WIDTH))
+
     private data class DragState(
         val template: MapViewerUnitTemplate,
         val preview: Container,
@@ -387,7 +408,7 @@ internal class MapViewerSidebar(
     }
 
     private companion object {
-        const val CONTENT_PADDING = 20.0
+        const val CONTENT_MINIMUM_WIDTH = 280.0
         const val HEADER_HEIGHT = 40.0
         const val HEADER_GAP = 12.0
         const val UNIT_ITEM_HEIGHT = 40.0
@@ -398,6 +419,3 @@ internal class MapViewerSidebar(
         const val PREVIEW_OFFSET_Y = 14.0
     }
 }
-
-private fun toRgba(color: Color, alpha: Int = color.alpha): RGBA =
-    RGBA(color.red, color.green, color.blue, alpha)

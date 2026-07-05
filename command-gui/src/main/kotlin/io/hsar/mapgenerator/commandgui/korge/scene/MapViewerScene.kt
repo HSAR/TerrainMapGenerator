@@ -33,6 +33,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplatePatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelMode
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchFlow
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchpadView
@@ -237,7 +238,9 @@ internal class MapViewerScene(
                         val operationCreatedAt = loadedOperation?.createdAt ?: Instant.now()
                         val toolStorage = OperationToolStorage()
                         val saveWriter = OperationSaveWriter(storage = toolStorage)
-                        var destroyedUnitsDisplay = DestroyedUnitsDisplay.fromSettingsValue(toolStorage.readSettings().displayDestroyedUnits)
+                        val toolSettings = toolStorage.readSettings()
+                        var destroyedUnitsDisplay = DestroyedUnitsDisplay.fromSettingsValue(toolSettings.displayDestroyedUnits)
+                        var unitIconSizePx = UnitIconDisplaySize.coerce(toolSettings.unitIconSizePx)
                         val thumbnailRenderer = MapThumbnailRenderer()
                         val generatedImageAssets = loadedOperation
                             ?.generatedImageAssets
@@ -255,6 +258,7 @@ internal class MapViewerScene(
                         var previousLeftHeld = false
                         var previousRightHeld = false
                         var selectionControllerReady = false
+                        var unitManagerReady = false
 
                         fun isReadOnly(): Boolean =
                             turnMode is TurnPanelMode.ReadOnly
@@ -471,6 +475,9 @@ internal class MapViewerScene(
                             sceneLayers.background.solidRect(width, height, Colors.BLACK)
                             mapViewport.size(width, height)
                             world.setTo(currentViewport.toCameraRectangle())
+                            if (unitManagerReady) {
+                                unitManager.refreshIconDisplay(force = true)
+                            }
                             if (selectionControllerReady) {
                                 selectionController.refresh()
                             }
@@ -496,6 +503,7 @@ internal class MapViewerScene(
                             deferredActionRunner = deferredContextMenuActions,
                             dialogManager = dialogManager,
                             initialDestroyedUnitsDisplay = destroyedUnitsDisplay,
+                            initialUnitIconSizePx = unitIconSizePx,
                             canInteractWithUnits = { effectiveTool() == MapViewerTool.SELECT },
                             isHigherPriorityDragInProgress = { drawingManager.isDragging },
                             onMovePreviewChanged = { preview ->
@@ -521,6 +529,7 @@ internal class MapViewerScene(
                                 }
                             },
                         )
+                        unitManagerReady = true
                         unitManager.install()
 
                         drawingManager = MapDrawingManager(
@@ -746,6 +755,19 @@ internal class MapViewerScene(
                                     logger.error("Failed to save operation tool settings", throwable)
                                 }
                             },
+                            initialUnitIconSizePx = unitIconSizePx,
+                            onUnitIconSizeChanged = { size ->
+                                unitIconSizePx = UnitIconDisplaySize.coerce(size)
+                                unitManager.updateUnitIconSize(unitIconSizePx)
+                                selectionController.refresh()
+                                runCatching {
+                                    toolStorage.writeSettings(
+                                        toolStorage.readSettings().copy(unitIconSizePx = unitIconSizePx),
+                                    )
+                                }.onFailure { throwable ->
+                                    logger.error("Failed to save operation tool settings", throwable)
+                                }
+                            },
                             turnThumbnail = ::turnThumbnailBitmap,
                         )
                         toolbar = MapViewerToolbar(
@@ -912,6 +934,22 @@ internal class MapViewerScene(
                             onRedoRequested = {
                                 performRedo()
                             },
+                            onUnitIconSizeScroll = { factor ->
+                                val nextSize = UnitIconDisplaySize.coerce(unitIconSizePx * factor)
+                                if (nextSize != unitIconSizePx) {
+                                    unitIconSizePx = nextSize
+                                    unitManager.updateUnitIconSize(unitIconSizePx)
+                                    selectionController.refresh()
+                                    ledgerPanel?.updateUnitIconSize(unitIconSizePx)
+                                    runCatching {
+                                        toolStorage.writeSettings(
+                                            toolStorage.readSettings().copy(unitIconSizePx = unitIconSizePx),
+                                        )
+                                    }.onFailure { throwable ->
+                                        logger.error("Failed to save operation tool settings", throwable)
+                                    }
+                                }
+                            },
                             isMovableObjectUnderPointer = { point ->
                                 effectiveTool() == MapViewerTool.SELECT &&
                                         (selectionController.hasPivotHandleAt(point) ||
@@ -941,6 +979,7 @@ internal class MapViewerScene(
                             isMapPlacementDragging = { unitManager.isDragging || selectionController.isDragging },
                             onViewportChanged = {
                                 currentViewport = it
+                                unitManager.refreshIconDisplay()
                                 drawingView.update(drawingStore.state, it.zoom)
                                 selectionController.refresh()
                             },

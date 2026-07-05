@@ -41,6 +41,7 @@ class MapViewerDialogWindowTest {
             actions = emptyList(),
             onClose = {},
             renderContent = { _, _ -> },
+            mode = MapViewerDialogMode.MODAL,
         )
 
         window.show(800, 600)
@@ -101,5 +102,10 @@ class MapViewerDialogWindowTest {
         assertThat(style.fillAlpha, equalTo(220))
         assertThat(style.borderColor, equalTo(Palette.Colours.WHITE))
         assertThat(style.borderAlpha, equalTo(255))
+    }
+
+    @Test
+    fun `dialog title text is rendered in uppercase`() {
+        assertThat(MapViewerDialogChrome.dialogTitleText("Edit Unit - Alpha"), equalTo("EDIT UNIT - ALPHA"))
     }
 }

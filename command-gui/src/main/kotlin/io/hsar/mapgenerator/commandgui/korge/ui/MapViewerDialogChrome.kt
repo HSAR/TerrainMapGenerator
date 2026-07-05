@@ -6,6 +6,7 @@ import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
+import java.util.*
 
 internal object MapViewerDialogChrome {
     fun render(
@@ -30,7 +31,7 @@ internal object MapViewerDialogChrome {
         val titleWidth = (layout.titleBar.width - layout.closeButton.width - TITLE_TEXT_RIGHT_GAP - TITLE_TEXT_LEFT).coerceAtLeast(0.0)
         if (titleTabs.isEmpty()) {
             val fittedTitle = MapViewerTextViews.ellipsize(
-                text = title,
+                text = dialogTitleText(title),
                 maxWidth = titleWidth,
                 role = MapViewerFontRole.STRONG,
                 size = MapViewerTextViews.DEFAULT_TEXT_SIZE,
@@ -121,7 +122,7 @@ internal object MapViewerDialogChrome {
             }
             MapViewerTextViews.box(
                 parent = tabButton,
-                text = tab.label,
+                text = dialogTitleText(tab.label),
                 width = tabWidth,
                 height = height,
                 role = MapViewerFontRole.STRONG,
@@ -154,11 +155,16 @@ internal object MapViewerDialogChrome {
 
     private const val ACTIVE_TAB_FILL_ALPHA = 0
     private const val INACTIVE_TAB_FILL_ALPHA = 30
+
+    internal fun dialogTitleText(text: String): String =
+        text.uppercase(Locale.ROOT)
 }
 
 internal object MapViewerDialogTitleTabLayoutBuilder {
     fun tabWidth(labels: List<String>): Double =
-        labels.maxOfOrNull { label -> MapViewerTextViews.measure(label, role = MapViewerFontRole.STRONG).width }
+        labels.maxOfOrNull { label ->
+            MapViewerTextViews.measure(MapViewerDialogChrome.dialogTitleText(label), role = MapViewerFontRole.STRONG).width
+        }
             ?.let { labelWidth -> labelWidth + TAB_HORIZONTAL_PADDING * 2.0 }
             ?: 0.0
 

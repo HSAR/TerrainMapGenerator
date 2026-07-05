@@ -26,8 +26,20 @@ class MapViewerLedgerPanelTest {
     @Test
     fun `inline input minimum width includes title and dropdown`() {
         assertThat(
-            MapViewerInlineInputs.minimumWidth("Destroyed Units", MapViewerLedgerPanel.destroyedUnitsDropdownMinimumWidth()),
+            MapViewerInlineInputs.block(MapViewerLedgerPanel.SETTINGS_INLINE_LABELS)
+                .minimumWidth(MapViewerLedgerPanel.destroyedUnitsDropdownMinimumWidth()),
             greaterThanOrEqualTo(MapViewerLedgerPanel.destroyedUnitsDropdownMinimumWidth()),
+        )
+    }
+
+    @Test
+    fun `inline input block aligns controls to the widest title`() {
+        val shortBlock = MapViewerInlineInputs.block(listOf("X"))
+        val dialogBlock = MapViewerInlineInputs.block(listOf("Unit Name", "Facing", "Destroyed"))
+
+        assertThat(
+            dialogBlock.minimumWidth(MapViewerLedgerPanel.destroyedUnitsDropdownMinimumWidth()),
+            greaterThanOrEqualTo(shortBlock.minimumWidth(MapViewerLedgerPanel.destroyedUnitsDropdownMinimumWidth())),
         )
     }
 }

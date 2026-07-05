@@ -219,13 +219,15 @@ class OperationSaveWriterTest {
     fun `tool settings persist destroyed units display mode`() {
         val storage = OperationToolStorage(tempDir)
 
-        storage.writeSettings(OperationToolSettingsDto(formatVersion = 99, displayDestroyedUnits = "Partial"))
+        storage.writeSettings(OperationToolSettingsDto(formatVersion = 99, displayDestroyedUnits = "Partial", unitIconSizePx = 48.0))
         val settings = storage.readSettings()
         val settingsJson = OperationSaveJson.objectMapper.readTree(tempDir.resolve("settings.json").toFile())
 
         assertThat(settings.formatVersion, equalTo(1))
         assertThat(settings.displayDestroyedUnits, equalTo("Partial"))
+        assertThat(settings.unitIconSizePx, equalTo(48.0))
         assertThat(settingsJson["displayDestroyedUnits"].asText(), equalTo("Partial"))
+        assertThat(settingsJson["unitIconSizePx"].asDouble(), equalTo(48.0))
     }
 
     @Test

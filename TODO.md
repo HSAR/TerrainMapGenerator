@@ -4,13 +4,11 @@
     - When zooming out, tokens should gather appropriately (eg. platoons to companies)
 - Measure tool should lock to the midpoint of a unit when starting and ending, unless shift key is held
 - Universal UI model and switch to corner-only white borders for better aesthetics
-- Destroyed units can be hidden or shown with reduced opacity
 - Support arbitrary states which are independently toggleable instead of mutually exclusive
 - Unit types additional semantic properties
     - Move limits
-- Randomly generated operation names
 - Drawings can be resized with appropriate UI on bounding boxes
-- Implement custom reference systems
+- Dialogs minimise, which remembers their position and size and adds them to a taskbar at top or bottom of screen
 
 ## Bugs
 

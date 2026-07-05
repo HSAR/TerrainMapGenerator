@@ -3,10 +3,12 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnMarker
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelRow
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelState
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.korge.interaction.nextTurnNumber
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.text.TextAlignment
+import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
@@ -15,6 +17,7 @@ import korlibs.korge.view.xy
 import korlibs.math.geom.Vector2D
 import java.util.*
 
+@OptIn(KorgeExperimental::class)
 internal class MapViewerLedgerPanel(
     root: Container,
     viewportWidth: Int,
@@ -30,6 +33,8 @@ internal class MapViewerLedgerPanel(
     private val onSelectCurrent: () -> Unit,
     initialDestroyedUnitsDisplay: DestroyedUnitsDisplay = DestroyedUnitsDisplay.Full,
     private val onDestroyedUnitsDisplayChanged: (DestroyedUnitsDisplay) -> Unit = {},
+    initialUnitIconSizePx: Double = UnitIconDisplaySize.DEFAULT_PX,
+    private val onUnitIconSizeChanged: (Double) -> Unit = {},
     private val turnThumbnail: (UUID) -> Bitmap32? = { null },
 ) {
     private val overlay = root.container()
@@ -47,7 +52,10 @@ internal class MapViewerLedgerPanel(
     private var collapsed = true
     private var activeTab = LedgerPanelTab.Turns
     private var destroyedUnitsDisplay = initialDestroyedUnitsDisplay
+    private var unitIconSizePx = UnitIconDisplaySize.coerce(initialUnitIconSizePx)
+    private var unitIconSizeText = UnitIconDisplaySize.format(unitIconSizePx)
     private var markerInput: MapViewerStyledTextInput? = null
+    private var unitIconSizeInput: MapViewerInputField? = null
     private var inputActive = false
     private var dialogWindow: MapViewerDialogWindow? = null
     private var layout = MapViewerLedgerPanelLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
@@ -85,6 +93,12 @@ internal class MapViewerLedgerPanel(
 
     fun refresh() {
         dialogWindow?.refresh()
+    }
+
+    fun updateUnitIconSize(sizePx: Double) {
+        unitIconSizePx = UnitIconDisplaySize.coerce(sizePx)
+        unitIconSizeText = UnitIconDisplaySize.format(unitIconSizePx)
+        refresh()
     }
 
     private fun relayout(viewportWidth: Int, viewportHeight: Int) {
@@ -149,6 +163,7 @@ internal class MapViewerLedgerPanel(
 
     private fun renderContent(parent: Container, itemWidth: Double) {
         markerInput = null
+        unitIconSizeInput = null
         when (activeTab) {
             LedgerPanelTab.Turns -> renderTurnsContent(parent, itemWidth, 0.0)
             LedgerPanelTab.Settings -> renderSettingsContent(parent, itemWidth, 0.0)
@@ -233,17 +248,47 @@ internal class MapViewerLedgerPanel(
     }
 
     private fun renderSettingsContent(parent: Container, itemWidth: Double, top: Double) {
-        MapViewerInlineInputs.dropdown(
+        val inlineBlock = MapViewerInlineInputs.block(SETTINGS_INLINE_LABELS)
+        inlineBlock.control(
             parent = parent,
-            dropdown = destroyedUnitsDropdown,
             label = "Destroyed Units",
-            value = destroyedUnitsDisplay,
             x = 0.0,
             y = top,
             width = itemWidth,
             inputMinimumWidth = DESTROYED_UNITS_DROPDOWN_MINIMUM_WIDTH,
             height = CONTROL_BUTTON_HEIGHT,
-        )
+        ) { input, inputWidth ->
+            destroyedUnitsDropdown.renderTrigger(
+                parent = input,
+                value = destroyedUnitsDisplay,
+                width = inputWidth,
+                height = CONTROL_BUTTON_HEIGHT,
+            )
+        }
+        unitIconSizeInput = inlineBlock.text(
+            parent = parent,
+            label = "Unit Icon Size",
+            text = unitIconSizeText,
+            x = 0.0,
+            y = top + CONTROL_BUTTON_HEIGHT + SETTINGS_ROW_GAP,
+            width = itemWidth,
+            inputMinimumWidth = UNIT_ICON_SIZE_INPUT_MINIMUM_WIDTH,
+            height = CONTROL_BUTTON_HEIGHT,
+            frameStyle = MapViewerTextInputValidation.frameStyle(UnitIconDisplaySize.parse(unitIconSizeText) != null),
+        ).also { input ->
+            input.onClick {
+                inputActive = true
+            }
+            input.controller.onTextUpdated.add {
+                unitIconSizeText = input.text
+                UnitIconDisplaySize.parse(unitIconSizeText)?.let { size ->
+                    if (size != unitIconSizePx) {
+                        unitIconSizePx = size
+                        onUnitIconSizeChanged(size)
+                    }
+                }
+            }
+        }
     }
 
     private fun renderRows(parent: Container, top: Double, turnPanel: TurnPanelState, itemWidth: Double) {
@@ -402,14 +447,15 @@ internal class MapViewerLedgerPanel(
                     SECTION_GAP +
                     renderMarkersHeight()
 
-            LedgerPanelTab.Settings -> 28.0 + CONTROL_BUTTON_HEIGHT
+            LedgerPanelTab.Settings -> (CONTROL_BUTTON_HEIGHT * 2.0) + SETTINGS_ROW_GAP
         }
 
     private fun contentMinimumWidth(): Double =
         maxOf(
             CONTENT_MINIMUM_WIDTH,
             if (activeTab == LedgerPanelTab.Settings) {
-                MapViewerInlineInputs.minimumWidth("Destroyed Units", DESTROYED_UNITS_DROPDOWN_MINIMUM_WIDTH)
+                MapViewerInlineInputs.block(SETTINGS_INLINE_LABELS)
+                    .minimumWidth(maxOf(DESTROYED_UNITS_DROPDOWN_MINIMUM_WIDTH, UNIT_ICON_SIZE_INPUT_MINIMUM_WIDTH))
             } else {
                 0.0
             },
@@ -425,8 +471,11 @@ internal class MapViewerLedgerPanel(
         fun destroyedUnitsDropdownMinimumWidth(): Double =
             DESTROYED_UNITS_DROPDOWN_MINIMUM_WIDTH
 
+        val SETTINGS_INLINE_LABELS = listOf("Destroyed Units", "Unit Icon Size")
         const val Z_INDEX = 10_000.0
         private const val CONTENT_MINIMUM_WIDTH = 320.0
+        private const val UNIT_ICON_SIZE_INPUT_MINIMUM_WIDTH = 92.0
+        private const val SETTINGS_ROW_GAP = 12.0
         val DESTROYED_UNITS_DROPDOWN_MINIMUM_WIDTH = maxOf(
             160.0,
             MapViewerDropdownLayoutBuilder.minimumMenuWidth(

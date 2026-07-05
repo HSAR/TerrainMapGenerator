@@ -6,6 +6,7 @@ import java.nio.file.Path
 internal data class OperationToolSettingsDto(
     val formatVersion: Int = SETTINGS_FORMAT_VERSION,
     val displayDestroyedUnits: String? = null,
+    val unitIconSizePx: Double? = null,
 )
 
 internal class OperationToolStorage(

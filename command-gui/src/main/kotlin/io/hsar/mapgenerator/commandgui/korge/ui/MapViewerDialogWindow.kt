@@ -30,7 +30,7 @@ internal class MapViewerDialogWindow(
     private val actions: List<MapViewerDialogAction> = emptyList(),
     private val onClose: () -> Unit,
     private val renderContent: (Container, Double) -> Unit,
-    private val mode: MapViewerDialogMode = MapViewerDialogMode.MODAL,
+    private val mode: MapViewerDialogMode = MapViewerDialogMode.FLOATING,
 ) {
     private val layer = root.container()
     private var viewportWidth = 0

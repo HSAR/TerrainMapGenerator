@@ -125,20 +125,11 @@ internal class MapViewerUnitEditDialog(
     private fun renderContent(parent: Container, width: Double) {
         val fieldWidth = fieldWidth(width)
         val typePreviewWidth = fieldWidth
-        val compactRow = width >= compactRowMinimumWidth()
-        val compactFieldWidth = if (compactRow) {
-            (fieldWidth - MapViewerDialogSpacing.FIELD_GAP * 2.0) / 3.0
-        } else {
-            (fieldWidth - MapViewerDialogSpacing.FIELD_GAP) / 2.0
-        }
-        val facingFieldWidth = if (compactRow) compactFieldWidth else fieldWidth
-
-        val typeLabel = parent.container()
-        typeLabel.xy(0.0, 0.0)
-        MapViewerTextViews.label(typeLabel, "Type", color = Palette.Colours.WHITE)
+        val positionFieldWidth = (fieldWidth - MapViewerDialogSpacing.FIELD_GAP) / 2.0
+        val inlineBlock = MapViewerInlineInputs.block(UNIT_INLINE_LABELS)
 
         val typePreview = parent.container()
-        typePreview.xy(0.0, MapViewerDialogSpacing.LABEL_TO_FIELD_GAP)
+        typePreview.xy(0.0, TYPE_PREVIEW_TOP)
         MapViewerUiBoxes.imageBox(typePreview, unitType.bitmap, typePreviewWidth, MapViewerDialogSpacing.PREVIEW_HEIGHT)
         MapViewerTextViews.leftBox(
             parent = typePreview,
@@ -150,7 +141,60 @@ internal class MapViewerUnitEditDialog(
             x = ICON_SLOT_WIDTH + 12.0
         }
 
-        nameInput = MapViewerInlineInputs.text(
+        MapViewerTextViews.box(
+            parent = parent,
+            text = "X",
+            width = positionFieldWidth,
+            height = POSITION_LABEL_HEIGHT,
+            color = Palette.Colours.WHITE,
+        ) {
+            x = 0.0
+            y = POSITION_LABEL_TOP
+        }
+        MapViewerTextViews.box(
+            parent = parent,
+            text = "Y",
+            width = positionFieldWidth,
+            height = POSITION_LABEL_HEIGHT,
+            color = Palette.Colours.WHITE,
+        ) {
+            x = positionFieldWidth + MapViewerDialogSpacing.FIELD_GAP
+            y = POSITION_LABEL_TOP
+        }
+
+        positionXInput = MapViewerTextInputs.input(
+            parent = parent,
+            text = positionXValue,
+            x = 0.0,
+            y = POSITION_INPUT_TOP,
+            width = positionFieldWidth,
+            height = MapViewerDialogSpacing.INPUT_HEIGHT,
+            frameStyle = MapViewerTextInputValidation.frameStyle(isPositionValid(positionXValue, positionYValue)),
+        ).also { input ->
+            input.controller.onTextUpdated.add {
+                positionXValue = input.text
+                refreshPositionPreview()
+                refreshIfPositionValidityChanged()
+            }
+        }
+
+        positionYInput = MapViewerTextInputs.input(
+            parent = parent,
+            text = positionYValue,
+            x = positionFieldWidth + MapViewerDialogSpacing.FIELD_GAP,
+            y = POSITION_INPUT_TOP,
+            width = positionFieldWidth,
+            height = MapViewerDialogSpacing.INPUT_HEIGHT,
+            frameStyle = MapViewerTextInputValidation.frameStyle(isPositionValid(positionXValue, positionYValue)),
+        ).also { input ->
+            input.controller.onTextUpdated.add {
+                positionYValue = input.text
+                refreshPositionPreview()
+                refreshIfPositionValidityChanged()
+            }
+        }
+
+        nameInput = inlineBlock.text(
             parent = parent,
             label = "Unit Name",
             text = nameValue,
@@ -171,49 +215,13 @@ internal class MapViewerUnitEditDialog(
             }
         }
 
-        positionXInput = MapViewerInlineInputs.text(
-            parent = parent,
-            label = "X",
-            text = positionXValue,
-            x = 0.0,
-            y = POSITION_ROW_TOP,
-            width = compactFieldWidth,
-            inputMinimumWidth = positionAxisInputMinimumWidth(positionXValue, "X"),
-            frameStyle = MapViewerTextInputValidation.frameStyle(isPositionValid(positionXValue, positionYValue)),
-        ).also { input ->
-            input.controller.onTextUpdated.add {
-                positionXValue = input.text
-                refreshPositionPreview()
-                refreshIfPositionValidityChanged()
-            }
-        }
-
-        positionYInput = MapViewerInlineInputs.text(
-            parent = parent,
-            label = "Y",
-            text = positionYValue,
-            x = compactFieldWidth + MapViewerDialogSpacing.FIELD_GAP,
-            y = POSITION_ROW_TOP,
-            width = compactFieldWidth,
-            inputMinimumWidth = positionAxisInputMinimumWidth(positionYValue, "Y"),
-            frameStyle = MapViewerTextInputValidation.frameStyle(isPositionValid(positionXValue, positionYValue)),
-        ).also { input ->
-            input.controller.onTextUpdated.add {
-                positionYValue = input.text
-                refreshPositionPreview()
-                refreshIfPositionValidityChanged()
-            }
-        }
-
-        val facingX = if (compactRow) (compactFieldWidth + MapViewerDialogSpacing.FIELD_GAP) * 2.0 else 0.0
-        val facingY = if (compactRow) POSITION_ROW_TOP else STACKED_FACING_TOP
-        facingInput = MapViewerInlineInputs.text(
+        facingInput = inlineBlock.text(
             parent = parent,
             label = "Facing",
             text = facingValue,
-            x = facingX,
-            y = facingY,
-            width = facingFieldWidth,
+            x = 0.0,
+            y = FACING_TOP,
+            width = fieldWidth,
             inputMinimumWidth = facingTextInputMinimumWidth(),
             frameStyle = MapViewerTextInputValidation.frameStyle(isFacingValid(facingValue)),
         ).also { input ->
@@ -224,28 +232,27 @@ internal class MapViewerUnitEditDialog(
             }
         }
 
-        val destroyedTop = if (compactRow) COMPACT_DESTROYED_TOP else STACKED_DESTROYED_TOP
-        MapViewerInlineInputs.control(
+        inlineBlock.control(
             parent = parent,
             label = "Destroyed",
             x = 0.0,
-            y = destroyedTop,
+            y = DESTROYED_TOP,
             width = fieldWidth,
-            inputMinimumWidth = DESTROYED_TOGGLE_MINIMUM_WIDTH,
+            inputMinimumWidth = DESTROYED_CHECKBOX_SIZE,
             height = MapViewerDialogSpacing.INPUT_HEIGHT,
-        ) { input, inputWidth ->
-            renderDestroyedToggle(input, inputWidth)
+        ) { input, _ ->
+            renderDestroyedToggle(input)
             input.mouse {
                 onClick {
                     destroyedValue = !destroyedValue
                     onDestroyedPreviewChanged(destroyedValue)
-                    renderDestroyedToggle(input, inputWidth)
+                    renderDestroyedToggle(input)
                 }
             }
         }
 
         val customPropertiesContainer = parent.container()
-        customPropertiesContainer.xy(0.0, customPropertiesTop(width))
+        customPropertiesContainer.xy(0.0, CUSTOM_PROPERTIES_TOP)
         customPropertiesEditor.render(customPropertiesContainer, fieldWidth)
 
         if (!initialFocusApplied) {
@@ -265,14 +272,20 @@ internal class MapViewerUnitEditDialog(
         positionYInput?.text = sync.positionY
     }
 
-    private fun renderDestroyedToggle(parent: Container, width: Double) {
+    private fun renderDestroyedToggle(parent: Container) {
         parent.removeChildren()
-        MapViewerUiBoxes.box(parent, width, MapViewerDialogSpacing.INPUT_HEIGHT)
         val box = parent.container()
-        box.xy(10.0, 8.0)
-        MapViewerUiBoxes.box(box, 20.0, 20.0)
+        box.xy(0.0, (MapViewerDialogSpacing.INPUT_HEIGHT - DESTROYED_CHECKBOX_SIZE) / 2.0)
+        MapViewerUiBoxes.box(box, DESTROYED_CHECKBOX_SIZE, DESTROYED_CHECKBOX_SIZE)
         if (destroyedValue) {
-            MapViewerTextViews.box(box, "X", 20.0, 20.0, role = MapViewerFontRole.STRONG, color = Palette.Colours.RED)
+            MapViewerTextViews.box(
+                box,
+                "X",
+                DESTROYED_CHECKBOX_SIZE,
+                DESTROYED_CHECKBOX_SIZE,
+                role = MapViewerFontRole.STRONG,
+                color = Palette.Colours.RED,
+            )
                 .xy(0.0, 0.0)
         }
     }
@@ -316,7 +329,7 @@ internal class MapViewerUnitEditDialog(
     }
 
     private fun contentHeight(width: Double): Double =
-        customPropertiesTop(width) + customPropertiesEditor.height()
+        CUSTOM_PROPERTIES_TOP + customPropertiesEditor.height()
 
     private fun canSave(): Boolean =
         MapViewerTextInputValidation.isPresent(nameValue) &&
@@ -324,22 +337,16 @@ internal class MapViewerUnitEditDialog(
                 isFacingValid(facingValue) &&
                 customPropertiesEditor.isValid
 
-    private fun customPropertiesTop(width: Double): Double =
-        if (width >= compactRowMinimumWidth()) {
-            COMPACT_CONTENT_HEIGHT
-        } else {
-            STACKED_CONTENT_HEIGHT
-        }
-
     private fun fieldWidth(width: Double): Double =
         max(minimumFieldWidth(), width)
 
     private fun minimumContentWidth(): Double =
         maxOf(
             minimumTypePreviewWidth(),
-            nameInputMinimumWidth(),
+            inlineBlockMinimumWidth(nameTextInputMinimumWidth()),
             positionInputMinimumWidth(),
-            destroyedMinimumWidth(),
+            inlineBlockMinimumWidth(facingTextInputMinimumWidth()),
+            inlineBlockMinimumWidth(DESTROYED_CHECKBOX_SIZE),
             customPropertiesEditor.minimumWidth(),
             MapViewerDialogActions.minimumWidth(2),
         )
@@ -347,9 +354,10 @@ internal class MapViewerUnitEditDialog(
     private fun minimumFieldWidth(): Double =
         maxOf(
             minimumTypePreviewWidth(),
-            nameInputMinimumWidth(),
+            inlineBlockMinimumWidth(nameTextInputMinimumWidth()),
             positionInputMinimumWidth(),
-            destroyedMinimumWidth(),
+            inlineBlockMinimumWidth(facingTextInputMinimumWidth()),
+            inlineBlockMinimumWidth(DESTROYED_CHECKBOX_SIZE),
             customPropertiesEditor.minimumWidth(),
         )
 
@@ -359,26 +367,13 @@ internal class MapViewerUnitEditDialog(
             MapViewerTextViews.measure(MapViewerDialogTitles.unit("Edit Unit", nameValue)).width + 24.0,
         )
 
-    private fun nameInputMinimumWidth(): Double =
-        MapViewerInlineInputs.minimumWidth("Unit Name", nameTextInputMinimumWidth())
-
     private fun nameTextInputMinimumWidth(): Double =
         maxOf(MIN_FIELD_WIDTH, MapViewerTextViews.measure(nameValue.ifBlank { "Unit Name" }).width + 24.0)
 
     private fun positionInputMinimumWidth(): Double =
-        maxOf(
-            MapViewerInlineInputs.minimumWidth("X", positionAxisInputMinimumWidth(positionXValue, "X")) +
-                    MapViewerDialogSpacing.FIELD_GAP +
-                    MapViewerInlineInputs.minimumWidth("Y", positionAxisInputMinimumWidth(positionYValue, "Y")),
-            MapViewerInlineInputs.minimumWidth("Facing", facingTextInputMinimumWidth()),
-        )
-
-    private fun compactRowMinimumWidth(): Double =
-        listOf(
-            MapViewerInlineInputs.minimumWidth("X", positionAxisInputMinimumWidth(positionXValue, "X")),
-            MapViewerInlineInputs.minimumWidth("Y", positionAxisInputMinimumWidth(positionYValue, "Y")),
-            MapViewerInlineInputs.minimumWidth("Facing", facingTextInputMinimumWidth()),
-        ).sum() + MapViewerDialogSpacing.FIELD_GAP * 2.0
+        positionAxisInputMinimumWidth(positionXValue, "X") +
+                MapViewerDialogSpacing.FIELD_GAP +
+                positionAxisInputMinimumWidth(positionYValue, "Y")
 
     private fun positionAxisInputMinimumWidth(value: String, fallback: String): Double =
         maxOf(POSITION_INPUT_MINIMUM_WIDTH, MapViewerTextViews.measure(value.ifBlank { fallback }).width + 24.0)
@@ -386,8 +381,8 @@ internal class MapViewerUnitEditDialog(
     private fun facingTextInputMinimumWidth(): Double =
         maxOf(POSITION_INPUT_MINIMUM_WIDTH, MapViewerTextViews.measure(facingValue.ifBlank { "Facing" }).width + 24.0)
 
-    private fun destroyedMinimumWidth(): Double =
-        MapViewerInlineInputs.minimumWidth("Destroyed", DESTROYED_TOGGLE_MINIMUM_WIDTH)
+    private fun inlineBlockMinimumWidth(inputMinimumWidth: Double): Double =
+        MapViewerInlineInputs.block(UNIT_INLINE_LABELS).minimumWidth(inputMinimumWidth)
 
     private companion object {
         const val PREFERRED_WIDTH = 460.0
@@ -396,14 +391,16 @@ internal class MapViewerUnitEditDialog(
         const val ICON_SLOT_HEIGHT = 26.0
         const val MIN_FIELD_WIDTH = 120.0
         const val POSITION_INPUT_MINIMUM_WIDTH = 90.0
-        const val DESTROYED_TOGGLE_MINIMUM_WIDTH = 84.0
-        const val NAME_TOP = 90.0
-        const val POSITION_ROW_TOP = 144.0
-        const val STACKED_FACING_TOP = 198.0
-        const val COMPACT_DESTROYED_TOP = 198.0
-        const val STACKED_DESTROYED_TOP = 252.0
-        const val COMPACT_CONTENT_HEIGHT = 256.0
-        const val STACKED_CONTENT_HEIGHT = 320.0
+        const val DESTROYED_CHECKBOX_SIZE = 20.0
+        const val TYPE_PREVIEW_TOP = 0.0
+        const val POSITION_LABEL_TOP = 68.0
+        const val POSITION_LABEL_HEIGHT = 22.0
+        const val POSITION_INPUT_TOP = 96.0
+        const val NAME_TOP = 150.0
+        const val FACING_TOP = 204.0
+        const val DESTROYED_TOP = 258.0
+        const val CUSTOM_PROPERTIES_TOP = 312.0
+        val UNIT_INLINE_LABELS = listOf("Unit Name", "Facing", "Destroyed")
         val UNIT_FIELD_KEYS = setOf(
             "type",
             "unitTemplateId",

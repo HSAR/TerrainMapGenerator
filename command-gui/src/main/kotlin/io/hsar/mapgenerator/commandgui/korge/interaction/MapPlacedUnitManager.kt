@@ -8,7 +8,6 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerImageViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitEditDialog
 import io.hsar.mapgenerator.grid.GridLayer
-import io.hsar.mapgenerator.grid.ReferenceSystem
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.image.bitmap.Bitmap32
@@ -41,6 +40,7 @@ internal class MapPlacedUnitManager(
     private val deferredActionRunner: ContextMenuDeferredActionRunner,
     private val dialogManager: MapViewerDialogManager,
     initialDestroyedUnitsDisplay: DestroyedUnitsDisplay = DestroyedUnitsDisplay.Full,
+    initialUnitIconSizePx: Double = UnitIconDisplaySize.DEFAULT_PX,
     private val canInteractWithUnits: () -> Boolean = { true },
     private val isHigherPriorityDragInProgress: () -> Boolean = { false },
     private val onMovePreviewChanged: (MapObjectMovePreview?) -> Unit = {},
@@ -54,6 +54,8 @@ internal class MapPlacedUnitManager(
     private val dragPreviewLayer = unitLayer.container()
     private var selectedUnitIds = emptySet<MapPlacedObjectId>()
     private var destroyedUnitsDisplay = initialDestroyedUnitsDisplay
+    private var unitIconSizePx = UnitIconDisplaySize.coerce(initialUnitIconSizePx)
+    private var lastAppliedViewportZoom: Double? = null
     private var dragState: DragState? = null
     private val editSessions = mutableMapOf<MapPlacedObjectId, UnitEditSession>()
 
@@ -63,6 +65,7 @@ internal class MapPlacedUnitManager(
 
         root.addUpdater {
             val input = root.stage?.views?.input ?: return@addUpdater
+            refreshIconDisplay()
             updateDrag(input.mousePos, input.mouseButtonPressed(MouseButton.LEFT))
         }
     }
@@ -87,6 +90,41 @@ internal class MapPlacedUnitManager(
         if (display != DestroyedUnitsDisplay.Full) {
             cancelTransientState()
         }
+    }
+
+    fun updateUnitIconSize(sizePx: Double) {
+        val coerced = UnitIconDisplaySize.coerce(sizePx)
+        if (coerced == unitIconSizePx) {
+            return
+        }
+
+        unitIconSizePx = coerced
+        refreshIconDisplay(force = true)
+    }
+
+    fun refreshIconDisplay(force: Boolean = false) {
+        val viewportZoom = viewportProvider().zoom
+        if (!force && lastAppliedViewportZoom == viewportZoom) {
+            return
+        }
+
+        lastAppliedViewportZoom = viewportZoom
+        units.forEach { unit ->
+            val unitSize = worldUnitSize(unit.template.bitmap, viewportZoom)
+            unit.worldWidth = unitSize.worldWidth
+            unit.worldHeight = unitSize.worldHeight
+            unit.normalizedWidth = unitSize.normalizedWidth
+            unit.normalizedHeight = unitSize.normalizedHeight
+            unit.view.scale = unitSize.worldScale
+            positionView(unit)
+        }
+        dragState?.let { state ->
+            val unitSize = worldUnitSize(state.unit.template.bitmap, viewportZoom)
+            state.preview.container.scale = unitSize.worldScale
+            state.preview.container.x = state.unit.view.x
+            state.preview.container.y = state.unit.view.y
+        }
+        onUnitsChanged()
     }
 
     fun replaceUnitTemplate(snapshot: UnitTemplateSnapshot) {
@@ -664,8 +702,8 @@ internal class MapPlacedUnitManager(
             val unitSize = worldUnitSize(template.bitmap)
             worldWidth = unitSize.worldWidth
             worldHeight = unitSize.worldHeight
-            normalizedWidth = unitSize.worldWidth / mapWidth
-            normalizedHeight = unitSize.worldHeight / mapHeight
+            normalizedWidth = unitSize.normalizedWidth
+            normalizedHeight = unitSize.normalizedHeight
             rebuildVisual(template.bitmap)
             view.scale = unitSize.worldScale
             applyDestroyedUnitsDisplay()
@@ -870,8 +908,8 @@ internal class MapPlacedUnitManager(
         )
     }
 
-    private fun worldUnitSize(bitmap: korlibs.image.bitmap.Bitmap32): WorldUnitSize {
-        val worldWidth = unitIconWidthUnits() / mapUnitsPerPixel
+    private fun worldUnitSize(bitmap: korlibs.image.bitmap.Bitmap32, viewportZoom: Double = viewportProvider().zoom): WorldUnitSize {
+        val worldWidth = unitIconSizePx / viewportZoom.coerceAtLeast(MIN_VIEWPORT_ZOOM)
         val worldScale = worldWidth / bitmap.width
         return WorldUnitSize(
             worldWidth = worldWidth,
@@ -890,9 +928,6 @@ internal class MapPlacedUnitManager(
         val normalizedHeight: Double,
     )
 
-    private fun unitIconWidthUnits(): Double =
-        (gridLayer?.referenceSystem ?: ReferenceSystem.MGRS).defaultUnitIconWidthUnits
-
     private fun toRgba(color: Color, alpha: Int = color.alpha): RGBA =
         RGBA(color.red, color.green, color.blue, alpha)
 
@@ -901,6 +936,7 @@ internal class MapPlacedUnitManager(
         private const val FACING_RING_SEGMENTS = 48
         private const val HIT_TOLERANCE = 8.0
         private const val DESTROYED_PARTIAL_ICON_ALPHA = 0.5
+        private const val MIN_VIEWPORT_ZOOM = 0.0001
     }
 }
 

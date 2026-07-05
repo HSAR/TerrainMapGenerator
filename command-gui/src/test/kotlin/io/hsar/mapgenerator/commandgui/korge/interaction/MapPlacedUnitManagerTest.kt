@@ -117,7 +117,7 @@ class MapPlacedUnitManagerTest {
     }
 
     @Test
-    fun `placed unit icon width follows epsilon reference units`() {
+    fun `placed unit icon width uses fixed screen pixels at current zoom`() {
         val manager = MapPlacedUnitManager(
             root = Container(),
             unitLayer = Container(),
@@ -165,12 +165,12 @@ class MapPlacedUnitManagerTest {
             mapCoordinate = MapCoordinate(0.5, 0.5),
         )
 
-        assertThat(snapshot.normalizedWidth, closeTo(0.004, 0.0000001))
-        assertThat(snapshot.normalizedHeight, closeTo(0.008, 0.0000001))
+        assertThat(snapshot.normalizedWidth, closeTo(0.032, 0.0000001))
+        assertThat(snapshot.normalizedHeight, closeTo(0.064, 0.0000001))
     }
 
     @Test
-    fun `upsert recalculates unit bounds from epsilon icon size`() {
+    fun `upsert recalculates unit bounds from fixed screen icon size`() {
         val root = Container()
         val unitLayer = root.container()
         val manager = MapPlacedUnitManager(
@@ -227,8 +227,68 @@ class MapPlacedUnitManagerTest {
             ),
         )
 
-        assertThat(manager.snapshot(unitId)?.normalizedWidth, closeTo(0.004, 0.0000001))
-        assertThat(manager.snapshot(unitId)?.normalizedHeight, closeTo(0.008, 0.0000001))
+        assertThat(manager.snapshot(unitId)?.normalizedWidth, closeTo(0.032, 0.0000001))
+        assertThat(manager.snapshot(unitId)?.normalizedHeight, closeTo(0.064, 0.0000001))
+    }
+
+    @Test
+    fun `unit icon world bounds shrink as zoom increases to keep screen size stable`() {
+        val root = Container()
+        val unitLayer = root.container()
+        var viewport = CameraViewport.centeredOnMap(
+            geometry = CENTERED_GEOMETRY,
+            mapWidth = 1000,
+            mapHeight = 1000,
+            viewportWidth = 1000,
+            viewportHeight = 1000,
+            zoom = 1.0,
+        )
+        val manager = MapPlacedUnitManager(
+            root = root,
+            unitLayer = unitLayer,
+            geometry = CENTERED_GEOMETRY,
+            mapUnitsPerPixel = 1.0,
+            mapWidth = 1000,
+            mapHeight = 1000,
+            viewportProvider = { viewport },
+            contextMenuManager = ContextMenuManager(root),
+            deferredActionRunner = ContextMenuDeferredActionRunner(root),
+            dialogManager = MapViewerDialogManager(),
+        )
+        val template = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000061")),
+            name = "Unit",
+            bitmap = Bitmap32(16, 16) { _, _ -> RGBA(255, 0, 0, 255) },
+        )
+        val unitId = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000062"))
+        manager.upsert(
+            manager.buildSnapshot(
+                id = unitId,
+                unitTemplateId = template.id,
+                template = template,
+                instanceName = "Unit",
+                mapCoordinate = MapCoordinate(0.5, 0.5),
+            ),
+        )
+
+        val zoomOneWidth = manager.snapshot(unitId)!!.normalizedWidth
+        viewport = viewport.copy(zoom = 2.0)
+        manager.refreshIconDisplay(force = true)
+
+        assertThat(zoomOneWidth * 1000.0 * 1.0, closeTo(32.0, 0.0000001))
+        assertThat(manager.snapshot(unitId)!!.normalizedWidth * 1000.0 * 2.0, closeTo(32.0, 0.0000001))
+    }
+
+    @Test
+    fun `updating unit icon size changes existing unit display bounds`() {
+        val unitLayer = Container()
+        val manager = unitManager(unitLayer = unitLayer, destroyedUnitsDisplay = DestroyedUnitsDisplay.Full)
+        val unit = destroyedUnitSnapshot().copy(destroyed = false)
+
+        manager.upsert(unit)
+        manager.updateUnitIconSize(48.0)
+
+        assertThat(manager.snapshot(unit.id)?.normalizedWidth, closeTo(0.048, 0.0000001))
     }
 
     @Test

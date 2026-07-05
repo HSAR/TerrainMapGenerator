@@ -59,6 +59,7 @@ internal class MapViewerInteraction(
     private val onDrawingCommitted: (MapDrawing) -> Unit = {},
     private val onUndoRequested: () -> Unit = {},
     private val onRedoRequested: () -> Unit = {},
+    private val onUnitIconSizeScroll: (Double) -> Unit = {},
     private val onViewportChanged: (CameraViewport) -> Unit = {},
     private val onTitleChanged: (String) -> Unit = {},
     private val onOverlayStateChanged: (GridOverlayRender) -> Unit,
@@ -168,13 +169,18 @@ internal class MapViewerInteraction(
 
         root.mouse {
             onScrollAnywhere {
-                if (MapPointerIntentResolver.resolve(
-                        pointerBlocked = isScreenOverlayBlocking(input.mousePos),
-                        dragging = panState.isDragging,
-                        leftHeld = input.mouseButtonPressed(MouseButton.LEFT),
-                        rightHeld = input.mouseButtonPressed(MouseButton.RIGHT),
-                        spaceHeld = input.keys[Key.SPACE],
-                    ).allowZoom &&
+                val intent = MapPointerIntentResolver.resolve(
+                    pointerBlocked = isScreenOverlayBlocking(input.mousePos),
+                    dragging = panState.isDragging,
+                    leftHeld = input.mouseButtonPressed(MouseButton.LEFT),
+                    rightHeld = input.mouseButtonPressed(MouseButton.RIGHT),
+                    spaceHeld = input.keys[Key.SPACE],
+                )
+                if (intent.allowZoom && input.keys[Key.ALT]) {
+                    onUnitIconSizeScroll(zoomFactor(scrollDeltaYLines.toDouble()))
+                    return@onScrollAnywhere
+                }
+                if (intent.allowZoom &&
                     cameraPanner.zoomAt(input.mousePos, zoomFactor(scrollDeltaYLines.toDouble()))
                 ) {
                     markOverlayDirty()
