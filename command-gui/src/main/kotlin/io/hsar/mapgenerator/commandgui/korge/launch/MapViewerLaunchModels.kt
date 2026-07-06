@@ -84,15 +84,18 @@ internal object OperationNameGenerator {
     private val adjectives = listOf(
         "Amber",
         "Argent",
+        "Aureate",
         "Azure",
         "Aquiline",
         "Brass",
+        "Coronal",
         "Corvine",
+        "Forgotten",
         "Forsaken",
-        "Iron",
         "Onyx",
         "Penumbral",
         "Rampant",
+        "Roseate",
         "Raven",
         "Sable",
         "Sanguine",
@@ -101,7 +104,7 @@ internal object OperationNameGenerator {
     )
     private val nouns = listOf(
         "Bastion",
-        "Beacon",
+        "Blaze",
         "Citadel",
         "Dawn",
         "Ember",
@@ -115,6 +118,7 @@ internal object OperationNameGenerator {
         "Shield",
         "Summit",
         "Tempest",
+        "Twilight",
         "Vanguard",
     )
 

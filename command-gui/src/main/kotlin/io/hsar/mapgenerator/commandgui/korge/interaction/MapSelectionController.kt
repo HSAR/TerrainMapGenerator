@@ -24,6 +24,9 @@ internal class MapSelectionController(
     val isDragging: Boolean
         get() = boxState != null || moveState != null || pivotState != null || resizeState != null
 
+    val isMovingSelection: Boolean
+        get() = moveState != null
+
     fun selectedIds(): Set<MapPlacedObjectId> =
         selectedIds.toSet()
 

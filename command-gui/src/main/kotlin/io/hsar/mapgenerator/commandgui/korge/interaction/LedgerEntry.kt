@@ -1,7 +1,10 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.databind.JsonNode
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
+import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingIconRenderer
+import korlibs.image.bitmap.Bitmap32
 import java.util.UUID
 import kotlin.Boolean
 import kotlin.Double
@@ -22,6 +25,12 @@ internal data class MapPlacedObjectId(
 
 internal sealed interface MapPlacedObjectSnapshot {
     val id: MapPlacedObjectId
+
+    @get:JsonIgnore
+    val name: String
+
+    @get:JsonIgnore
+    val icon: Bitmap32
 }
 
 internal data class MapObjectMovePreview(
@@ -42,12 +51,24 @@ internal data class UnitSnapshot(
     val normalizedWidth: Double,
     val normalizedHeight: Double,
     val customProperties: Map<String, String> = emptyMap(),
-) : MapPlacedObjectSnapshot
+) : MapPlacedObjectSnapshot {
+    override val name: String
+        get() = instanceName
+
+    override val icon: Bitmap32
+        get() = template.bitmap
+}
 
 internal data class DrawingSnapshot(
     override val id: MapPlacedObjectId,
     val drawing: MapDrawing,
-) : MapPlacedObjectSnapshot
+) : MapPlacedObjectSnapshot {
+    override val name: String
+        get() = drawing.name
+
+    override val icon: Bitmap32
+        get() = MapDrawingIconRenderer.render(drawing)
+}
 
 internal data class UnitTemplateId(
     val value: UUID,
@@ -73,6 +94,12 @@ internal interface LedgerController {
     fun applyUnitTemplateEdit(id: UnitTemplateId, changes: Map<String, JsonNode?>): UnitTemplateSnapshot?
 
     fun deleteUnitTemplate(id: UnitTemplateId): UnitTemplateSnapshot?
+
+    fun createNote(snapshot: MapNoteSnapshot)
+
+    fun applyNoteEdit(id: MapNoteId, changes: Map<String, JsonNode?>): MapNoteSnapshot?
+
+    fun deleteNote(id: MapNoteId): MapNoteSnapshot?
 }
 
 internal interface LedgerEntry {
@@ -179,6 +206,44 @@ internal data class EditUnitTemplateAction(
     override fun redo(controller: LedgerController) {
         afterSnapshot?.let(controller::replaceUnitTemplate)
             ?: controller.applyUnitTemplateEdit(id, forward)
+    }
+}
+
+internal data class CreateNoteAction(
+    val snapshot: MapNoteSnapshot,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) {
+        controller.deleteNote(snapshot.id)
+    }
+
+    override fun redo(controller: LedgerController) {
+        controller.createNote(snapshot)
+    }
+}
+
+internal data class EditNoteAction(
+    val id: MapNoteId,
+    val forward: Map<String, JsonNode?>,
+    val backward: Map<String, JsonNode?>,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) {
+        controller.applyNoteEdit(id, backward)
+    }
+
+    override fun redo(controller: LedgerController) {
+        controller.applyNoteEdit(id, forward)
+    }
+}
+
+internal data class DeleteNoteAction(
+    val snapshot: MapNoteSnapshot,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) {
+        controller.createNote(snapshot)
+    }
+
+    override fun redo(controller: LedgerController) {
+        controller.deleteNote(snapshot.id)
     }
 }
 

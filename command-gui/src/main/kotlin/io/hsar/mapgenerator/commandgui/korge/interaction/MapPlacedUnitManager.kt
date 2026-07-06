@@ -633,7 +633,7 @@ internal class MapPlacedUnitManager(
         var worldHeight: Double,
     ) : MapPlacedObject {
         private var facingLayer: Container = view.container().also { it.zIndex = 0.0 }
-        var icon: Image = MapViewerImageViews.icon(view, template.bitmap).also { it.zIndex = 1.0 }
+        var iconView: Image = MapViewerImageViews.icon(view, template.bitmap).also { it.zIndex = 1.0 }
             private set
         private var overlayLayer: Container = view.container().also { it.zIndex = 2.0 }
 
@@ -690,7 +690,7 @@ internal class MapPlacedUnitManager(
         fun rebuildVisual(bitmap: Bitmap32) {
             view.removeChildren()
             facingLayer = view.container().also { it.zIndex = 0.0 }
-            icon = MapViewerImageViews.icon(view, bitmap).also { it.zIndex = 1.0 }
+            iconView = MapViewerImageViews.icon(view, bitmap).also { it.zIndex = 1.0 }
             overlayLayer = view.container().also { it.zIndex = 2.0 }
             updateFacingOverlay()
             updateStateOverlay()
@@ -714,7 +714,7 @@ internal class MapPlacedUnitManager(
             facingLayer.removeChildren()
             facingDegrees?.let { degrees ->
                 facingLayer.alpha = facingOverlayAlpha(forceActive || id in selectedUnitIds || dragState?.unit?.id == id)
-                drawFacingIndicator(facingLayer, icon.bitmap.width.toDouble(), icon.bitmap.height.toDouble(), degrees)
+                drawFacingIndicator(facingLayer, iconView.bitmap.width.toDouble(), iconView.bitmap.height.toDouble(), degrees)
             }
         }
 
@@ -726,13 +726,13 @@ internal class MapPlacedUnitManager(
                 return
             }
             overlayLayer.alpha = 0.5
-            drawStateCross(overlayLayer, icon.bitmap.width.toDouble(), icon.bitmap.height.toDouble(), toRgba(Palette.Colours.RED))
+            drawStateCross(overlayLayer, iconView.bitmap.width.toDouble(), iconView.bitmap.height.toDouble(), toRgba(Palette.Colours.RED))
             applyDestroyedUnitsDisplay()
         }
 
         fun applyDestroyedUnitsDisplay() {
             view.visible = !destroyed || destroyedUnitsDisplay != DestroyedUnitsDisplay.Hide
-            icon.alpha = if (destroyed && destroyedUnitsDisplay == DestroyedUnitsDisplay.Partial) {
+            iconView.alpha = if (destroyed && destroyedUnitsDisplay == DestroyedUnitsDisplay.Partial) {
                 DESTROYED_PARTIAL_ICON_ALPHA
             } else {
                 1.0

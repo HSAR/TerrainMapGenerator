@@ -8,8 +8,8 @@
     - Move limits
 - Dialogs minimise, which remembers their position and size and adds them to a taskbar at top or bottom of screen
 - Shift-click and -drag multi-select support
-- Add notes to screen
 - Dialogs can point to a map object they relate to using a shadow throw effect
+- Right click context menu has "Add to note" option and "See notes" submenu
 
 ## Bugs
 

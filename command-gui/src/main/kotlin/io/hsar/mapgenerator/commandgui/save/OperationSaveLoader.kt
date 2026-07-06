@@ -13,15 +13,20 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
+import io.hsar.mapgenerator.commandgui.korge.interaction.CreateNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.EditNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteId
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
@@ -46,7 +51,7 @@ internal class OperationSaveLoader {
     fun load(path: Path): LoadedOperation =
         ZipFile(path.toFile()).use { zip ->
             val save = OperationSaveReader().read(path)
-            require(save.game.formatVersion == FORMAT_VERSION) {
+            require(save.game.formatVersion in SUPPORTED_FORMAT_VERSIONS) {
                 "Unsupported save format version ${save.game.formatVersion}"
             }
 
@@ -202,7 +207,7 @@ internal class OperationSaveLoader {
         }
 
     private companion object {
-        const val FORMAT_VERSION = 5
+        val SUPPORTED_FORMAT_VERSIONS = setOf(5, 6)
         const val ASSET_ROLE_TURN_THUMBNAIL = "turn-thumbnail"
     }
 }
@@ -267,7 +272,25 @@ private class RuntimeLedgerReplayer(
                     afterSnapshot = after,
                 )
             }
+
+            is CreateNoteEntrySaveDto -> CreateNoteAction(entry.note.toRuntimeSnapshot())
+
+            is EditNoteEntrySaveDto -> EditNoteAction(
+                id = MapNoteId(entry.id),
+                forward = entry.forward,
+                backward = entry.backward,
+            )
+
+            is DeleteNoteEntrySaveDto -> DeleteNoteAction(entry.note.toRuntimeSnapshot())
         }
+
+    private fun NoteSaveDto.toRuntimeSnapshot() =
+        MapNoteSnapshot(
+            id = MapNoteId(id),
+            title = title,
+            body = body,
+            referencedObjectIds = referencedObjectIds.map(::MapPlacedObjectId).toSet(),
+        )
 
     private fun SavedMapObjectDto.toRuntimeSnapshot(id: UUID): MapPlacedObjectSnapshot =
         when (this) {

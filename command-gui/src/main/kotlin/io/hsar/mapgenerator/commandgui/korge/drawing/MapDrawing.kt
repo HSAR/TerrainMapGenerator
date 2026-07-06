@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.drawing
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonProperty
 import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
@@ -16,25 +17,34 @@ internal data class MapDrawingPoint(
 
 internal sealed interface MapDrawing {
     val color: Color
+
+    @get:JsonIgnore
+    val name: String
 }
 
 internal data class FreeformDrawing(
     val points: List<MapDrawingPoint>,
     override val color: Color,
-) : MapDrawing
+) : MapDrawing {
+    override val name: String = "Freeform Drawing"
+}
 
 internal data class LineDrawing(
     val start: MapDrawingPoint,
     val end: MapDrawingPoint,
     override val color: Color,
-) : MapDrawing
+) : MapDrawing {
+    override val name: String = "Line Drawing"
+}
 
 internal data class RectangleDrawing(
     val start: MapDrawingPoint,
     val end: MapDrawingPoint,
     override val color: Color,
     val rotationDegrees: Double = 0.0,
-) : MapDrawing
+) : MapDrawing {
+    override val name: String = "Rectangle Drawing"
+}
 
 internal data class OvalDrawing(
     val center: MapDrawingPoint,
@@ -46,7 +56,9 @@ internal data class OvalDrawing(
     val yRadius: Double,
     override val color: Color,
     val rotationDegrees: Double = 0.0,
-) : MapDrawing
+) : MapDrawing {
+    override val name: String = "Oval Drawing"
+}
 
 internal data class PlacedDrawing(
     override val id: MapPlacedObjectId,

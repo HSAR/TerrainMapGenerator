@@ -8,13 +8,19 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
+import io.hsar.mapgenerator.commandgui.korge.interaction.CreateNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.EditNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteId
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapNotePatch
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectPatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
@@ -91,6 +97,17 @@ class OperationSaveRoundTripTest {
                 color = java.awt.Color.RED,
             ),
         )
+        val createdNote = MapNoteSnapshot(
+            id = MapNoteId(UUID.fromString("00000000-0000-0000-0000-0000000000a1")),
+            title = "Contact",
+            body = "Initial note body",
+            referencedObjectIds = setOf(createdUnit.id, createdDrawing.id),
+        )
+        val editedNote = createdNote.copy(
+            title = "Contact moved",
+            body = "Updated note body",
+            referencedObjectIds = setOf(createdUnit.id),
+        )
         val ledger = listOf(
             CreateUnitTemplateAction(UnitTemplateSnapshot(unitTemplate.id, unitTemplate, 0)),
             CreateObjectAction(createdUnit),
@@ -101,6 +118,13 @@ class OperationSaveRoundTripTest {
             ),
             CreateObjectAction(createdDrawing),
             DeleteObjectAction(createdDrawing),
+            CreateNoteAction(createdNote),
+            EditNoteAction(
+                id = createdNote.id,
+                forward = MapNotePatch.diff(createdNote, editedNote),
+                backward = MapNotePatch.diff(editedNote, createdNote),
+            ),
+            DeleteNoteAction(editedNote),
         )
 
         val writer = OperationSaveWriter(uuidGenerator = UUID::randomUUID)
@@ -161,9 +185,15 @@ class OperationSaveRoundTripTest {
         assertThat(reread.game.map.mapId.isNullOrBlank(), equalTo(false))
         assertThat(reread.game.map.gridStartX != null, equalTo(true))
         assertThat(reread.game.map.gridStartY != null, equalTo(true))
-        assertThat(reread.ledger.entries.size, equalTo(5))
+        assertThat(reread.ledger.entries.size, equalTo(8))
         assertThat(reread.ledger.entries[2] is EditObjectEntrySaveDto, equalTo(true))
         assertThat((reread.ledger.entries[2] as EditObjectEntrySaveDto).forward["facingDegrees"]?.asInt(), equalTo(135))
+        assertThat(reread.ledger.entries[5] is CreateNoteEntrySaveDto, equalTo(true))
+        val savedNote = (reread.ledger.entries[5] as CreateNoteEntrySaveDto).note
+        assertThat(savedNote.title, equalTo("Contact"))
+        assertThat(savedNote.body, equalTo("Initial note body"))
+        assertThat(savedNote.referencedObjectIds, equalTo(listOf(createdUnit.id.value, createdDrawing.id.value)))
+        assertThat((reread.ledger.entries[6] as EditNoteEntrySaveDto).forward["title"]?.asText(), equalTo("Contact moved"))
 
         ZipFile(secondSave.toFile()).use { zip ->
             assertThat(zip.getEntry("assets/$operationId.jpg") != null, equalTo(true))

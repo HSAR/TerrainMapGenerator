@@ -130,6 +130,61 @@ class LedgerEntryHistoryTest {
     }
 
     @Test
+    fun `notes participate in undo and redo`() {
+        val history = MapActionHistory()
+        val controller = TestLedgerController()
+        val note = MapNoteSnapshot(
+            id = MapNoteId(UUID.fromString("00000000-0000-0000-0000-000000000101")),
+            title = "Contact",
+            body = "Initial body",
+            referencedObjectIds = setOf(MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000201"))),
+        )
+        val updated = note.copy(
+            title = "Contact moved",
+            body = "Updated body",
+            referencedObjectIds = note.referencedObjectIds + MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000202")),
+        )
+
+        controller.createNote(note)
+        history.record(CreateNoteAction(note))
+        history.record(EditNoteAction(note.id, MapNotePatch.diff(note, updated), MapNotePatch.diff(updated, note)))
+        controller.applyNoteEdit(note.id, MapNotePatch.diff(note, updated))
+
+        history.undo(controller)
+        assertThat(controller.notes.single(), equalTo(note))
+
+        history.redo(controller)
+        assertThat(controller.notes.single(), equalTo(updated))
+
+        controller.deleteNote(note.id)
+        history.record(DeleteNoteAction(updated))
+        history.undo(controller)
+        assertThat(controller.notes.single(), equalTo(updated))
+    }
+
+    @Test
+    fun `reverting to a turn marker restores notes to that ledger state`() {
+        val history = MapActionHistory()
+        val controller = TestLedgerController()
+        val note = MapNoteSnapshot(
+            id = MapNoteId(UUID.fromString("00000000-0000-0000-0000-000000000111")),
+            title = "Before",
+            body = "",
+        )
+        val updated = note.copy(title = "After")
+
+        controller.createNote(note)
+        history.record(CreateNoteAction(note))
+        history.record(AddTurnLedgerEntry("Turn 1"))
+        controller.applyNoteEdit(note.id, MapNotePatch.diff(note, updated))
+        history.record(EditNoteAction(note.id, MapNotePatch.diff(note, updated), MapNotePatch.diff(updated, note)))
+
+        history.revertToAppliedIndex(history.turnMarkers.single().appliedIndex, controller)
+
+        assertThat(controller.notes.single(), equalTo(note))
+    }
+
+    @Test
     fun `undo entry returns the entry that changed state`() {
         val history = MapActionHistory()
         val controller = TestLedgerController()
@@ -324,6 +379,7 @@ class LedgerEntryHistoryTest {
 
     private class TestLedgerController : LedgerController {
         val templates = mutableListOf<UnitTemplateSnapshot>()
+        val notes = mutableListOf<MapNoteSnapshot>()
         val events = mutableListOf<String>()
 
         override fun createObject(snapshot: MapPlacedObjectSnapshot) = Unit
@@ -356,6 +412,25 @@ class LedgerEntryHistoryTest {
             val updated = MapViewerUnitTemplatePatch.apply(templates[index], changes)
             templates[index] = updated
             return updated
+        }
+
+        override fun createNote(snapshot: MapNoteSnapshot) {
+            notes.removeAll { it.id == snapshot.id }
+            notes += snapshot
+        }
+
+        override fun applyNoteEdit(id: MapNoteId, changes: Map<String, JsonNode?>): MapNoteSnapshot? {
+            val index = notes.indexOfFirst { it.id == id }
+            if (index < 0) return null
+            val updated = MapNotePatch.apply(notes[index], changes)
+            notes[index] = updated
+            return updated
+        }
+
+        override fun deleteNote(id: MapNoteId): MapNoteSnapshot? {
+            val index = notes.indexOfFirst { it.id == id }
+            if (index < 0) return null
+            return notes.removeAt(index)
         }
     }
 }

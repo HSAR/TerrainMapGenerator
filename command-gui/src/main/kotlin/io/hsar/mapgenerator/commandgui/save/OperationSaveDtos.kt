@@ -53,6 +53,9 @@ internal data class MapSaveDto(
     JsonSubTypes.Type(value = CreateUnitTemplateEntrySaveDto::class, name = "create-unit-template"),
     JsonSubTypes.Type(value = DeleteUnitTemplateEntrySaveDto::class, name = "delete-unit-template"),
     JsonSubTypes.Type(value = EditUnitTemplateEntrySaveDto::class, name = "edit-unit-template"),
+    JsonSubTypes.Type(value = CreateNoteEntrySaveDto::class, name = "create-note"),
+    JsonSubTypes.Type(value = EditNoteEntrySaveDto::class, name = "edit-note"),
+    JsonSubTypes.Type(value = DeleteNoteEntrySaveDto::class, name = "delete-note"),
     JsonSubTypes.Type(value = AddTurnEntrySaveDto::class, name = "add-turn"),
 )
 internal sealed interface LedgerEntrySaveDto
@@ -97,6 +100,28 @@ internal data class EditUnitTemplateEntrySaveDto(
     val forward: Map<String, JsonNode?>,
     val backward: Map<String, JsonNode?>,
 ) : LedgerEntrySaveDto
+
+internal data class CreateNoteEntrySaveDto(
+    val note: NoteSaveDto,
+) : LedgerEntrySaveDto
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
+internal data class EditNoteEntrySaveDto(
+    val id: UUID,
+    val forward: Map<String, JsonNode?>,
+    val backward: Map<String, JsonNode?>,
+) : LedgerEntrySaveDto
+
+internal data class DeleteNoteEntrySaveDto(
+    val note: NoteSaveDto,
+) : LedgerEntrySaveDto
+
+internal data class NoteSaveDto(
+    val id: UUID,
+    val title: String,
+    val body: String,
+    val referencedObjectIds: List<UUID> = emptyList(),
+)
 
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes(

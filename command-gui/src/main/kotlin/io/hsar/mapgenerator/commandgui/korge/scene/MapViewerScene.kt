@@ -23,6 +23,9 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerController
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapActionHistory
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteId
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteStore
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapObjectController
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectPatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelectionResolver
@@ -50,6 +53,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerKorgeFonts
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerLedgerPanel
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerNotesPanel
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSidebar
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerToolbar
@@ -233,7 +237,9 @@ internal class MapViewerScene(
                         lateinit var saveNoticeLayer: Container
                         var toolbar: MapViewerToolbar? = null
                         var ledgerPanel: MapViewerLedgerPanel? = null
+                        var notesPanel: MapViewerNotesPanel? = null
                         val actionHistory = MapActionHistory()
+                        val noteStore = MapNoteStore()
                         val operationId = loadedOperation?.operationId ?: UUID.randomUUID()
                         val operationCreatedAt = loadedOperation?.createdAt ?: Instant.now()
                         val toolStorage = OperationToolStorage()
@@ -425,6 +431,7 @@ internal class MapViewerScene(
 
                         fun refreshHistoryUi() {
                             ledgerPanel?.refresh()
+                            notesPanel?.refresh()
                             toolbar?.refresh()
                             refreshReadOnlyBanner()
                             selectionController.refresh()
@@ -483,6 +490,7 @@ internal class MapViewerScene(
                             }
                             toolbar?.refresh()
                             ledgerPanel?.refresh()
+                            notesPanel?.refresh()
                         }
                         resizeSceneViewport(gameWindow.width, gameWindow.height)
 
@@ -686,6 +694,19 @@ internal class MapViewerScene(
 
                             override fun deleteUnitTemplate(id: io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId): io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot? =
                                 sidebar.removeUnitTemplate(id, notify = false)
+
+                            override fun createNote(snapshot: MapNoteSnapshot) {
+                                noteStore.upsert(snapshot)
+                            }
+
+                            override fun applyNoteEdit(
+                                id: MapNoteId,
+                                changes: Map<String, com.fasterxml.jackson.databind.JsonNode?>,
+                            ): MapNoteSnapshot? =
+                                noteStore.applyEdit(id, changes)
+
+                            override fun deleteNote(id: MapNoteId): MapNoteSnapshot? =
+                                noteStore.delete(id)
                         }
                         fun performUndo() {
                             val wasReadOnly = turnMode is TurnPanelMode.ReadOnly
@@ -770,6 +791,16 @@ internal class MapViewerScene(
                             },
                             turnThumbnail = ::turnThumbnailBitmap,
                         )
+                        notesPanel = MapViewerNotesPanel(
+                            root = sceneLayers.ui,
+                            viewportWidth = gameWindow.width,
+                            viewportHeight = gameWindow.height,
+                            noteStore = noteStore,
+                            dialogManager = dialogManager,
+                            isReadOnly = { isReadOnly() },
+                            objectSnapshot = objectController::snapshot,
+                            onLedgerEntry = ::recordLedgerEntry,
+                        )
                         toolbar = MapViewerToolbar(
                             root = sceneLayers.ui,
                             viewportWidth = gameWindow.width,
@@ -839,6 +870,7 @@ internal class MapViewerScene(
                             val rightHeld = input.mouseButtonPressed(korlibs.event.MouseButton.RIGHT)
                             val uiBlocksPointer = toolbar?.blocksScreenPoint(pointer) == true ||
                                     ledgerPanel?.blocksScreenPoint(pointer) == true ||
+                                    notesPanel?.blocksScreenPoint(pointer) == true ||
                                     sidebar.blocksScreenPoint(pointer) ||
                                     sidebar.isUnitDragging ||
                                     dialogManager.blocksScreenPoint(pointer) ||
@@ -859,7 +891,15 @@ internal class MapViewerScene(
                                     }
                                 }
                             }
-                            selectionController.update(pointer, leftHeld)
+                            if (previousLeftHeld &&
+                                !leftHeld &&
+                                selectionController.isMovingSelection &&
+                                notesPanel?.addDroppedReferences(pointer, selectionController.selectedIds()) == true
+                            ) {
+                                selectionController.cancelTransientState()
+                            } else {
+                                selectionController.update(pointer, leftHeld)
+                            }
 
                             if (saveNoticeMessage != null) {
                                 if (now <= saveNoticeExpiresAtMs) {
@@ -962,6 +1002,7 @@ internal class MapViewerScene(
                             isScreenOverlayBlocking = { point ->
                                 toolbar.blocksScreenPoint(point) ||
                                         ledgerPanel?.blocksScreenPoint(point) == true ||
+                                        notesPanel?.blocksScreenPoint(point) == true ||
                                         sidebar.blocksScreenPoint(point) ||
                                         sidebar.isUnitDragging ||
                                         dialogManager.blocksScreenPoint(point) ||

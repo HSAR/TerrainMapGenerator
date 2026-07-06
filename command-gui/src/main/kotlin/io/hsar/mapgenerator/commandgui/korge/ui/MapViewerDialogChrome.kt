@@ -86,14 +86,7 @@ internal object MapViewerDialogChrome {
         val resize = parent.container()
         resize.xy(layout.resizeHandle.left, layout.resizeHandle.top)
         resize.solidRect(layout.resizeHandle.width, layout.resizeHandle.height, MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, 0))
-        resize.solidRect(18.0, 2.0, MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, 220)) {
-            x = 4.0
-            y = 18.0
-        }
-        resize.solidRect(2.0, 18.0, MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, 220)) {
-            x = 18.0
-            y = 4.0
-        }
+        MapViewerCornerBrackets.render(resize, layout.resizeHandle.width, layout.resizeHandle.height, MapViewerCornerBrackets.Corner.BOTTOM_RIGHT)
         resize.mouse {
             onDown {
                 onBeginResize()

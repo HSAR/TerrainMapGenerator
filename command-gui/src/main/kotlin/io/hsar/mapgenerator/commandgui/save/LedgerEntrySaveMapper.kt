@@ -10,15 +10,19 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
+import io.hsar.mapgenerator.commandgui.korge.interaction.CreateNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.EditNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
@@ -69,6 +73,20 @@ internal class LedgerEntrySaveMapper(
                 backward = entry.saveBackwardPatch(),
             )
 
+            is CreateNoteAction -> CreateNoteEntrySaveDto(
+                note = entry.snapshot.toDto(),
+            )
+
+            is EditNoteAction -> EditNoteEntrySaveDto(
+                id = entry.id.value,
+                forward = entry.forward,
+                backward = entry.backward,
+            )
+
+            is DeleteNoteAction -> DeleteNoteEntrySaveDto(
+                note = entry.snapshot.toDto(),
+            )
+
             else -> error("Unsupported ledger entry type: ${entry::class.qualifiedName}")
         }
 
@@ -95,6 +113,14 @@ internal class LedgerEntrySaveMapper(
             id = id.value,
             template = template.toDto(),
             index = index,
+        )
+
+    private fun MapNoteSnapshot.toDto() =
+        NoteSaveDto(
+            id = id.value,
+            title = title,
+            body = body,
+            referencedObjectIds = referencedObjectIds.map { it.value },
         )
 
     private fun MapViewerUnitTemplate.toDto() =

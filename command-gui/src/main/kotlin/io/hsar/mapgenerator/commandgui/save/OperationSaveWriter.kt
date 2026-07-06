@@ -144,7 +144,7 @@ internal class OperationSaveWriter(
             .ifBlank { "Operation" }
 
     private companion object {
-        const val FORMAT_VERSION = 5
+        const val FORMAT_VERSION = 6
         const val GAME_JSON = "game.json"
         const val LEDGER_JSON = "ledger.json"
         const val ASSET_ROLE_MAP = "map"
