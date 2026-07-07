@@ -24,7 +24,7 @@ internal class MapViewerDialogWindow(
     private val titleProvider: () -> String = { title },
     private val titleTabs: () -> List<MapViewerDialogTitleTab> = { emptyList() },
     private val initialPosition: ((MapViewerDialogBounds) -> Vector2D?) = { null },
-    private val focusAnchorProvider: (() -> Vector2D?) = { null },
+    private val focusTargetBoundsProvider: (() -> ScreenBounds?) = { null },
     private val preferredWidth: Double,
     private val preferredHeight: Double,
     private val contentMinimumWidth: () -> Double = { 0.0 },
@@ -170,7 +170,7 @@ internal class MapViewerDialogWindow(
             layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 160))
         }
 
-        focusShadowPolygon(currentBounds, focusAnchorProvider())?.let { polygon ->
+        focusShadowPolygon(currentBounds, focusTargetBoundsProvider())?.let { polygon ->
             layer.graphics {
                 fill(FOCUS_SHADOW_COLOR) {
                     moveTo(polygon.first().x, polygon.first().y)

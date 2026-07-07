@@ -7,7 +7,6 @@ import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.xy
-import korlibs.math.geom.Vector2D
 import kotlin.math.max
 
 @OptIn(KorgeExperimental::class)
@@ -25,7 +24,7 @@ internal class MapViewerUnitEditDialog(
     private val onPositionPreviewChanged: (String, String) -> Unit,
     private val onDestroyedPreviewChanged: (Boolean) -> Unit,
     private val onFacingPreviewChanged: (String) -> Unit,
-    private val focusAnchorProvider: () -> Vector2D? = { null },
+    private val focusTargetBoundsProvider: () -> ScreenBounds? = { null },
     private val isPositionValid: (String, String) -> Boolean = { _, _ -> true },
     private val isFacingValid: (String) -> Boolean = { true },
     private val onSave: (String, String, String, Boolean, String, Map<String, String>) -> Boolean,
@@ -75,7 +74,7 @@ internal class MapViewerUnitEditDialog(
             ),
             onClose = { close() },
             renderContent = ::renderContent,
-            focusAnchorProvider = focusAnchorProvider,
+            focusTargetBoundsProvider = focusTargetBoundsProvider,
             mode = MapViewerDialogMode.FLOATING,
         ).also {
             it.show(viewportWidth, viewportHeight)

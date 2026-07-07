@@ -25,6 +25,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
+import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds as UiScreenBounds
 
 @OptIn(KorgeInternal::class)
 internal class MapPlacedUnitManager(
@@ -437,7 +438,7 @@ internal class MapPlacedUnitManager(
         }
         val viewport = viewportProvider()
         val position = initialReferenceFields(unit)
-        val focusAnchorProvider = { unitScreenCenter(unit) }
+        val focusTargetBoundsProvider = { unitScreenBounds(unit) }
         val session = UnitEditSession(
             baselineSnapshot = unit.snapshot(),
             baselinePosition = position,
@@ -500,7 +501,7 @@ internal class MapPlacedUnitManager(
                         unit.updateFacingOverlay(forceActive = true)
                     }
             },
-            focusAnchorProvider = focusAnchorProvider,
+            focusTargetBoundsProvider = focusTargetBoundsProvider,
             isPositionValid = { positionX, positionY ->
                 UnitEditPositionResolver.resolve(
                     currentCoordinate = session.baselineSnapshot.mapCoordinate,
@@ -771,9 +772,26 @@ internal class MapPlacedUnitManager(
         unit.view.y = worldPoint.y - unit.worldHeight * 0.5
     }
 
-    private fun unitScreenCenter(unit: PlacedUnit): Vector2D {
+    private fun unitScreenBounds(unit: PlacedUnit): UiScreenBounds {
         val viewport = viewportProvider()
-        return coordinateSpace.worldToScreen(coordinateSpace.toWorld(unit.mapCoordinate), viewport)
+        return MapPlacedUnitScreenBounds
+            .boundsFor(
+                unit = MapPlacedUnitSnapshot(
+                    mapCoordinate = unit.mapCoordinate,
+                    normalizedWidth = unit.normalizedWidth,
+                    normalizedHeight = unit.normalizedHeight,
+                ),
+                viewport = viewport,
+                coordinateSpace = coordinateSpace,
+            )
+            .let { bounds ->
+                UiScreenBounds(
+                    left = bounds.left,
+                    top = bounds.top,
+                    width = bounds.width,
+                    height = bounds.height,
+                )
+            }
     }
 
     private fun syncEditDialog(unit: PlacedUnit) {

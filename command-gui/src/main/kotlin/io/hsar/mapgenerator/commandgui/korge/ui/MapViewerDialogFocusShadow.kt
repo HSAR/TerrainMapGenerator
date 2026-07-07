@@ -1,65 +1,151 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import korlibs.math.geom.Vector2D
-import kotlin.math.abs
 
 internal fun focusShadowPolygon(
     bounds: MapViewerDialogBounds,
-    anchor: Vector2D?,
+    targetBounds: ScreenBounds?,
 ): List<Vector2D>? {
-    anchor ?: return null
-    if (bounds.width <= 0.0 || bounds.height <= 0.0) {
+    targetBounds ?: return null
+    if (bounds.width <= 0.0 || bounds.height <= 0.0 || targetBounds.width <= 0.0 || targetBounds.height <= 0.0) {
         return null
     }
 
-    val centerX = bounds.left + bounds.width * 0.5
-    val centerY = bounds.top + bounds.height * 0.5
-    val dx = anchor.x - centerX
-    val dy = anchor.y - centerY
-    val halfWidth = bounds.width * 0.5
-    val halfHeight = bounds.height * 0.5
-
-    if (abs(dx) > halfWidth && abs(dy) > halfHeight) {
-        return if (dx * dy < 0.0) {
-            listOf(
-                anchor,
-                Vector2D(bounds.left, bounds.top),
-                Vector2D(bounds.right, bounds.bottom),
-            )
-        } else {
-            listOf(
-                anchor,
-                Vector2D(bounds.right, bounds.top),
-                Vector2D(bounds.left, bounds.bottom),
-            )
-        }
-    }
-
-    val useHorizontalEdge = abs(dx) * bounds.height >= abs(dy) * bounds.width
+    val dialogCenterX = bounds.left + bounds.width * 0.5
+    val dialogCenterY = bounds.top + bounds.height * 0.5
+    val targetCenterX = targetBounds.left + targetBounds.width * 0.5
+    val targetCenterY = targetBounds.top + targetBounds.height * 0.5
+    val isVerticallyNested = targetBounds.top >= bounds.top && targetBounds.bottom <= bounds.bottom
+    val isHorizontallyNested = targetBounds.left >= bounds.left && targetBounds.right <= bounds.right
 
     return when {
-        useHorizontalEdge && dx < 0.0 -> listOf(
-            anchor,
-            Vector2D(bounds.left, bounds.top),
-            Vector2D(bounds.left, bounds.bottom),
+        targetCenterX < dialogCenterX && isVerticallyNested ->
+            leftCutoutPolygon(bounds, targetBounds)
+
+        targetCenterX > dialogCenterX && isVerticallyNested ->
+            rightCutoutPolygon(bounds, targetBounds)
+
+        targetCenterY < dialogCenterY && isHorizontallyNested ->
+            topCutoutPolygon(bounds, targetBounds)
+
+        targetCenterY > dialogCenterY && isHorizontallyNested ->
+            bottomCutoutPolygon(bounds, targetBounds)
+
+        else ->
+            diagonalShadowPolygon(bounds, targetBounds, targetCenterX, targetCenterY, dialogCenterX, dialogCenterY)
+    }
+}
+
+private fun diagonalShadowPolygon(
+    dialogBounds: MapViewerDialogBounds,
+    targetBounds: ScreenBounds,
+    targetCenterX: Double,
+    targetCenterY: Double,
+    dialogCenterX: Double,
+    dialogCenterY: Double,
+): List<Vector2D> =
+    when {
+        targetCenterX > dialogCenterX && targetCenterY < dialogCenterY -> listOf(
+            dialogBounds.topLeft(),
+            targetBounds.topLeft(),
+            targetBounds.topRight(),
+            targetBounds.bottomRight(),
+            dialogBounds.bottomRight(),
+            dialogBounds.topRight(),
         )
 
-        useHorizontalEdge -> listOf(
-            anchor,
-            Vector2D(bounds.right, bounds.top),
-            Vector2D(bounds.right, bounds.bottom),
+        targetCenterX < dialogCenterX && targetCenterY < dialogCenterY -> listOf(
+            dialogBounds.topRight(),
+            targetBounds.topRight(),
+            targetBounds.bottomRight(),
+            targetBounds.bottomLeft(),
+            dialogBounds.bottomLeft(),
+            dialogBounds.topLeft(),
         )
 
-        dy < 0.0 -> listOf(
-            anchor,
-            Vector2D(bounds.left, bounds.top),
-            Vector2D(bounds.right, bounds.top),
+        targetCenterX > dialogCenterX && targetCenterY > dialogCenterY -> listOf(
+            dialogBounds.bottomLeft(),
+            targetBounds.bottomLeft(),
+            targetBounds.bottomRight(),
+            targetBounds.topRight(),
+            dialogBounds.topRight(),
+            dialogBounds.bottomRight(),
         )
 
         else -> listOf(
-            anchor,
-            Vector2D(bounds.left, bounds.bottom),
-            Vector2D(bounds.right, bounds.bottom),
+            dialogBounds.bottomRight(),
+            targetBounds.bottomRight(),
+            targetBounds.topRight(),
+            targetBounds.topLeft(),
+            dialogBounds.topLeft(),
+            dialogBounds.bottomLeft(),
         )
     }
-}
+
+private fun leftCutoutPolygon(
+    dialogBounds: MapViewerDialogBounds,
+    targetBounds: ScreenBounds,
+): List<Vector2D> =
+    listOf(
+        dialogBounds.topLeft(),
+        targetBounds.topLeft(),
+        targetBounds.topRight(),
+        targetBounds.bottomRight(),
+        targetBounds.bottomLeft(),
+        dialogBounds.bottomLeft(),
+    )
+
+private fun rightCutoutPolygon(
+    dialogBounds: MapViewerDialogBounds,
+    targetBounds: ScreenBounds,
+): List<Vector2D> =
+    listOf(
+        dialogBounds.topRight(),
+        targetBounds.topRight(),
+        targetBounds.bottomRight(),
+        targetBounds.bottomLeft(),
+        targetBounds.topLeft(),
+        dialogBounds.bottomRight(),
+    )
+
+private fun topCutoutPolygon(
+    dialogBounds: MapViewerDialogBounds,
+    targetBounds: ScreenBounds,
+): List<Vector2D> =
+    listOf(
+        dialogBounds.topLeft(),
+        targetBounds.bottomLeft(),
+        targetBounds.topLeft(),
+        targetBounds.topRight(),
+        targetBounds.bottomRight(),
+        dialogBounds.topRight(),
+    )
+
+private fun bottomCutoutPolygon(
+    dialogBounds: MapViewerDialogBounds,
+    targetBounds: ScreenBounds,
+): List<Vector2D> =
+    listOf(
+        dialogBounds.bottomLeft(),
+        targetBounds.bottomLeft(),
+        targetBounds.topLeft(),
+        targetBounds.topRight(),
+        targetBounds.bottomRight(),
+        dialogBounds.bottomRight(),
+    )
+
+private fun MapViewerDialogBounds.topLeft(): Vector2D = Vector2D(left, top)
+
+private fun MapViewerDialogBounds.topRight(): Vector2D = Vector2D(right, top)
+
+private fun MapViewerDialogBounds.bottomLeft(): Vector2D = Vector2D(left, bottom)
+
+private fun MapViewerDialogBounds.bottomRight(): Vector2D = Vector2D(right, bottom)
+
+private fun ScreenBounds.topLeft(): Vector2D = Vector2D(left, top)
+
+private fun ScreenBounds.topRight(): Vector2D = Vector2D(right, top)
+
+private fun ScreenBounds.bottomLeft(): Vector2D = Vector2D(left, bottom)
+
+private fun ScreenBounds.bottomRight(): Vector2D = Vector2D(right, bottom)
