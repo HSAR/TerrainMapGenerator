@@ -170,14 +170,10 @@ internal class MapViewerDialogWindow(
             layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 160))
         }
 
-        focusShadowPolygon(currentBounds, focusTargetBoundsProvider())?.let { polygon ->
+        focusShadowShape(currentBounds, focusTargetBoundsProvider())?.let { shape ->
             layer.graphics {
                 fill(FOCUS_SHADOW_COLOR) {
-                    moveTo(polygon.first().x, polygon.first().y)
-                    polygon.drop(1).forEach { point ->
-                        lineTo(point.x, point.y)
-                    }
-                    close()
+                    path(shape)
                 }
             }
         }

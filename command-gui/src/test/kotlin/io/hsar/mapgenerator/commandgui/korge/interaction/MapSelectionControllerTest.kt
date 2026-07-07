@@ -56,6 +56,65 @@ class MapSelectionControllerTest {
     }
 
     @Test
+    fun `shift click toggles objects in the current selection`() {
+        val objectController = objectController()
+        val first = unitSnapshot("00000000-0000-0000-0000-000000000081", destroyed = false, x = 0.2, y = 0.2)
+        val second = unitSnapshot("00000000-0000-0000-0000-000000000082", destroyed = false, x = 0.4, y = 0.4)
+        objectController.createObject(first)
+        objectController.createObject(second)
+        val selectionController = selectionController(
+            objectController = objectController,
+            objectAt = { point ->
+                if (point.x < 150.0) {
+                    MapPlacedObjectSelection(MapPlacedObjectSelectionKind.UNIT, first.id, 0.0)
+                } else {
+                    MapPlacedObjectSelection(MapPlacedObjectSelectionKind.UNIT, second.id, 0.0)
+                }
+            },
+        )
+
+        selectionController.selectOnly(first.id)
+        selectionController.beginLeftDrag(Vector2D(100.0, 100.0), shiftHeld = true)
+        assertThat(selectionController.selectedIds(), equalTo(emptySet()))
+
+        selectionController.beginLeftDrag(Vector2D(200.0, 100.0), shiftHeld = true)
+        assertThat(selectionController.selectedIds(), equalTo(setOf(second.id)))
+
+        selectionController.beginLeftDrag(Vector2D(100.0, 100.0), shiftHeld = true)
+        assertThat(selectionController.selectedIds(), equalTo(setOf(second.id, first.id)))
+    }
+
+    @Test
+    fun `shift drag inverts selection status for every object in the box`() {
+        val objectController = objectController()
+        val first = unitSnapshot("00000000-0000-0000-0000-000000000083", destroyed = false, x = 0.2, y = 0.2)
+        val second = unitSnapshot("00000000-0000-0000-0000-000000000084", destroyed = false, x = 0.4, y = 0.4)
+        val third = unitSnapshot("00000000-0000-0000-0000-000000000085", destroyed = false, x = 0.6, y = 0.6)
+        objectController.createObject(first)
+        objectController.createObject(second)
+        objectController.createObject(third)
+        val selectionController = selectionController(
+            objectController = objectController,
+            objectAt = { point ->
+                if (point.x < 150.0 && point.y < 150.0) {
+                    MapPlacedObjectSelection(MapPlacedObjectSelectionKind.UNIT, first.id, 0.0)
+                } else if (point.x > 600.0 && point.y < 150.0) {
+                    MapPlacedObjectSelection(MapPlacedObjectSelectionKind.UNIT, third.id, 0.0)
+                } else {
+                    null
+                }
+            },
+        )
+
+        selectionController.selectOnly(first.id)
+        selectionController.beginLeftDrag(Vector2D(650.0, 100.0), shiftHeld = true)
+        selectionController.beginLeftDrag(Vector2D(200.0, 200.0), shiftHeld = true)
+        selectionController.update(Vector2D(700.0, 700.0), leftHeld = false)
+
+        assertThat(selectionController.selectedIds(), equalTo(setOf(second.id)))
+    }
+
+    @Test
     fun `resize handle drag updates selected drawing before object move`() {
         val objectController = objectController()
         val drawing = drawingSnapshot("00000000-0000-0000-0000-000000000071")
@@ -211,7 +270,7 @@ class MapSelectionControllerTest {
             ),
         )
 
-    private fun unitSnapshot(id: String, destroyed: Boolean) =
+    private fun unitSnapshot(id: String, destroyed: Boolean, x: Double = 0.5, y: Double = 0.5) =
         UnitSnapshot(
             id = MapPlacedObjectId(UUID.fromString(id)),
             unitTemplateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000061")),
@@ -223,7 +282,7 @@ class MapSelectionControllerTest {
             instanceName = "Unit",
             destroyed = destroyed,
             facingDegrees = null,
-            mapCoordinate = MapCoordinate(0.5, 0.5),
+            mapCoordinate = MapCoordinate(x, y),
             normalizedWidth = 0.1,
             normalizedHeight = 0.1,
         )

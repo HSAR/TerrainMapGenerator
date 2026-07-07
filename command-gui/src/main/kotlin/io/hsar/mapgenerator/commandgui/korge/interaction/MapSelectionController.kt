@@ -75,7 +75,7 @@ internal class MapSelectionController(
         publish()
     }
 
-    fun beginLeftDrag(screenPoint: Vector2D, altHeld: Boolean = false): Boolean {
+    fun beginLeftDrag(screenPoint: Vector2D, altHeld: Boolean = false, shiftHeld: Boolean = false): Boolean {
         if (beginResizeIfHandleHit(screenPoint, altHeld)) {
             return true
         }
@@ -84,14 +84,20 @@ internal class MapSelectionController(
         }
         val selection = objectAt(screenPoint)
         return if (selection != null) {
-            if (selection.id !in selectedIds) {
-                selectedIds.clear()
-                selectedIds += selection.id
+            if (shiftHeld) {
+                toggleSelected(selection.id)
+                publish()
+                true
+            } else {
+                if (selection.id !in selectedIds) {
+                    selectedIds.clear()
+                    selectedIds += selection.id
+                }
+                beginGroupMove(screenPoint)
+                true
             }
-            beginGroupMove(screenPoint)
-            true
         } else {
-            boxState = BoxSelectionState(start = screenPoint, current = screenPoint)
+            boxState = BoxSelectionState(start = screenPoint, current = screenPoint, shiftHeld = shiftHeld)
             moveState = null
             publish()
             true
@@ -343,9 +349,16 @@ internal class MapSelectionController(
         state.current = pointer
         if (!leftHeld) {
             val distance = hypot(state.current.x - state.start.x, state.current.y - state.start.y)
-            selectedIds.clear()
             if (distance >= BOX_DRAG_THRESHOLD) {
-                selectedIds += objectsOverlapping(ScreenSelectionBox(state.start, state.current)).map { it.id }
+                val overlapping = objectsOverlapping(ScreenSelectionBox(state.start, state.current)).map { it.id }
+                if (state.shiftHeld) {
+                    overlapping.forEach(::toggleSelected)
+                } else {
+                    selectedIds.clear()
+                    selectedIds += overlapping
+                }
+            } else if (!state.shiftHeld) {
+                selectedIds.clear()
             }
             boxState = null
         }
@@ -374,6 +387,12 @@ internal class MapSelectionController(
             0 -> Unit
             1 -> onLedgerEntry(entries.single())
             else -> onLedgerEntry(BatchLedgerEntry(entries))
+        }
+    }
+
+    private fun toggleSelected(id: MapPlacedObjectId) {
+        if (!selectedIds.add(id)) {
+            selectedIds.remove(id)
         }
     }
 
@@ -432,6 +451,7 @@ internal class MapSelectionController(
     private data class BoxSelectionState(
         val start: Vector2D,
         var current: Vector2D,
+        val shiftHeld: Boolean,
     )
 
     private data class GroupMoveState(

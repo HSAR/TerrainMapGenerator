@@ -1,138 +1,66 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import korlibs.math.geom.Vector2D
+import korlibs.math.geom.vector.VectorPath
 
-internal fun focusShadowPolygon(
+internal fun focusShadowShape(
     bounds: MapViewerDialogBounds,
     targetBounds: ScreenBounds?,
-): List<Vector2D>? {
+): VectorPath? {
     targetBounds ?: return null
     if (bounds.width <= 0.0 || bounds.height <= 0.0 || targetBounds.width <= 0.0 || targetBounds.height <= 0.0) {
         return null
     }
 
-    val dialogCenterX = bounds.left + bounds.width * 0.5
-    val dialogCenterY = bounds.top + bounds.height * 0.5
-    val targetCenterX = targetBounds.left + targetBounds.width * 0.5
-    val targetCenterY = targetBounds.top + targetBounds.height * 0.5
-    val isVerticallyNested = targetBounds.top >= bounds.top && targetBounds.bottom <= bounds.bottom
-    val isHorizontallyNested = targetBounds.left >= bounds.left && targetBounds.right <= bounds.right
+    val hull = focusShadowHullPolygon(bounds, targetBounds)
+    if (hull.size < 3) {
+        return null
+    }
 
-    return when {
-        targetCenterX < dialogCenterX && isVerticallyNested ->
-            leftCutoutPolygon(bounds, targetBounds)
-
-        targetCenterX > dialogCenterX && isVerticallyNested ->
-            rightCutoutPolygon(bounds, targetBounds)
-
-        targetCenterY < dialogCenterY && isHorizontallyNested ->
-            topCutoutPolygon(bounds, targetBounds)
-
-        targetCenterY > dialogCenterY && isHorizontallyNested ->
-            bottomCutoutPolygon(bounds, targetBounds)
-
-        else ->
-            diagonalShadowPolygon(bounds, targetBounds, targetCenterX, targetCenterY, dialogCenterX, dialogCenterY)
+    return VectorPath().apply {
+        moveTo(hull.first())
+        hull.drop(1).forEach(::lineTo)
+        close()
+        rectHole(bounds.left, bounds.top, bounds.width, bounds.height)
+        rectHole(targetBounds.left, targetBounds.top, targetBounds.width, targetBounds.height)
     }
 }
 
-private fun diagonalShadowPolygon(
-    dialogBounds: MapViewerDialogBounds,
+internal fun focusShadowHullPolygon(
+    bounds: MapViewerDialogBounds,
     targetBounds: ScreenBounds,
-    targetCenterX: Double,
-    targetCenterY: Double,
-    dialogCenterX: Double,
-    dialogCenterY: Double,
-): List<Vector2D> =
-    when {
-        targetCenterX > dialogCenterX && targetCenterY < dialogCenterY -> listOf(
-            dialogBounds.topLeft(),
-            targetBounds.topLeft(),
-            targetBounds.topRight(),
-            targetBounds.bottomRight(),
-            dialogBounds.bottomRight(),
-            dialogBounds.topRight(),
-        )
+): List<Vector2D> {
+    return (bounds.corners() + targetBounds.corners()).convexHull()
+}
 
-        targetCenterX < dialogCenterX && targetCenterY < dialogCenterY -> listOf(
-            dialogBounds.topRight(),
-            targetBounds.topRight(),
-            targetBounds.bottomRight(),
-            targetBounds.bottomLeft(),
-            dialogBounds.bottomLeft(),
-            dialogBounds.topLeft(),
-        )
-
-        targetCenterX > dialogCenterX && targetCenterY > dialogCenterY -> listOf(
-            dialogBounds.bottomLeft(),
-            targetBounds.bottomLeft(),
-            targetBounds.bottomRight(),
-            targetBounds.topRight(),
-            dialogBounds.topRight(),
-            dialogBounds.bottomRight(),
-        )
-
-        else -> listOf(
-            dialogBounds.bottomRight(),
-            targetBounds.bottomRight(),
-            targetBounds.topRight(),
-            targetBounds.topLeft(),
-            dialogBounds.topLeft(),
-            dialogBounds.bottomLeft(),
-        )
+private fun List<Vector2D>.convexHull(): List<Vector2D> {
+    val sorted = distinct().sortedWith(compareBy<Vector2D> { it.x }.thenBy { it.y })
+    if (sorted.size <= 1) {
+        return sorted
     }
 
-private fun leftCutoutPolygon(
-    dialogBounds: MapViewerDialogBounds,
-    targetBounds: ScreenBounds,
-): List<Vector2D> =
-    listOf(
-        dialogBounds.topLeft(),
-        targetBounds.topLeft(),
-        targetBounds.topRight(),
-        targetBounds.bottomRight(),
-        targetBounds.bottomLeft(),
-        dialogBounds.bottomLeft(),
-    )
+    fun appendHullPoint(hull: MutableList<Vector2D>, point: Vector2D) {
+        while (hull.size >= 2 && cross(hull[hull.size - 2], hull[hull.size - 1], point) <= 0.0) {
+            hull.removeAt(hull.lastIndex)
+        }
+        hull.add(point)
+    }
 
-private fun rightCutoutPolygon(
-    dialogBounds: MapViewerDialogBounds,
-    targetBounds: ScreenBounds,
-): List<Vector2D> =
-    listOf(
-        dialogBounds.topRight(),
-        targetBounds.topRight(),
-        targetBounds.bottomRight(),
-        targetBounds.bottomLeft(),
-        targetBounds.topLeft(),
-        dialogBounds.bottomRight(),
-    )
+    val lower = mutableListOf<Vector2D>()
+    sorted.forEach { point -> appendHullPoint(lower, point) }
+    val upper = mutableListOf<Vector2D>()
+    sorted.asReversed().forEach { point -> appendHullPoint(upper, point) }
+    return lower.dropLast(1) + upper.dropLast(1)
+}
 
-private fun topCutoutPolygon(
-    dialogBounds: MapViewerDialogBounds,
-    targetBounds: ScreenBounds,
-): List<Vector2D> =
-    listOf(
-        dialogBounds.topLeft(),
-        targetBounds.bottomLeft(),
-        targetBounds.topLeft(),
-        targetBounds.topRight(),
-        targetBounds.bottomRight(),
-        dialogBounds.topRight(),
-    )
+private fun cross(origin: Vector2D, first: Vector2D, second: Vector2D): Double =
+    (first.x - origin.x) * (second.y - origin.y) - (first.y - origin.y) * (second.x - origin.x)
 
-private fun bottomCutoutPolygon(
-    dialogBounds: MapViewerDialogBounds,
-    targetBounds: ScreenBounds,
-): List<Vector2D> =
-    listOf(
-        dialogBounds.bottomLeft(),
-        targetBounds.bottomLeft(),
-        targetBounds.topLeft(),
-        targetBounds.topRight(),
-        targetBounds.bottomRight(),
-        dialogBounds.bottomRight(),
-    )
+private fun MapViewerDialogBounds.corners(): List<Vector2D> =
+    listOf(topLeft(), topRight(), bottomRight(), bottomLeft())
+
+private fun ScreenBounds.corners(): List<Vector2D> =
+    listOf(topLeft(), topRight(), bottomRight(), bottomLeft())
 
 private fun MapViewerDialogBounds.topLeft(): Vector2D = Vector2D(left, top)
 

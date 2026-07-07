@@ -881,7 +881,11 @@ internal class MapViewerScene(
 
                             if (effectiveTool() == MapViewerTool.SELECT && !uiBlocksPointer) {
                                 if (leftHeld && !previousLeftHeld) {
-                                    selectionController.beginLeftDrag(pointer, altHeld = input.keys[Key.ALT])
+                                    selectionController.beginLeftDrag(
+                                        pointer,
+                                        altHeld = input.keys[Key.ALT],
+                                        shiftHeld = input.keys[Key.SHIFT],
+                                    )
                                 }
                                 if (rightHeld && !previousRightHeld) {
                                     if (!selectionController.openContextMenu(pointer) &&
