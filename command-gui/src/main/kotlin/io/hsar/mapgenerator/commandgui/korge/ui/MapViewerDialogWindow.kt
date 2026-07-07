@@ -38,6 +38,7 @@ internal class MapViewerDialogWindow(
     private var viewportWidth = 0
     private var viewportHeight = 0
     private var bounds: MapViewerDialogBounds? = null
+    private var lastFocusTargetBounds: ScreenBounds? = null
     private var scrollState = MapViewerScrollState(0.0, 0.0)
     private var scrollDragState: ScrollDragState? = null
     private var dragState: DialogDragState? = null
@@ -112,6 +113,12 @@ internal class MapViewerDialogWindow(
         layer.addUpdater {
             val pointer = layer.stage?.views?.input?.mousePos ?: return@addUpdater
             val leftHeld = layer.stage?.views?.input?.mouseButtonPressed(korlibs.event.MouseButton.LEFT) ?: false
+            val focusTargetBounds = focusTargetBoundsProvider()
+            if (focusTargetBounds != lastFocusTargetBounds) {
+                lastFocusTargetBounds = focusTargetBounds
+                render()
+                return@addUpdater
+            }
 
             if (!leftHeld) {
                 scrollDragState = null
@@ -170,7 +177,9 @@ internal class MapViewerDialogWindow(
             layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 160))
         }
 
-        focusShadowShape(currentBounds, focusTargetBoundsProvider())?.let { shape ->
+        val focusTargetBounds = focusTargetBoundsProvider()
+        lastFocusTargetBounds = focusTargetBounds
+        focusShadowShape(currentBounds, focusTargetBounds)?.let { shape ->
             layer.graphics {
                 fill(FOCUS_SHADOW_COLOR) {
                     path(shape)
