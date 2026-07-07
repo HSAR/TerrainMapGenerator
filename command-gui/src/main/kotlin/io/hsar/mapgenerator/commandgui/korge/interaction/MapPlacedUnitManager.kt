@@ -437,6 +437,7 @@ internal class MapPlacedUnitManager(
         }
         val viewport = viewportProvider()
         val position = initialReferenceFields(unit)
+        val focusAnchorProvider = { unitScreenCenter(unit) }
         val session = UnitEditSession(
             baselineSnapshot = unit.snapshot(),
             baselinePosition = position,
@@ -499,6 +500,7 @@ internal class MapPlacedUnitManager(
                         unit.updateFacingOverlay(forceActive = true)
                     }
             },
+            focusAnchorProvider = focusAnchorProvider,
             isPositionValid = { positionX, positionY ->
                 UnitEditPositionResolver.resolve(
                     currentCoordinate = session.baselineSnapshot.mapCoordinate,
@@ -767,6 +769,11 @@ internal class MapPlacedUnitManager(
         val worldPoint = coordinateSpace.toWorld(unit.mapCoordinate)
         unit.view.x = worldPoint.x - unit.worldWidth * 0.5
         unit.view.y = worldPoint.y - unit.worldHeight * 0.5
+    }
+
+    private fun unitScreenCenter(unit: PlacedUnit): Vector2D {
+        val viewport = viewportProvider()
+        return coordinateSpace.worldToScreen(coordinateSpace.toWorld(unit.mapCoordinate), viewport)
     }
 
     private fun syncEditDialog(unit: PlacedUnit) {

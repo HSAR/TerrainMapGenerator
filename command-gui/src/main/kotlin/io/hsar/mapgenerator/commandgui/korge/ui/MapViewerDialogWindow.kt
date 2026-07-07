@@ -6,6 +6,7 @@ import korlibs.korge.view.Container
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.clipContainer
 import korlibs.korge.view.container
+import korlibs.korge.view.graphics
 import korlibs.korge.view.onStageResized
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
@@ -23,6 +24,7 @@ internal class MapViewerDialogWindow(
     private val titleProvider: () -> String = { title },
     private val titleTabs: () -> List<MapViewerDialogTitleTab> = { emptyList() },
     private val initialPosition: ((MapViewerDialogBounds) -> Vector2D?) = { null },
+    private val focusAnchorProvider: (() -> Vector2D?) = { null },
     private val preferredWidth: Double,
     private val preferredHeight: Double,
     private val contentMinimumWidth: () -> Double = { 0.0 },
@@ -168,6 +170,18 @@ internal class MapViewerDialogWindow(
             layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 160))
         }
 
+        focusShadowPolygon(currentBounds, focusAnchorProvider())?.let { polygon ->
+            layer.graphics {
+                fill(FOCUS_SHADOW_COLOR) {
+                    moveTo(polygon.first().x, polygon.first().y)
+                    polygon.drop(1).forEach { point ->
+                        lineTo(point.x, point.y)
+                    }
+                    close()
+                }
+            }
+        }
+
         val panel = layer.container()
         panel.xy(currentBounds.left, currentBounds.top)
         val clickCatcher = panel.solidRect(currentBounds.width, currentBounds.height, RGBA(0, 0, 0, 0))
@@ -279,5 +293,6 @@ internal class MapViewerDialogWindow(
         const val Z_INDEX = 50_000.0
         const val CONTENT_Z_INDEX = 100.0
         const val FOOTER_Z_INDEX = 1_000.0
+        val FOCUS_SHADOW_COLOR = RGBA(0, 0, 0, 72)
     }
 }

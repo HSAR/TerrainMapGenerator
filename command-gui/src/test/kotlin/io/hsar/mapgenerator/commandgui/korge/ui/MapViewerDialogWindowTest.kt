@@ -14,6 +14,7 @@ class MapViewerDialogWindowTest {
         val window = MapViewerDialogWindow(
             root = root,
             title = "Test",
+            focusAnchorProvider = { null },
             preferredWidth = 400.0,
             preferredHeight = 300.0,
             contentHeight = { 0.0 },
