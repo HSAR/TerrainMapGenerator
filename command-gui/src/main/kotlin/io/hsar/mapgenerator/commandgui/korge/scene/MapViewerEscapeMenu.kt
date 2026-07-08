@@ -1,6 +1,9 @@
 package io.hsar.mapgenerator.commandgui.korge.scene
 
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchUi
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
+import korlibs.image.text.TextAlignment
+import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.onStageResized
@@ -35,6 +38,8 @@ internal class MapViewerEscapeMenu(
 
     private fun open() {
         layer = root.container().also { overlay ->
+            overlay.zIndex = Z_INDEX
+            overlay.mouseEnabled = true
             overlay.onStageResized { width, height ->
                 render(overlay, width, height)
             }
@@ -47,11 +52,22 @@ internal class MapViewerEscapeMenu(
         val stageHeight = overlay.stage?.views?.actualVirtualHeight ?: height
         layout = MapViewerEscapeMenuLayoutBuilder.build(stageWidth, stageHeight)
         overlay.removeChildren()
-        overlay.solidRect(stageWidth.toDouble(), stageHeight.toDouble(), korlibs.image.color.RGBA(0, 0, 0, 140))
+        val backdrop = overlay.solidRect(stageWidth.toDouble(), stageHeight.toDouble(), korlibs.image.color.RGBA(0, 0, 0, 140))
+        backdrop.mouse {
+            onClick {
+                // Consume clicks so the menu blocks the dialogs underneath while open.
+            }
+        }
         val panel = MapViewerLaunchUi.panel(overlay, layout.panelBounds)
-        MapViewerLaunchUi.title(panel, "Menu", layout.panelBounds.width, 44.0)
+        MapViewerLaunchUi.title(panel, "Menu", layout.panelBounds.width, 44.0, size = 34.0)
             .xy(0.0, layout.titleY)
-        MapViewerLaunchUi.label(panel, "Return to the launchpad after saving.")
+        MapViewerTextViews.box(
+            parent = panel,
+            text = "Return to the launchpad after saving.",
+            width = layout.panelBounds.width,
+            height = 34.0,
+            alignment = TextAlignment.MIDDLE_CENTER,
+        )
             .xy(0.0, layout.subtitleY)
         MapViewerLaunchUi.button(panel, layout.returnButtonBounds.width, layout.returnButtonBounds.height, "Return To Launchpad", uppercase = true) {
             close()
@@ -64,5 +80,9 @@ internal class MapViewerEscapeMenu(
         MapViewerLaunchUi.button(panel, layout.closeButtonBounds.width, layout.closeButtonBounds.height, "Close", uppercase = true) {
             close()
         }.xy(layout.closeButtonBounds.left, layout.closeButtonBounds.top)
+    }
+
+    private companion object {
+        const val Z_INDEX = 90_000.0
     }
 }

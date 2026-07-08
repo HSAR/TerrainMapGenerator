@@ -890,6 +890,7 @@ internal class MapViewerScene(
                             val pointer = input.mousePos
                             val leftHeld = input.mouseButtonPressed(korlibs.event.MouseButton.LEFT)
                             val rightHeld = input.mouseButtonPressed(korlibs.event.MouseButton.RIGHT)
+                            val escapeMenuOpen = escapeMenu?.isOpen == true
                             val uiBlocksPointer = toolbar?.blocksScreenPoint(pointer) == true ||
                                     ledgerPanel?.blocksScreenPoint(pointer) == true ||
                                     notesPanel?.blocksScreenPoint(pointer) == true ||
@@ -917,14 +918,16 @@ internal class MapViewerScene(
                                     }
                                 }
                             }
-                            if (previousLeftHeld &&
-                                !leftHeld &&
-                                selectionController.isMovingSelection &&
-                                notesPanel?.addDroppedReferences(pointer, selectionController.selectedIds()) == true
-                            ) {
-                                selectionController.cancelTransientState()
-                            } else {
-                                selectionController.update(pointer, leftHeld)
+                            if (!escapeMenuOpen) {
+                                if (previousLeftHeld &&
+                                    !leftHeld &&
+                                    selectionController.isMovingSelection &&
+                                    notesPanel?.addDroppedReferences(pointer, selectionController.selectedIds()) == true
+                                ) {
+                                    selectionController.cancelTransientState()
+                                } else {
+                                    selectionController.update(pointer, leftHeld)
+                                }
                             }
 
                             if (saveNoticeMessage != null) {
@@ -939,6 +942,7 @@ internal class MapViewerScene(
                             autosaveController.update(now)
                             if (input.keys.justPressed(Key.S) &&
                                 input.keys[Key.CONTROL] &&
+                                !escapeMenuOpen &&
                                 !dialogManager.isTextInputActive() &&
                                 ledgerPanel?.isTextInputActive != true &&
                                 !sidebar.isUnitDragging &&
@@ -951,13 +955,13 @@ internal class MapViewerScene(
                                 saveOperation()
                             }
                             if (input.keys.justPressed(Key.ESCAPE) &&
-                                !dialogManager.isTextInputActive() &&
-                                ledgerPanel?.isTextInputActive != true &&
-                                !sidebar.isUnitDragging &&
-                                !unitManager.isDragging &&
-                                !unitManager.isEditDialogOpen &&
-                                !drawingManager.isDragging &&
-                                !selectionController.isDragging
+                                MapViewerEscapeMenuHotkeyGate.canToggle(
+                                    sidebarIsUnitDragging = sidebar.isUnitDragging,
+                                    unitIsDragging = unitManager.isDragging,
+                                    drawingIsDragging = drawingManager.isDragging,
+                                    selectionIsDragging = selectionController.isDragging,
+                                    anyDialogOpen = unitManager.isEditDialogOpen,
+                                )
                             ) {
                                 escapeMenu?.toggle()
                             }

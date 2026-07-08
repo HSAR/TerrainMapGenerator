@@ -11,10 +11,10 @@
 - Main menu background is a generated, scrolling map ref
     - https://openprocessing.org/@u137792/668106
     - https://thingonitsown.blogspot.com/2019/02/finding-perlin-contours.html
+- Non-standard named save files are re-serialised using the non-standard save name
 
 ## Bugs
 
 - `java.lang.IllegalStateException: Epsilon X square index 100 is outside supported designators.`
     - Input boxes should clamp to min/max permitted values when user input would violate them.
-- Escape menu should open regardless of whether dialogs are open or not
 - Perf pass, moving dialogs around should not be so impactful
