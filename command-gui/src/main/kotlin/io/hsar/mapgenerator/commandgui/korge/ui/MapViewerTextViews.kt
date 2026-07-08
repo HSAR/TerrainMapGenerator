@@ -7,8 +7,38 @@ import korlibs.korge.view.Text
 import korlibs.korge.view.text
 import korlibs.math.geom.Rectangle
 import java.awt.Color
+import java.util.*
 
 internal object MapViewerTextViews {
+    fun titleText(text: String): String =
+        text.uppercase(Locale.ROOT)
+
+    fun titleFontRole(bold: Boolean = false): MapViewerFontRole =
+        if (bold) MapViewerFontRole.STRONG else MapViewerFontRole.MAIN
+
+    fun titleBox(
+        parent: Container,
+        text: String,
+        width: Double,
+        height: Double,
+        bold: Boolean = false,
+        size: Double = DEFAULT_TEXT_SIZE,
+        color: Color = Color.WHITE,
+        alignment: TextAlignment = TextAlignment.MIDDLE_CENTER,
+        block: Text.() -> Unit = {},
+    ): Text =
+        box(
+            parent = parent,
+            text = titleText(text),
+            width = width,
+            height = height,
+            role = titleFontRole(bold),
+            size = size,
+            color = color,
+            alignment = alignment,
+            block = block,
+        )
+
     fun label(
         parent: Container,
         text: String,

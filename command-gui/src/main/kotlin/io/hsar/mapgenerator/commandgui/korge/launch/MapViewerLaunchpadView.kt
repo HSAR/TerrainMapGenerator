@@ -108,13 +108,14 @@ internal class MapViewerLaunchpadView(
             .xy(0.0, 62.0)
 
         val buttonLeft = (bounds.width - BUTTON_WIDTH) * 0.5
-        MapViewerLaunchUi.button(panel, BUTTON_WIDTH, BUTTON_HEIGHT, "New Operation", onClick = onCreateNewOperation)
+        MapViewerLaunchUi.button(panel, BUTTON_WIDTH, BUTTON_HEIGHT, "New Operation", uppercase = true, onClick = onCreateNewOperation)
             .xy(buttonLeft, 126.0)
         MapViewerLaunchUi.button(
             parent = panel,
             width = BUTTON_WIDTH,
             height = BUTTON_HEIGHT,
             label = "Ongoing Operations",
+            uppercase = true,
             onClick = {
                 mode = LaunchpadMode.EXISTING_OPERATIONS
                 savedOperations = null
@@ -123,7 +124,7 @@ internal class MapViewerLaunchpadView(
                 onOngoingOperationsEntered()
             },
         ).xy(buttonLeft, 188.0)
-        MapViewerLaunchUi.button(panel, BUTTON_WIDTH, BUTTON_HEIGHT, "Exit", onClick = onExitProgram)
+        MapViewerLaunchUi.button(panel, BUTTON_WIDTH, BUTTON_HEIGHT, "Exit", uppercase = true, onClick = onExitProgram)
             .xy(buttonLeft, 250.0)
     }
 
@@ -163,6 +164,7 @@ internal class MapViewerLaunchpadView(
             width = 280.0,
             height = BUTTON_HEIGHT,
             label = "Browse For Save File",
+            uppercase = true,
             onClick = onOpenSavePicker,
         ).xy((bounds.width - 280.0) * 0.5, bounds.height - BUTTON_HEIGHT - 24.0)
 

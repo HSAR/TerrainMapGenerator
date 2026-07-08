@@ -7,13 +7,14 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.image.Palette
+import korlibs.image.text.TextAlignment
 import korlibs.korge.view.Container
 import korlibs.korge.view.Text
 import korlibs.korge.view.xy
 import java.awt.Color
 
 internal object MapViewerLaunchUi {
-    fun panel(parent: Container, bounds: ScreenBounds, alpha: Int = 235): Container =
+    fun panel(parent: Container, bounds: ScreenBounds, alpha: Int = 220): Container =
         MapViewerUiBoxes.box(parent, bounds.width, bounds.height, style = {
             io.hsar.mapgenerator.commandgui.korge.ui.UiFrameStyle(
                 fillColor = Palette.Colours.DARK,
@@ -31,6 +32,7 @@ internal object MapViewerLaunchUi {
         height: Double,
         label: String,
         disabled: Boolean = false,
+        uppercase: Boolean = false,
         onClick: () -> Unit = {},
     ): Container =
         MapViewerActionButtons.button(
@@ -39,25 +41,39 @@ internal object MapViewerLaunchUi {
             height = height,
             label = label,
             enabled = !disabled,
+            uppercase = uppercase,
             onClick = onClick,
         )
 
     fun backButton(parent: Container, onClick: () -> Unit = {}): Container =
-        button(parent, 120.0, 42.0, "Back", onClick = onClick)
+        button(parent, 120.0, 42.0, "Back", uppercase = true, onClick = onClick)
 
     fun label(parent: Container, text: String, strong: Boolean = false, color: Color = Palette.Colours.WHITE): Text =
         label(parent, text, strong, color, scale = 1.0)
 
-    fun screenTitle(parent: Container, text: String, width: Double, height: Double, color: Color = Palette.Colours.WHITE): Text =
-        MapViewerTextViews.box(
+    fun title(
+        parent: Container,
+        text: String,
+        width: Double,
+        height: Double,
+        bold: Boolean = false,
+        size: Double = MapViewerTextViews.DEFAULT_TEXT_SIZE,
+        color: Color = Palette.Colours.WHITE,
+        alignment: TextAlignment = TextAlignment.MIDDLE_CENTER,
+    ): Text =
+        MapViewerTextViews.titleBox(
             parent = parent,
             text = text,
             width = width,
             height = height,
-            role = MapViewerFontRole.STRONG,
-            size = SCREEN_TITLE_TEXT_SIZE,
+            bold = bold,
+            size = size,
             color = color,
+            alignment = alignment,
         )
+
+    fun screenTitle(parent: Container, text: String, width: Double, height: Double, color: Color = Palette.Colours.WHITE): Text =
+        title(parent, text, width, height, bold = true, size = SCREEN_TITLE_TEXT_SIZE, color = color)
 
     fun label(
         parent: Container,

@@ -29,6 +29,7 @@ import korlibs.event.MouseButton
 import korlibs.image.awt.toBMP32
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
+import korlibs.image.text.TextAlignment
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
@@ -164,7 +165,14 @@ internal class MapViewerNewOperationView(
         val operationNameWidth = imageButtonLeft - CONTENT_PADDING - FIELD_GAP - imageValidationWidth
         val previewTop = 250.0
 
-        MapViewerLaunchUi.label(panel, "Operational Details", strong = true).xy(CONTENT_PADDING, CONTENT_PADDING)
+        MapViewerLaunchUi.title(
+            panel,
+            "Operational Details",
+            panelWidth - CONTENT_PADDING * 2.0,
+            34.0,
+            alignment = TextAlignment.TOP_LEFT,
+        )
+            .xy(CONTENT_PADDING, CONTENT_PADDING)
         MapViewerLaunchUi.label(panel, "Operation Name").xy(CONTENT_PADDING, 60.0)
         MapViewerLaunchUi.label(panel, "Map Image").xy(imageButtonLeft, 60.0)
         operationNameInput = textInput(
@@ -259,7 +267,15 @@ internal class MapViewerNewOperationView(
 
     private fun renderUnitTypes() {
         val panel = MapViewerLaunchUi.panel(layer, layout.unitsPanelBounds)
-        MapViewerLaunchUi.label(panel, "Unit Types", strong = true).xy(CONTENT_PADDING, CONTENT_PADDING)
+        val panelWidth = layout.unitsPanelBounds.width
+        MapViewerLaunchUi.title(
+            panel,
+            "Unit Types",
+            panelWidth - CONTENT_PADDING * 2.0,
+            34.0,
+            alignment = TextAlignment.TOP_LEFT,
+        )
+            .xy(CONTENT_PADDING, CONTENT_PADDING)
         MapViewerLaunchUi.button(panel, 150.0, 36.0, "Add Unit Type") {
             addUnitType()
         }.xy(layout.unitsPanelBounds.width - CONTENT_PADDING - 150.0, CONTENT_PADDING - 4.0)
@@ -649,6 +665,7 @@ internal class MapViewerNewOperationView(
             height = 42.0,
             label = "Launch Operation",
             disabled = !isCurrentOperationLaunchable(),
+            uppercase = true,
         ) {
             launch()
         }

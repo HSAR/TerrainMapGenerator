@@ -140,7 +140,7 @@ internal class MapViewerSidebar(
         MapViewerSidePanelChrome.renderToggle(
             parent = toggleButton,
             bounds = layout.toggleBounds,
-            label = "Units",
+            label = "UNITS",
         )
     }
 

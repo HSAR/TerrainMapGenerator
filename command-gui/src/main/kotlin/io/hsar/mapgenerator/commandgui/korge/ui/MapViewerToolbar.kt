@@ -90,30 +90,18 @@ internal class MapViewerToolbar(
 
     private fun addButton(tool: MapViewerTool, label: String, left: Double, enabled: Boolean = true) {
         val active = selectedTool() == tool
-        val button = MapViewerUiBoxes.button(
-            content,
-            BUTTON_WIDTH,
-            BUTTON_HEIGHT,
+        MapViewerActionButtons.button(
+            parent = content,
+            width = BUTTON_WIDTH,
+            height = BUTTON_HEIGHT,
+            label = label,
+            enabled = enabled,
             active = active && enabled,
-            style = { state -> MapViewerUiBoxes.defaultStyle(state) },
-        ).also {
-            it.xy(left, 0.0)
-        }
-        MapViewerTextViews.box(
-            button,
-            label,
-            BUTTON_WIDTH,
-            BUTTON_HEIGHT,
-            color = if (enabled) MapViewerUiStateStyle.text(active) else MapViewerUiStateStyle.text(false),
-        )
-        button.mouse {
-            onClick {
-                if (enabled) {
-                    onToolSelected(tool)
-                    relayout(currentViewportWidth, currentViewportHeight)
-                }
-            }
-        }
+            uppercase = true,
+        ) {
+            onToolSelected(tool)
+            relayout(currentViewportWidth, currentViewportHeight)
+        }.xy(left, 0.0)
     }
 
     private fun addDrawingModeButton(mode: MapDrawingMode, left: Double) {

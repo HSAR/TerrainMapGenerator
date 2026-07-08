@@ -14,4 +14,20 @@ class MapViewerUiBoxesTest {
         assertThat(geometry.borders.size, equalTo(4))
         assertThat(geometry.borders.none { it.width == 120.0 && it.height == 40.0 }, equalTo(true))
     }
+
+    @Test
+    fun `default panel style matches dialog chrome opacity`() {
+        val style = MapViewerUiBoxes.defaultStyle(active = true)
+
+        assertThat(style.fillAlpha, equalTo(220))
+        assertThat(style.borderAlpha, equalTo(MapViewerUiStateStyle.ACTIVE_ALPHA))
+    }
+
+    @Test
+    fun `default button style is opaque`() {
+        val style = MapViewerUiBoxes.defaultButtonStyle(active = true)
+
+        assertThat(style.fillAlpha, equalTo(MapViewerUiStateStyle.ACTIVE_ALPHA))
+        assertThat(style.borderAlpha, equalTo(MapViewerUiStateStyle.ACTIVE_ALPHA))
+    }
 }

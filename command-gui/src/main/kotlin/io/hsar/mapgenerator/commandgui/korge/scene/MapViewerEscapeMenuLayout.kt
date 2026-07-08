@@ -63,6 +63,7 @@ internal object MapViewerEscapeMenuLayoutBuilder {
 
     private fun buttonLabels(): List<String> =
         listOf("Return To Launchpad", "Exit", "Close")
+            .map(MapViewerTextViews::titleText)
 
     private fun labelWidth(text: String): Double =
         MapViewerTextViews.bounds(text).width

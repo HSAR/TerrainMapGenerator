@@ -1,8 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.scene
 
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchUi
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.onStageResized
@@ -51,19 +49,19 @@ internal class MapViewerEscapeMenu(
         overlay.removeChildren()
         overlay.solidRect(stageWidth.toDouble(), stageHeight.toDouble(), korlibs.image.color.RGBA(0, 0, 0, 140))
         val panel = MapViewerLaunchUi.panel(overlay, layout.panelBounds)
-        MapViewerTextViews.box(panel, "Menu", layout.panelBounds.width, 44.0, role = MapViewerFontRole.STRONG)
+        MapViewerLaunchUi.title(panel, "Menu", layout.panelBounds.width, 44.0)
             .xy(0.0, layout.titleY)
-        MapViewerTextViews.box(panel, "Return to the launchpad after saving.", layout.panelBounds.width, 34.0)
+        MapViewerLaunchUi.label(panel, "Return to the launchpad after saving.")
             .xy(0.0, layout.subtitleY)
-        MapViewerLaunchUi.button(panel, layout.returnButtonBounds.width, layout.returnButtonBounds.height, "Return To Launchpad") {
+        MapViewerLaunchUi.button(panel, layout.returnButtonBounds.width, layout.returnButtonBounds.height, "Return To Launchpad", uppercase = true) {
             close()
             onReturnToLaunchpad()
         }.xy(layout.returnButtonBounds.left, layout.returnButtonBounds.top)
-        MapViewerLaunchUi.button(panel, layout.exitButtonBounds.width, layout.exitButtonBounds.height, "Exit") {
+        MapViewerLaunchUi.button(panel, layout.exitButtonBounds.width, layout.exitButtonBounds.height, "Exit", uppercase = true) {
             close()
             onExitProgram()
         }.xy(layout.exitButtonBounds.left, layout.exitButtonBounds.top)
-        MapViewerLaunchUi.button(panel, layout.closeButtonBounds.width, layout.closeButtonBounds.height, "Close") {
+        MapViewerLaunchUi.button(panel, layout.closeButtonBounds.width, layout.closeButtonBounds.height, "Close", uppercase = true) {
             close()
         }.xy(layout.closeButtonBounds.left, layout.closeButtonBounds.top)
     }

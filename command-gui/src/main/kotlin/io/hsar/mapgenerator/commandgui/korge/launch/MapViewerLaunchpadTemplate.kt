@@ -1,9 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
-import korlibs.image.text.TextAlignment
 import korlibs.korge.view.Container
 import korlibs.korge.view.xy
 
@@ -15,15 +12,14 @@ internal data class LaunchpadTemplateLayout(
 internal object MapViewerLaunchpadTemplate {
     fun renderHeader(parent: Container, headerBounds: ScreenBounds) {
         val header = MapViewerLaunchUi.panel(parent, headerBounds)
-        MapViewerTextViews.box(
+        MapViewerLaunchUi.title(
             parent = header,
             text = "Operational Command Tool",
             width = headerBounds.width,
             height = headerBounds.height,
-            role = MapViewerFontRole.STRONG,
+            bold = true,
             size = 34.0,
             color = java.awt.Color.WHITE,
-            alignment = TextAlignment.MIDDLE_CENTER,
         )
     }
 
@@ -34,15 +30,13 @@ internal object MapViewerLaunchpadTemplate {
         onBack: (() -> Unit)? = null,
     ): Container {
         val header = MapViewerLaunchUi.panel(parent, bounds)
-        MapViewerTextViews.box(
+        MapViewerLaunchUi.title(
             parent = header,
             text = title,
             width = bounds.width,
             height = 56.0,
-            role = MapViewerFontRole.STRONG,
             size = 34.0,
             color = java.awt.Color.WHITE,
-            alignment = TextAlignment.TOP_CENTER,
         ).xy(0.0, 10.0)
         onBack?.let {
             MapViewerLaunchUi.backButton(header) {

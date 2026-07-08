@@ -187,7 +187,7 @@ internal object MapViewerUiBoxes {
     fun defaultStyle(active: Boolean): UiFrameStyle =
         UiFrameStyle(
             fillColor = if (active) Palette.Colours.DARK else Palette.Colours.MAIN,
-            fillAlpha = if (active) ACTIVE_ALPHA else MapViewerUiStateStyle.inactiveFillAlpha,
+            fillAlpha = if (active) PANEL_ALPHA else MapViewerUiStateStyle.inactiveFillAlpha,
             borderColor = Palette.Colours.WHITE,
             borderAlpha = ACTIVE_ALPHA,
         )
@@ -195,7 +195,7 @@ internal object MapViewerUiBoxes {
     fun defaultButtonStyle(active: Boolean): UiFrameStyle =
         UiFrameStyle(
             fillColor = if (active) Palette.Colours.DARK else Palette.Colours.MAIN,
-            fillAlpha = if (active) ACTIVE_ALPHA else MapViewerUiStateStyle.inactiveFillAlpha,
+            fillAlpha = BUTTON_ALPHA,
             borderColor = Palette.Colours.WHITE,
             borderAlpha = ACTIVE_ALPHA,
         )
@@ -209,6 +209,8 @@ internal object MapViewerUiBoxes {
         )
 
     private const val BORDER_INSET = 2.0
+    private const val PANEL_ALPHA = 220
+    private const val BUTTON_ALPHA = MapViewerUiStateStyle.ACTIVE_ALPHA
     private const val ACTIVE_ALPHA = MapViewerUiStateStyle.ACTIVE_ALPHA
 }
 

@@ -13,17 +13,19 @@ internal object MapViewerActionButtons {
         height: Double,
         label: String,
         enabled: Boolean = true,
+        active: Boolean = enabled,
+        uppercase: Boolean = false,
         onClick: () -> Unit = {},
     ): Container =
         MapViewerUiBoxes.button(
             parent = parent,
             width = width,
             height = height,
-            active = enabled,
+            active = active,
         ).also { button ->
             MapViewerTextViews.box(
                 parent = button,
-                text = label,
+                text = if (uppercase) MapViewerTextViews.titleText(label) else label,
                 width = width,
                 height = height,
                 color = Palette.Colours.WHITE,

@@ -78,7 +78,7 @@ internal class MapViewerNotesPanel(
         MapViewerSidePanelChrome.renderToggle(
             parent = toggleButton,
             bounds = layout.toggleBounds,
-            label = "Notes",
+            label = "NOTES",
         )
     }
 

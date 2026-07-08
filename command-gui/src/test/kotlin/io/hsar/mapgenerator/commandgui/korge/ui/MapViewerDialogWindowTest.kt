@@ -78,6 +78,8 @@ class MapViewerDialogWindowTest {
     fun `tabbed title minimum width uses fixed equal tab widths`() {
         val tabWidth = MapViewerDialogTitleTabLayoutBuilder.tabWidth(listOf("Turns", "Much Longer Settings"))
         val minimumWidth = MapViewerDialogTitleTabLayoutBuilder.minimumShellWidth(listOf("Turns", "Much Longer Settings"))
+        val expectedTabWidth = MapViewerTextViews.measure(MapViewerTextViews.titleText("Much Longer Settings"), role = MapViewerFontRole.MAIN).width +
+                40.0
 
         assertThat(
             minimumWidth,
@@ -93,6 +95,7 @@ class MapViewerDialogWindowTest {
             MapViewerDialogTitleTabLayoutBuilder.tabWidth(listOf("Turns", "Much Longer Settings", "A")),
             equalTo(tabWidth),
         )
+        assertThat(tabWidth, equalTo(expectedTabWidth))
     }
 
     @Test

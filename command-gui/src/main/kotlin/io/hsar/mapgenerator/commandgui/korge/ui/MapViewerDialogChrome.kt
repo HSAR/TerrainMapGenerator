@@ -1,12 +1,12 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.image.Palette
+import korlibs.image.text.TextAlignment
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
-import java.util.*
 
 internal object MapViewerDialogChrome {
     fun render(
@@ -33,19 +33,17 @@ internal object MapViewerDialogChrome {
             val fittedTitle = MapViewerTextViews.ellipsize(
                 text = dialogTitleText(title),
                 maxWidth = titleWidth,
-                role = MapViewerFontRole.STRONG,
+                role = MapViewerFontRole.MAIN,
                 size = MapViewerTextViews.DEFAULT_TEXT_SIZE,
             )
-            MapViewerTextViews.leftBox(
+            MapViewerTextViews.titleBox(
                 parent = titleBar,
                 text = fittedTitle,
                 width = titleWidth,
                 height = layout.titleBar.height,
-                role = MapViewerFontRole.STRONG,
                 color = Palette.Colours.WHITE,
-            ) {
-                x = TITLE_TEXT_LEFT
-            }
+                alignment = TextAlignment.MIDDLE_LEFT,
+            ) { x = TITLE_TEXT_LEFT }
         } else {
             renderTitleTabs(
                 parent = titleBar,
@@ -69,12 +67,11 @@ internal object MapViewerDialogChrome {
         val close = parent.container()
         close.xy(layout.closeButton.left, layout.closeButton.top)
         MapViewerUiBoxes.button(close, layout.closeButton.width, layout.closeButton.height)
-        MapViewerTextViews.box(
+        MapViewerTextViews.titleBox(
             parent = close,
             text = "X",
             width = layout.closeButton.width,
             height = layout.closeButton.height,
-            role = MapViewerFontRole.STRONG,
             color = Palette.Colours.WHITE,
         )
         close.mouse {
@@ -113,12 +110,11 @@ internal object MapViewerDialogChrome {
             if (index > 0) {
                 tabButton.solidRect(1.0, height, MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, MapViewerUiStateStyle.ACTIVE_ALPHA))
             }
-            MapViewerTextViews.box(
+            MapViewerTextViews.titleBox(
                 parent = tabButton,
                 text = dialogTitleText(tab.label),
                 width = tabWidth,
                 height = height,
-                role = MapViewerFontRole.STRONG,
                 color = Palette.Colours.WHITE,
             )
             tabButton.mouse {
@@ -150,13 +146,13 @@ internal object MapViewerDialogChrome {
     private const val INACTIVE_TAB_FILL_ALPHA = 30
 
     internal fun dialogTitleText(text: String): String =
-        text.uppercase(Locale.ROOT)
+        MapViewerTextViews.titleText(text)
 }
 
 internal object MapViewerDialogTitleTabLayoutBuilder {
     fun tabWidth(labels: List<String>): Double =
         labels.maxOfOrNull { label ->
-            MapViewerTextViews.measure(MapViewerDialogChrome.dialogTitleText(label), role = MapViewerFontRole.STRONG).width
+            MapViewerTextViews.measure(MapViewerDialogChrome.dialogTitleText(label), role = MapViewerFontRole.MAIN).width
         }
             ?.let { labelWidth -> labelWidth + TAB_HORIZONTAL_PADDING * 2.0 }
             ?: 0.0
