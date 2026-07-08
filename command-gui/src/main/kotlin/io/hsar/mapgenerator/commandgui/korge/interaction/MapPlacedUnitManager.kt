@@ -7,6 +7,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogPositionSync
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerImageViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitEditDialog
+import io.hsar.mapgenerator.commandgui.korge.ui.focusTargetBounds
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
@@ -25,7 +26,6 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
-import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds as UiScreenBounds
 
 @OptIn(KorgeInternal::class)
 internal class MapPlacedUnitManager(
@@ -438,7 +438,7 @@ internal class MapPlacedUnitManager(
         }
         val viewport = viewportProvider()
         val position = initialReferenceFields(unit)
-        val focusTargetBoundsProvider = { unitScreenBounds(unit) }
+        val focusTargetBoundsProvider = { unit.snapshot().focusTargetBounds(coordinateSpace, viewportProvider()) }
         val session = UnitEditSession(
             baselineSnapshot = unit.snapshot(),
             baselinePosition = position,
@@ -777,28 +777,6 @@ internal class MapPlacedUnitManager(
         val worldPoint = coordinateSpace.toWorld(unit.mapCoordinate)
         unit.view.x = worldPoint.x - unit.worldWidth * 0.5
         unit.view.y = worldPoint.y - unit.worldHeight * 0.5
-    }
-
-    private fun unitScreenBounds(unit: PlacedUnit): UiScreenBounds {
-        val viewport = viewportProvider()
-        return MapPlacedUnitScreenBounds
-            .boundsFor(
-                unit = MapPlacedUnitSnapshot(
-                    mapCoordinate = unit.mapCoordinate,
-                    normalizedWidth = unit.normalizedWidth,
-                    normalizedHeight = unit.normalizedHeight,
-                ),
-                viewport = viewport,
-                coordinateSpace = coordinateSpace,
-            )
-            .let { bounds ->
-                UiScreenBounds(
-                    left = bounds.left,
-                    top = bounds.top,
-                    width = bounds.width,
-                    height = bounds.height,
-                )
-            }
     }
 
     private fun syncEditDialog(unit: PlacedUnit) {

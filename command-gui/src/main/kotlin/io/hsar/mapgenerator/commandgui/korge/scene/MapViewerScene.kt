@@ -797,6 +797,8 @@ internal class MapViewerScene(
                             viewportHeight = gameWindow.height,
                             noteStore = noteStore,
                             dialogManager = dialogManager,
+                            viewportProvider = { currentViewport },
+                            coordinateSpace = coordinateSpace,
                             isReadOnly = { isReadOnly() },
                             objectSnapshot = objectController::snapshot,
                             onLedgerEntry = ::recordLedgerEntry,

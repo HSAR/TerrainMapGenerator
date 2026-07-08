@@ -1,9 +1,11 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNotePatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteStore
@@ -26,6 +28,8 @@ internal class MapViewerNotesPanel(
     viewportHeight: Int,
     private val noteStore: MapNoteStore,
     private val dialogManager: MapViewerDialogManager,
+    private val viewportProvider: () -> CameraViewport,
+    private val coordinateSpace: MapCoordinateSpace,
     private val isReadOnly: () -> Boolean,
     private val objectSnapshot: (MapPlacedObjectId) -> MapPlacedObjectSnapshot?,
     private val onLedgerEntry: (LedgerEntry) -> Unit,
@@ -196,6 +200,8 @@ internal class MapViewerNotesPanel(
             note = noteStore.snapshot(note.id) ?: note,
             readOnly = isReadOnly,
             objectSnapshot = objectSnapshot,
+            viewportProvider = viewportProvider,
+            coordinateSpace = coordinateSpace,
             onSaved = { before, after ->
                 noteStore.upsert(after)
                 MapNotePatch.diff(before, after)

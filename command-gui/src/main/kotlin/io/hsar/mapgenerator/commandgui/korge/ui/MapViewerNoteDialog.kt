@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNotePatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
@@ -20,6 +22,8 @@ internal class MapViewerNoteDialog(
     private val note: MapNoteSnapshot,
     private val readOnly: () -> Boolean,
     private val objectSnapshot: (MapPlacedObjectId) -> MapPlacedObjectSnapshot?,
+    private val viewportProvider: () -> CameraViewport,
+    private val coordinateSpace: MapCoordinateSpace,
     private val onSaved: (MapNoteSnapshot, MapNoteSnapshot) -> Unit,
     private val onDeleted: (MapNoteSnapshot) -> Unit,
     private val onClosed: (MapViewerNoteDialog) -> Unit = {},
@@ -42,6 +46,14 @@ internal class MapViewerNoteDialog(
             return false
         }
         val stage = root.stage ?: return false
+        val focusTargetBoundsProvider = {
+            referencedObjectFocusTargetBounds(
+                referencedObjectIds = referencedObjectIds,
+                objectSnapshot = objectSnapshot,
+                coordinateSpace = coordinateSpace,
+                viewport = viewportProvider(),
+            )
+        }
         window = MapViewerDialogWindow(
             root = root,
             title = "Note",
@@ -57,6 +69,7 @@ internal class MapViewerNoteDialog(
             ),
             onClose = ::close,
             renderContent = ::renderContent,
+            focusTargetBoundsProvider = focusTargetBoundsProvider,
             mode = MapViewerDialogMode.FLOATING,
         )
         dialogManager.register(
