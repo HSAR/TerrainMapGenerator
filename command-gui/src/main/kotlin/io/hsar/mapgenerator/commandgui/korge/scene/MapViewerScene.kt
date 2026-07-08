@@ -91,7 +91,10 @@ import korlibs.render.awt.AwtGameWindow
 import kotlinx.coroutines.runBlocking
 import org.apache.logging.log4j.LogManager
 import java.awt.Component
+import java.awt.Rectangle
+import java.awt.Robot
 import java.awt.Toolkit
+import java.awt.image.BufferedImage
 import java.nio.file.Path
 import java.time.Instant
 import java.util.*
@@ -260,6 +263,7 @@ internal class MapViewerScene(
                         val coordinateSpace = MapCoordinateSpace(renderedMap.geometry, renderedMap.bitmap.width, renderedMap.bitmap.height)
                         var objectMovePreview: io.hsar.mapgenerator.commandgui.korge.interaction.MapObjectMovePreview? = null
                         var saveNoticeMessage: String? = null
+                        var escapeMenuThumbnailImage: BufferedImage? = null
                         val referencedNotesForObject: (MapPlacedObjectId) -> List<MapNoteSnapshot> = { objectId ->
                             noteStore.snapshotsReferencing(objectId)
                         }
@@ -335,9 +339,27 @@ internal class MapViewerScene(
                             saveNoticeLayer.xy(16.0, gameWindow.height - (noticeBounds.height + 16) - 16.0)
                         }
 
+                        fun captureWindowThumbnail(): BufferedImage? =
+                            (gameWindow as? AwtGameWindow)?.frame
+                                ?.takeIf { it.isShowing }
+                                ?.let { frame ->
+                                    runCatching {
+                                        val contentPane = frame.contentPane
+                                        val location = contentPane.locationOnScreen
+                                        val size = contentPane.size
+                                        if (size.width <= 0 || size.height <= 0) {
+                                            return@runCatching null
+                                        }
+                                        Robot().createScreenCapture(
+                                            Rectangle(location.x, location.y, size.width, size.height),
+                                        )
+                                    }.getOrNull()
+                                }
+
                         fun saveOperation(
                             noticePrefix: String = "Saved",
                             showNotice: Boolean = true,
+                            thumbnailImage: BufferedImage? = null,
                             onComplete: (Boolean) -> Unit = {},
                         ): Boolean {
                             if (saveInProgress) {
@@ -356,7 +378,7 @@ internal class MapViewerScene(
                                 camera = saveViewport,
                                 settings = settings,
                                 mapImage = renderData.baseImage,
-                                thumbnailImage = null,
+                                thumbnailImage = thumbnailImage,
                                 mapAssetSource = operationMapImage?.assetSource ?: loadedOperation?.mapAssetSource,
                                 ledgerEntries = actionHistory.fullTimelineEntries,
                                 generatedImageAssets = generatedImageAssets.values.toList(),
@@ -365,14 +387,20 @@ internal class MapViewerScene(
                             thread(name = "command-gui-save", isDaemon = true) {
                                 val startedAt = System.nanoTime()
                                 runCatching {
-                                    val thumbnailImage = thumbnailRenderer.renderOperationThumbnail(
-                                        mapImage = renderData.baseImage,
-                                        geometry = renderedMap.geometry,
-                                        viewport = saveViewport,
-                                        gridLayer = renderData.gridLayer,
-                                        snapshots = snapshots,
+                                    saveWriter.write(
+                                        request.copy(
+                                            thumbnailImage = request.thumbnailImage
+                                                ?: escapeMenuThumbnailImage
+                                                ?: captureWindowThumbnail()
+                                                ?: thumbnailRenderer.renderOperationThumbnail(
+                                                    mapImage = renderData.baseImage,
+                                                    geometry = renderedMap.geometry,
+                                                    viewport = saveViewport,
+                                                    gridLayer = renderData.gridLayer,
+                                                    snapshots = snapshots,
+                                                ),
+                                        ),
                                     )
-                                    saveWriter.write(request.copy(thumbnailImage = thumbnailImage))
                                 }.onSuccess { target ->
                                     val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
                                     logger.info("Operation save took {}ms for {}", elapsedMs, target.fileName)
@@ -865,15 +893,33 @@ internal class MapViewerScene(
                             root = sceneLayers.ui,
                             viewportWidth = { gameWindow.width },
                             viewportHeight = { gameWindow.height },
+                            onOpen = { escapeMenuThumbnailImage = captureWindowThumbnail() },
+                            onClosed = { escapeMenuThumbnailImage = null },
                             onReturnToLaunchpad = {
-                                clearTransientInteractionState()
-                                escapeMenu?.close()
-                                saveOperation(showNotice = false) {
-                                    sceneLayers.destroy()
-                                    showLaunchpad()
+                                saveOperation(
+                                    showNotice = false,
+                                    thumbnailImage = escapeMenuThumbnailImage,
+                                ) { success ->
+                                    if (success) {
+                                        clearTransientInteractionState()
+                                        escapeMenu?.close()
+                                        sceneLayers.destroy()
+                                        showLaunchpad()
+                                    }
                                 }
                             },
-                            onExitProgram = exitProgram,
+                            onExitProgram = {
+                                saveOperation(
+                                    showNotice = false,
+                                    thumbnailImage = escapeMenuThumbnailImage,
+                                ) { success ->
+                                    if (success) {
+                                        clearTransientInteractionState()
+                                        escapeMenu?.close()
+                                        exitProgram()
+                                    }
+                                }
+                            },
                         )
 
                         val startupLedgerEntries = loadedOperation?.ledgerEntries ?: initialLedgerEntries

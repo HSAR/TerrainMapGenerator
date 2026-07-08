@@ -97,6 +97,7 @@ internal class LedgerEntrySaveMapper(
                 instanceName = instanceName,
                 destroyed = destroyed,
                 facingDegrees = facingDegrees,
+                affiliation = template.affiliation,
                 mapCoordinate = mapCoordinate.toDto(),
                 normalizedWidth = normalizedWidth,
                 normalizedHeight = normalizedHeight,

@@ -526,8 +526,6 @@ internal class MapPlacedUnitManager(
             },
             onSave = save@{ newName, newPositionX, newPositionY, newDestroyed, newFacingText, newAffiliation, customProperties ->
                 val nameChanged = newName != session.baselineSnapshot.instanceName
-                val positionChanged = newPositionX.trim() != session.baselinePosition.easting.trim() ||
-                        newPositionY.trim() != session.baselinePosition.northing.trim()
                 val updatedCoordinate = UnitEditPositionResolver.resolve(
                     currentCoordinate = session.baselineSnapshot.mapCoordinate,
                     initialPositionX = session.baselinePosition.easting,
@@ -537,6 +535,7 @@ internal class MapPlacedUnitManager(
                 ) { easting, northing ->
                     referenceToMapCoordinate(easting, northing, viewportWidth, viewportHeight)
                 } ?: return@save false
+                val positionChanged = updatedCoordinate != session.baselineSnapshot.mapCoordinate
                 val parsedFacing = UnitFacingResolver.parseValid(newFacingText) ?: return@save false
                 val updatedFacing = parsedFacing.degrees
                 val destroyedChanged = newDestroyed != session.baselineSnapshot.destroyed

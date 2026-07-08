@@ -36,6 +36,7 @@ internal object MapPlacedObjectPatch {
         putIfChanged("instanceName", before.instanceName, after.instanceName)
         putIfChanged("destroyed", before.destroyed, after.destroyed)
         putIfChanged("facingDegrees", before.facingDegrees, after.facingDegrees)
+        putIfChanged("affiliation", before.template.affiliation, after.template.affiliation)
         putIfChanged("mapCoordinate", before.mapCoordinate, after.mapCoordinate)
         putIfChanged("normalizedWidth", before.normalizedWidth, after.normalizedWidth)
         putIfChanged("normalizedHeight", before.normalizedHeight, after.normalizedHeight)
@@ -84,6 +85,7 @@ internal object MapPlacedObjectPatch {
                 "instanceName" -> current.copy(instanceName = value.requireValue().asText())
                 "destroyed" -> current.copy(destroyed = value.requireValue().asBoolean())
                 "facingDegrees" -> current.copy(facingDegrees = value?.takeUnless { it.isNull }?.asInt())
+                "affiliation" -> current.copy(template = current.template.copy(affiliation = value?.takeUnless { it.isNull }?.let { UnitAffiliation.valueOf(it.asText()) }))
                 "unitTemplateId" -> current.copy(unitTemplateId = UnitTemplateId(UUID.fromString(value.requireValue().asText())))
                 "mapCoordinate" -> current.copy(mapCoordinate = fromNode(value.requireValue()))
                 "normalizedWidth" -> current.copy(normalizedWidth = value.requireValue().asDouble())
@@ -157,6 +159,7 @@ internal object MapPlacedObjectPatch {
         "instanceName",
         "destroyed",
         "facingDegrees",
+        "affiliation",
         "mapCoordinate",
         "normalizedWidth",
         "normalizedHeight",

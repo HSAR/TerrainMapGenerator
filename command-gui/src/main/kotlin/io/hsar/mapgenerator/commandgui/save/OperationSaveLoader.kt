@@ -300,7 +300,7 @@ private class RuntimeLedgerReplayer(
                 UnitSnapshot(
                     id = MapPlacedObjectId(id),
                     unitTemplateId = UnitTemplateId(unitTemplateId),
-                    template = template,
+                    template = template.copy(affiliation = affiliation),
                     instanceName = instanceName,
                     destroyed = destroyed,
                     facingDegrees = facingDegrees,

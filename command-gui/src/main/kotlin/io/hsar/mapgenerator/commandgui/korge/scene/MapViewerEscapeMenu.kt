@@ -15,6 +15,8 @@ internal class MapViewerEscapeMenu(
     private val root: Container,
     private val viewportWidth: () -> Int,
     private val viewportHeight: () -> Int,
+    private val onOpen: () -> Unit = {},
+    private val onClosed: () -> Unit = {},
     private val onReturnToLaunchpad: () -> Unit,
     private val onExitProgram: () -> Unit,
 ) {
@@ -29,14 +31,18 @@ internal class MapViewerEscapeMenu(
     }
 
     fun close() {
-        layer?.removeFromParent()
-        layer = null
+        if (layer != null) {
+            layer?.removeFromParent()
+            layer = null
+            onClosed()
+        }
     }
 
     fun blocks(point: Vector2D): Boolean =
         isOpen && layout.panelBounds.contains(point)
 
     private fun open() {
+        onOpen()
         layer = root.container().also { overlay ->
             overlay.zIndex = Z_INDEX
             overlay.mouseEnabled = true

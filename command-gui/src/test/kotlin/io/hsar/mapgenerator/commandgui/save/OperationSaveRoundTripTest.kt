@@ -339,6 +339,46 @@ class OperationSaveRoundTripTest {
     }
 
     @Test
+    fun `unit affiliation saves and loads through the save file`() {
+        val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000d5")
+        val template = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000033")),
+            name = "Recon",
+            bitmap = Bitmap32(4, 4) { _, _ -> RGBA(0, 255, 0, 255) },
+            affiliation = UnitAffiliation.Friend,
+        )
+        val unit = UnitSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000034")),
+            unitTemplateId = template.id,
+            template = template.copy(affiliation = UnitAffiliation.Hostile),
+            instanceName = "Recon 1",
+            destroyed = false,
+            facingDegrees = null,
+            mapCoordinate = MapCoordinate(0.25, 0.75),
+            normalizedWidth = 0.08,
+            normalizedHeight = 0.08,
+        )
+
+        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = operationId,
+                mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                ledgerEntries = listOf(
+                    CreateUnitTemplateAction(UnitTemplateSnapshot(template.id, template, 0)),
+                    CreateObjectAction(unit),
+                ),
+            ),
+            tempDir.resolve("unit-affiliation-save.oct.zip"),
+        )
+
+        val loaded = OperationSaveLoader().load(savePath)
+        val loadedUnit = loaded.ledgerEntries.filterIsInstance<CreateObjectAction>().single().snapshot as UnitSnapshot
+
+        assertThat(loadedUnit.template.affiliation, equalTo(UnitAffiliation.Hostile))
+    }
+
+    @Test
     fun `unknown non-string unit and unit template properties load as compact json strings`() {
         val unit = OperationSaveJson.objectMapper.readValue(
             """
@@ -348,6 +388,7 @@ class OperationSaveRoundTripTest {
               "instanceName": "Recon 1",
               "destroyed": false,
               "facingDegrees": null,
+              "affiliation": "Friend",
               "mapCoordinate": { "x": 0.25, "y": 0.75 },
               "normalizedWidth": 0.08,
               "normalizedHeight": 0.08,
@@ -373,6 +414,10 @@ class OperationSaveRoundTripTest {
             UnitTemplateSaveDto::class.java,
         )
 
+        assertThat(
+            unit.affiliation,
+            equalTo(UnitAffiliation.Friend),
+        )
         assertThat(
             unit.customProperties,
             equalTo(

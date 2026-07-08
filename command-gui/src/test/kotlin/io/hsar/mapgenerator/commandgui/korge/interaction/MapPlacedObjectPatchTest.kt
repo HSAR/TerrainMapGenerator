@@ -43,7 +43,12 @@ class MapPlacedObjectPatchTest {
         val before = UnitSnapshot(
             id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000003")),
             unitTemplateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
-            template = MapViewerUnitTemplate(UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")), "Unit", Bitmap32(4, 4)),
+            template = MapViewerUnitTemplate(
+                UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
+                "Unit",
+                Bitmap32(4, 4),
+                affiliation = UnitAffiliation.Friend,
+            ),
             instanceName = "Alpha 1",
             destroyed = false,
             facingDegrees = 270,
@@ -55,6 +60,32 @@ class MapPlacedObjectPatchTest {
 
         val patch = MapPlacedObjectPatch.diff(before, after)
 
+        assertThat(MapPlacedObjectPatch.apply(before, patch), equalTo(after))
+    }
+
+    @Test
+    fun `unit affiliation diff can be applied to recreate updated snapshot`() {
+        val before = UnitSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000013")),
+            unitTemplateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
+            template = MapViewerUnitTemplate(
+                UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
+                "Unit",
+                Bitmap32(4, 4),
+                affiliation = UnitAffiliation.Friend,
+            ),
+            instanceName = "Alpha 1",
+            destroyed = false,
+            facingDegrees = null,
+            mapCoordinate = MapCoordinate(0.2, 0.3),
+            normalizedWidth = 0.1,
+            normalizedHeight = 0.2,
+        )
+        val after = before.copy(template = before.template.copy(affiliation = UnitAffiliation.Hostile))
+
+        val patch = MapPlacedObjectPatch.diff(before, after)
+
+        assertThat(patch["affiliation"], equalTo(TextNode("Hostile")))
         assertThat(MapPlacedObjectPatch.apply(before, patch), equalTo(after))
     }
 
