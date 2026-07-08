@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test
 import java.awt.Color
 import java.util.*
 import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.sin
 
 class MapSelectionControllerTest {

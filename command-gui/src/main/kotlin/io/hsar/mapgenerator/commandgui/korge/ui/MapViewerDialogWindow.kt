@@ -35,6 +35,13 @@ internal class MapViewerDialogWindow(
     private val mode: MapViewerDialogMode = MapViewerDialogMode.FLOATING,
 ) {
     private val layer = root.container()
+    private val shadowLayer = layer.container().also {
+        it.zIndex = 0.0
+        it.mouseEnabled = false
+    }
+    private val panelLayer = layer.container().also {
+        it.zIndex = 1.0
+    }
     private var viewportWidth = 0
     private var viewportHeight = 0
     private var bounds: MapViewerDialogBounds? = null
@@ -115,9 +122,7 @@ internal class MapViewerDialogWindow(
             val leftHeld = layer.stage?.views?.input?.mouseButtonPressed(korlibs.event.MouseButton.LEFT) ?: false
             val focusTargetBounds = focusTargetBoundsProvider()
             if (focusTargetBounds != lastFocusTargetBounds) {
-                lastFocusTargetBounds = focusTargetBounds
-                render()
-                return@addUpdater
+                renderShadow(focusTargetBounds)
             }
 
             if (!leftHeld) {
@@ -136,7 +141,7 @@ internal class MapViewerDialogWindow(
                 return@addUpdater
             }
 
-            bounds = when (state) {
+            val nextBounds = when (state) {
                 is DialogDragState.Move -> state.original.movedTo(
                     left = state.original.left + pointer.x - state.startPointer.x,
                     top = state.original.top + pointer.y - state.startPointer.y,
@@ -147,11 +152,17 @@ internal class MapViewerDialogWindow(
                     height = state.original.height + pointer.y - state.startPointer.y,
                 ).let { with(MapViewerDialogLayoutBuilder) { it.resizedWithinViewport(viewportWidth, viewportHeight, minimumWidth()) } }
             }.let { with(MapViewerDialogLayoutBuilder) { it.clampedTo(viewportWidth, viewportHeight, minimumWidth()) } }
-            render()
+            when (state) {
+                is DialogDragState.Move -> moveTo(nextBounds, focusTargetBounds)
+                is DialogDragState.Resize -> {
+                    bounds = nextBounds
+                    render(focusTargetBounds)
+                }
+            }
         }
     }
 
-    private fun render() {
+    private fun render(focusTargetBounds: List<ScreenBounds> = focusTargetBoundsProvider()) {
         val currentBounds = bounds ?: return
         val minimumWidth = minimumWidth()
         val clampedBounds = currentBounds.let { current ->
@@ -159,7 +170,7 @@ internal class MapViewerDialogWindow(
         }
         if (clampedBounds != currentBounds) {
             bounds = clampedBounds
-            render()
+            render(focusTargetBounds)
             return
         }
         val layout = MapViewerDialogLayoutBuilder.build(currentBounds, actions.size)
@@ -172,23 +183,11 @@ internal class MapViewerDialogWindow(
             scrollDragState = null
         }
 
-        layer.removeChildren()
-        if (mode == MapViewerDialogMode.MODAL) {
-            layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 160))
-        }
+        panelLayer.removeChildren()
+        renderShadow(focusTargetBounds)
 
-        val focusTargetBounds = focusTargetBoundsProvider()
-        lastFocusTargetBounds = focusTargetBounds
-        focusShadowShape(currentBounds, focusTargetBounds)?.let { shape ->
-            layer.graphics {
-                fill(FOCUS_SHADOW_COLOR) {
-                    path(shape.toVectorPath())
-                }
-            }
-        }
-
-        val panel = layer.container()
-        panel.xy(currentBounds.left, currentBounds.top)
+        panelLayer.xy(currentBounds.left, currentBounds.top)
+        val panel = panelLayer.container()
         val clickCatcher = panel.solidRect(currentBounds.width, currentBounds.height, RGBA(0, 0, 0, 0))
         clickCatcher.mouse {
             onClick {
@@ -226,6 +225,16 @@ internal class MapViewerDialogWindow(
         }
     }
 
+    internal fun moveTo(bounds: MapViewerDialogBounds, focusTargetBounds: List<ScreenBounds> = focusTargetBoundsProvider()) {
+        if (!isOpen) {
+            return
+        }
+
+        this.bounds = bounds
+        panelLayer.xy(bounds.left, bounds.top)
+        renderShadow(focusTargetBounds)
+    }
+
     private fun beginDrag(mode: DialogDragMode) {
         val pointer = layer.stage?.views?.input?.mousePos ?: return
         val currentBounds = bounds ?: return
@@ -258,6 +267,22 @@ internal class MapViewerDialogWindow(
             ),
         )
         render()
+    }
+
+    private fun renderShadow(focusTargetBounds: List<ScreenBounds>) {
+        val currentBounds = bounds ?: return
+        lastFocusTargetBounds = focusTargetBounds
+        shadowLayer.removeChildren()
+        if (mode == MapViewerDialogMode.MODAL) {
+            shadowLayer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 160))
+        }
+        focusShadowShape(currentBounds, focusTargetBounds)?.let { shape ->
+            shadowLayer.graphics {
+                fill(FOCUS_SHADOW_COLOR) {
+                    path(shape.toVectorPath())
+                }
+            }
+        }
     }
 
     private fun MapViewerDialogBounds.contains(point: Vector2D): Boolean =

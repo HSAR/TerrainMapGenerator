@@ -75,6 +75,38 @@ class MapViewerDialogWindowTest {
     }
 
     @Test
+    fun `moving a dialog does not rebuild its content tree`() {
+        val root = Container()
+        var renderCount = 0
+        val window = MapViewerDialogWindow(
+            root = root,
+            title = "Test",
+            focusTargetBoundsProvider = { emptyList() },
+            preferredWidth = 400.0,
+            preferredHeight = 300.0,
+            contentHeight = { 0.0 },
+            actions = emptyList(),
+            onClose = {},
+            renderContent = { _, _ -> renderCount++ },
+            mode = MapViewerDialogMode.FLOATING,
+        )
+
+        window.show(800, 600)
+        window.moveTo(
+            bounds = MapViewerDialogBounds(
+                left = 120.0,
+                top = 140.0,
+                width = 400.0,
+                height = 300.0,
+            ),
+            focusTargetBounds = emptyList(),
+        )
+
+        assertThat(renderCount, equalTo(1))
+        assertThat(window.blocksScreenPoint(Vector2D(140.0, 160.0)), equalTo(true))
+    }
+
+    @Test
     fun `tabbed title minimum width uses fixed equal tab widths`() {
         val tabWidth = MapViewerDialogTitleTabLayoutBuilder.tabWidth(listOf("Turns", "Much Longer Settings"))
         val minimumWidth = MapViewerDialogTitleTabLayoutBuilder.minimumShellWidth(listOf("Turns", "Much Longer Settings"))
