@@ -27,6 +27,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteStore
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapObjectController
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectPatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelectionResolver
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedUnitManager
@@ -57,6 +58,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerNotesPanel
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSidebar
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerToolbar
+import io.hsar.mapgenerator.commandgui.korge.ui.noteReferenceContextMenuActions
 import io.hsar.mapgenerator.commandgui.save.GeneratedImageAsset
 import io.hsar.mapgenerator.commandgui.save.LoadedOperation
 import io.hsar.mapgenerator.commandgui.save.MapThumbnailRenderer
@@ -258,6 +260,12 @@ internal class MapViewerScene(
                         val coordinateSpace = MapCoordinateSpace(renderedMap.geometry, renderedMap.bitmap.width, renderedMap.bitmap.height)
                         var objectMovePreview: io.hsar.mapgenerator.commandgui.korge.interaction.MapObjectMovePreview? = null
                         var saveNoticeMessage: String? = null
+                        val referencedNotesForObject: (MapPlacedObjectId) -> List<MapNoteSnapshot> = { objectId ->
+                            noteStore.snapshotsReferencing(objectId)
+                        }
+                        val openNoteFromContextMenu: (MapNoteId) -> Boolean = { noteId ->
+                            notesPanel?.openNote(noteId) == true
+                        }
                         var saveNoticeExpiresAtMs = 0L
                         var readOnlyBannerLayer: Container? = null
                         var turnMode: TurnPanelMode = TurnPanelMode.Edit
@@ -514,6 +522,12 @@ internal class MapViewerScene(
                             initialUnitIconSizePx = unitIconSizePx,
                             canInteractWithUnits = { effectiveTool() == MapViewerTool.SELECT },
                             isHigherPriorityDragInProgress = { drawingManager.isDragging },
+                            noteReferenceMenuActionsProvider = { snapshot ->
+                                noteReferenceContextMenuActions(
+                                    referencedNotes = referencedNotesForObject(snapshot.id),
+                                    openNote = { noteId -> deferredContextMenuActions.launch { openNoteFromContextMenu(noteId) } },
+                                )
+                            },
                             onMovePreviewChanged = { preview ->
                                 objectMovePreview = preview
                             },
@@ -554,6 +568,12 @@ internal class MapViewerScene(
                             },
                             isHigherPriorityDragInProgress = { unitManager.isDragging },
                             canInteractWithDrawings = { effectiveTool() == MapViewerTool.SELECT },
+                            noteReferenceMenuActionsProvider = { snapshot ->
+                                noteReferenceContextMenuActions(
+                                    referencedNotes = referencedNotesForObject(snapshot.id),
+                                    openNote = { noteId -> deferredContextMenuActions.launch { openNoteFromContextMenu(noteId) } },
+                                )
+                            },
                             onDrawingsChanged = { state ->
                                 drawingView.update(state, currentViewport.zoom)
                             },

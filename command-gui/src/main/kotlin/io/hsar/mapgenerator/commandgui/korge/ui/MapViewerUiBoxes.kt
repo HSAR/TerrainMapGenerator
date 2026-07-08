@@ -4,10 +4,14 @@ import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import korlibs.korge.view.Container
+import korlibs.korge.view.Graphics
 import korlibs.korge.view.container
+import korlibs.korge.view.graphics
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Rectangle
+import korlibs.math.geom.vector.LineJoin
+import korlibs.math.geom.vector.VectorPath
 import java.awt.Color
 import java.util.*
 
@@ -72,6 +76,26 @@ internal object MapViewerUiBoxes {
                         y = border.y
                     }
                 }
+            }
+        }
+
+    fun shapePanel(
+        parent: Container,
+        shape: VectorPath,
+        fillColor: Color = Palette.Colours.DARK,
+        fillAlpha: Int = MapViewerUiStateStyle.ACTIVE_ALPHA,
+        borderColor: Color = Palette.Colours.WHITE,
+        borderAlpha: Int = MapViewerUiStateStyle.ACTIVE_ALPHA,
+        borderWidth: Double = BORDER_INSET,
+    ): Graphics =
+        parent.graphics {
+            fill(toRgba(fillColor, fillAlpha)) {
+                path(shape)
+            }
+            lineJoin = LineJoin.MITER
+            lineWidth = borderWidth
+            stroke(toRgba(borderColor, borderAlpha)) {
+                path(shape)
             }
         }
 

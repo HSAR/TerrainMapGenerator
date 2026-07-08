@@ -6,6 +6,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNotePatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteStore
@@ -68,6 +69,9 @@ internal class MapViewerNotesPanel(
 
     fun addDroppedReferences(point: Vector2D, objectIds: Set<MapPlacedObjectId>): Boolean =
         noteDialogs.any { dialog -> dialog.addReferencesAt(point, objectIds) }
+
+    fun openNote(noteId: MapNoteId): Boolean =
+        noteStore.snapshot(noteId)?.let { openNote(it) } ?: false
 
     private fun relayout(viewportWidth: Int, viewportHeight: Int) {
         layout = MapViewerNotesPanelLayoutBuilder.build(viewportWidth, viewportHeight, collapsed = true)
@@ -193,7 +197,7 @@ internal class MapViewerNotesPanel(
         }
     }
 
-    private fun openNote(note: MapNoteSnapshot) {
+    private fun openNote(note: MapNoteSnapshot): Boolean {
         MapViewerNoteDialog(
             root = overlay,
             dialogManager = dialogManager,
@@ -218,8 +222,10 @@ internal class MapViewerNotesPanel(
         ).also { dialog ->
             if (dialog.open()) {
                 noteDialogs += dialog
+                return true
             }
         }
+        return false
     }
 
     private fun contentHeight(width: Double): Double =

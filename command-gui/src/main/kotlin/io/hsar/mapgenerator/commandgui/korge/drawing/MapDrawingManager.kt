@@ -6,6 +6,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.ContextMenuManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateDelta
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectMenuAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelection
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelectionKind
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
@@ -27,6 +28,7 @@ internal class MapDrawingManager(
     private val isHigherPriorityDragCandidateUnderPointer: (Vector2D) -> Boolean = { false },
     private val isHigherPriorityDragInProgress: () -> Boolean = { false },
     private val canInteractWithDrawings: () -> Boolean = { true },
+    private val noteReferenceMenuActionsProvider: (MapPlacedObjectSnapshot) -> List<MapPlacedObjectMenuAction> = { emptyList() },
     private val onDrawingsChanged: (MapDrawingState) -> Unit = {},
     private val onObjectMoved: (MapPlacedObjectSnapshot, MapPlacedObjectSnapshot) -> Unit = { _, _ -> },
     private val onObjectDeleted: (MapPlacedObjectSnapshot) -> Unit = {},
@@ -127,7 +129,7 @@ internal class MapDrawingManager(
                     label = "Delete",
                     onSelected = { onObjectDeleted(drawing.snapshot()) },
                 ),
-            ),
+            ) + noteReferenceMenuActionsProvider(drawing.snapshot()),
             onActionSelected = { onDrawingsChanged(drawingStore.state) },
         )
         return true

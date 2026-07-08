@@ -44,6 +44,7 @@ internal class MapPlacedUnitManager(
     initialUnitIconSizePx: Double = UnitIconDisplaySize.DEFAULT_PX,
     private val canInteractWithUnits: () -> Boolean = { true },
     private val isHigherPriorityDragInProgress: () -> Boolean = { false },
+    private val noteReferenceMenuActionsProvider: (MapPlacedObjectSnapshot) -> List<MapPlacedObjectMenuAction> = { emptyList() },
     private val onMovePreviewChanged: (MapObjectMovePreview?) -> Unit = {},
     private val onObjectMoved: (MapPlacedObjectSnapshot, MapPlacedObjectSnapshot) -> Unit = { _, _ -> },
     private val onObjectDeleted: (MapPlacedObjectSnapshot) -> Unit = {},
@@ -429,7 +430,11 @@ internal class MapPlacedUnitManager(
         if (!interactionsEnabled()) {
             return
         }
-        contextMenuManager.open(unit, screenPoint)
+        contextMenuManager.open(
+            target = unit,
+            screenPoint = screenPoint,
+            actions = unit.contextMenuActions() + noteReferenceMenuActionsProvider(unit.snapshot()),
+        )
     }
 
     private fun openEditDialog(unit: PlacedUnit) {

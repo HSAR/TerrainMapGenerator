@@ -7,7 +7,6 @@
 - Unit types additional semantic properties
     - Move limits
 - Dialogs minimise, which remembers their position and size and adds them to a taskbar at top of screen
-- Right click context menu has "Add to note" option and "See notes" submenu
 - Optional Olympiad Dawn game logic for friendly and enemy detection narration
 
 ## Bugs

@@ -102,6 +102,9 @@ internal class MapNoteStore(
     fun snapshots(): List<MapNoteSnapshot> =
         notes.toList()
 
+    fun snapshotsReferencing(objectId: MapPlacedObjectId): List<MapNoteSnapshot> =
+        notes.filter { objectId in it.referencedObjectIds }
+
     private companion object {
         const val DEFAULT_TITLE = "Untitled Note"
     }

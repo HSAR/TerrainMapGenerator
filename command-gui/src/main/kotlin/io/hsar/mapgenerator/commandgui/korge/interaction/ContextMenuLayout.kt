@@ -1,0 +1,18 @@
+package io.hsar.mapgenerator.commandgui.korge.interaction
+
+internal object ContextMenuLayout {
+    const val ACTION_HEIGHT = 44.0
+    const val PADDING = 4.0
+    const val MIN_MENU_WIDTH = 180.0
+    const val LABEL_LEFT_PADDING = 12.0
+    const val SUBMENU_ARROW_WIDTH = 22.0
+    const val BORDER_WIDTH = 2.0
+    const val SUBMENU_HOVER_PADDING = 8.0
+    const val SUBMENU_CLOSE_DELAY_MS = 180L
+
+    fun menuHeight(actionCount: Int): Double =
+        (actionCount * ACTION_HEIGHT) + PADDING * 2
+
+    fun optionTop(index: Int): Double =
+        PADDING + (index * ACTION_HEIGHT)
+}
