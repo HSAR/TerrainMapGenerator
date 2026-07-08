@@ -22,6 +22,8 @@ This repo contains a Kotlin-based program built using multiple Maven modules.
 
 - Run `mvn test` in the most specific module possible, ideally specifying single files of concern.
     - As far as you are aware, when changing code in an underlying layer check the tests of dependent modules in case signature changes cause breakage.
+  - In PowerShell, always quote Maven selector arguments that contain commas, such as `"-Dtest=MapViewerDialogWindowTest,MapViewerDialogLayoutBuilderTest"`, so PowerShell does not
+    split or misparse them.
 - Fix any failing tests.
 - Add or update tests for any code changed even if not specifically asked to, using an arrange/act/assert style of test writing.
 

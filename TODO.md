@@ -17,4 +17,3 @@
 
 - `java.lang.IllegalStateException: Epsilon X square index 100 is outside supported designators.`
     - Input boxes should clamp to min/max permitted values when user input would violate them.
-- Perf pass, moving dialogs around should not be so impactful
