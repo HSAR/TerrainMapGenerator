@@ -4,6 +4,7 @@ import io.hsar.mapgenerator.commandgui.ViewerGeometry
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
+import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
@@ -15,6 +16,8 @@ import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import java.awt.Color
 import java.util.*
+import kotlin.math.PI
+import kotlin.math.sin
 
 class MapSelectionControllerTest {
     @Test
@@ -229,6 +232,42 @@ class MapSelectionControllerTest {
         assertThat((resizedDrawing.drawing as LineDrawing).start == (drawing.drawing as LineDrawing).start, equalTo(false))
     }
 
+    @Test
+    fun `shift rotate snaps to the nearest quarter turn`() {
+        val objectController = objectController()
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000086")),
+            drawing = RectangleDrawing(
+                start = MapDrawingPoint(0.4, 0.45),
+                end = MapDrawingPoint(0.6, 0.55),
+                color = Color.RED,
+                rotationDegrees = 10.0,
+            ),
+        )
+        objectController.createObject(drawing)
+        val selectionController = selectionController(objectController = objectController)
+        selectionController.selectOnly(drawing.id)
+
+        val handle = pivotHandleForSelection(listOf(drawing), MapCoordinateSpace(GEOMETRY, 1000, 1000), viewport()) ?: error("missing handle")
+        val pivot = MapSelectionPivot.pivotCenter(listOf(drawing), MapCoordinateSpace(GEOMETRY, 1000, 1000))
+        val startAngle = MapSelectionPivot.bearingAngle(
+            Vector2D(pivot.x * 1000.0, pivot.y * 1000.0),
+            handle.center,
+        )
+        val target = pointFromBearingAngle(
+            center = Vector2D(pivot.x * 1000.0, pivot.y * 1000.0),
+            radius = handle.radius,
+            bearingRadians = startAngle + (PI / 4.0),
+        )
+
+        selectionController.beginLeftDrag(handle.center, shiftHeld = true)
+        selectionController.update(target, leftHeld = true, shiftHeld = true)
+
+        val rotated = objectController.snapshot(drawing.id) as DrawingSnapshot
+        val snappedDegrees = (rotated.drawing as RectangleDrawing).rotationDegrees
+        assertThat(snappedDegrees, equalTo(45.0))
+    }
+
     private fun selectionController(
         objectController: MapObjectController,
         objectAt: (Vector2D) -> MapPlacedObjectSelection? = { null },
@@ -291,6 +330,12 @@ class MapSelectionControllerTest {
         assertThat(point.x, closeTo(x, 0.0001))
         assertThat(point.y, closeTo(y, 0.0001))
     }
+
+    private fun pointFromBearingAngle(center: Vector2D, radius: Double, bearingRadians: Double): Vector2D =
+        Vector2D(
+            x = center.x + sin(bearingRadians) * radius,
+            y = center.y - cos(bearingRadians) * radius,
+        )
 
     private companion object {
         val GEOMETRY = ViewerGeometry(

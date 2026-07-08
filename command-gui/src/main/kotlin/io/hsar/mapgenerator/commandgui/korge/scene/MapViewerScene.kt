@@ -972,7 +972,7 @@ internal class MapViewerScene(
                                 ) {
                                     selectionController.cancelTransientState()
                                 } else {
-                                    selectionController.update(pointer, leftHeld)
+                                    selectionController.update(pointer, leftHeld, shiftHeld = input.keys[Key.SHIFT])
                                 }
                             }
 

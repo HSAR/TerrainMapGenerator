@@ -104,9 +104,9 @@ internal class MapSelectionController(
         }
     }
 
-    fun update(pointer: Vector2D, leftHeld: Boolean) {
+    fun update(pointer: Vector2D, leftHeld: Boolean, shiftHeld: Boolean = false) {
         resizeState?.let { updateResize(it, pointer, leftHeld) }
-        pivotState?.let { updatePivot(it, pointer, leftHeld) }
+        pivotState?.let { updatePivot(it, pointer, leftHeld, shiftHeld) }
         moveState?.let { updateGroupMove(it, pointer, leftHeld) }
         boxState?.let { updateBoxSelection(it, pointer, leftHeld) }
     }
@@ -158,7 +158,7 @@ internal class MapSelectionController(
         )
         boxState = null
         moveState = null
-        applyPivot(pivotState ?: return false, 0.0)
+        applyPivot(pivotState ?: return false, 0.0, shiftHeld = false)
         publish()
         return true
     }
@@ -237,7 +237,7 @@ internal class MapSelectionController(
         publish()
     }
 
-    private fun updatePivot(state: PivotState, pointer: Vector2D, leftHeld: Boolean) {
+    private fun updatePivot(state: PivotState, pointer: Vector2D, leftHeld: Boolean, shiftHeld: Boolean) {
         if (!leftHeld) {
             commitPivot(state)
             pivotState = null
@@ -250,7 +250,7 @@ internal class MapSelectionController(
             coordinateSpace.screenToWorld(pointer, viewportProvider()),
         )
         state.deltaRadians = currentAngle - state.startAngle
-        applyPivot(state, state.deltaRadians)
+        applyPivot(state, state.deltaRadians, shiftHeld)
         publish()
     }
 
@@ -266,12 +266,13 @@ internal class MapSelectionController(
         publish()
     }
 
-    private fun applyPivot(state: PivotState, deltaRadians: Double) {
+    private fun applyPivot(state: PivotState, deltaRadians: Double, shiftHeld: Boolean) {
         MapSelectionPivot.rotateSnapshots(
             originalSnapshots = state.originalSnapshots,
             pivotCenterWorld = state.pivotCenterWorld,
             deltaRadians = deltaRadians,
             coordinateSpace = coordinateSpace,
+            shiftHeld = shiftHeld,
         )
             .filterIsInstance<DrawingSnapshot>()
             .forEach(objectController::updateObject)

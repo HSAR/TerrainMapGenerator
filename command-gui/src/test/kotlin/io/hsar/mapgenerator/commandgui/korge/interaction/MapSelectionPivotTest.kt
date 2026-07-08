@@ -82,6 +82,29 @@ class MapSelectionPivotTest {
     }
 
     @Test
+    fun `shifted rotation snaps the absolute rotation to the nearest quarter turn`() {
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000006")),
+            drawing = RectangleDrawing(
+                start = MapDrawingPoint(0.4, 0.45),
+                end = MapDrawingPoint(0.6, 0.55),
+                color = java.awt.Color.RED,
+                rotationDegrees = 10.0,
+            ),
+        )
+
+        val updated = MapSelectionPivot.rotateSnapshots(
+            originalSnapshots = listOf(drawing),
+            pivotCenterWorld = coordinateSpace.toWorld(MapCoordinate(0.5, 0.5)),
+            deltaRadians = PI / 4.0,
+            coordinateSpace = coordinateSpace,
+            shiftHeld = true,
+        ).single() as DrawingSnapshot
+
+        assertThat((updated.drawing as RectangleDrawing).rotationDegrees, equalTo(45.0))
+    }
+
+    @Test
     fun `freeform drawings rotate around the shared pivot center`() {
         val drawing = DrawingSnapshot(
             id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000004")),

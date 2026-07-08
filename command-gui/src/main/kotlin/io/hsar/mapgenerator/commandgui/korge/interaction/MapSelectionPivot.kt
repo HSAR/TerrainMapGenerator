@@ -33,11 +33,12 @@ internal object MapSelectionPivot {
         pivotCenterWorld: Vector2D,
         deltaRadians: Double,
         coordinateSpace: MapCoordinateSpace,
+        shiftHeld: Boolean = false,
     ): List<MapPlacedObjectSnapshot> =
         originalSnapshots.map { original ->
             when (original) {
-                is UnitSnapshot -> original.rotateUnit(pivotCenterWorld, deltaRadians, coordinateSpace)
-                is DrawingSnapshot -> original.rotateDrawing(pivotCenterWorld, deltaRadians, coordinateSpace)
+                is UnitSnapshot -> original.rotateUnit(pivotCenterWorld, deltaRadians, coordinateSpace, shiftHeld)
+                is DrawingSnapshot -> original.rotateDrawing(pivotCenterWorld, deltaRadians, coordinateSpace, shiftHeld)
             }
         }
 
@@ -45,10 +46,15 @@ internal object MapSelectionPivot {
         pivotCenterWorld: Vector2D,
         deltaRadians: Double,
         coordinateSpace: MapCoordinateSpace,
+        shiftHeld: Boolean,
     ): UnitSnapshot {
-        val deltaDegrees = Math.toDegrees(deltaRadians).roundToInt()
+        val totalDegrees = (facingDegrees ?: 0) + Math.toDegrees(deltaRadians)
         return copy(
-            facingDegrees = normalizeDegrees((facingDegrees ?: 0) + deltaDegrees),
+            facingDegrees = if (shiftHeld) {
+                snapDegrees(totalDegrees)
+            } else {
+                normalizeDegrees(totalDegrees.roundToInt())
+            },
             mapCoordinate = coordinateSpace.toMapCoordinate(
                 rotateWorldPoint(
                     world = coordinateSpace.toWorld(mapCoordinate),
@@ -63,12 +69,14 @@ internal object MapSelectionPivot {
         pivotCenterWorld: Vector2D,
         deltaRadians: Double,
         coordinateSpace: MapCoordinateSpace,
+        shiftHeld: Boolean,
     ): DrawingSnapshot =
         copy(
             drawing = drawing.rotate(
                 pivotCenterWorld = pivotCenterWorld,
                 deltaRadians = deltaRadians,
                 coordinateSpace = coordinateSpace,
+                shiftHeld = shiftHeld,
             ),
         )
 
@@ -76,6 +84,7 @@ internal object MapSelectionPivot {
         pivotCenterWorld: Vector2D,
         deltaRadians: Double,
         coordinateSpace: MapCoordinateSpace,
+        shiftHeld: Boolean,
     ): MapDrawing =
         when (this) {
             is FreeformDrawing -> copy(points = points.map { it.rotate(pivotCenterWorld, deltaRadians, coordinateSpace) })
@@ -90,18 +99,24 @@ internal object MapSelectionPivot {
                 copy(
                     start = start.translate(originalCenter, rotatedCenter),
                     end = end.translate(originalCenter, rotatedCenter),
-                    rotationDegrees = rotatedDegrees(rotationDegrees, deltaRadians),
+                    rotationDegrees = rotatedDegrees(rotationDegrees, deltaRadians, shiftHeld),
                 )
             }
 
             is OvalDrawing -> copy(
                 center = center.rotate(pivotCenterWorld, deltaRadians, coordinateSpace),
-                rotationDegrees = rotatedDegrees(rotationDegrees, deltaRadians),
+                rotationDegrees = rotatedDegrees(rotationDegrees, deltaRadians, shiftHeld),
             )
         }
 
-    private fun rotatedDegrees(rotationDegrees: Double, deltaRadians: Double): Double =
-        normalizeDegrees((rotationDegrees + Math.toDegrees(deltaRadians)).roundToInt()).toDouble()
+    private fun rotatedDegrees(rotationDegrees: Double, deltaRadians: Double, shiftHeld: Boolean): Double {
+        val totalDegrees = rotationDegrees + Math.toDegrees(deltaRadians)
+        return if (shiftHeld) {
+            snapDegrees(totalDegrees).toDouble()
+        } else {
+            normalizeDegrees(totalDegrees.roundToInt()).toDouble()
+        }
+    }
 
     private fun MapDrawingPoint.translate(fromCenter: MapDrawingPoint, toCenter: MapDrawingPoint): MapDrawingPoint =
         MapDrawingPoint(
@@ -140,5 +155,9 @@ internal object MapSelectionPivot {
     private fun normalizeDegrees(degrees: Int): Int =
         ((degrees % FULL_CIRCLE_DEGREES) + FULL_CIRCLE_DEGREES) % FULL_CIRCLE_DEGREES
 
+    private fun snapDegrees(degrees: Double): Int =
+        normalizeDegrees((degrees / QUARTER_TURN_DEGREES).roundToInt() * QUARTER_TURN_DEGREES)
+
     private const val FULL_CIRCLE_DEGREES = 360
+    private const val QUARTER_TURN_DEGREES = 45
 }
