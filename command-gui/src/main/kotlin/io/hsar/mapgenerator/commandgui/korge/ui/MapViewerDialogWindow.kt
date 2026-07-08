@@ -88,7 +88,11 @@ internal class MapViewerDialogWindow(
     }
 
     fun blocksScreenPoint(point: Vector2D): Boolean =
-        isOpen && (mode == MapViewerDialogMode.MODAL || bounds?.contains(point) == true)
+        isOpen && (
+                mode == MapViewerDialogMode.MODAL ||
+                        bounds?.contains(point) == true ||
+                        resizeHandleBounds()?.contains(point) == true
+                )
 
     val isModal: Boolean
         get() = mode == MapViewerDialogMode.MODAL
@@ -283,6 +287,14 @@ internal class MapViewerDialogWindow(
                 }
             }
         }
+    }
+
+    private fun resizeHandleBounds(): ScreenBounds? {
+        val currentBounds = bounds ?: return null
+        return MapViewerDialogLayoutBuilder
+            .build(currentBounds, actions.size)
+            .resizeHandle
+            .offsetBy(currentBounds.left, currentBounds.top)
     }
 
     private fun MapViewerDialogBounds.contains(point: Vector2D): Boolean =

@@ -75,6 +75,28 @@ class MapViewerDialogWindowTest {
     }
 
     @Test
+    fun `resize handle blocks points just outside the dialog body`() {
+        val root = Container()
+        val window = MapViewerDialogWindow(
+            root = root,
+            title = "Test",
+            focusTargetBoundsProvider = { emptyList() },
+            preferredWidth = 400.0,
+            preferredHeight = 300.0,
+            contentHeight = { 0.0 },
+            actions = emptyList(),
+            onClose = {},
+            renderContent = { _, _ -> },
+            mode = MapViewerDialogMode.FLOATING,
+        )
+
+        window.show(800, 600)
+
+        assertThat(window.blocksScreenPoint(Vector2D(602.0, 440.0)), equalTo(true))
+        assertThat(window.blocksScreenPoint(Vector2D(610.0, 460.0)), equalTo(false))
+    }
+
+    @Test
     fun `moving a dialog does not rebuild its content tree`() {
         val root = Container()
         var renderCount = 0

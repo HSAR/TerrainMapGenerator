@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.SELECTION_FRAME_SCREEN_PADDING
 import korlibs.math.geom.Vector2D
 
 internal data class MapViewerDialogSize(
@@ -170,8 +171,8 @@ internal object MapViewerDialogLayoutBuilder {
                 null
             },
             resizeHandle = ScreenBounds(
-                left = bounds.width - RESIZE_HANDLE_SIZE,
-                top = bounds.height - RESIZE_HANDLE_SIZE,
+                left = bounds.width - RESIZE_HANDLE_SIZE + SELECTION_FRAME_SCREEN_PADDING,
+                top = bounds.height - RESIZE_HANDLE_SIZE + SELECTION_FRAME_SCREEN_PADDING,
                 width = RESIZE_HANDLE_SIZE,
                 height = RESIZE_HANDLE_SIZE,
             ),

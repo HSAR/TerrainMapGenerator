@@ -150,4 +150,14 @@ class MapViewerDialogLayoutBuilderTest {
 
         assertThat(layout.footer?.layout, equalTo(MapViewerDialogFooterLayout.COLUMN))
     }
+
+    @Test
+    fun `resize handle sits outside the dialog corner`() {
+        val layout = MapViewerDialogLayoutBuilder.build(MapViewerDialogBounds(10.0, 20.0, 460.0, 540.0))
+
+        assertThat(layout.resizeHandle.left, equalTo(440.0))
+        assertThat(layout.resizeHandle.top, equalTo(520.0))
+        assertThat(layout.resizeHandle.width, equalTo(MapViewerDialogLayoutBuilder.RESIZE_HANDLE_SIZE))
+        assertThat(layout.resizeHandle.height, equalTo(MapViewerDialogLayoutBuilder.RESIZE_HANDLE_SIZE))
+    }
 }
