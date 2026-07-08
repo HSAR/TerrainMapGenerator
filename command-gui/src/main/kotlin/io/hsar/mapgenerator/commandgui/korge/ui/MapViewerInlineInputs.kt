@@ -130,6 +130,51 @@ internal object MapViewerInlineInputs {
     private const val LABEL_TO_INPUT_GAP = 12.0
 
     internal class Block internal constructor(private val inputLeft: Double) {
+        fun <T> controlWithoutLabel(
+            parent: Container,
+            x: Double,
+            y: Double,
+            width: Double,
+            inputMinimumWidth: Double,
+            height: Double = MapViewerDialogSpacing.INPUT_HEIGHT,
+            renderInput: (Container, Double) -> T,
+        ): T {
+            val inputWidth = width.coerceAtLeast(inputMinimumWidth)
+            return parent.container().let { input ->
+                input.xy(x, y)
+                renderInput(input, inputWidth)
+            }
+        }
+
+        fun <T> dropdown(
+            parent: Container,
+            label: String,
+            dropdown: MapViewerDropdownMenu<T>,
+            value: T?,
+            x: Double,
+            y: Double,
+            width: Double,
+            inputMinimumWidth: Double,
+            height: Double = MapViewerDialogSpacing.INPUT_HEIGHT,
+        ) {
+            control(
+                parent = parent,
+                label = label,
+                x = x,
+                y = y,
+                width = width,
+                inputMinimumWidth = inputMinimumWidth,
+                height = height,
+            ) { input, inputWidth ->
+                dropdown.renderTrigger(
+                    parent = input,
+                    value = value,
+                    width = inputWidth,
+                    height = height,
+                )
+            }
+        }
+
         fun text(
             parent: Container,
             label: String,

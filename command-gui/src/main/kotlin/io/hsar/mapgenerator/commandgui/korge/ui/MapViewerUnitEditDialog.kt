@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
@@ -20,14 +21,16 @@ internal class MapViewerUnitEditDialog(
     initialPositionY: String,
     private val initialDestroyed: Boolean,
     private val initialFacing: String,
+    initialAffiliation: UnitAffiliation?,
     initialCustomProperties: Map<String, String>,
     private val onPositionPreviewChanged: (String, String) -> Unit,
     private val onDestroyedPreviewChanged: (Boolean) -> Unit,
     private val onFacingPreviewChanged: (String) -> Unit,
+    private val onAffiliationPreviewChanged: (UnitAffiliation?) -> Unit,
     private val focusTargetBoundsProvider: () -> ScreenBounds? = { null },
     private val isPositionValid: (String, String) -> Boolean = { _, _ -> true },
     private val isFacingValid: (String) -> Boolean = { true },
-    private val onSave: (String, String, String, Boolean, String, Map<String, String>) -> Boolean,
+    private val onSave: (String, String, String, Boolean, String, UnitAffiliation?, Map<String, String>) -> Boolean,
     private val onDismiss: () -> Unit,
 ) {
     private var nameValue = initialName
@@ -35,10 +38,19 @@ internal class MapViewerUnitEditDialog(
     private var positionYValue = initialPositionY
     private var destroyedValue = initialDestroyed
     private var facingValue = initialFacing
+    private var affiliationValue = initialAffiliation
+    private val initialAffiliationValue = initialAffiliation
     private var nameInput: MapViewerInputField? = null
     private var positionXInput: MapViewerInputField? = null
     private var positionYInput: MapViewerInputField? = null
     private var facingInput: MapViewerInputField? = null
+    private val affiliationDropdown = MapViewerDropdownMenu(
+        root = root,
+        options = UnitAffiliationUi.options,
+        onSelected = ::updateAffiliation,
+        labelForValue = UnitAffiliationUi::label,
+        swatchForValue = UnitAffiliationUi::swatchColor,
+    )
     private var isOpen = false
     private var window: MapViewerDialogWindow? = null
     private var initialFocusApplied = false
@@ -98,6 +110,7 @@ internal class MapViewerUnitEditDialog(
 
         onDestroyedPreviewChanged(initialDestroyed)
         onFacingPreviewChanged(initialFacing)
+        onAffiliationPreviewChanged(initialAffiliationValue)
         dismiss()
     }
 
@@ -125,10 +138,17 @@ internal class MapViewerUnitEditDialog(
                 customPropertiesEditor.isTextInputActive
 
     private fun renderContent(parent: Container, width: Double) {
-        val fieldWidth = fieldWidth(width)
+        val fieldWidth = width
         val typePreviewWidth = fieldWidth
         val positionFieldWidth = (fieldWidth - MapViewerDialogSpacing.FIELD_GAP) / 2.0
         val inlineBlock = MapViewerInlineInputs.block(UNIT_INLINE_LABELS)
+        val twoColumn = width >= splitRowMinimumWidth()
+        val splitWidth = if (twoColumn) (width - MapViewerDialogSpacing.FIELD_GAP) / 2.0 else width
+        val nameTop = NAME_TOP
+        val affiliationTop = if (twoColumn) NAME_TOP else AFFILIATION_TOP
+        val facingTop = if (twoColumn) AFFILIATION_TOP else FACING_TOP
+        val destroyedTop = facingTop + MapViewerDialogSpacing.INPUT_HEIGHT + MapViewerDialogSpacing.SECTION_GAP
+        val customPropertiesTop = destroyedTop + MapViewerDialogSpacing.INPUT_HEIGHT + MapViewerDialogSpacing.SECTION_GAP
 
         val typePreview = parent.container()
         typePreview.xy(0.0, TYPE_PREVIEW_TOP)
@@ -198,11 +218,11 @@ internal class MapViewerUnitEditDialog(
 
         nameInput = inlineBlock.text(
             parent = parent,
-            label = "Unit Name",
+            label = "Name",
             text = nameValue,
             x = 0.0,
-            y = NAME_TOP,
-            width = fieldWidth,
+            y = nameTop,
+            width = splitWidth,
             inputMinimumWidth = nameTextInputMinimumWidth(),
             height = MapViewerDialogSpacing.INPUT_HEIGHT,
             frameStyle = MapViewerTextInputValidation.frameStyle(MapViewerTextInputValidation.isPresent(nameValue)),
@@ -217,12 +237,28 @@ internal class MapViewerUnitEditDialog(
             }
         }
 
+        MapViewerInlineInputs.block(emptyList()).controlWithoutLabel(
+            parent = parent,
+            x = if (twoColumn) splitWidth + MapViewerDialogSpacing.FIELD_GAP else 0.0,
+            y = affiliationTop,
+            width = splitWidth,
+            inputMinimumWidth = affiliationMinimumWidth(),
+            height = MapViewerDialogSpacing.INPUT_HEIGHT,
+        ) { input, inputWidth ->
+            affiliationDropdown.renderTrigger(
+                parent = input,
+                value = affiliationValue,
+                width = inputWidth,
+                height = MapViewerDialogSpacing.INPUT_HEIGHT,
+            )
+        }
+
         facingInput = inlineBlock.text(
             parent = parent,
             label = "Facing",
             text = facingValue,
             x = 0.0,
-            y = FACING_TOP,
+            y = facingTop,
             width = fieldWidth,
             inputMinimumWidth = facingTextInputMinimumWidth(),
             frameStyle = MapViewerTextInputValidation.frameStyle(isFacingValid(facingValue)),
@@ -236,9 +272,9 @@ internal class MapViewerUnitEditDialog(
 
         inlineBlock.control(
             parent = parent,
-            label = "Destroyed",
+            label = "KIA",
             x = 0.0,
-            y = DESTROYED_TOP,
+            y = destroyedTop,
             width = fieldWidth,
             inputMinimumWidth = DESTROYED_CHECKBOX_SIZE,
             height = MapViewerDialogSpacing.INPUT_HEIGHT,
@@ -254,7 +290,7 @@ internal class MapViewerUnitEditDialog(
         }
 
         val customPropertiesContainer = parent.container()
-        customPropertiesContainer.xy(0.0, CUSTOM_PROPERTIES_TOP)
+        customPropertiesContainer.xy(0.0, customPropertiesTop)
         customPropertiesEditor.render(customPropertiesContainer, fieldWidth)
 
         if (!initialFocusApplied) {
@@ -275,6 +311,12 @@ internal class MapViewerUnitEditDialog(
         window?.refresh()
     }
 
+    private fun updateAffiliation(value: UnitAffiliation?) {
+        affiliationValue = value
+        onAffiliationPreviewChanged(value)
+        window?.refresh()
+    }
+
     private fun renderDestroyedToggle(parent: Container) {
         parent.removeChildren()
         val box = parent.container()
@@ -292,6 +334,14 @@ internal class MapViewerUnitEditDialog(
                 .xy(0.0, 0.0)
         }
     }
+
+    private fun affiliationMinimumWidth(): Double =
+        maxOf(
+            MIN_FIELD_WIDTH,
+            MapViewerDropdownLayoutBuilder.minimumMenuWidth(
+                labels = UnitAffiliationUi.options.map { it.label },
+            ) + 18.0,
+        )
 
     private fun refreshPositionPreview() {
         onPositionPreviewChanged(positionXValue, positionYValue)
@@ -325,6 +375,7 @@ internal class MapViewerUnitEditDialog(
                 positionYValue.trim(),
                 destroyedValue,
                 facingValue.trim(),
+                affiliationValue,
                 customPropertiesEditor.properties(),
             )
         ) {
@@ -333,7 +384,12 @@ internal class MapViewerUnitEditDialog(
     }
 
     private fun contentHeight(width: Double): Double =
-        CUSTOM_PROPERTIES_TOP + customPropertiesEditor.height()
+        (width.let {
+            val twoColumn = it >= splitRowMinimumWidth()
+            val facingTop = if (twoColumn) AFFILIATION_TOP else FACING_TOP
+            val destroyedTop = facingTop + MapViewerDialogSpacing.INPUT_HEIGHT + MapViewerDialogSpacing.SECTION_GAP
+            destroyedTop + MapViewerDialogSpacing.INPUT_HEIGHT + MapViewerDialogSpacing.SECTION_GAP + customPropertiesEditor.height()
+        })
 
     private fun canSave(): Boolean =
         MapViewerTextInputValidation.isPresent(nameValue) &&
@@ -342,12 +398,13 @@ internal class MapViewerUnitEditDialog(
                 customPropertiesEditor.isValid
 
     private fun fieldWidth(width: Double): Double =
-        max(minimumFieldWidth(), width)
+        width
 
     private fun minimumContentWidth(): Double =
         maxOf(
             minimumTypePreviewWidth(),
-            inlineBlockMinimumWidth(nameTextInputMinimumWidth()),
+            MapViewerInlineInputs.block(listOf("Name")).minimumWidth(nameTextInputMinimumWidth()),
+            affiliationMinimumWidth(),
             positionInputMinimumWidth(),
             inlineBlockMinimumWidth(facingTextInputMinimumWidth()),
             inlineBlockMinimumWidth(DESTROYED_CHECKBOX_SIZE),
@@ -358,7 +415,8 @@ internal class MapViewerUnitEditDialog(
     private fun minimumFieldWidth(): Double =
         maxOf(
             minimumTypePreviewWidth(),
-            inlineBlockMinimumWidth(nameTextInputMinimumWidth()),
+            MapViewerInlineInputs.block(listOf("Name")).minimumWidth(nameTextInputMinimumWidth()),
+            affiliationMinimumWidth(),
             positionInputMinimumWidth(),
             inlineBlockMinimumWidth(facingTextInputMinimumWidth()),
             inlineBlockMinimumWidth(DESTROYED_CHECKBOX_SIZE),
@@ -388,8 +446,13 @@ internal class MapViewerUnitEditDialog(
     private fun inlineBlockMinimumWidth(inputMinimumWidth: Double): Double =
         MapViewerInlineInputs.block(UNIT_INLINE_LABELS).minimumWidth(inputMinimumWidth)
 
+    private fun splitRowMinimumWidth(): Double =
+        MapViewerInlineInputs.minimumWidth("Name", nameTextInputMinimumWidth()) +
+                MapViewerDialogSpacing.FIELD_GAP +
+                affiliationMinimumWidth()
+
     private companion object {
-        const val PREFERRED_WIDTH = 460.0
+        const val PREFERRED_WIDTH = 560.0
         const val PREFERRED_HEIGHT = 540.0
         const val ICON_SLOT_WIDTH = 34.0
         const val ICON_SLOT_HEIGHT = 26.0
@@ -401,10 +464,11 @@ internal class MapViewerUnitEditDialog(
         const val POSITION_LABEL_HEIGHT = 22.0
         const val POSITION_INPUT_TOP = 96.0
         const val NAME_TOP = 150.0
-        const val FACING_TOP = 204.0
-        const val DESTROYED_TOP = 258.0
-        const val CUSTOM_PROPERTIES_TOP = 312.0
-        val UNIT_INLINE_LABELS = listOf("Unit Name", "Facing", "Destroyed")
+        const val AFFILIATION_TOP = 204.0
+        const val FACING_TOP = 258.0
+        const val DESTROYED_TOP = 312.0
+        const val CUSTOM_PROPERTIES_TOP = 366.0
+        val UNIT_INLINE_LABELS = listOf("Name", "Facing", "KIA")
         val UNIT_FIELD_KEYS = setOf(
             "type",
             "unitTemplateId",

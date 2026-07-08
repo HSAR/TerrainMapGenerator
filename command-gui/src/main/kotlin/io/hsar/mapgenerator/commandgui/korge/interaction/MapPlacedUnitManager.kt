@@ -458,6 +458,7 @@ internal class MapPlacedUnitManager(
             initialPositionY = position.northing,
             initialDestroyed = unit.destroyed,
             initialFacing = UnitFacingResolver.format(unit.facingDegrees),
+            initialAffiliation = unit.template.affiliation,
             initialCustomProperties = unit.customProperties,
             onPositionPreviewChanged = { previewPositionX, previewPositionY ->
                 val updatedCoordinate = UnitEditPositionResolver.resolve(
@@ -501,6 +502,10 @@ internal class MapPlacedUnitManager(
                         unit.updateFacingOverlay(forceActive = true)
                     }
             },
+            onAffiliationPreviewChanged = { affiliation ->
+                unit.template = unit.template.copy(affiliation = affiliation)
+                unit.updateStateOverlay()
+            },
             focusTargetBoundsProvider = focusTargetBoundsProvider,
             isPositionValid = { positionX, positionY ->
                 UnitEditPositionResolver.resolve(
@@ -514,7 +519,7 @@ internal class MapPlacedUnitManager(
             isFacingValid = { facingText ->
                 UnitFacingResolver.parse(facingText).isValid
             },
-            onSave = save@{ newName, newPositionX, newPositionY, newDestroyed, newFacingText, customProperties ->
+            onSave = save@{ newName, newPositionX, newPositionY, newDestroyed, newFacingText, newAffiliation, customProperties ->
                 val nameChanged = newName != session.baselineSnapshot.instanceName
                 val positionChanged = newPositionX.trim() != session.baselinePosition.easting.trim() ||
                         newPositionY.trim() != session.baselinePosition.northing.trim()
@@ -531,13 +536,15 @@ internal class MapPlacedUnitManager(
                 val updatedFacing = parsedFacing.degrees
                 val destroyedChanged = newDestroyed != session.baselineSnapshot.destroyed
                 val facingChanged = updatedFacing != session.baselineSnapshot.facingDegrees
+                val affiliationChanged = newAffiliation != session.baselineSnapshot.template.affiliation
                 val customPropertiesChanged = customProperties != session.baselineSnapshot.customProperties
-                if (nameChanged || positionChanged || destroyedChanged || facingChanged || customPropertiesChanged) {
+                if (nameChanged || positionChanged || destroyedChanged || facingChanged || affiliationChanged || customPropertiesChanged) {
                     saveRequested = true
                     unit.instanceName = newName
                     unit.mapCoordinate = updatedCoordinate
                     unit.destroyed = newDestroyed
                     unit.facingDegrees = updatedFacing
+                    unit.template = unit.template.copy(affiliation = newAffiliation)
                     unit.customProperties = customProperties
                     unit.updateStateOverlay()
                     unit.updateFacingOverlay()

@@ -34,7 +34,7 @@ internal class MapViewerUnitCreateDialog(
     private var selectedAssetSource: AssetSource? = initialTemplate?.assetSource
     private var selectedAffiliation: UnitAffiliation? = initialTemplate?.affiliation
     private var nameValue: String = initialTemplate?.name ?: "Unit Type Name"
-    private var statusText: String = selectedBitmap?.let { "Image Selected" } ?: "No Image Selected"
+    private var statusText: String? = null
     private var nameInput: MapViewerInputField? = null
     private var statusLabel: Container? = null
     private var previewFrame: Container? = null
@@ -119,41 +119,7 @@ internal class MapViewerUnitCreateDialog(
         content.removeChildren()
 
         val layout = layoutForWidth(contentWidth)
-
-        MapViewerTextViews.label(content, "Name", color = Palette.Colours.WHITE)
-        nameInput = MapViewerTextInputs.input(
-            parent = content,
-            text = nameValue,
-            width = layout.nameFieldWidth,
-            height = MapViewerDialogSpacing.INPUT_HEIGHT,
-            x = 0.0,
-            y = MapViewerDialogSpacing.LABEL_TO_FIELD_GAP,
-            frameStyle = MapViewerTextInputValidation.frameStyle(MapViewerTextInputValidation.isPresent(nameValue)),
-        )
-        nameInput?.controller?.onTextUpdated?.add {
-            val wasValid = nameWasValid
-            nameValue = nameInput?.text.orEmpty()
-            nameWasValid = MapViewerTextInputValidation.isPresent(nameValue)
-            if (nameWasValid != wasValid) {
-                pendingNameFocus = true
-                dialogWindow?.refresh()
-            }
-        }
-
-        affiliationDropdown.renderField(
-            parent = content,
-            label = "Affiliation",
-            value = selectedAffiliation,
-            x = layout.affiliationLeft,
-            y = layout.affiliationTop,
-            width = layout.affiliationFieldWidth,
-            height = MapViewerDialogSpacing.INPUT_HEIGHT,
-        )
-
-        MapViewerTextViews.label(content, "Image", color = Palette.Colours.WHITE) {
-            x = 0.0
-            y = layout.imageLabelTop
-        }
+        val inlineBlock = MapViewerInlineInputs.block(listOf("Name"))
 
         previewFrame = content.container().also {
             it.xy(0.0, layout.previewTop)
@@ -173,14 +139,9 @@ internal class MapViewerUnitCreateDialog(
             }
         }
 
-        statusLabel = content.container().also {
-            it.xy(0.0, layout.statusTop)
-        }
-        showStatus(statusLabel, statusText, statusWidthFor(statusText))
-
         val browseButton = content.container()
-        browseButton.xy(0.0, layout.browseTop)
-        MapViewerLaunchUi.button(browseButton, 140.0, MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT, "Browse Image") {
+        browseButton.xy(layout.browseLeft, layout.browseTop)
+        MapViewerLaunchUi.button(browseButton, layout.browseButtonWidth, MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT, "Browse Image") {
             val file = chooseImageFile() ?: return@button
             val bitmap = loadBitmap(file) ?: run {
                 showStatus(statusLabel, "Could not load image", statusWidthFor("Could not load image"))
@@ -189,8 +150,53 @@ internal class MapViewerUnitCreateDialog(
 
             selectedBitmap = bitmap
             selectedAssetSource = AssetSource.fromFile(file)
-            statusText = file.name
+            statusText = null
+            statusLabel?.removeChildren()
             dialogWindow?.refresh()
+        }
+
+        statusLabel = content.container().also {
+            it.xy(layout.browseLeft, layout.statusTop)
+        }
+        statusText?.let {
+            showStatus(statusLabel, it, statusWidthFor(it))
+        } ?: statusLabel?.removeChildren()
+
+        nameInput = inlineBlock.text(
+            parent = content,
+            label = "Name",
+            text = nameValue,
+            x = 0.0,
+            y = layout.nameTop,
+            width = layout.nameFieldWidth,
+            inputMinimumWidth = nameMinimumWidth(nameValue),
+            height = MapViewerDialogSpacing.INPUT_HEIGHT,
+            frameStyle = MapViewerTextInputValidation.frameStyle(MapViewerTextInputValidation.isPresent(nameValue)),
+        )
+        nameInput?.controller?.onTextUpdated?.add {
+            val wasValid = nameWasValid
+            nameValue = nameInput?.text.orEmpty()
+            nameWasValid = MapViewerTextInputValidation.isPresent(nameValue)
+            if (nameWasValid != wasValid) {
+                pendingNameFocus = true
+                dialogWindow?.refresh()
+            }
+        }
+
+        MapViewerInlineInputs.block(emptyList()).controlWithoutLabel(
+            parent = content,
+            x = layout.affiliationLeft,
+            y = layout.affiliationTop,
+            width = layout.affiliationFieldWidth,
+            inputMinimumWidth = affiliationMinimumWidth(),
+            height = MapViewerDialogSpacing.INPUT_HEIGHT,
+        ) { input, inputWidth ->
+            affiliationDropdown.renderTrigger(
+                parent = input,
+                value = selectedAffiliation,
+                width = inputWidth,
+                height = MapViewerDialogSpacing.INPUT_HEIGHT,
+            )
         }
 
         val customPropertiesContainer = content.container()
@@ -246,40 +252,37 @@ internal class MapViewerUnitCreateDialog(
     }
 
     private fun layoutForWidth(contentWidth: Double): UnitTypeDialogLayout {
+        val nameBlockMinimumWidth = MapViewerInlineInputs.minimumWidth("Name", nameMinimumWidth(nameValue))
         val affiliationFieldWidth = affiliationMinimumWidth()
-        val twoColumnWidth = NAME_FIELD_WIDTH + FIELD_GAP + affiliationFieldWidth
+        val twoColumnWidth = nameBlockMinimumWidth + FIELD_GAP + affiliationFieldWidth
         val twoColumn = contentWidth >= twoColumnWidth
-        val nameFieldWidth = if (twoColumn) NAME_FIELD_WIDTH else contentWidth.coerceAtLeast(MIN_FIELD_WIDTH)
-        val renderedAffiliationWidth = if (twoColumn) affiliationFieldWidth else contentWidth.coerceAtLeast(MIN_FIELD_WIDTH)
-        val affiliationLeft = if (twoColumn) NAME_FIELD_WIDTH + FIELD_GAP else 0.0
-        val nameLabelTop = 0.0
-        val nameInputTop = MapViewerDialogSpacing.inputTop(nameLabelTop)
-        val firstRowBottom = nameInputTop + MapViewerDialogSpacing.INPUT_HEIGHT
+        val splitWidth = if (twoColumn) (contentWidth - FIELD_GAP) / 2.0 else contentWidth.coerceAtLeast(MIN_FIELD_WIDTH)
+        val nameFieldWidth = if (twoColumn) splitWidth else contentWidth.coerceAtLeast(MIN_FIELD_WIDTH)
+        val renderedAffiliationWidth = if (twoColumn) splitWidth else contentWidth.coerceAtLeast(MIN_FIELD_WIDTH)
+        val affiliationLeft = if (twoColumn) splitWidth + FIELD_GAP else 0.0
+        val previewTop = 0.0
+        val browseTop = previewTop + (MapViewerDialogSpacing.PREVIEW_HEIGHT - MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT) * 0.5
+        val browseBottom = browseTop + MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT
+        val statusTop = browseBottom + 8.0
+        val nameTop = statusTop + 36.0
         val affiliationTop = if (twoColumn) {
-            nameLabelTop
+            nameTop
         } else {
-            MapViewerDialogSpacing.sectionTop(firstRowBottom)
+            MapViewerDialogSpacing.sectionTop(nameTop + MapViewerDialogSpacing.INPUT_HEIGHT)
         }
-        val affiliationBottom = if (twoColumn) {
-            nameInputTop + MapViewerDialogSpacing.INPUT_HEIGHT
-        } else {
-            affiliationTop + MapViewerDialogSpacing.LABEL_TO_FIELD_GAP + MapViewerDialogSpacing.INPUT_HEIGHT
-        }
-        val imageLabelTop = MapViewerDialogSpacing.sectionTop(max(firstRowBottom, affiliationBottom))
-        val previewTop = MapViewerDialogSpacing.inputTop(imageLabelTop)
-        val statusTop = previewTop + MapViewerDialogSpacing.PREVIEW_HEIGHT + MapViewerDialogSpacing.PREVIEW_BOTTOM_GAP
-        val browseTop = statusTop + 30.0
-        val customPropertiesTop = browseTop + MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT + MapViewerDialogSpacing.SECTION_GAP
+        val customPropertiesTop = MapViewerDialogSpacing.sectionTop(max(nameTop + MapViewerDialogSpacing.INPUT_HEIGHT, affiliationTop + MapViewerDialogSpacing.INPUT_HEIGHT))
         return UnitTypeDialogLayout(
             nameFieldWidth = nameFieldWidth,
             affiliationFieldWidth = renderedAffiliationWidth,
             affiliationLeft = affiliationLeft,
+            nameTop = nameTop,
             affiliationTop = affiliationTop,
-            imageLabelTop = imageLabelTop,
             previewTop = previewTop,
             previewWidth = contentWidth.coerceAtLeast(MIN_FIELD_WIDTH),
-            statusTop = statusTop,
             browseTop = browseTop,
+            browseLeft = (contentWidth - BROWSE_BUTTON_WIDTH - BROWSE_RIGHT_GUTTER).coerceAtLeast(0.0),
+            browseButtonWidth = BROWSE_BUTTON_WIDTH,
+            statusTop = statusTop,
             customPropertiesTop = customPropertiesTop,
         )
     }
@@ -291,10 +294,9 @@ internal class MapViewerUnitCreateDialog(
 
     private fun minimumContentWidth(): Double =
         maxOf(
-            nameMinimumWidth(nameValue),
+            MapViewerInlineInputs.minimumWidth("Name", nameMinimumWidth(nameValue)),
             affiliationMinimumWidth(),
             MIN_FIELD_WIDTH,
-            statusWidthFor(statusText),
             BROWSE_BUTTON_WIDTH,
             customPropertiesEditor.minimumWidth(),
             MapViewerDialogActions.minimumWidth(2),
@@ -329,8 +331,8 @@ internal class MapViewerUnitCreateDialog(
     private companion object {
         const val PREFERRED_WIDTH = 560.0
         const val PREFERRED_HEIGHT = 420.0
-        const val NAME_FIELD_WIDTH = 240.0
         const val BROWSE_BUTTON_WIDTH = 140.0
+        const val BROWSE_RIGHT_GUTTER = 12.0
         const val FIELD_GAP = MapViewerDialogSpacing.FIELD_GAP
         const val MIN_FIELD_WIDTH = MapViewerDialogSpacing.MIN_FIELD_WIDTH
         val UNIT_TYPE_FIELD_KEYS = setOf("name", "assetId", "affiliation")
@@ -341,11 +343,13 @@ private data class UnitTypeDialogLayout(
     val nameFieldWidth: Double,
     val affiliationFieldWidth: Double,
     val affiliationLeft: Double,
+    val nameTop: Double,
     val affiliationTop: Double,
-    val imageLabelTop: Double,
     val previewTop: Double,
     val previewWidth: Double,
-    val statusTop: Double,
     val browseTop: Double,
+    val browseLeft: Double,
+    val browseButtonWidth: Double,
+    val statusTop: Double,
     val customPropertiesTop: Double,
 )

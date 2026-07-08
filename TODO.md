@@ -6,13 +6,15 @@
 - Support arbitrary states which are independently toggleable instead of mutually exclusive
 - Unit types additional semantic properties
     - Move limits
-- Dialogs minimise, which remembers their position and size and adds them to a taskbar at top or bottom of screen
-- Shift-click and -drag multi-select support
-- Dialogs can point to a map object they relate to using a shadow throw effect
+- Notes focus-shadow all referenced map objects
+- Dialogs minimise, which remembers their position and size and adds them to a taskbar at top of screen
 - Right click context menu has "Add to note" option and "See notes" submenu
+- Optional Olympiad Dawn game logic for friendly and enemy detection narration
 
 ## Bugs
 
 - Consistency pass, launchpad UI should behave the same as the map viewer UI (ref `MapViewerUiBoxes.kt`) and use shared handlers
 - `java.lang.IllegalStateException: Epsilon X square index 100 is outside supported designators.`
     - Input boxes should clamp to min/max permitted values when user input would violate them.
+- Escape menu should open regardless of whether dialogs are open or not
+- Perf pass, moving dialogs around should not be so impactful
