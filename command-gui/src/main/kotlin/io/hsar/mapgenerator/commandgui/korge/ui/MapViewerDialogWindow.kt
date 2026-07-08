@@ -24,7 +24,7 @@ internal class MapViewerDialogWindow(
     private val titleProvider: () -> String = { title },
     private val titleTabs: () -> List<MapViewerDialogTitleTab> = { emptyList() },
     private val initialPosition: ((MapViewerDialogBounds) -> Vector2D?) = { null },
-    private val focusTargetBoundsProvider: (() -> ScreenBounds?) = { null },
+    private val focusTargetBoundsProvider: (() -> List<ScreenBounds>) = { emptyList() },
     private val preferredWidth: Double,
     private val preferredHeight: Double,
     private val contentMinimumWidth: () -> Double = { 0.0 },
@@ -38,7 +38,7 @@ internal class MapViewerDialogWindow(
     private var viewportWidth = 0
     private var viewportHeight = 0
     private var bounds: MapViewerDialogBounds? = null
-    private var lastFocusTargetBounds: ScreenBounds? = null
+    private var lastFocusTargetBounds: List<ScreenBounds> = emptyList()
     private var scrollState = MapViewerScrollState(0.0, 0.0)
     private var scrollDragState: ScrollDragState? = null
     private var dragState: DialogDragState? = null
@@ -182,7 +182,7 @@ internal class MapViewerDialogWindow(
         focusShadowShape(currentBounds, focusTargetBounds)?.let { shape ->
             layer.graphics {
                 fill(FOCUS_SHADOW_COLOR) {
-                    path(shape)
+                    path(shape.toVectorPath())
                 }
             }
         }

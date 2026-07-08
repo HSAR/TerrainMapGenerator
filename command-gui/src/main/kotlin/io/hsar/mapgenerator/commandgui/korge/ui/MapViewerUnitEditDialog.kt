@@ -27,7 +27,7 @@ internal class MapViewerUnitEditDialog(
     private val onDestroyedPreviewChanged: (Boolean) -> Unit,
     private val onFacingPreviewChanged: (String) -> Unit,
     private val onAffiliationPreviewChanged: (UnitAffiliation?) -> Unit,
-    private val focusTargetBoundsProvider: () -> ScreenBounds? = { null },
+    private val focusTargetBoundsProvider: () -> List<ScreenBounds> = { emptyList() },
     private val isPositionValid: (String, String) -> Boolean = { _, _ -> true },
     private val isFacingValid: (String) -> Boolean = { true },
     private val onSave: (String, String, String, Boolean, String, UnitAffiliation?, Map<String, String>) -> Boolean,

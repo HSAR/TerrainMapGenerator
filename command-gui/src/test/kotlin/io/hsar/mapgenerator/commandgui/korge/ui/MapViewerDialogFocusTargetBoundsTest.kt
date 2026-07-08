@@ -11,7 +11,7 @@ import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
-import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.empty
 import org.hamcrest.Matchers.notNullValue
 import org.junit.jupiter.api.Test
 import java.util.*
@@ -26,7 +26,7 @@ class MapViewerDialogFocusTargetBoundsTest {
                 coordinateSpace = coordinateSpace(),
                 viewport = viewport(),
             ),
-            equalTo(null),
+            empty(),
         )
     }
 
@@ -57,10 +57,15 @@ class MapViewerDialogFocusTargetBoundsTest {
         )
 
         assertThat(bounds, notNullValue())
-        assertThat(bounds!!.left, closeTo(150.0, 1e-9))
-        assertThat(bounds.top, closeTo(200.0, 1e-9))
-        assertThat(bounds.width, closeTo(600.0, 1e-9))
-        assertThat(bounds.height, closeTo(450.0, 1e-9))
+        assertThat(bounds!!, org.hamcrest.Matchers.hasSize(2))
+        assertThat(bounds[0].left, closeTo(150.0, 1e-9))
+        assertThat(bounds[0].top, closeTo(200.0, 1e-9))
+        assertThat(bounds[0].width, closeTo(100.0, 1e-9))
+        assertThat(bounds[0].height, closeTo(200.0, 1e-9))
+        assertThat(bounds[1].left, closeTo(650.0, 1e-9))
+        assertThat(bounds[1].top, closeTo(550.0, 1e-9))
+        assertThat(bounds[1].width, closeTo(100.0, 1e-9))
+        assertThat(bounds[1].height, closeTo(100.0, 1e-9))
     }
 
     private fun coordinateSpace(): MapCoordinateSpace =

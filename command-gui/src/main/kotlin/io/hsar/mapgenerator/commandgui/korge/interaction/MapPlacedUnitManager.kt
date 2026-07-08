@@ -438,7 +438,7 @@ internal class MapPlacedUnitManager(
         }
         val viewport = viewportProvider()
         val position = initialReferenceFields(unit)
-        val focusTargetBoundsProvider = { unit.snapshot().focusTargetBounds(coordinateSpace, viewportProvider()) }
+        val focusTargetBoundsProvider = { listOf(unit.snapshot().focusTargetBounds(coordinateSpace, viewportProvider())) }
         val session = UnitEditSession(
             baselineSnapshot = unit.snapshot(),
             baselinePosition = position,

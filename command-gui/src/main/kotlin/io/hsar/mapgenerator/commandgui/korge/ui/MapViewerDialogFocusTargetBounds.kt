@@ -16,28 +16,18 @@ internal fun MapPlacedObjectSnapshot.focusTargetBounds(
 internal fun Collection<MapPlacedObjectSnapshot>.focusTargetBounds(
     coordinateSpace: MapCoordinateSpace,
     viewport: CameraViewport,
-): ScreenBounds? =
+): List<ScreenBounds> =
     map { it.focusTargetBounds(coordinateSpace, viewport) }
-        .takeIf { it.isNotEmpty() }
-        ?.bounds()
 
 internal fun referencedObjectFocusTargetBounds(
     referencedObjectIds: Set<MapPlacedObjectId>,
     objectSnapshot: (MapPlacedObjectId) -> MapPlacedObjectSnapshot?,
     coordinateSpace: MapCoordinateSpace,
     viewport: CameraViewport,
-): ScreenBounds? =
+): List<ScreenBounds> =
     referencedObjectIds
         .mapNotNull(objectSnapshot)
         .focusTargetBounds(coordinateSpace, viewport)
-
-private fun Collection<ScreenBounds>.bounds(): ScreenBounds =
-    ScreenBounds(
-        left = minOf { it.left },
-        top = minOf { it.top },
-        width = maxOf { it.right } - minOf { it.left },
-        height = maxOf { it.bottom } - minOf { it.top },
-    )
 
 private fun ScreenSelectionFrame.bounds(): ScreenBounds =
     ScreenBounds(

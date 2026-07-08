@@ -131,4 +131,20 @@ class MapViewerDialogFocusShadowTest {
         assertThat(shadow.containsPoint(Vector2D(40.0, 40.0)), equalTo(false))
         assertThat(shadow.containsPoint(Vector2D(40.0, -50.0)), equalTo(false))
     }
+
+    @Test
+    fun `multiple target boxes produce separate shadow lobes`() {
+        val shadow = focusShadowShape(
+            bounds = MapViewerDialogBounds(left = 100.0, top = 100.0, width = 100.0, height = 80.0),
+            targetBounds = listOf(
+                ScreenBounds(left = 0.0, top = 130.0, width = 20.0, height = 20.0),
+                ScreenBounds(left = 220.0, top = 110.0, width = 20.0, height = 20.0),
+            ),
+        )
+
+        assertThat(shadow, notNullValue())
+        assertThat(shadow!!.containsPoint(Vector2D(40.0, 140.0)), equalTo(true))
+        assertThat(shadow.containsPoint(Vector2D(200.0, 120.0)), equalTo(true))
+        assertThat(shadow.containsPoint(Vector2D(230.0, 120.0)), equalTo(false))
+    }
 }

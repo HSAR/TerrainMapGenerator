@@ -6,7 +6,6 @@
 - Support arbitrary states which are independently toggleable instead of mutually exclusive
 - Unit types additional semantic properties
     - Move limits
-- Notes focus-shadow all referenced map objects
 - Dialogs minimise, which remembers their position and size and adds them to a taskbar at top of screen
 - Right click context menu has "Add to note" option and "See notes" submenu
 - Optional Olympiad Dawn game logic for friendly and enemy detection narration

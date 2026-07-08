@@ -69,7 +69,7 @@ internal class MapViewerNoteDialog(
             ),
             onClose = ::close,
             renderContent = ::renderContent,
-            focusTargetBoundsProvider = focusTargetBoundsProvider,
+            focusTargetBoundsProvider = { focusTargetBoundsProvider() },
             mode = MapViewerDialogMode.FLOATING,
         )
         dialogManager.register(
