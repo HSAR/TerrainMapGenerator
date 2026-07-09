@@ -3,11 +3,19 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.GridColourSelector
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
+import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
+import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerCornerBrackets
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogSpacing
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDropdownMenu
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDropdownOption
@@ -16,9 +24,12 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerImageViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputValidation
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputs
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.commandgui.korge.ui.UiFrameStyle
+import io.hsar.mapgenerator.commandgui.save.OperationSaveLoader
+import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.grid.CoordAxis
@@ -39,6 +50,14 @@ import korlibs.korge.view.onStageResized
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Vector2D
+import korlibs.render.awt.AwtGameWindow
+import java.awt.Component
+import java.awt.datatransfer.DataFlavor
+import java.awt.dnd.DnDConstants
+import java.awt.dnd.DropTarget
+import java.awt.dnd.DropTargetAdapter
+import java.awt.dnd.DropTargetDragEvent
+import java.awt.dnd.DropTargetDropEvent
 import java.awt.image.BufferedImage
 import java.io.File
 import java.util.*
@@ -108,6 +127,10 @@ internal class MapViewerNewOperationView(
     private var mapImageValidationTooltip: Container? = null
     private var layout = MapViewerNewOperationLayoutBuilder.build(viewportWidth, viewportHeight)
     private var dragState: ReorderDragState? = null
+    private var unitIconDropTargetBounds: ScreenBounds? = null
+    private var nativeDropTargetComponent: Component? = null
+    private var pendingDroppedUnitIconFiles: List<File> = emptyList()
+    private var lastUnitIconDirectory: File? = null
     private var nextRowId = 1L
     private var operationNameWasValid = MapViewerTextInputValidation.isPresent(operationName)
     private var pendingOperationNameFocus = false
@@ -120,12 +143,15 @@ internal class MapViewerNewOperationView(
         }
         layer.addUpdater {
             updateDrag(layer.stage?.views?.input?.mousePos, layer.stage?.views?.input?.mouseButtonPressed(MouseButton.LEFT) == true)
+            consumePendingDroppedUnitIconFiles()
             updatePreviewIfNeeded()
         }
         render(viewportWidth, viewportHeight)
+        installNativeFileDropTarget()
     }
 
     fun close() {
+        nativeDropTargetComponent?.dropTarget = null
         referenceSystemDropdown.close()
         layer.removeFromParent()
     }
@@ -280,8 +306,37 @@ internal class MapViewerNewOperationView(
             addUnitType()
         }.xy(layout.unitsPanelBounds.width - CONTENT_PADDING - 150.0, CONTENT_PADDING - 4.0)
 
+        renderUnitIconDropTarget(panel, panelWidth - CONTENT_PADDING * 2.0)
+
         unitRows.forEachIndexed { index, row ->
             renderUnitRow(panel, row, index)
+        }
+
+        val saveButtonWidth = panelWidth - CONTENT_PADDING * 2.0
+        MapViewerLaunchUi.button(panel, saveButtonWidth, 36.0, "Import Unit Types From Save") {
+            importUnitTypesFromSave()
+        }.xy(CONTENT_PADDING, layout.unitsPanelBounds.height - CONTENT_PADDING - 36.0)
+    }
+
+    private fun renderUnitIconDropTarget(parent: Container, width: Double) {
+        val dropTarget = parent.container()
+        dropTarget.xy(CONTENT_PADDING, DROP_TARGET_TOP)
+        dropTarget.solidRect(width, DROP_TARGET_HEIGHT, RGBA(80, 80, 80, 190))
+        dropTarget.solidRect(width - 2.0, DROP_TARGET_HEIGHT - 2.0, RGBA(45, 45, 45, 210)) {
+            x = 1.0
+            y = 1.0
+        }
+        MapViewerCornerBrackets.renderAll(dropTarget, width, DROP_TARGET_HEIGHT, BRACKET_INSET)
+        MapViewerTextViews.box(
+            parent = dropTarget,
+            text = "Drop unit icons here",
+            width = width,
+            height = DROP_TARGET_HEIGHT,
+            size = 18.0,
+            color = Palette.Colours.LIGHT,
+        )
+        unitIconDropTargetBounds = dropTarget.getGlobalBounds().let { bounds ->
+            ScreenBounds(bounds.left, bounds.top, bounds.width, bounds.height)
         }
     }
 
@@ -376,13 +431,43 @@ internal class MapViewerNewOperationView(
 
     private fun addUnitType() {
         val file = chooseUnitImageFile() ?: return
-        val bitmap = MapViewerIconLoader.load(file) ?: return showStatus("Could not load unit image")
-        unitRows += UnitRow(
-            id = nextRowId++,
-            name = file.nameWithoutExtension,
-            bitmap = bitmap,
-            assetSource = AssetSource.fromFile(file),
-        )
+        addUnitTypesFromFiles(listOf(file))
+        render(layout.viewportWidth, layout.viewportHeight)
+    }
+
+    private fun addUnitTypesFromFiles(files: List<File>) {
+        val loaded = files.mapNotNull { file ->
+            MapViewerIconLoader.load(file)
+                ?.let { bitmap ->
+                    lastUnitIconDirectory = file.parentFile
+                    UnitRow(
+                        id = nextRowId++,
+                        name = file.nameWithoutExtension,
+                        bitmap = bitmap,
+                        assetSource = AssetSource.fromFile(file),
+                    )
+                }
+                ?: run {
+                    showStatus("Could not load ${file.name}")
+                    null
+                }
+        }
+        loaded.forEach(::upsertUnitRow)
+        if (loaded.isNotEmpty()) {
+            showStatus("${loaded.size} unit type${if (loaded.size == 1) "" else "s"} added")
+        }
+    }
+
+    private fun importUnitTypesFromSave() {
+        val file = chooseSaveFile() ?: return
+        val templates = runCatching { OperationSaveLoader().load(file.toPath()).ledgerEntries.latestUnitTemplates() }
+            .onFailure { showStatus("Could not load save file") }
+            .getOrNull()
+            ?: return
+        templates
+            .map { snapshot -> snapshot.template.toUnitRow() }
+            .forEach(::upsertUnitRow)
+        showStatus("${templates.size} unit type${if (templates.size == 1) "" else "s"} imported")
         render(layout.viewportWidth, layout.viewportHeight)
     }
 
@@ -418,6 +503,8 @@ internal class MapViewerNewOperationView(
                     name = row.name,
                     bitmap = row.bitmap,
                     assetSource = row.assetSource,
+                    affiliation = row.affiliation,
+                    customProperties = row.customProperties,
                 )
             },
         )
@@ -619,6 +706,58 @@ internal class MapViewerNewOperationView(
         }
     }
 
+    private fun installNativeFileDropTarget() {
+        val component = (root.stage?.views?.gameWindow as? AwtGameWindow)?.frame?.contentPane ?: return
+        if (nativeDropTargetComponent === component) {
+            return
+        }
+        nativeDropTargetComponent?.dropTarget = null
+        nativeDropTargetComponent = component
+        component.dropTarget = DropTarget(component, object : DropTargetAdapter() {
+            override fun dragEnter(event: DropTargetDragEvent) {
+                if (event.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                    event.acceptDrag(DnDConstants.ACTION_COPY)
+                } else {
+                    event.rejectDrag()
+                }
+            }
+
+            override fun drop(event: DropTargetDropEvent) {
+                val point = Vector2D(event.location.x.toDouble(), event.location.y.toDouble())
+                if (unitIconDropTargetBounds?.contains(point) != true || !event.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                    event.rejectDrop()
+                    return
+                }
+                event.acceptDrop(DnDConstants.ACTION_COPY)
+                pendingDroppedUnitIconFiles = event.transferable
+                    .getTransferData(DataFlavor.javaFileListFlavor)
+                    .let { it as? List<*> }
+                    .orEmpty()
+                    .filterIsInstance<File>()
+                event.dropComplete(pendingDroppedUnitIconFiles.isNotEmpty())
+            }
+        })
+    }
+
+    private fun consumePendingDroppedUnitIconFiles() {
+        val files = pendingDroppedUnitIconFiles
+        if (files.isEmpty()) {
+            return
+        }
+        pendingDroppedUnitIconFiles = emptyList()
+        addUnitTypesFromFiles(files)
+        render(layout.viewportWidth, layout.viewportHeight)
+    }
+
+    private fun upsertUnitRow(row: UnitRow) {
+        val existingIndex = unitRows.indexOfFirst { it.name == row.name }
+        if (existingIndex >= 0) {
+            unitRows[existingIndex] = row.copy(id = unitRows[existingIndex].id)
+        } else {
+            unitRows += row
+        }
+    }
+
     private fun showStatus(text: String) {
         statusContainer?.removeChildren()
         statusContainer?.let { MapViewerLaunchUi.label(it, text, color = Palette.Colours.RED) }
@@ -773,17 +912,39 @@ internal class MapViewerNewOperationView(
     }
 
     private fun chooseRasterImageFile(): File? =
-        chooseImageFile("Map image files", "png", "jpg", "jpeg", "gif", "bmp", "webp")
+        chooseImageFile("Map image files", null, "png", "jpg", "jpeg", "gif", "bmp", "webp")
 
     private fun chooseUnitImageFile(): File? =
-        chooseImageFile("Unit image files", "png", "jpg", "jpeg", "gif", "bmp", "webp", "svg")
+        chooseImageFile("Unit image files", lastUnitIconDirectory, "png", "jpg", "jpeg", "gif", "bmp", "webp", "svg")
 
-    private fun chooseImageFile(description: String, vararg extensions: String): File? =
+    private fun chooseImageFile(description: String, initialDirectory: File? = null, vararg extensions: String): File? =
         JFileChooser().apply {
             isAcceptAllFileFilterUsed = true
             fileFilter = FileNameExtensionFilter(description, *extensions)
+            initialDirectory?.let { currentDirectory = it }
         }.let { chooser ->
             if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) chooser.selectedFile else null
+        }
+
+    private fun MapViewerUnitTemplate.toUnitRow(): UnitRow =
+        UnitRow(
+            id = nextRowId++,
+            name = name,
+            bitmap = bitmap,
+            assetSource = assetSource,
+            affiliation = affiliation,
+            customProperties = customProperties,
+        )
+
+    private fun chooseSaveFile(): File? =
+        OperationSaveWriter().let { writer ->
+            writer.ensureDefaultStorage()
+            JFileChooser(writer.defaultSaveDirectory().toFile()).apply {
+                isAcceptAllFileFilterUsed = true
+                fileFilter = FileNameExtensionFilter("Operational Command Tool saves", "zip")
+            }.let { chooser ->
+                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) chooser.selectedFile else null
+            }
         }
 
     private data class MapImageRow(
@@ -799,6 +960,8 @@ internal class MapViewerNewOperationView(
         override var name: String,
         val bitmap: Bitmap32,
         val assetSource: AssetSource?,
+        val affiliation: UnitAffiliation? = null,
+        val customProperties: Map<String, String> = emptyMap(),
         var input: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null,
     ) : ReorderRow
 
@@ -847,7 +1010,9 @@ internal class MapViewerNewOperationView(
     private companion object {
         const val Z_INDEX = 60_000.0
         const val CONTENT_PADDING = 24.0
-        const val LIST_TOP = 72.0
+        const val DROP_TARGET_TOP = 72.0
+        const val DROP_TARGET_HEIGHT = 64.0
+        const val LIST_TOP = 152.0
         const val ROW_HEIGHT = 44.0
         const val PREVIEW_WIDTH = 64.0
         const val PREVIEW_HEIGHT = 36.0
@@ -860,12 +1025,39 @@ internal class MapViewerNewOperationView(
         const val MAP_IMAGE_VALIDATION_WIDTH = 24.0
         const val DEFAULT_GRID_WIDTH = 1_000
         const val DEFAULT_GRID_HEIGHT = 1_000
+        const val BRACKET_INSET = 5.0
         private fun <T> MutableList<T>.move(fromIndex: Int, toIndex: Int) {
             if (fromIndex == toIndex) return
             val item = removeAt(fromIndex)
             add(if (toIndex > fromIndex) toIndex - 1 else toIndex, item)
         }
     }
+}
+
+internal fun List<LedgerEntry>.latestUnitTemplates(): List<UnitTemplateSnapshot> {
+    val snapshots = mutableMapOf<UnitTemplateId, UnitTemplateSnapshot>()
+    val order = mutableListOf<UnitTemplateId>()
+    fun upsert(snapshot: UnitTemplateSnapshot) {
+        order.remove(snapshot.id)
+        order.add(snapshot.index.coerceIn(0, order.size), snapshot.id)
+        snapshots[snapshot.id] = snapshot
+    }
+
+    fun remove(id: UnitTemplateId) {
+        order.remove(id)
+        snapshots.remove(id)
+    }
+
+    fun apply(entry: LedgerEntry) {
+        when (entry) {
+            is BatchLedgerEntry -> entry.entries.forEach(::apply)
+            is CreateUnitTemplateAction -> upsert(entry.snapshot)
+            is DeleteUnitTemplateAction -> remove(entry.snapshot.id)
+            is EditUnitTemplateAction -> entry.afterSnapshot?.let(::upsert)
+        }
+    }
+    forEach(::apply)
+    return order.mapNotNull(snapshots::get)
 }
 
 private fun GridConfiguration.formatStartX(): String =
