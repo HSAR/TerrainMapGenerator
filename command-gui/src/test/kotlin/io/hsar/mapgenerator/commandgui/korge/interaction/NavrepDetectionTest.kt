@@ -150,10 +150,13 @@ class NavrepDetectionTest {
             gridLayer = epsilonGridLayer(),
         )
 
-        assertThat(report.startsWith("Position "), equalTo(true))
-        assertThat(report.contains("FF Escort has position"), equalTo(true))
-        assertThat(report.contains("[HIDDEN]"), equalTo(true))
-        assertThat(report.contains("- CL Cruiser detection range is"), equalTo(true))
+        assertThat(report.displayText.startsWith("Position "), equalTo(true))
+        assertThat(report.displayText.contains("FF Escort has position"), equalTo(true))
+        assertThat(report.displayText.contains("[HIDDEN]"), equalTo(true))
+        assertThat(report.displayText.contains("- CL Cruiser detection range is"), equalTo(true))
+        assertThat(report.copyText.startsWith("Position "), equalTo(true))
+        assertThat(report.copyText.contains("[HIDDEN]"), equalTo(false))
+        assertThat(report.copyText.contains("- CL Cruiser detection range is"), equalTo(false))
     }
 
     private fun unit(

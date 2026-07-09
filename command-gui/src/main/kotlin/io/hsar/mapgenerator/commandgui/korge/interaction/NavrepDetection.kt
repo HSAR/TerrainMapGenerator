@@ -20,6 +20,11 @@ internal data class NavrepVisibilityCheck(
     val notes: List<String>,
 )
 
+internal data class NavrepVisibilityReport(
+    val displayText: String,
+    val copyText: String,
+)
+
 internal fun UnitSnapshot.isNavrepUnit(): Boolean =
     unitClassLabel() in NAVREP_ELIGIBLE_CLASSES
 
@@ -144,8 +149,8 @@ internal object NavrepDetection {
         mapHeight: Int,
         mapUnitsPerPixel: Double,
         gridLayer: GridLayer? = null,
-    ): String =
-        buildList {
+    ): NavrepVisibilityReport {
+        val lines = buildList {
             val checks = visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer)
             val visibleChecks = checks.filter { it.visible }
             val hiddenChecks = checks.filterNot { it.visible }
@@ -159,7 +164,13 @@ internal object NavrepDetection {
             } else {
                 // keep the report compact when nothing is hidden
             }
-        }.joinToString("\n")
+        }
+        val displayText = lines.joinToString("\n")
+        val copyText = lines
+            .takeWhile { it != "" && it != "[HIDDEN]" }
+            .joinToString("\n")
+        return NavrepVisibilityReport(displayText = displayText, copyText = copyText)
+    }
 
     private fun UnitSnapshot.detectionRangeUnits(observer: UnitSnapshot): Double? {
         val base = unitClassLabel().baseDetectionRangeUnits()

@@ -41,6 +41,7 @@ internal class MapPlacedUnitManager(
     private val contextMenuManager: ContextMenuManager,
     private val deferredActionRunner: ContextMenuDeferredActionRunner,
     private val dialogManager: MapViewerDialogManager,
+    private val onTransientNotice: (String) -> Unit = {},
     initialDestroyedUnitsDisplay: DestroyedUnitsDisplay = DestroyedUnitsDisplay.Full,
     initialUnitIconSizePx: Double = UnitIconDisplaySize.DEFAULT_PX,
     private val canInteractWithUnits: () -> Boolean = { true },
@@ -730,7 +731,9 @@ internal class MapPlacedUnitManager(
                 dialogManager = dialogManager,
                 dialogKey = "navrep-report-${unit.id.value}",
                 title = "NAVREP - ${snapshot.displayName()}",
-                text = report,
+                text = report.displayText,
+                copyText = report.copyText,
+                onCopy = { onTransientNotice("NAVREP saved to clipboard.") },
             ).open()
         }
 

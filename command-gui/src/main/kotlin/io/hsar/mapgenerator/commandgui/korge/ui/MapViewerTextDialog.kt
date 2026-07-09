@@ -5,6 +5,8 @@ import korlibs.image.text.TextAlignment
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.xy
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 
 internal class MapViewerTextDialog(
     private val root: Container,
@@ -12,6 +14,9 @@ internal class MapViewerTextDialog(
     private val dialogKey: Any,
     private val title: String,
     private val text: String,
+    private val copyText: String = text,
+    private val actions: List<MapViewerDialogAction> = emptyList(),
+    private val onCopy: (() -> Unit)? = null,
     private val preferredWidth: Double = PREFERRED_WIDTH,
     private val preferredHeight: Double = PREFERRED_HEIGHT,
 ) {
@@ -22,6 +27,14 @@ internal class MapViewerTextDialog(
             return false
         }
         val stage = root.stage ?: return false
+        val footerActions = if (actions.isEmpty()) {
+            listOf(
+                MapViewerDialogAction("Copy") { copyToClipboard() },
+                MapViewerDialogAction("Dismiss") { close() },
+            )
+        } else {
+            actions
+        }
         window = MapViewerDialogWindow(
             root = root,
             title = title,
@@ -29,6 +42,7 @@ internal class MapViewerTextDialog(
             preferredHeight = preferredHeight,
             contentMinimumWidth = { CONTENT_MIN_WIDTH },
             contentHeight = ::contentHeight,
+            actions = footerActions,
             onClose = ::close,
             renderContent = ::renderContent,
             mode = MapViewerDialogMode.FLOATING,
@@ -105,6 +119,15 @@ internal class MapViewerTextDialog(
         dialogManager.unregister(this)
         window?.close()
         window = null
+    }
+
+    private fun copyToClipboard() {
+        runCatching {
+            Toolkit.getDefaultToolkit()
+                .systemClipboard
+                .setContents(StringSelection(copyText), null)
+            onCopy?.invoke()
+        }
     }
 
     private companion object {

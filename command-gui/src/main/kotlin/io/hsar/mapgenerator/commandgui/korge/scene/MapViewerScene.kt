@@ -58,6 +58,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerNotesPanel
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSidebar
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerToolbar
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTransientNotice
 import io.hsar.mapgenerator.commandgui.korge.ui.noteReferenceContextMenuActions
 import io.hsar.mapgenerator.commandgui.save.GeneratedImageAsset
 import io.hsar.mapgenerator.commandgui.save.LoadedOperation
@@ -239,7 +240,7 @@ internal class MapViewerScene(
                         lateinit var unitManager: MapPlacedUnitManager
                         lateinit var objectController: MapObjectController
                         lateinit var selectionController: MapSelectionController
-                        lateinit var saveNoticeLayer: Container
+                        var transientNotice: MapViewerTransientNotice? = null
                         var toolbar: MapViewerToolbar? = null
                         var ledgerPanel: MapViewerLedgerPanel? = null
                         var notesPanel: MapViewerNotesPanel? = null
@@ -262,7 +263,6 @@ internal class MapViewerScene(
                         var gridLabelsOverlay: GridOverlayView? = null
                         val coordinateSpace = MapCoordinateSpace(renderedMap.geometry, renderedMap.bitmap.width, renderedMap.bitmap.height)
                         var objectMovePreview: io.hsar.mapgenerator.commandgui.korge.interaction.MapObjectMovePreview? = null
-                        var saveNoticeMessage: String? = null
                         var escapeMenuThumbnailImage: BufferedImage? = null
                         val referencedNotesForObject: (MapPlacedObjectId) -> List<MapNoteSnapshot> = { objectId ->
                             noteStore.snapshotsReferencing(objectId)
@@ -270,7 +270,6 @@ internal class MapViewerScene(
                         val openNoteFromContextMenu: (MapNoteId) -> Boolean = { noteId ->
                             notesPanel?.openNote(noteId) == true
                         }
-                        var saveNoticeExpiresAtMs = 0L
                         var readOnlyBannerLayer: Container? = null
                         var turnMode: TurnPanelMode = TurnPanelMode.Edit
                         var previousLeftHeld = false
@@ -322,21 +321,7 @@ internal class MapViewerScene(
                         var saveInProgress = false
 
                         fun showSaveNotice(message: String) {
-                            saveNoticeMessage = message
-                            saveNoticeExpiresAtMs = System.currentTimeMillis() + 10_000L
-                            saveNoticeLayer.removeChildren()
-                            val noticeBounds = MapViewerTextViews.bounds(saveNoticeMessage!!)
-                            saveNoticeLayer.solidRect(
-                                width = noticeBounds.width + 24.0,
-                                height = noticeBounds.height + 16.0,
-                                color = korlibs.image.color.RGBA(0, 0, 0, 180),
-                            )
-                            MapViewerTextViews.label(saveNoticeLayer, saveNoticeMessage!!, color = io.hsar.mapgenerator.image.Palette.Colours.WHITE) {
-                                x = 12.0
-                                y = 8.0
-                            }
-                            saveNoticeLayer.visible = true
-                            saveNoticeLayer.xy(16.0, gameWindow.height - (noticeBounds.height + 16) - 16.0)
+                            transientNotice?.show(message)
                         }
 
                         fun captureWindowThumbnail(): BufferedImage? =
@@ -546,6 +531,7 @@ internal class MapViewerScene(
                             contextMenuManager = contextMenuManager,
                             deferredActionRunner = deferredContextMenuActions,
                             dialogManager = dialogManager,
+                            onTransientNotice = { message -> transientNotice?.show(message) },
                             initialDestroyedUnitsDisplay = destroyedUnitsDisplay,
                             initialUnitIconSizePx = unitIconSizePx,
                             canInteractWithUnits = { effectiveTool() == MapViewerTool.SELECT },
@@ -874,10 +860,10 @@ internal class MapViewerScene(
                             onDrawingColourSelected = { currentDrawingColour = it },
                         )
 
-                        saveNoticeLayer = sceneLayers.ui.container().also {
-                            it.mouseEnabled = false
-                            it.visible = false
-                        }
+                        transientNotice = MapViewerTransientNotice(
+                            root = sceneLayers.ui,
+                            viewportHeightProvider = { gameWindow.height },
+                        )
                         readOnlyBannerLayer = sceneLayers.ui.container().also {
                             it.mouseEnabled = false
                             it.visible = false
@@ -976,15 +962,7 @@ internal class MapViewerScene(
                                 }
                             }
 
-                            if (saveNoticeMessage != null) {
-                                if (now <= saveNoticeExpiresAtMs) {
-                                    saveNoticeLayer.visible = true
-                                } else {
-                                    saveNoticeMessage = null
-                                    saveNoticeLayer.removeChildren()
-                                    saveNoticeLayer.visible = false
-                                }
-                            }
+                            transientNotice?.update(now)
                             autosaveController.update(now)
                             if (input.keys.justPressed(Key.S) &&
                                 input.keys[Key.CONTROL] &&
