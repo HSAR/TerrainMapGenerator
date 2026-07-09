@@ -6,6 +6,7 @@ import com.beust.jcommander.Parameters
 import io.hsar.mapgenerator.TerrainMapGenerator
 import io.hsar.mapgenerator.commandgui.GridColourSelector
 import io.hsar.mapgenerator.commandgui.MapLayer
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.MapViewerFrame
 import io.hsar.mapgenerator.commandgui.MapViewerLayer
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
@@ -40,8 +41,16 @@ object LaunchGuiCommand : Command("show-gui") {
     )
     private var mapPath: String? = null
 
+    @Parameter(
+        names = ["--feature-flag"],
+        description = "Enable an experimental command GUI feature. Repeat to enable multiple flags.",
+        required = false,
+    )
+    private var featureFlags = mutableListOf<MapViewerFeatureFlag>()
+
     override fun run() {
         val staticLayers = loadStaticImageLayers(staticImagePaths)
+        featureFlags.startupLogMessage()?.let(logger::info)
 
         MapViewerFrame(
             renderMap = ::renderViewerImage,
@@ -54,12 +63,18 @@ object LaunchGuiCommand : Command("show-gui") {
         availableLayers = buildViewerLayers(staticLayers),
         enabledLayerIds = defaultEnabledLayerIds(selectedLayers, staticLayers),
         staticLayerImages = staticLayers.associate { it.layer.id to it.image },
+        featureFlags = featureFlags.toSet(),
         seed = seed,
         unitsPerPixel = metresPerPixel,
         metresPerContour = metresPerContour,
         width = width,
         height = height,
     )
+
+    private fun List<MapViewerFeatureFlag>.startupLogMessage(): String? =
+        takeIf { it.isNotEmpty() }?.let { flags ->
+            "Enabled experimental GUI feature flag(s): ${flags.joinToString(", ")}"
+        }
 }
 
 @Parameters(commandDescription = "Generates a random terrain map and shows it in a GUI window.")

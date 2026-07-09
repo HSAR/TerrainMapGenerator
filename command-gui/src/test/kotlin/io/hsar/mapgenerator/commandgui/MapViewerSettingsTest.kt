@@ -31,6 +31,15 @@ class MapViewerSettingsTest {
     }
 
     @Test
+    fun `custom settings can enable feature flags`() {
+        val settings = MapViewerSettings(
+            featureFlags = setOf(MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL),
+        )
+
+        assertThat(settings.featureFlags, equalTo(setOf(MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL)))
+    }
+
+    @Test
     fun `zoom scales within the configured bounds`() {
         val settings = MapViewerSettings(zoom = 1.0)
 

@@ -530,7 +530,7 @@ internal class MapViewerScene(
                         }
                         resizeSceneViewport(gameWindow.width, gameWindow.height)
 
-                        contextMenuManager = ContextMenuManager(sceneLayers.ui)
+                        contextMenuManager = ContextMenuManager(sceneLayers.ui, initialSettings.featureFlags)
                         val deferredContextMenuActions = ContextMenuDeferredActionRunner(sceneLayers.ui)
                         val dialogManager = MapViewerDialogManager()
 
@@ -1123,7 +1123,9 @@ internal class MapViewerScene(
                         launchpadView?.close()
                         launchpadView = null
                         showViewer(
-                            settings = loaded.settings,
+                            settings = loaded.settings.copy(
+                                featureFlags = loaded.settings.featureFlags + initialSettings.featureFlags,
+                            ),
                             initialLedgerEntries = emptyList(),
                             loadedOperation = loaded,
                         )

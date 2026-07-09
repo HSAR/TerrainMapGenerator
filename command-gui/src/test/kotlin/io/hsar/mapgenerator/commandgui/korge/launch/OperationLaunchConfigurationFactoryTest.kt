@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.MapLayer
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
@@ -106,6 +107,21 @@ class OperationLaunchConfigurationFactoryTest {
         assertThat(configuration.settings.width, equalTo(200))
         assertThat(configuration.settings.height, equalTo(80))
         assertThat(configuration.settings.unitsPerPixel, equalTo(15.0))
+    }
+
+    @Test
+    fun `feature flags are preserved into runtime settings`() {
+        val draft = NewOperationDraft(
+            operationName = "Operation Copperhead",
+            mapImage = OperationMapImage("Satellite", "satellite.png", image(100, 50)),
+        )
+
+        val configuration = OperationLaunchConfigurationFactory.create(
+            draft,
+            MapViewerSettings(featureFlags = setOf(MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL)),
+        )
+
+        assertThat(configuration.settings.featureFlags, equalTo(setOf(MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL)))
     }
 
     @Test

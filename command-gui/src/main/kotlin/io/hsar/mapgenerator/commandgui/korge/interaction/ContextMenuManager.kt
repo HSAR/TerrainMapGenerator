@@ -1,9 +1,10 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogChrome
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputValidation
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.image.color.RGBA
@@ -21,6 +22,7 @@ import java.util.concurrent.TimeUnit
 @OptIn(KorgeInternal::class)
 internal class ContextMenuManager(
     private val root: Container,
+    private val featureFlags: Set<MapViewerFeatureFlag> = emptySet(),
 ) {
     private val layer = root.container()
     private val surfaceLayer = layer.container()
@@ -28,6 +30,7 @@ internal class ContextMenuManager(
     private var state: ContextMenuState? = null
     private var submenuState: ContextMenuState? = null
     private var submenuLastActiveAtMs: Long? = null
+    private var tooltip: Container? = null
     private var previousLeftHeld = false
     private var previousRightHeld = false
     private var closeRequested = false
@@ -67,7 +70,8 @@ internal class ContextMenuManager(
         actions: List<MapPlacedObjectMenuAction> = target.contextMenuActions(),
         onActionSelected: () -> Unit = {},
     ) {
-        if (actions.isEmpty()) {
+        val visibleActions = actions.visibleFor(featureFlags)
+        if (visibleActions.isEmpty()) {
             return
         }
 
@@ -76,13 +80,13 @@ internal class ContextMenuManager(
         val stage = root.stage ?: return
         val stageWidth = stage.views.actualVirtualWidth.toDouble()
         val stageHeight = stage.views.actualVirtualHeight.toDouble()
-        val menuWidth = menuWidth(actions)
-        val menuHeight = ContextMenuLayout.menuHeight(actions.size)
+        val menuWidth = menuWidth(visibleActions)
+        val menuHeight = ContextMenuLayout.menuHeight(visibleActions.size)
         val left = screenPoint.x.coerceIn(0.0, (stageWidth - menuWidth).coerceAtLeast(0.0))
         val top = screenPoint.y.coerceIn(0.0, (stageHeight - menuHeight).coerceAtLeast(0.0))
 
         state = renderMenu(
-            actions = actions,
+            actions = visibleActions,
             left = left,
             top = top,
             onActionSelected = onActionSelected,
@@ -93,6 +97,7 @@ internal class ContextMenuManager(
     fun close() {
         state?.menu?.removeFromParent()
         submenuState?.menu?.removeFromParent()
+        hideTooltip()
         surfaceLayer.removeChildren()
         menusLayer.removeChildren()
         layer.visible = false
@@ -139,6 +144,9 @@ internal class ContextMenuManager(
         }
 
         current.actions.getOrNull((localY / ACTION_HEIGHT).toInt())?.let { action ->
+            if (!action.enabled) {
+                return
+            }
             if (action.submenuActions.isNotEmpty()) {
                 toggleSubmenu(current, current.actions.indexOf(action), action)
             } else {
@@ -184,41 +192,69 @@ internal class ContextMenuManager(
         actions.forEachIndexed { index, action ->
             val option = menu.container()
             option.xy(ContextMenuLayout.PADDING, ContextMenuLayout.optionTop(index))
-            option.solidRect(menuWidth - PADDING * 2, ACTION_HEIGHT - 4.0, MapViewerUiStateStyle.backing(true)) {
-                x = 0.0
-                y = 2.0
-            }
-            val labelWidth = menuWidth - ContextMenuLayout.PADDING * 2 - optionTrailingWidth(action)
+            val optionWidth = menuWidth - PADDING * 2
+            val optionHeight = ACTION_HEIGHT - 4.0
+            MapViewerUiBoxes.button(
+                parent = option,
+                width = optionWidth,
+                height = optionHeight,
+                active = action.enabled,
+            ).xy(0.0, 2.0)
+            val labelWidth = optionWidth - optionTrailingWidth(action)
             MapViewerTextViews.leftBox(
                 parent = option,
                 text = action.label,
                 width = labelWidth,
-                height = ACTION_HEIGHT - 4.0,
+                height = optionHeight,
                 color = Palette.Colours.WHITE,
             ) {
                 x = ContextMenuLayout.LABEL_LEFT_PADDING
+                alpha = if (action.enabled) 1.0 else 0.55
+            }
+            if (!action.enabled) {
+                val warning = option.container()
+                warning.xy(optionWidth - ContextMenuLayout.DISABLED_ICON_WIDTH, 0.0)
+                val icon = warning.container()
+                icon.xy(
+                    (ContextMenuLayout.DISABLED_ICON_WIDTH - MapViewerTextInputValidation.VALIDATION_ICON_SIZE) * 0.5,
+                    (ACTION_HEIGHT - 4.0 - MapViewerTextInputValidation.VALIDATION_ICON_SIZE) * 0.5,
+                )
+                MapViewerTextInputValidation.validationFailedIndicator(icon)
             }
             if (action.submenuActions.isNotEmpty()) {
                 val arrow = option.container()
-                arrow.xy(menuWidth - ContextMenuLayout.PADDING * 2 - optionTrailingWidth(action), 0.0)
+                arrow.xy(optionWidth - optionTrailingWidth(action), 0.0)
                 MapViewerTextViews.box(
                     parent = arrow,
                     text = ">",
                     width = optionTrailingWidth(action),
-                    height = ACTION_HEIGHT - 4.0,
+                    height = optionHeight,
                     color = Palette.Colours.WHITE,
                     alignment = TextAlignment.MIDDLE_RIGHT,
                 )
             }
             option.mouse {
                 onOver {
-                    if (action.submenuActions.isNotEmpty()) {
+                    if (!action.enabled) {
+                        scheduleSubmenuClose()
+                        action.disabledTooltipText?.let { showTooltip(menu, option.globalPos + Vector2D(optionWidth, 0.0), it) }
+                    } else if (action.submenuActions.isNotEmpty()) {
+                        hideTooltip()
                         openSubmenu(state, index, action)
                     } else {
                         scheduleSubmenuClose()
+                        hideTooltip()
+                    }
+                }
+                onOut {
+                    if (!action.enabled) {
+                        hideTooltip()
                     }
                 }
                 onClick {
+                    if (!action.enabled) {
+                        return@onClick
+                    }
                     if (action.submenuActions.isNotEmpty()) {
                         toggleSubmenu(state, index, action)
                     } else {
@@ -326,7 +362,18 @@ internal class ContextMenuManager(
         ) + ContextMenuLayout.PADDING * 2
 
     private fun optionTrailingWidth(action: MapPlacedObjectMenuAction): Double =
-        if (action.submenuActions.isEmpty()) 0.0 else ContextMenuLayout.SUBMENU_ARROW_WIDTH
+        (if (action.submenuActions.isEmpty()) 0.0 else ContextMenuLayout.SUBMENU_ARROW_WIDTH) +
+                (if (action.enabled) 0.0 else ContextMenuLayout.DISABLED_ICON_WIDTH)
+
+    private fun showTooltip(parent: Container, anchor: Vector2D, text: String) {
+        hideTooltip()
+        tooltip = MapViewerTextInputValidation.validationExplanationTooltip(parent, anchor, text)
+    }
+
+    private fun hideTooltip() {
+        tooltip?.removeFromParent()
+        tooltip = null
+    }
 
     private fun renderSurface() {
         surfaceLayer.removeChildren()

@@ -1,9 +1,11 @@
 package io.hsar.mapgenerator.commandline
 
 import com.beust.jcommander.JCommander
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasItem
+import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Test
 import java.awt.image.BufferedImage
 import java.io.File
@@ -33,6 +35,15 @@ class MainTest {
             .parse("--metres-per-pixel", "12.5")
 
         assertThat(command.configuredMetresPerPixel, equalTo(12.5))
+    }
+
+    @Test
+    fun `startup log message is only emitted when feature flags are set`() {
+        assertThat(emptyList<MapViewerFeatureFlag>().startupLogMessage(), nullValue())
+        assertThat(
+            listOf(MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL).startupLogMessage(),
+            equalTo("Enabled experimental GUI feature flag(s): OLYMPIAD_DAWN_EXPERIMENTAL"),
+        )
     }
 
     @Test
@@ -68,3 +79,8 @@ class MainTest {
             ImageIO.write(BufferedImage(8, 6, BufferedImage.TYPE_INT_ARGB), "png", file)
         }
 }
+
+private fun List<MapViewerFeatureFlag>.startupLogMessage(): String? =
+    takeIf { it.isNotEmpty() }?.let { flags ->
+        "Enabled experimental GUI feature flag(s): ${flags.joinToString(", ")}"
+    }
