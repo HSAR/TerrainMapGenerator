@@ -60,8 +60,8 @@ internal class MapViewerTextDialog(
     private fun renderContent(parent: Container, width: Double) {
         val body = parent.container()
         body.xy(0.0, 0.0)
-        val wrapped = wrapText(width)
-        val textHeight = contentTextHeight(wrapped.size)
+        val wrapped = MapViewerWrappedText.wrap(text, width, TEXT_SIZE)
+        val textHeight = MapViewerWrappedText.height(wrapped.size)
         MapViewerTextViews.box(
             parent = body,
             text = wrapped.joinToString("\n"),
@@ -74,46 +74,7 @@ internal class MapViewerTextDialog(
     }
 
     private fun contentHeight(width: Double): Double =
-        contentTextHeight(wrapText(width).size)
-
-    private fun contentTextHeight(lineCount: Int): Double =
-        if (lineCount <= 0) {
-            0.0
-        } else {
-            (lineCount * LINE_HEIGHT) + 4.0
-        }
-
-    private fun wrapText(width: Double): List<String> =
-        text
-            .lineSequence()
-            .flatMap { line ->
-                if (line.isBlank()) {
-                    sequenceOf("")
-                } else {
-                    wrapParagraph(line, width)
-                }
-            }
-            .toList()
-
-    private fun wrapParagraph(paragraph: String, width: Double): Sequence<String> = sequence {
-        var current = ""
-        paragraph
-            .split(Regex("\\s+"))
-            .forEach { word ->
-                val next = if (current.isBlank()) word else "$current $word"
-                if (MapViewerTextViews.measure(next, size = TEXT_SIZE).width <= width) {
-                    current = next
-                } else {
-                    if (current.isNotBlank()) {
-                        yield(current)
-                    }
-                    current = word
-                }
-            }
-        if (current.isNotBlank()) {
-            yield(current)
-        }
-    }
+        MapViewerWrappedText.height(MapViewerWrappedText.wrap(text, width, TEXT_SIZE).size)
 
     private fun close() {
         dialogManager.unregister(this)
@@ -135,6 +96,5 @@ internal class MapViewerTextDialog(
         const val PREFERRED_HEIGHT = 640.0
         const val CONTENT_MIN_WIDTH = 560.0
         const val TEXT_SIZE = 22.0
-        const val LINE_HEIGHT = 28.0
     }
 }

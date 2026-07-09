@@ -152,11 +152,43 @@ class NavrepDetectionTest {
 
         assertThat(report.displayText.startsWith("Position "), equalTo(true))
         assertThat(report.displayText.contains("FF Escort has position"), equalTo(true))
-        assertThat(report.displayText.contains("[HIDDEN]"), equalTo(true))
-        assertThat(report.displayText.contains("- CL Cruiser detection range is"), equalTo(true))
+        assertThat(report.displayText.contains("[HIDDEN]"), equalTo(false))
+        assertThat(report.displayText.contains("- CL Cruiser detection range is"), equalTo(false))
+        assertThat(report.hiddenChecks.map { it.unit.id }, equalTo(listOf(MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000032")))))
         assertThat(report.copyText.startsWith("Position "), equalTo(true))
-        assertThat(report.copyText.contains("[HIDDEN]"), equalTo(false))
-        assertThat(report.copyText.contains("- CL Cruiser detection range is"), equalTo(false))
+        assertThat(report.copyText, equalTo(report.displayText))
+    }
+
+    @Test
+    fun `navrep report force includes hidden contacts`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-000000000040",
+            instanceName = "FF 1",
+            unitClass = "FF",
+            x = 0.5,
+            y = 0.5,
+        )
+        val forced = unit(
+            id = "00000000-0000-0000-0000-000000000041",
+            instanceName = "Cruiser",
+            unitClass = "CL",
+            x = 0.513,
+            y = 0.5,
+        )
+
+        val report = NavrepDetection.visibilityReport(
+            observer = observer,
+            candidates = listOf(observer, forced),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+            forcedIncludedIds = setOf(forced.id),
+        )
+
+        assertThat(report.visibleChecks.map { it.unit.id }, equalTo(listOf(forced.id)))
+        assertThat(report.hiddenChecks.map { it.unit.id }, equalTo(listOf(forced.id)))
+        assertThat(report.displayText.contains("CL Cruiser has position"), equalTo(true))
+        assertThat(report.copyText, equalTo(report.displayText))
     }
 
     private fun unit(

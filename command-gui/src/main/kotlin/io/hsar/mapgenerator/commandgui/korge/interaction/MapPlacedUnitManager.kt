@@ -5,7 +5,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.DestroyedUnitsDisplay
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogPositionSync
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerImageViews
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextDialog
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerNavrepDialog
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitEditDialog
 import io.hsar.mapgenerator.commandgui.korge.ui.focusTargetBounds
@@ -718,22 +718,18 @@ internal class MapPlacedUnitManager(
 
         private fun openNavrepVisibilityDialog(unit: PlacedUnit) {
             val snapshot = unit.snapshot()
-            val report = NavrepDetection.visibilityReport(
+            MapViewerNavrepDialog(
+                root = root,
+                dialogManager = dialogManager,
+                dialogKey = "navrep-report-${unit.id.value}",
+                title = "NAVREP - ${snapshot.displayName()}",
                 observer = snapshot,
                 candidates = units.map { it.snapshot() },
                 mapWidth = mapWidth,
                 mapHeight = mapHeight,
                 mapUnitsPerPixel = mapUnitsPerPixel,
                 gridLayer = gridLayer,
-            )
-            MapViewerTextDialog(
-                root = root,
-                dialogManager = dialogManager,
-                dialogKey = "navrep-report-${unit.id.value}",
-                title = "NAVREP - ${snapshot.displayName()}",
-                text = report.displayText,
-                copyText = report.copyText,
-                onCopy = { onTransientNotice("NAVREP saved to clipboard.") },
+                onTransientNotice = onTransientNotice,
             ).open()
         }
 

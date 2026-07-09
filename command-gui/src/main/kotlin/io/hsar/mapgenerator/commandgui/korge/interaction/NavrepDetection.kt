@@ -23,6 +23,8 @@ internal data class NavrepVisibilityCheck(
 internal data class NavrepVisibilityReport(
     val displayText: String,
     val copyText: String,
+    val visibleChecks: List<NavrepVisibilityCheck>,
+    val hiddenChecks: List<NavrepVisibilityCheck>,
 )
 
 internal fun UnitSnapshot.isNavrepUnit(): Boolean =
@@ -149,28 +151,31 @@ internal object NavrepDetection {
         mapHeight: Int,
         mapUnitsPerPixel: Double,
         gridLayer: GridLayer? = null,
+        forcedIncludedIds: Set<MapPlacedObjectId> = emptySet(),
     ): NavrepVisibilityReport {
+        val checks = visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer)
+        val visibleChecks = checks.filter { it.visible || it.unit.id in forcedIncludedIds }
+        val hiddenChecks = checks.filterNot { it.visible }
         val lines = buildList {
-            val checks = visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer)
-            val visibleChecks = checks.filter { it.visible }
-            val hiddenChecks = checks.filterNot { it.visible }
             add(buildPositionSummary(observer, visibleChecks, mapWidth, mapHeight, gridLayer))
-            if (hiddenChecks.isNotEmpty()) {
-                add("")
-                add("[HIDDEN]")
-                hiddenChecks.forEach { check ->
-                    add(buildHiddenLine(observer, check, mapWidth, mapHeight, gridLayer))
-                }
-            } else {
-                // keep the report compact when nothing is hidden
-            }
         }
         val displayText = lines.joinToString("\n")
-        val copyText = lines
-            .takeWhile { it != "" && it != "[HIDDEN]" }
-            .joinToString("\n")
-        return NavrepVisibilityReport(displayText = displayText, copyText = copyText)
+        return NavrepVisibilityReport(
+            displayText = displayText,
+            copyText = displayText,
+            visibleChecks = visibleChecks,
+            hiddenChecks = hiddenChecks,
+        )
     }
+
+    fun hiddenContactLabel(
+        observer: UnitSnapshot,
+        check: NavrepVisibilityCheck,
+        mapWidth: Int,
+        mapHeight: Int,
+        gridLayer: GridLayer? = null,
+    ): String =
+        buildHiddenLine(observer, check, mapWidth, mapHeight, gridLayer)
 
     private fun UnitSnapshot.detectionRangeUnits(observer: UnitSnapshot): Double? {
         val base = unitClassLabel().baseDetectionRangeUnits()
@@ -295,7 +300,6 @@ internal object NavrepDetection {
         gridLayer: GridLayer?,
     ): String =
         buildString {
-            append("- ")
             append(check.unit.navrepReportLabel())
             append(" detection range is ")
             append(formatDistance(check.detectionRangeUnits))
