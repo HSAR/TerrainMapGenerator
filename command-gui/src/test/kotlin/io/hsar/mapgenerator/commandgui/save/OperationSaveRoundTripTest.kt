@@ -53,6 +53,7 @@ class OperationSaveRoundTripTest {
     @Test
     fun `save load and save again preserves the operation shape`() {
         val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000cc")
+        val additionalData = """{"note":"keep-me"}""".toByteArray()
         val mapFile = tempDir.resolve("map.png")
         val mapImage = BufferedImage(960, 540, BufferedImage.TYPE_INT_RGB)
         ImageIO.write(mapImage, "png", mapFile.toFile())
@@ -134,6 +135,7 @@ class OperationSaveRoundTripTest {
                 mapImage = mapImage,
                 mapSource = AssetSource.fromFile(mapFile.toFile()),
                 ledgerEntries = ledger,
+                additionalDataJson = additionalData,
             ),
             tempDir.resolve("first.oct.zip"),
         )
@@ -172,6 +174,7 @@ class OperationSaveRoundTripTest {
                 mapImage = loaded.mapImage,
                 mapSource = null,
                 ledgerEntries = loaded.ledgerEntries,
+                additionalDataJson = loaded.additionalDataJson,
             ),
             tempDir.resolve("second.oct.zip"),
         )
@@ -197,6 +200,7 @@ class OperationSaveRoundTripTest {
 
         ZipFile(secondSave.toFile()).use { zip ->
             assertThat(zip.getEntry("assets/$operationId.jpg") != null, equalTo(true))
+            assertThat(zip.read("additionalData.json").contentEquals(additionalData), equalTo(true))
             assertThat(
                 zip.entries().asSequence().any { entry ->
                     !entry.isDirectory && entry.name.startsWith("assets/") && entry.name.endsWith(".svg")
@@ -800,6 +804,7 @@ class OperationSaveRoundTripTest {
         mapSource: AssetSource?,
         ledgerEntries: List<io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry>,
         generatedImageAssets: List<GeneratedImageAsset> = emptyList(),
+        additionalDataJson: ByteArray? = null,
     ) = OperationSaveRequest(
         operationId = operationId,
         operationName = operationName,
@@ -811,6 +816,7 @@ class OperationSaveRoundTripTest {
         mapAssetSource = mapSource,
         ledgerEntries = ledgerEntries,
         generatedImageAssets = generatedImageAssets,
+        additionalDataJson = additionalDataJson,
     )
 
     private fun assertFlatCustomProperties(savePath: Path) {
@@ -827,4 +833,7 @@ class OperationSaveRoundTripTest {
             assertThat(unitJson.has("customProperties"), equalTo(false))
         }
     }
+
+    private fun ZipFile.read(name: String): ByteArray =
+        getInputStream(getEntry(name)).use { it.readBytes() }
 }

@@ -18,4 +18,5 @@ internal data class LoadedOperation(
     val mapAssetSource: AssetSource? = null,
     val ledgerEntries: List<LedgerEntry>,
     val generatedImageAssets: List<GeneratedImageAsset> = emptyList(),
+    val additionalDataJson: ByteArray? = null,
 )

@@ -46,7 +46,7 @@ internal class MapViewerNavrepDialog(
 
     private var window: MapViewerDialogWindow? = null
     private var reportMode = ReportMode.NAVREP
-    private val includedIdsByMode = mutableMapOf<ReportMode, MutableSet<MapPlacedObjectId>>()
+    private val reportStatesByMode = mutableMapOf<ReportMode, UnitReportState>()
     private val reportModeDropdown = MapViewerDropdownMenu(
         root = root,
         options = ReportMode.entries.map { MapViewerDropdownOption(it, it.label) },
@@ -150,12 +150,39 @@ internal class MapViewerNavrepDialog(
                     check = check,
                     top = currentTop + index * (ROW_HEIGHT + ROW_GAP),
                     width = width,
-                    included = true,
                 )
             }
         }
 
         currentTop += sectionHeight(currentReport.visibleChecks.size)
+        currentTop += SECTION_GAP
+
+        renderUnidentifiedHeader(parent, width, currentTop)
+        currentTop += HEADER_HEIGHT + HEADER_TO_ROWS_GAP
+
+        if (currentReport.unidentifiedChecks.isEmpty()) {
+            MapViewerTextViews.leftBox(
+                parent = parent,
+                text = "No unidentified contacts remain.",
+                width = width,
+                height = ROW_HEIGHT,
+                size = SMALL_TEXT_SIZE,
+                color = Palette.Colours.LIGHT,
+            ) {
+                y = currentTop + 2.0
+            }
+        } else {
+            currentReport.unidentifiedChecks.forEachIndexed { index, check ->
+                renderRow(
+                    parent = parent,
+                    check = check,
+                    top = currentTop + index * (ROW_HEIGHT + ROW_GAP),
+                    width = width,
+                )
+            }
+        }
+
+        currentTop += sectionHeight(currentReport.unidentifiedChecks.size)
         currentTop += SECTION_GAP
 
         renderHiddenHeader(parent, width, currentTop)
@@ -181,7 +208,6 @@ internal class MapViewerNavrepDialog(
                 check = check,
                 top = currentTop + index * (ROW_HEIGHT + ROW_GAP),
                 width = width,
-                included = false,
             )
         }
     }
@@ -189,9 +215,15 @@ internal class MapViewerNavrepDialog(
     private fun contentHeight(width: Double): Double {
         currentReport = buildReport()
         val reportTextHeight = MapViewerWrappedText.height(MapViewerWrappedText.wrap(currentReport.displayText, width, TEXT_SIZE).size)
-        return MapViewerDialogSpacing.INPUT_HEIGHT + SECTION_GAP + reportTextHeight + SECTION_GAP + sectionHeight(currentReport.visibleChecks.size) + SECTION_GAP + sectionHeight(
-            currentReport.hiddenChecks.size
-        )
+        return MapViewerDialogSpacing.INPUT_HEIGHT +
+                SECTION_GAP +
+                reportTextHeight +
+                SECTION_GAP +
+                sectionHeight(currentReport.visibleChecks.size) +
+                SECTION_GAP +
+                sectionHeight(currentReport.unidentifiedChecks.size) +
+                SECTION_GAP +
+                sectionHeight(currentReport.hiddenChecks.size)
     }
 
     private fun contentMinimumWidth(): Double {
@@ -206,12 +238,16 @@ internal class MapViewerNavrepDialog(
         val hiddenTextWidth = currentReport.hiddenChecks
             .maxOfOrNull { check -> MapViewerTextViews.measure(reportRowLabel(check), size = SMALL_TEXT_SIZE).width }
             ?: 0.0
+        val unidentifiedTextWidth = currentReport.unidentifiedChecks
+            .maxOfOrNull { check -> MapViewerTextViews.measure(reportRowLabel(check), size = SMALL_TEXT_SIZE).width }
+            ?: 0.0
         return maxOf(
             PREFERRED_MIN_CONTENT_WIDTH,
             dropdownWidth,
             visibleTextWidth,
-            identifiedTextWidth + CHECKBOX_SIZE + CHECKBOX_LABEL_GAP,
-            hiddenTextWidth + CHECKBOX_SIZE + CHECKBOX_LABEL_GAP,
+            identifiedTextWidth + rowControlsWidth(),
+            unidentifiedTextWidth + rowControlsWidth(),
+            hiddenTextWidth + rowControlsWidth(),
         )
     }
 
@@ -219,6 +255,20 @@ internal class MapViewerNavrepDialog(
         MapViewerTextViews.leftBox(
             parent = parent,
             text = "Identified (${currentReport.visibleChecks.size})",
+            width = width,
+            height = HEADER_HEIGHT,
+            role = MapViewerFontRole.STRONG,
+            size = HEADER_TEXT_SIZE,
+            color = Palette.Colours.WHITE,
+        ) {
+            y = top
+        }
+    }
+
+    private fun renderUnidentifiedHeader(parent: Container, width: Double, top: Double) {
+        MapViewerTextViews.leftBox(
+            parent = parent,
+            text = "Detected (${currentReport.unidentifiedChecks.size})",
             width = width,
             height = HEADER_HEIGHT,
             role = MapViewerFontRole.STRONG,
@@ -248,55 +298,82 @@ internal class MapViewerNavrepDialog(
         check: io.hsar.mapgenerator.commandgui.korge.interaction.NavrepVisibilityCheck,
         top: Double,
         width: Double,
-        included: Boolean,
     ) {
+        val state = currentReportState()
+        val hasSensorContact = check.unit.id in state.sensorContactIds
+        val isIdentified = check.unit.id in state.identifiedIds
         val row = parent.container()
         row.xy(0.0, top)
-        MapViewerUiBoxes.box(row, width, ROW_HEIGHT, active = included)
-        row.mouse {
-            onClick {
-                toggleIncluded(check)
-            }
-        }
+        MapViewerUiBoxes.box(row, width, ROW_HEIGHT, active = hasSensorContact || isIdentified)
 
-        val checkbox = row.container()
-        checkbox.xy(ROW_INSET, (ROW_HEIGHT - CHECKBOX_SIZE) * 0.5)
-        MapViewerUiBoxes.box(checkbox, CHECKBOX_SIZE, CHECKBOX_SIZE, active = included)
-        if (included) {
-            checkbox.solidRect(
-                CHECKBOX_SIZE - CHECKBOX_MARK_INSET * 2.0,
-                CHECKBOX_SIZE - CHECKBOX_MARK_INSET * 2.0,
-                korlibs.image.color.RGBA(255, 255, 255, 255),
-            )
-                .xy(CHECKBOX_MARK_INSET, CHECKBOX_MARK_INSET)
-        }
+        renderCheckbox(
+            parent = row,
+            x = ROW_INSET,
+            checked = hasSensorContact,
+            onToggle = { toggleSensorContact(check.unit.id) },
+        )
+        renderCheckbox(
+            parent = row,
+            x = ROW_INSET + CHECKBOX_SIZE + CHECKBOX_GAP,
+            checked = isIdentified,
+            onToggle = { toggleIdentification(check.unit.id) },
+        )
 
         MapViewerTextViews.leftBox(
             parent = row,
             text = reportRowLabel(check),
-            width = width - CHECKBOX_SIZE - CHECKBOX_LABEL_GAP - ROW_INSET * 2.0,
+            width = width - rowControlsWidth() - ROW_INSET,
             height = ROW_HEIGHT,
             size = SMALL_TEXT_SIZE,
             color = Palette.Colours.WHITE,
         ) {
-            x = CHECKBOX_SIZE + CHECKBOX_LABEL_GAP
+            x = rowControlsWidth()
         }
     }
 
-    private fun toggleIncluded(check: io.hsar.mapgenerator.commandgui.korge.interaction.NavrepVisibilityCheck) {
-        val includedIds = currentIncludedIds()
-        if (!includedIds.add(check.unit.id)) {
-            includedIds.remove(check.unit.id)
+    private fun renderCheckbox(parent: Container, x: Double, checked: Boolean, onToggle: () -> Unit) {
+        val checkbox = parent.container()
+        checkbox.xy(x, (ROW_HEIGHT - CHECKBOX_SIZE) * 0.5)
+        MapViewerUiBoxes.box(checkbox, CHECKBOX_SIZE, CHECKBOX_SIZE, active = checked)
+        if (checked) {
+            checkbox.solidRect(
+                CHECKBOX_SIZE - CHECKBOX_MARK_INSET * 2.0,
+                CHECKBOX_SIZE - CHECKBOX_MARK_INSET * 2.0,
+                korlibs.image.color.RGBA(255, 255, 255, 255),
+            ).xy(CHECKBOX_MARK_INSET, CHECKBOX_MARK_INSET)
         }
+        checkbox.mouse {
+            onClick {
+                onToggle()
+            }
+        }
+    }
+
+    private fun toggleSensorContact(unitId: MapPlacedObjectId) {
+        currentReportState().sensorContactIds.toggle(unitId)
         currentReport = buildReport()
         window?.refresh()
     }
 
-    private fun currentIncludedIds(): MutableSet<MapPlacedObjectId> =
-        includedIdsByMode.getOrPut(reportMode) { initialIncludedIds(reportMode) }
+    private fun toggleIdentification(unitId: MapPlacedObjectId) {
+        currentReportState().identifiedIds.toggle(unitId)
+        currentReport = buildReport()
+        window?.refresh()
+    }
 
-    private fun initialIncludedIds(mode: ReportMode): MutableSet<MapPlacedObjectId> =
-        initialReportFor(mode).visibleChecks.mapTo(mutableSetOf()) { it.unit.id }
+    private fun currentReportState(): UnitReportState =
+        reportStatesByMode.getOrPut(reportMode) { initialReportState(reportMode) }
+
+    private fun initialReportState(mode: ReportMode): UnitReportState =
+        initialReportFor(mode).detectedChecks
+            .mapTo(mutableSetOf()) { it.unit.id }
+            .let { initiallyDetectedIds ->
+                UnitReportState(
+                    sensorContactIds = initiallyDetectedIds.toMutableSet(),
+                    identifiedIds = initialReportFor(mode).visibleChecks
+                        .mapTo(mutableSetOf()) { it.unit.id },
+                )
+            }
 
     private fun initialReportFor(mode: ReportMode): NavrepVisibilityReport =
         NavrepDetection.visibilityReport(
@@ -312,7 +389,12 @@ internal class MapViewerNavrepDialog(
         )
 
     private fun buildReport(): NavrepVisibilityReport {
-        val includedIds = currentIncludedIds()
+        val reportState = currentReportState()
+        val detectedIds = initialReportFor(reportMode).detectedChecks.mapTo(mutableSetOf()) { it.unit.id }
+        reportState.sensorContactIds.retainAll(detectedIds)
+        reportState.identifiedIds.retainAll(detectedIds)
+        val identifiedIds = reportState.sensorContactIds intersect reportState.identifiedIds
+        val unidentifiedIds = (reportState.sensorContactIds union reportState.identifiedIds) - identifiedIds
         return NavrepDetection.visibilityReport(
             observer = observer,
             candidates = candidates,
@@ -320,7 +402,8 @@ internal class MapViewerNavrepDialog(
             mapHeight = mapHeight,
             mapUnitsPerPixel = mapUnitsPerPixel,
             gridLayer = gridLayer,
-            includedIds = includedIds,
+            includedIds = identifiedIds,
+            unidentifiedIds = unidentifiedIds,
             candidateFilter = reportMode.candidateFilter(observer.template.affiliation),
             emptySummaryText = reportMode.emptySummaryText,
         )
@@ -365,6 +448,20 @@ internal class MapViewerNavrepDialog(
             HEADER_HEIGHT + HEADER_TO_ROWS_GAP + (rowCount * ROW_HEIGHT) + ((rowCount - 1) * ROW_GAP)
         }
 
+    private fun rowControlsWidth(): Double =
+        ROW_INSET + CHECKBOX_SIZE * 2.0 + CHECKBOX_GAP + CHECKBOX_LABEL_GAP
+
+    private fun MutableSet<MapPlacedObjectId>.toggle(unitId: MapPlacedObjectId) {
+        if (!add(unitId)) {
+            remove(unitId)
+        }
+    }
+
+    private data class UnitReportState(
+        val sensorContactIds: MutableSet<MapPlacedObjectId>,
+        val identifiedIds: MutableSet<MapPlacedObjectId>,
+    )
+
     private companion object {
         const val PREFERRED_WIDTH = 900.0
         const val PREFERRED_HEIGHT = 680.0
@@ -378,6 +475,7 @@ internal class MapViewerNavrepDialog(
         const val ROW_HEIGHT = 34.0
         const val ROW_GAP = 8.0
         const val CHECKBOX_SIZE = 16.0
+        const val CHECKBOX_GAP = 8.0
         const val CHECKBOX_LABEL_GAP = 12.0
         const val CHECKBOX_MARK_INSET = 4.0
         const val ROW_INSET = 8.0

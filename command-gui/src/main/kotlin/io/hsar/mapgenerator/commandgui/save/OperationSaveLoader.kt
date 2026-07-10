@@ -122,6 +122,7 @@ internal class OperationSaveLoader {
                 mapAssetSource = mapAssetSource,
                 ledgerEntries = replayed.ledgerEntries,
                 generatedImageAssets = loadTurnThumbnailAssets(zip, save.ledger.entries),
+                additionalDataJson = save.additionalDataJson,
             )
         }
 

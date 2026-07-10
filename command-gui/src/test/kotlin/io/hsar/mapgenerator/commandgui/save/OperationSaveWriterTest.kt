@@ -101,6 +101,26 @@ class OperationSaveWriterTest {
     }
 
     @Test
+    fun `additional data json is written when provided`() {
+        val payload = """{"custom":"value"}""".toByteArray()
+        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+            request(
+                operationId = UUID.fromString("00000000-0000-0000-0000-0000000000ee"),
+                mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                ledgerEntries = emptyList(),
+                additionalDataJson = payload,
+            ),
+            tempDir.resolve("additional-data.oct.zip"),
+        )
+
+        ZipFile(savePath.toFile()).use { zip ->
+            assertThat(zip.getEntry("additionalData.json") != null, equalTo(true))
+            assertThat(zip.read("additionalData.json").contentEquals(payload), equalTo(true))
+        }
+    }
+
+    @Test
     fun `missing source assets fall back to jpg unless transparency requires png`() {
         val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000bb")
         val missingSource = AssetSource(
@@ -308,6 +328,7 @@ class OperationSaveWriterTest {
             viewportWidth = 800,
             viewportHeight = 600,
         ),
+        additionalDataJson: ByteArray? = null,
     ) = OperationSaveRequest(
         operationId = operationId,
         operationName = "Test Operation",
@@ -319,6 +340,7 @@ class OperationSaveWriterTest {
         thumbnailImage = thumbnailImage,
         mapAssetSource = mapSource,
         ledgerEntries = ledgerEntries,
+        additionalDataJson = additionalDataJson,
     )
 
     private fun writerWithUuids(

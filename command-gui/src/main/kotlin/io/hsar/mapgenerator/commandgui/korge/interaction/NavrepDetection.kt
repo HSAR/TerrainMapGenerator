@@ -15,7 +15,9 @@ internal data class NavrepContact(
 internal data class NavrepVisibilityCheck(
     val unit: UnitSnapshot,
     val visible: Boolean,
+    val detected: Boolean,
     val distanceUnits: Double,
+    val identificationRangeUnits: Double,
     val detectionRangeUnits: Double,
     val baseDetectionRangeUnits: Double,
     val notes: List<String>,
@@ -25,6 +27,8 @@ internal data class NavrepVisibilityReport(
     val displayText: String,
     val copyText: String,
     val visibleChecks: List<NavrepVisibilityCheck>,
+    val detectedChecks: List<NavrepVisibilityCheck>,
+    val unidentifiedChecks: List<NavrepVisibilityCheck> = emptyList(),
     val hiddenChecks: List<NavrepVisibilityCheck>,
 )
 
@@ -53,6 +57,7 @@ internal fun UnitSnapshot.unitClassLabel(): String? =
 
 private const val UNIT_CLASS_KEY = "unitClass"
 internal val NAVREP_ELIGIBLE_CLASSES = setOf("FF", "F", "DD", "CL", "CA", "CVE", "CVL", "BC")
+private const val DETECTION_RANGE_BAND_MULTIPLIER = 2.0
 
 private fun Map<String, String>.warpBonus(): Int? {
     val warpText = stringProperty("warp") ?: return null
@@ -83,7 +88,7 @@ internal object NavrepDetection {
         candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
     ): List<NavrepContact> =
         visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer, candidateFilter)
-            .filter { it.visible }
+            .filter { it.detected }
             .map {
                 NavrepContact(
                     unit = it.unit,
@@ -107,36 +112,36 @@ internal object NavrepDetection {
             .filter(candidateFilter)
             .mapNotNull { candidate ->
                 val distanceUnits = observer.distanceTo(candidate, mapWidth, mapHeight, mapUnitsPerPixel)
-                val detection = candidate.detectionRangeUnits(observer)
+                val identification = candidate.identificationRangeUnits(observer)
+                val detection = identification?.let { it * DETECTION_RANGE_BAND_MULTIPLIER }
                 val baseDetectionRangeUnits = candidate.unitClassLabel().baseDetectionRangeUnits()
                 val notes = candidate.visibilityNotes()
                 when {
                     candidate.transmissionInScope() -> NavrepVisibilityCheck(
                         unit = candidate,
                         visible = true,
+                        detected = true,
                         distanceUnits = distanceUnits,
+                        identificationRangeUnits = Double.POSITIVE_INFINITY,
                         detectionRangeUnits = Double.POSITIVE_INFINITY,
                         baseDetectionRangeUnits = baseDetectionRangeUnits,
                         notes = notes + "Transmitting in scope: automatically detected.",
                     )
 
-                    detection == null -> null
-                    distanceUnits <= detection -> NavrepVisibilityCheck(
-                        unit = candidate,
-                        visible = true,
-                        distanceUnits = distanceUnits,
-                        detectionRangeUnits = detection,
-                        baseDetectionRangeUnits = baseDetectionRangeUnits,
-                        notes = notes + "Detected within range.",
-                    )
-
+                    identification == null -> null
                     else -> NavrepVisibilityCheck(
                         unit = candidate,
-                        visible = false,
+                        visible = distanceUnits <= identification,
+                        detected = distanceUnits <= detection!!,
                         distanceUnits = distanceUnits,
+                        identificationRangeUnits = identification,
                         detectionRangeUnits = detection,
                         baseDetectionRangeUnits = baseDetectionRangeUnits,
-                        notes = notes + "Outside detection range.",
+                        notes = notes + if (distanceUnits <= detection) {
+                            "Detected within range."
+                        } else {
+                            "Outside detection range."
+                        },
                     )
                 }
             }
@@ -155,13 +160,15 @@ internal object NavrepDetection {
         mapUnitsPerPixel: Double,
         gridLayer: GridLayer? = null,
         includedIds: Set<MapPlacedObjectId>? = null,
+        unidentifiedIds: Set<MapPlacedObjectId> = emptySet(),
         candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
         emptySummaryText: String = "No allied contacts to report.",
     ): NavrepVisibilityReport {
         val checks = visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer, candidateFilter)
         val effectiveIncludedIds = includedIds ?: checks.filter { it.visible }.mapTo(mutableSetOf()) { it.unit.id }
         val visibleChecks = checks.filter { it.unit.id in effectiveIncludedIds }
-        val hiddenChecks = checks.filterNot { it.unit.id in effectiveIncludedIds }
+        val unidentifiedChecks = checks.filter { it.unit.id in unidentifiedIds && it.unit.id !in effectiveIncludedIds }
+        val hiddenChecks = checks.filterNot { it.unit.id in effectiveIncludedIds || it.unit.id in unidentifiedIds }
         val lines = buildList {
             add(buildPositionSummary(observer, visibleChecks, mapWidth, mapHeight, gridLayer, emptySummaryText))
         }
@@ -170,6 +177,8 @@ internal object NavrepDetection {
             displayText = displayText,
             copyText = displayText,
             visibleChecks = visibleChecks,
+            detectedChecks = checks.filter { it.detected },
+            unidentifiedChecks = unidentifiedChecks,
             hiddenChecks = hiddenChecks,
         )
     }
@@ -183,7 +192,7 @@ internal object NavrepDetection {
     ): String =
         buildHiddenLine(observer, check, mapWidth, mapHeight, gridLayer)
 
-    private fun UnitSnapshot.detectionRangeUnits(observer: UnitSnapshot): Double? {
+    private fun UnitSnapshot.identificationRangeUnits(observer: UnitSnapshot): Double? {
         val base = unitClassLabel().baseDetectionRangeUnits()
         val observerModifier = observer.unitClassLabel().sensorRangeModifier()
 

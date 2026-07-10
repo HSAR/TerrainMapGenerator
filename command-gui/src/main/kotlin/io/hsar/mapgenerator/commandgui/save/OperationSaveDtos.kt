@@ -274,4 +274,5 @@ internal data class MapCoordinateSaveDto(
 internal data class ReadOperationSave(
     val game: GameSaveDto,
     val ledger: LedgerFileDto,
+    val additionalDataJson: ByteArray? = null,
 )

@@ -120,6 +120,11 @@ internal class OperationSaveWriter(
             zip.putNextEntry(ZipEntry(LEDGER_JSON))
             zip.write(OperationSaveJson.objectMapper.writeValueAsBytes(ledgerFile))
             zip.closeEntry()
+            request.additionalDataJson?.let { additionalData ->
+                zip.putNextEntry(ZipEntry(ADDITIONAL_DATA_JSON))
+                zip.write(additionalData)
+                zip.closeEntry()
+            }
         }
 
         return targetPath
@@ -147,6 +152,7 @@ internal class OperationSaveWriter(
         const val FORMAT_VERSION = 6
         const val GAME_JSON = "game.json"
         const val LEDGER_JSON = "ledger.json"
+        const val ADDITIONAL_DATA_JSON = "additionalData.json"
         const val ASSET_ROLE_MAP = "map"
     }
 }

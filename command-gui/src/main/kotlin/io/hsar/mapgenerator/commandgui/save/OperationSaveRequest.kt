@@ -20,6 +20,7 @@ internal data class OperationSaveRequest(
     val mapAssetSource: AssetSource?,
     val ledgerEntries: List<LedgerEntry>,
     val generatedImageAssets: List<GeneratedImageAsset> = emptyList(),
+    val additionalDataJson: ByteArray? = null,
 )
 
 internal data class GeneratedImageAsset(

@@ -368,6 +368,7 @@ internal class MapViewerScene(
                                 mapAssetSource = operationMapImage?.assetSource ?: loadedOperation?.mapAssetSource,
                                 ledgerEntries = actionHistory.fullTimelineEntries,
                                 generatedImageAssets = generatedImageAssets.values.toList(),
+                                additionalDataJson = loadedOperation?.additionalDataJson,
                             )
 
                             thread(name = "command-gui-save", isDaemon = true) {
