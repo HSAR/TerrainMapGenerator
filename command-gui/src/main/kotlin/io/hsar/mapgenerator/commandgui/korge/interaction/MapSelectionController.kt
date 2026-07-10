@@ -274,7 +274,6 @@ internal class MapSelectionController(
             coordinateSpace = coordinateSpace,
             shiftHeld = shiftHeld,
         )
-            .filterIsInstance<DrawingSnapshot>()
             .forEach(objectController::updateObject)
     }
 

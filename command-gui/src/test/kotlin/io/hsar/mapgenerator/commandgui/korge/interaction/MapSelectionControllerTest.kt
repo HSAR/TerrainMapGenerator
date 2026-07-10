@@ -234,6 +234,77 @@ class MapSelectionControllerTest {
     }
 
     @Test
+    fun `single unit pivot rotation updates facing and keeps position fixed`() {
+        val objectController = objectController()
+        val unit = unitSnapshot("00000000-0000-0000-0000-000000000087", destroyed = false, x = 0.5, y = 0.5)
+        objectController.createObject(unit)
+        val storedUnit = objectController.snapshot(unit.id) as UnitSnapshot
+        val selectionController = selectionController(objectController = objectController)
+        selectionController.selectOnly(unit.id)
+
+        val handle = pivotHandleForSelection(listOf(storedUnit), MapCoordinateSpace(GEOMETRY, 1000, 1000), viewport()) ?: error("missing handle")
+        val pivot = MapSelectionPivot.pivotCenter(listOf(storedUnit), MapCoordinateSpace(GEOMETRY, 1000, 1000))
+        val startAngle = MapSelectionPivot.bearingAngle(
+            Vector2D(pivot.x * 1000.0, pivot.y * 1000.0),
+            handle.center,
+        )
+        val target = pointFromBearingAngle(
+            center = Vector2D(pivot.x * 1000.0, pivot.y * 1000.0),
+            radius = handle.radius,
+            bearingRadians = startAngle + (PI / 2.0),
+        )
+
+        selectionController.beginLeftDrag(handle.center)
+        selectionController.update(target, leftHeld = true)
+        selectionController.update(target, leftHeld = false)
+
+        val rotated = objectController.snapshot(unit.id) as UnitSnapshot
+        assertThat(rotated.facingDegrees, equalTo(90))
+        assertThat(rotated.mapCoordinate.x, closeTo(storedUnit.mapCoordinate.x, 0.0001))
+        assertThat(rotated.mapCoordinate.y, closeTo(storedUnit.mapCoordinate.y, 0.0001))
+    }
+
+    @Test
+    fun `multi unit pivot rotation updates positions around centroid and bearings`() {
+        val objectController = objectController()
+        val north = unitSnapshot("00000000-0000-0000-0000-000000000088", destroyed = false, x = 0.5, y = 0.4, facing = 10)
+        val south = unitSnapshot("00000000-0000-0000-0000-000000000089", destroyed = false, x = 0.5, y = 0.6)
+        objectController.createObject(north)
+        objectController.createObject(south)
+        val storedNorth = objectController.snapshot(north.id) as UnitSnapshot
+        val storedSouth = objectController.snapshot(south.id) as UnitSnapshot
+        val selectionController = selectionController(objectController = objectController)
+        selectionController.beginLeftDrag(Vector2D(0.0, 0.0))
+        selectionController.update(Vector2D(700.0, 700.0), leftHeld = false)
+
+        val selected = listOf(storedNorth, storedSouth)
+        val handle = pivotHandleForSelection(selected, MapCoordinateSpace(GEOMETRY, 1000, 1000), viewport()) ?: error("missing handle")
+        val pivot = MapSelectionPivot.pivotCenter(selected, MapCoordinateSpace(GEOMETRY, 1000, 1000))
+        val startAngle = MapSelectionPivot.bearingAngle(
+            Vector2D(pivot.x * 1000.0, pivot.y * 1000.0),
+            handle.center,
+        )
+        val target = pointFromBearingAngle(
+            center = Vector2D(pivot.x * 1000.0, pivot.y * 1000.0),
+            radius = handle.radius,
+            bearingRadians = startAngle + (PI / 2.0),
+        )
+
+        selectionController.beginLeftDrag(handle.center)
+        selectionController.update(target, leftHeld = true)
+        selectionController.update(target, leftHeld = false)
+
+        val rotatedNorth = objectController.snapshot(north.id) as UnitSnapshot
+        val rotatedSouth = objectController.snapshot(south.id) as UnitSnapshot
+        assertThat(rotatedNorth.facingDegrees, equalTo(100))
+        assertThat(rotatedNorth.mapCoordinate.x, closeTo(0.6, 0.0001))
+        assertThat(rotatedNorth.mapCoordinate.y, closeTo(0.5, 0.0001))
+        assertThat(rotatedSouth.facingDegrees, equalTo(90))
+        assertThat(rotatedSouth.mapCoordinate.x, closeTo(0.4, 0.0001))
+        assertThat(rotatedSouth.mapCoordinate.y, closeTo(0.5, 0.0001))
+    }
+
+    @Test
     fun `shift rotate snaps to the nearest quarter turn`() {
         val objectController = objectController()
         val drawing = DrawingSnapshot(
@@ -310,7 +381,7 @@ class MapSelectionControllerTest {
             ),
         )
 
-    private fun unitSnapshot(id: String, destroyed: Boolean, x: Double = 0.5, y: Double = 0.5) =
+    private fun unitSnapshot(id: String, destroyed: Boolean, x: Double = 0.5, y: Double = 0.5, facing: Int? = null) =
         UnitSnapshot(
             id = MapPlacedObjectId(UUID.fromString(id)),
             unitTemplateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000061")),
@@ -321,7 +392,7 @@ class MapSelectionControllerTest {
             ),
             instanceName = "Unit",
             destroyed = destroyed,
-            facingDegrees = null,
+            facingDegrees = facing,
             mapCoordinate = MapCoordinate(x, y),
             normalizedWidth = 0.1,
             normalizedHeight = 0.1,
