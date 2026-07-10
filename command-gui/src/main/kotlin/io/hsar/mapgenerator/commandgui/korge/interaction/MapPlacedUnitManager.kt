@@ -698,23 +698,14 @@ internal class MapPlacedUnitManager(
                         onSelected = { onObjectDeleted(snapshot) },
                     ),
                 )
-                add(navrepMenuAction(snapshot))
+                add(sitrepMenuAction())
             }
 
-        private fun navrepMenuAction(snapshot: UnitSnapshot): MapPlacedObjectMenuAction {
-            val unitClass = snapshot.unitClassLabel()
-            val eligible = unitClass in NAVREP_ELIGIBLE_CLASSES
-            return MapPlacedObjectMenuAction(
-                label = "NAVREP",
+        private fun sitrepMenuAction(): MapPlacedObjectMenuAction =
+            MapPlacedObjectMenuAction(
+                label = "SITREP",
                 onSelected = { deferredActionRunner.launch { openNavrepVisibilityDialog(this@PlacedUnit) } },
-                enabled = eligible,
-                disabledTooltipText = when {
-                    unitClass == null -> "This unit does not have a unitClass setting."
-                    !eligible -> "The supplied unitClass value \"$unitClass\" was not recognised. NAVREP is only available to units with unitClass FF, F, DD, CL, CA, CVE, CVL, or BC."
-                    else -> null
-                },
             ).withRequiredFeatureFlags(io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL)
-        }
 
         private fun openNavrepVisibilityDialog(unit: PlacedUnit) {
             val snapshot = unit.snapshot()
@@ -722,7 +713,7 @@ internal class MapPlacedUnitManager(
                 root = root,
                 dialogManager = dialogManager,
                 dialogKey = "navrep-report-${unit.id.value}",
-                title = "NAVREP - ${snapshot.displayName()}",
+                unitName = snapshot.displayName(),
                 observer = snapshot,
                 candidates = units.map { it.snapshot() },
                 mapWidth = mapWidth,

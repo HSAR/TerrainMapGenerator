@@ -25,7 +25,7 @@ class NavrepDetectionTest {
             id = "00000000-0000-0000-0000-000000000002",
             instanceName = "Escort",
             unitClass = "FF",
-            x = 0.505,
+            x = 0.5035,
             y = 0.5,
         )
         val farCL = unit(
@@ -45,8 +45,8 @@ class NavrepDetectionTest {
         )
 
         assertThat(contacts.map { it.unit.id }, equalTo(listOf(nearbyFF.id)))
-        assertThat(contacts.single().distanceUnits, closeTo(5.0, 0.0001))
-        assertThat(contacts.single().detectionRangeUnits, equalTo(6.0))
+        assertThat(contacts.single().distanceUnits, closeTo(3.5, 0.0001))
+        assertThat(contacts.single().detectionRangeUnits, equalTo(4.0))
     }
 
     @Test
@@ -62,7 +62,7 @@ class NavrepDetectionTest {
             id = "00000000-0000-0000-0000-000000000011",
             instanceName = "Runner",
             unitClass = "CL",
-            x = 0.52,
+            x = 0.515,
             y = 0.5,
             customProperties = mapOf("activeSensors" to "true"),
         )
@@ -84,7 +84,7 @@ class NavrepDetectionTest {
         )
 
         assertThat(contacts.map { it.unit.id }, equalTo(listOf(activeSensorsContact.id)))
-        assertThat(contacts.single().detectionRangeUnits, equalTo(24.0))
+        assertThat(contacts.single().detectionRangeUnits, equalTo(16.0))
     }
 
     @Test
@@ -133,7 +133,7 @@ class NavrepDetectionTest {
                     id = "00000000-0000-0000-0000-000000000031",
                     instanceName = "Escort",
                     unitClass = "FF",
-                    x = 0.505,
+                    x = 0.5035,
                     y = 0.5,
                 ),
                 unit(
@@ -182,13 +182,159 @@ class NavrepDetectionTest {
             mapWidth = 1_000,
             mapHeight = 1_000,
             mapUnitsPerPixel = 1.0,
-            forcedIncludedIds = setOf(forced.id),
+            includedIds = setOf(forced.id),
         )
 
         assertThat(report.visibleChecks.map { it.unit.id }, equalTo(listOf(forced.id)))
-        assertThat(report.hiddenChecks.map { it.unit.id }, equalTo(listOf(forced.id)))
+        assertThat(report.hiddenChecks, equalTo(emptyList<NavrepVisibilityCheck>()))
         assertThat(report.displayText.contains("CL Cruiser has position"), equalTo(true))
         assertThat(report.copyText, equalTo(report.displayText))
+    }
+
+    @Test
+    fun `navrep report can exclude every contact from the identified section`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-000000000041",
+            instanceName = "FF 1",
+            unitClass = "FF",
+            x = 0.5,
+            y = 0.5,
+        )
+        val contact = unit(
+            id = "00000000-0000-0000-0000-000000000042",
+            instanceName = "Cruiser",
+            unitClass = "CL",
+            x = 0.513,
+            y = 0.5,
+        )
+
+        val report = NavrepDetection.visibilityReport(
+            observer = observer,
+            candidates = listOf(observer, contact),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+            includedIds = emptySet(),
+        )
+
+        assertThat(report.visibleChecks, equalTo(emptyList()))
+        assertThat(report.hiddenChecks.map { it.unit.id }, equalTo(listOf(contact.id)))
+        assertThat(report.displayText.contains("No allied contacts to report."), equalTo(true))
+    }
+
+    @Test
+    fun `scirep report includes only non matching affiliations in distance order`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-000000000043",
+            instanceName = "CA Observer",
+            unitClass = "CA",
+            x = 0.5,
+            y = 0.5,
+            affiliation = UnitAffiliation.Friend,
+        )
+        val friendly = unit(
+            id = "00000000-0000-0000-0000-000000000044",
+            instanceName = "Escort",
+            unitClass = "FF",
+            x = 0.5035,
+            y = 0.5,
+            affiliation = UnitAffiliation.Friend,
+        )
+        val hostileNear = unit(
+            id = "00000000-0000-0000-0000-000000000045",
+            instanceName = "Raider",
+            unitClass = "FF",
+            x = 0.5035,
+            y = 0.5,
+            affiliation = UnitAffiliation.Hostile,
+        )
+        val hostileMid = unit(
+            id = "00000000-0000-0000-0000-000000000046",
+            instanceName = "Picket",
+            unitClass = "DD",
+            x = 0.514,
+            y = 0.5,
+            affiliation = UnitAffiliation.Hostile,
+        )
+        val hostileFar = unit(
+            id = "00000000-0000-0000-0000-000000000047",
+            instanceName = "Cruiser",
+            unitClass = "CA",
+            x = 0.527,
+            y = 0.5,
+            affiliation = UnitAffiliation.Hostile,
+        )
+        val hostileHidden = unit(
+            id = "00000000-0000-0000-0000-000000000048",
+            instanceName = "Distant",
+            unitClass = "CA",
+            x = 0.560,
+            y = 0.5,
+            affiliation = UnitAffiliation.Hostile,
+        )
+
+        val report = NavrepDetection.visibilityReport(
+            observer = observer,
+            candidates = listOf(observer, friendly, hostileFar, hostileHidden, hostileNear, hostileMid),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+            candidateFilter = { candidate -> candidate.template.affiliation != observer.template.affiliation },
+            emptySummaryText = "No hostile contacts to report.",
+        )
+
+        assertThat(report.visibleChecks.map { it.unit.id }, equalTo(listOf(hostileNear.id, hostileMid.id, hostileFar.id)))
+        assertThat(report.hiddenChecks.map { it.unit.id }, equalTo(listOf(hostileHidden.id)))
+        assertThat(report.displayText.contains("No hostile contacts to report."), equalTo(false))
+        assertThat(report.displayText.contains("CA Cruiser has position"), equalTo(true))
+    }
+
+    @Test
+    fun `navrep detection range follows the class band rules`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-000000000050",
+            instanceName = "CA Observer",
+            unitClass = "CA",
+            x = 0.5,
+            y = 0.5,
+        )
+        val ffTarget = unit(
+            id = "00000000-0000-0000-0000-000000000051",
+            instanceName = "FF Target",
+            unitClass = "FF",
+            x = 0.505,
+            y = 0.5,
+        )
+        val ddTarget = unit(
+            id = "00000000-0000-0000-0000-000000000052",
+            instanceName = "DD Target",
+            unitClass = "DD",
+            x = 0.514,
+            y = 0.5,
+        )
+        val caTarget = unit(
+            id = "00000000-0000-0000-0000-000000000053",
+            instanceName = "CA Target",
+            unitClass = "CA",
+            x = 0.527,
+            y = 0.5,
+        )
+
+        val contacts = NavrepDetection.visibleContacts(
+            observer = observer,
+            candidates = listOf(observer, ffTarget, ddTarget, caTarget),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+        )
+
+        assertThat(contacts.map { it.unit.id }, equalTo(listOf(ffTarget.id, ddTarget.id, caTarget.id)))
+        assertThat(contacts[0].baseDetectionRangeUnits, equalTo(6.0))
+        assertThat(contacts[0].detectionRangeUnits, equalTo(9.0))
+        assertThat(contacts[1].baseDetectionRangeUnits, equalTo(12.0))
+        assertThat(contacts[1].detectionRangeUnits, equalTo(18.0))
+        assertThat(contacts[2].baseDetectionRangeUnits, equalTo(24.0))
+        assertThat(contacts[2].detectionRangeUnits, equalTo(36.0))
     }
 
     private fun unit(
@@ -197,6 +343,7 @@ class NavrepDetectionTest {
         unitClass: String?,
         x: Double,
         y: Double,
+        affiliation: UnitAffiliation? = null,
         customProperties: Map<String, String> = emptyMap(),
         templateUnitClass: String? = unitClass,
     ): UnitSnapshot =
@@ -208,6 +355,7 @@ class NavrepDetectionTest {
                 name = instanceName,
                 bitmap = Bitmap32(4, 4),
                 customProperties = templateUnitClass?.let { mapOf("unitClass" to it) } ?: emptyMap(),
+                affiliation = affiliation,
             ),
             instanceName = instanceName,
             destroyed = false,

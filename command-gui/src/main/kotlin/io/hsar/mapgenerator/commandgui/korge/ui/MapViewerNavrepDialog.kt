@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.NavrepDetection
 import io.hsar.mapgenerator.commandgui.korge.interaction.NavrepVisibilityReport
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.image.Palette
@@ -19,7 +20,7 @@ internal class MapViewerNavrepDialog(
     private val root: Container,
     private val dialogManager: MapViewerDialogManager,
     private val dialogKey: Any,
-    private val title: String,
+    private val unitName: String,
     private val observer: UnitSnapshot,
     private val candidates: List<UnitSnapshot>,
     private val mapWidth: Int,
@@ -30,8 +31,37 @@ internal class MapViewerNavrepDialog(
     private val preferredWidth: Double = PREFERRED_WIDTH,
     private val preferredHeight: Double = PREFERRED_HEIGHT,
 ) {
+    private enum class ReportMode(val label: String, val emptySummaryText: String) {
+        NAVREP("NAVREP", "No allied contacts to report."),
+        SCIREP("SCIREP", "No hostile contacts to report."),
+
+        ;
+
+        fun candidateFilter(observerAffiliation: UnitAffiliation?): (UnitSnapshot) -> Boolean =
+            when (this) {
+                NAVREP -> { candidate -> candidate.template.affiliation == observerAffiliation }
+                SCIREP -> { candidate -> candidate.template.affiliation != observerAffiliation }
+            }
+    }
+
     private var window: MapViewerDialogWindow? = null
-    private val forcedIncludedIds = mutableSetOf<MapPlacedObjectId>()
+    private var reportMode = ReportMode.NAVREP
+    private val includedIdsByMode = mutableMapOf<ReportMode, MutableSet<MapPlacedObjectId>>()
+    private val reportModeDropdown = MapViewerDropdownMenu(
+        root = root,
+        options = ReportMode.entries.map { MapViewerDropdownOption(it, it.label) },
+        onSelected = { selected ->
+            selected?.let { nextMode ->
+                if (reportMode != nextMode) {
+                    reportMode = nextMode
+                    currentReport = buildReport()
+                    window?.refresh()
+                }
+            }
+        },
+        labelForValue = { it?.label ?: reportMode.label },
+        menuWidth = MapViewerDropdownLayoutBuilder.minimumMenuWidth(ReportMode.entries.map { it.label }, hasIcons = false),
+    )
     private var currentReport = buildReport()
 
     fun open(): Boolean {
@@ -41,7 +71,8 @@ internal class MapViewerNavrepDialog(
         val stage = root.stage ?: return false
         window = MapViewerDialogWindow(
             root = root,
-            title = title,
+            title = title(),
+            titleProvider = { title() },
             preferredWidth = preferredWidth,
             preferredHeight = preferredHeight,
             contentMinimumWidth = ::contentMinimumWidth,
@@ -66,19 +97,66 @@ internal class MapViewerNavrepDialog(
 
     private fun renderContent(parent: Container, width: Double) {
         currentReport = buildReport()
-        val visibleText = MapViewerWrappedText.wrap(currentReport.displayText, width, TEXT_SIZE)
         var currentTop = 0.0
-        val visibleTextHeight = MapViewerWrappedText.height(visibleText.size)
+        MapViewerInlineInputs.dropdown(
+            parent = parent,
+            label = "Report",
+            dropdown = reportModeDropdown,
+            value = reportMode,
+            x = 0.0,
+            y = currentTop,
+            width = width,
+            inputMinimumWidth = reportModeInputMinimumWidth(),
+        )
+        currentTop += MapViewerDialogSpacing.INPUT_HEIGHT + SECTION_GAP
+        renderReportSections(parent, width, currentTop)
+    }
+
+    private fun renderReportSections(parent: Container, width: Double, top: Double) {
+        var currentTop = top
+        val reportText = MapViewerWrappedText.wrap(currentReport.displayText, width, TEXT_SIZE)
+        val reportTextHeight = MapViewerWrappedText.height(reportText.size)
         MapViewerTextViews.box(
             parent = parent,
-            text = visibleText.joinToString("\n"),
+            text = reportText.joinToString("\n"),
             width = width,
-            height = visibleTextHeight,
+            height = reportTextHeight,
             size = TEXT_SIZE,
             color = Palette.Colours.WHITE,
             alignment = TextAlignment.TOP_LEFT,
-        )
-        currentTop += visibleTextHeight + SECTION_GAP
+        ) {
+            y = currentTop
+        }
+        currentTop += reportTextHeight + SECTION_GAP
+
+        renderIdentifiedHeader(parent, width, currentTop)
+        currentTop += HEADER_HEIGHT + HEADER_TO_ROWS_GAP
+
+        if (currentReport.visibleChecks.isEmpty()) {
+            MapViewerTextViews.leftBox(
+                parent = parent,
+                text = "No identified contacts remain.",
+                width = width,
+                height = ROW_HEIGHT,
+                size = SMALL_TEXT_SIZE,
+                color = Palette.Colours.LIGHT,
+            ) {
+                y = currentTop + 2.0
+            }
+        } else {
+            currentReport.visibleChecks.forEachIndexed { index, check ->
+                renderRow(
+                    parent = parent,
+                    check = check,
+                    top = currentTop + index * (ROW_HEIGHT + ROW_GAP),
+                    width = width,
+                    included = true,
+                )
+            }
+        }
+
+        currentTop += sectionHeight(currentReport.visibleChecks.size)
+        currentTop += SECTION_GAP
 
         renderHiddenHeader(parent, width, currentTop)
         currentTop += HEADER_HEIGHT + HEADER_TO_ROWS_GAP
@@ -98,43 +176,57 @@ internal class MapViewerNavrepDialog(
         }
 
         currentReport.hiddenChecks.forEachIndexed { index, check ->
-            renderHiddenRow(
+            renderRow(
                 parent = parent,
                 check = check,
                 top = currentTop + index * (ROW_HEIGHT + ROW_GAP),
                 width = width,
+                included = false,
             )
         }
     }
 
     private fun contentHeight(width: Double): Double {
         currentReport = buildReport()
-        val visibleTextHeight = MapViewerWrappedText.height(
-            MapViewerWrappedText.wrap(currentReport.displayText, width, TEXT_SIZE).size,
+        val reportTextHeight = MapViewerWrappedText.height(MapViewerWrappedText.wrap(currentReport.displayText, width, TEXT_SIZE).size)
+        return MapViewerDialogSpacing.INPUT_HEIGHT + SECTION_GAP + reportTextHeight + SECTION_GAP + sectionHeight(currentReport.visibleChecks.size) + SECTION_GAP + sectionHeight(
+            currentReport.hiddenChecks.size
         )
-        val hiddenSectionHeight = if (currentReport.hiddenChecks.isEmpty()) {
-            ROW_HEIGHT
-        } else {
-            HEADER_HEIGHT + HEADER_TO_ROWS_GAP + (currentReport.hiddenChecks.size * ROW_HEIGHT) + ((currentReport.hiddenChecks.size - 1) * ROW_GAP)
-        }
-        return visibleTextHeight + SECTION_GAP + hiddenSectionHeight
     }
 
     private fun contentMinimumWidth(): Double {
+        val dropdownWidth = MapViewerInlineInputs.minimumWidth("Report", reportModeInputMinimumWidth())
         val visibleTextWidth = currentReport.displayText
             .lineSequence()
             .maxOfOrNull { line -> MapViewerTextViews.measure(line, size = TEXT_SIZE).width }
             ?: 0.0
+        val identifiedTextWidth = currentReport.visibleChecks
+            .maxOfOrNull { check -> MapViewerTextViews.measure(reportRowLabel(check), size = SMALL_TEXT_SIZE).width }
+            ?: 0.0
         val hiddenTextWidth = currentReport.hiddenChecks
-            .maxOfOrNull { check ->
-                MapViewerTextViews.measure(hiddenMenuLabel(check), size = SMALL_TEXT_SIZE).width
-            }
+            .maxOfOrNull { check -> MapViewerTextViews.measure(reportRowLabel(check), size = SMALL_TEXT_SIZE).width }
             ?: 0.0
         return maxOf(
             PREFERRED_MIN_CONTENT_WIDTH,
+            dropdownWidth,
             visibleTextWidth,
+            identifiedTextWidth + CHECKBOX_SIZE + CHECKBOX_LABEL_GAP,
             hiddenTextWidth + CHECKBOX_SIZE + CHECKBOX_LABEL_GAP,
         )
+    }
+
+    private fun renderIdentifiedHeader(parent: Container, width: Double, top: Double) {
+        MapViewerTextViews.leftBox(
+            parent = parent,
+            text = "Identified (${currentReport.visibleChecks.size})",
+            width = width,
+            height = HEADER_HEIGHT,
+            role = MapViewerFontRole.STRONG,
+            size = HEADER_TEXT_SIZE,
+            color = Palette.Colours.WHITE,
+        ) {
+            y = top
+        }
     }
 
     private fun renderHiddenHeader(parent: Container, width: Double, top: Double) {
@@ -151,14 +243,19 @@ internal class MapViewerNavrepDialog(
         }
     }
 
-    private fun renderHiddenRow(parent: Container, check: io.hsar.mapgenerator.commandgui.korge.interaction.NavrepVisibilityCheck, top: Double, width: Double) {
-        val included = isForcedIncluded(check)
+    private fun renderRow(
+        parent: Container,
+        check: io.hsar.mapgenerator.commandgui.korge.interaction.NavrepVisibilityCheck,
+        top: Double,
+        width: Double,
+        included: Boolean,
+    ) {
         val row = parent.container()
         row.xy(0.0, top)
         MapViewerUiBoxes.box(row, width, ROW_HEIGHT, active = included)
         row.mouse {
             onClick {
-                toggleForcedInclusion(check)
+                toggleIncluded(check)
             }
         }
 
@@ -176,7 +273,7 @@ internal class MapViewerNavrepDialog(
 
         MapViewerTextViews.leftBox(
             parent = row,
-            text = hiddenMenuLabel(check),
+            text = reportRowLabel(check),
             width = width - CHECKBOX_SIZE - CHECKBOX_LABEL_GAP - ROW_INSET * 2.0,
             height = ROW_HEIGHT,
             size = SMALL_TEXT_SIZE,
@@ -186,18 +283,50 @@ internal class MapViewerNavrepDialog(
         }
     }
 
-    private fun toggleForcedInclusion(check: io.hsar.mapgenerator.commandgui.korge.interaction.NavrepVisibilityCheck) {
-        if (!forcedIncludedIds.add(check.unit.id)) {
-            forcedIncludedIds.remove(check.unit.id)
+    private fun toggleIncluded(check: io.hsar.mapgenerator.commandgui.korge.interaction.NavrepVisibilityCheck) {
+        val includedIds = currentIncludedIds()
+        if (!includedIds.add(check.unit.id)) {
+            includedIds.remove(check.unit.id)
         }
         currentReport = buildReport()
         window?.refresh()
     }
 
-    private fun isForcedIncluded(check: io.hsar.mapgenerator.commandgui.korge.interaction.NavrepVisibilityCheck): Boolean =
-        check.unit.id in forcedIncludedIds
+    private fun currentIncludedIds(): MutableSet<MapPlacedObjectId> =
+        includedIdsByMode.getOrPut(reportMode) { initialIncludedIds(reportMode) }
 
-    private fun hiddenMenuLabel(check: io.hsar.mapgenerator.commandgui.korge.interaction.NavrepVisibilityCheck): String =
+    private fun initialIncludedIds(mode: ReportMode): MutableSet<MapPlacedObjectId> =
+        initialReportFor(mode).visibleChecks.mapTo(mutableSetOf()) { it.unit.id }
+
+    private fun initialReportFor(mode: ReportMode): NavrepVisibilityReport =
+        NavrepDetection.visibilityReport(
+            observer = observer,
+            candidates = candidates,
+            mapWidth = mapWidth,
+            mapHeight = mapHeight,
+            mapUnitsPerPixel = mapUnitsPerPixel,
+            gridLayer = gridLayer,
+            includedIds = null,
+            candidateFilter = mode.candidateFilter(observer.template.affiliation),
+            emptySummaryText = mode.emptySummaryText,
+        )
+
+    private fun buildReport(): NavrepVisibilityReport {
+        val includedIds = currentIncludedIds()
+        return NavrepDetection.visibilityReport(
+            observer = observer,
+            candidates = candidates,
+            mapWidth = mapWidth,
+            mapHeight = mapHeight,
+            mapUnitsPerPixel = mapUnitsPerPixel,
+            gridLayer = gridLayer,
+            includedIds = includedIds,
+            candidateFilter = reportMode.candidateFilter(observer.template.affiliation),
+            emptySummaryText = reportMode.emptySummaryText,
+        )
+    }
+
+    private fun reportRowLabel(check: io.hsar.mapgenerator.commandgui.korge.interaction.NavrepVisibilityCheck): String =
         NavrepDetection.hiddenContactLabel(
             observer = observer,
             check = check,
@@ -206,16 +335,11 @@ internal class MapViewerNavrepDialog(
             gridLayer = gridLayer,
         )
 
-    private fun buildReport(): NavrepVisibilityReport =
-        NavrepDetection.visibilityReport(
-            observer = observer,
-            candidates = candidates,
-            mapWidth = mapWidth,
-            mapHeight = mapHeight,
-            mapUnitsPerPixel = mapUnitsPerPixel,
-            gridLayer = gridLayer,
-            forcedIncludedIds = forcedIncludedIds,
-        )
+    private fun reportModeInputMinimumWidth(): Double =
+        MapViewerDropdownLayoutBuilder.minimumMenuWidth(ReportMode.entries.map { it.label }, hasIcons = false)
+
+    private fun title(): String =
+        "${reportMode.label} - $unitName"
 
     private fun copyToClipboard() {
         runCatching {
@@ -223,7 +347,7 @@ internal class MapViewerNavrepDialog(
             Toolkit.getDefaultToolkit()
                 .systemClipboard
                 .setContents(StringSelection(currentReport.copyText), null)
-            onTransientNotice("NAVREP saved to clipboard.")
+            onTransientNotice("${reportMode.label} saved to clipboard.")
         }
     }
 
@@ -231,7 +355,15 @@ internal class MapViewerNavrepDialog(
         dialogManager.unregister(this)
         window?.close()
         window = null
+        reportModeDropdown.close()
     }
+
+    private fun sectionHeight(rowCount: Int): Double =
+        if (rowCount <= 0) {
+            ROW_HEIGHT
+        } else {
+            HEADER_HEIGHT + HEADER_TO_ROWS_GAP + (rowCount * ROW_HEIGHT) + ((rowCount - 1) * ROW_GAP)
+        }
 
     private companion object {
         const val PREFERRED_WIDTH = 900.0

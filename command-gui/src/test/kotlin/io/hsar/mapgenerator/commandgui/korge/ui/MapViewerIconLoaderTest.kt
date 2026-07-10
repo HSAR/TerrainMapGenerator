@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 
 import korlibs.image.color.RGBA
 import org.hamcrest.MatcherAssert.assertThat
+import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.notNullValue
 import org.junit.jupiter.api.Test
@@ -37,7 +38,7 @@ class MapViewerIconLoaderTest {
     }
 
     @Test
-    fun `preserves the full svg canvas instead of trimming it`() {
+    fun `preserves the full svg canvas when content reaches its edges`() {
         val file = File.createTempFile("unit-icon-canvas", ".svg").apply {
             writeText(
                 """
@@ -54,12 +55,57 @@ class MapViewerIconLoaderTest {
 
             assertThat(bitmap, notNullValue())
             val bounds = bitmap!!.opaqueBounds()
-            assertThat(bitmap.width < 316, equalTo(true))
-            assertThat(bitmap.height < 216, equalTo(true))
-            assertThat(bounds.left > 0, equalTo(true))
-            assertThat(bounds.top > 0, equalTo(true))
-            assertThat(bounds.right < bitmap.width - 1, equalTo(true))
-            assertThat(bounds.bottom < bitmap.height - 1, equalTo(true))
+            assertThat(bitmap.width, equalTo(316))
+            assertThat(bitmap.height, equalTo(216))
+            assertThat(bounds.isPresent, equalTo(true))
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun `renders svg text elements inside unit icons`() {
+        val file = File.createTempFile("unit-icon-text", ".svg").apply {
+            writeText(
+                """
+                <svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" width="236" height="256" viewBox="41 26 118 128">
+                  <path d="M 155,150 C 155,50 115,30 100,30 85,30 45,50 45,150" stroke-width="4" stroke="black" fill="rgb(128,224,255)" fill-opacity="1"></path>
+                  <text x="100" y="103" text-anchor="middle" font-size="45" font-family="Arial" font-weight="bold" dominant-baseline="middle" stroke-width="3" stroke="none" fill="black">A</text>
+                </svg>
+                """.trimIndent(),
+            )
+        }
+
+        try {
+            val bitmap = MapViewerIconLoader.load(file)
+
+            assertThat(bitmap, notNullValue())
+            assertThat(bitmap!!.countBlackPixelsInCenter(), equalTo(true))
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun `centers svg text on the requested anchor point`() {
+        val file = File.createTempFile("unit-icon-text-centre", ".svg").apply {
+            writeText(
+                """
+                <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+                  <text x="100" y="100" text-anchor="middle" dominant-baseline="middle" font-size="72" font-family="Arial" font-weight="bold" fill="black">A</text>
+                </svg>
+                """.trimIndent(),
+            )
+        }
+
+        try {
+            val bitmap = MapViewerIconLoader.load(file)
+
+            assertThat(bitmap, notNullValue())
+            val centroid = bitmap!!.darkPixelCentroid()
+            assertThat(centroid, notNullValue())
+            assertThat(centroid!!.first, closeTo(100.0, 8.0))
+            assertThat(centroid.second, closeTo(100.0, 8.0))
         } finally {
             file.delete()
         }
@@ -133,10 +179,45 @@ class MapViewerIconLoaderTest {
         return OpaqueBounds(left = left, top = top, right = right, bottom = bottom)
     }
 
+    private fun korlibs.image.bitmap.Bitmap32.countBlackPixelsInCenter(): Boolean =
+        (height / 3 until height * 2 / 3).any { y ->
+            (width / 3 until width * 2 / 3).any { x ->
+                val pixel = getRgba(x, y)
+                pixel.a > 0 && pixel.r < 24 && pixel.g < 24 && pixel.b < 24
+            }
+        }
+
+    private fun korlibs.image.bitmap.Bitmap32.darkPixelCentroid(): Pair<Double, Double>? {
+        var count = 0
+        var sumX = 0.0
+        var sumY = 0.0
+
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val pixel = getRgba(x, y)
+                if (pixel.a == 0 || pixel.r >= 24 || pixel.g >= 24 || pixel.b >= 24) {
+                    continue
+                }
+
+                count += 1
+                sumX += x.toDouble()
+                sumY += y.toDouble()
+            }
+        }
+
+        return if (count == 0) {
+            null
+        } else {
+            sumX / count to sumY / count
+        }
+    }
+
     private data class OpaqueBounds(
         val left: Int,
         val top: Int,
         val right: Int,
         val bottom: Int,
-    )
+    ) {
+        val isPresent: Boolean = left <= right && top <= bottom
+    }
 }

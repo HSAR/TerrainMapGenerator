@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.grid.GridLayer
 import kotlin.math.hypot
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 internal data class NavrepContact(
@@ -79,8 +80,9 @@ internal object NavrepDetection {
         mapHeight: Int,
         mapUnitsPerPixel: Double,
         gridLayer: GridLayer? = null,
+        candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
     ): List<NavrepContact> =
-        visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer)
+        visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer, candidateFilter)
             .filter { it.visible }
             .map {
                 NavrepContact(
@@ -98,10 +100,11 @@ internal object NavrepDetection {
         mapHeight: Int,
         mapUnitsPerPixel: Double,
         gridLayer: GridLayer? = null,
+        candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
     ): List<NavrepVisibilityCheck> =
         candidates.asSequence()
             .filter { it.id != observer.id }
-            .filter { it.template.affiliation == observer.template.affiliation }
+            .filter(candidateFilter)
             .mapNotNull { candidate ->
                 val distanceUnits = observer.distanceTo(candidate, mapWidth, mapHeight, mapUnitsPerPixel)
                 val detection = candidate.detectionRangeUnits(observer)
@@ -151,13 +154,16 @@ internal object NavrepDetection {
         mapHeight: Int,
         mapUnitsPerPixel: Double,
         gridLayer: GridLayer? = null,
-        forcedIncludedIds: Set<MapPlacedObjectId> = emptySet(),
+        includedIds: Set<MapPlacedObjectId>? = null,
+        candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
+        emptySummaryText: String = "No allied contacts to report.",
     ): NavrepVisibilityReport {
-        val checks = visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer)
-        val visibleChecks = checks.filter { it.visible || it.unit.id in forcedIncludedIds }
-        val hiddenChecks = checks.filterNot { it.visible }
+        val checks = visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer, candidateFilter)
+        val effectiveIncludedIds = includedIds ?: checks.filter { it.visible }.mapTo(mutableSetOf()) { it.unit.id }
+        val visibleChecks = checks.filter { it.unit.id in effectiveIncludedIds }
+        val hiddenChecks = checks.filterNot { it.unit.id in effectiveIncludedIds }
         val lines = buildList {
-            add(buildPositionSummary(observer, visibleChecks, mapWidth, mapHeight, gridLayer))
+            add(buildPositionSummary(observer, visibleChecks, mapWidth, mapHeight, gridLayer, emptySummaryText))
         }
         val displayText = lines.joinToString("\n")
         return NavrepVisibilityReport(
@@ -197,15 +203,7 @@ internal object NavrepDetection {
             return Double.POSITIVE_INFINITY
         }
 
-        return when ((base * observerModifier).toRangeBandIndex() + bandOffset) {
-            in Int.MIN_VALUE..0 -> 3.0
-            1 -> 6.0
-            2 -> 12.0
-            3 -> 24.0
-            4 -> 48.0
-            5 -> 96.0
-            else -> 192.0
-        }
+        return (base * observerModifier) * 2.0.pow(bandOffset)
     }
 
     private fun UnitSnapshot.transmissionInScope(): Boolean =
@@ -221,17 +219,6 @@ internal object NavrepDetection {
             (mapCoordinate.x - other.mapCoordinate.x) * mapWidth,
             (mapCoordinate.y - other.mapCoordinate.y) * mapHeight,
         ) * mapUnitsPerPixel
-
-    private fun Double.toRangeBandIndex(): Int =
-        when {
-            this <= 3.0 -> 0
-            this <= 6.0 -> 1
-            this <= 12.0 -> 2
-            this <= 24.0 -> 3
-            this <= 48.0 -> 4
-            this <= 96.0 -> 5
-            else -> 6
-        }
 
     private fun UnitSnapshot.visibilityNotes(): List<String> =
         buildList {
@@ -268,6 +255,7 @@ internal object NavrepDetection {
         mapWidth: Int,
         mapHeight: Int,
         gridLayer: GridLayer?,
+        emptySummaryText: String,
     ): String =
         buildString {
             append("Position ")
@@ -275,7 +263,8 @@ internal object NavrepDetection {
             append(" bearing ")
             append(formatBearing(observer.facingDegrees))
             if (visibleChecks.isEmpty()) {
-                append(". No allied contacts to report.")
+                append(". ")
+                append(emptySummaryText)
             } else {
                 append(". ")
                 visibleChecks.forEachIndexed { index, check ->
