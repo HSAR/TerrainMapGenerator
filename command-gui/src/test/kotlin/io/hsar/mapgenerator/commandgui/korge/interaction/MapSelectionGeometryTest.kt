@@ -6,7 +6,6 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
-import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
 import korlibs.math.geom.Vector2D
 import org.hamcrest.MatcherAssert.assertThat
@@ -419,10 +418,24 @@ class MapSelectionGeometryTest {
     }
 
     @Test
-    fun `measure text colour uses light for units with no affiliation`() {
+    fun `drawing selection accent colour uses the supplied grid colour`() {
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000034")),
+            drawing = LineDrawing(
+                start = MapDrawingPoint(0.1, 0.1),
+                end = MapDrawingPoint(0.9, 0.9),
+                color = Color.RED,
+            ),
+        )
+
+        assertThat(drawing.selectionAccentColor(Color.BLUE), equalTo(Color.BLUE))
+    }
+
+    @Test
+    fun `measure text colour uses grid colour for units with no affiliation`() {
         val unit = unitSnapshot(id = "00000000-0000-0000-0000-000000000032", x = 0.5, y = 0.5, affiliation = null)
 
-        assertThat(unit.measureTextColor(), equalTo(Palette.Colours.LIGHT))
+        assertThat(unit.measureTextColor(), equalTo(UnitAffiliationUi.unaffiliatedColor()))
     }
 
     @Test
@@ -461,20 +474,25 @@ class MapSelectionGeometryTest {
             ),
         )
 
-        assertThat(listOf(friend, hostile, drawing).selectionAccentColor(), equalTo(UnitAffiliationUi.swatchColor(null)))
-        assertThat(listOf(drawing).selectionAccentColor(), equalTo(UnitAffiliationUi.swatchColor(null)))
+        assertThat(listOf(friend, hostile, drawing).selectionAccentColor(), equalTo(UnitAffiliationUi.unaffiliatedColor()))
+        assertThat(listOf(drawing).selectionAccentColor(), equalTo(UnitAffiliationUi.unaffiliatedColor()))
         assertThat(
             listOf(unitSnapshot(id = "00000000-0000-0000-0000-000000000054", x = 0.5, y = 0.5, affiliation = null)).selectionAccentColor(),
-            equalTo(UnitAffiliationUi.swatchColor(null))
+            equalTo(UnitAffiliationUi.unaffiliatedColor())
         )
     }
 
     @Test
-    fun `multi selection measure text colour uses light when affiliations are missing`() {
+    fun `multi selection measure text colour uses grid colour when affiliations are missing`() {
         val first = unitSnapshot(id = "00000000-0000-0000-0000-000000000055", x = 0.2, y = 0.2, affiliation = null)
         val second = unitSnapshot(id = "00000000-0000-0000-0000-000000000056", x = 0.8, y = 0.2, affiliation = null)
 
-        assertThat(listOf(first, second).measureTextColor(), equalTo(Palette.Colours.LIGHT))
+        assertThat(listOf(first, second).measureTextColor(), equalTo(UnitAffiliationUi.unaffiliatedColor()))
+    }
+
+    @Test
+    fun `null affiliation overlay colour uses grid colour`() {
+        assertThat(null.overlayColor(), equalTo(UnitAffiliationUi.unaffiliatedColor()))
     }
 
     private fun unitSnapshot(id: String, x: Double, y: Double, affiliation: UnitAffiliation? = null) =

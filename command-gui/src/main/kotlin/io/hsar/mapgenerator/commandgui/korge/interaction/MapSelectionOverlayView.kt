@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
+import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.color.RGBA
 import korlibs.korge.view.Container
@@ -20,9 +21,10 @@ internal class MapSelectionOverlayView(
 
     fun update(state: MapSelectionState) {
         content.removeChildren()
-        val selectionColor = state.selected.selectionAccentColor()
+        val gridColor = state.gridColor ?: UnitAffiliationUi.unaffiliatedColor()
+        val selectionColor = state.selected.selectionAccentColor(gridColor)
         state.groupFrame?.let { drawGroupFrame(it, selectionColor) }
-        state.selected.forEach(::drawHighlight)
+        state.selected.forEach { drawHighlight(it, gridColor) }
         state.box?.let(::drawSelectionBox)
         state.selectionBracketFrame()?.let { drawCornerBrackets(it, selectionColor) }
         state.pivotHandle?.let { drawPivotHandle(it, selectionColor) }
@@ -58,12 +60,12 @@ internal class MapSelectionOverlayView(
         drawFrame(frame, color, GROUP_FILL_ALPHA, GROUP_STROKE_ALPHA)
     }
 
-    private fun drawHighlight(snapshot: MapPlacedObjectSnapshot) {
+    private fun drawHighlight(snapshot: MapPlacedObjectSnapshot, gridColor: Color) {
         val viewport = viewportProvider()
         val frame = snapshot.selectionFrame(coordinateSpace, viewport, SELECTION_FRAME_SCREEN_PADDING)
         drawFrame(
             frame = frame,
-            color = snapshot.selectionAccentColor(),
+            color = snapshot.selectionAccentColor(gridColor),
             strokeAlpha = HIGHLIGHT_STROKE_ALPHA,
             strokeWidth = HIGHLIGHT_STROKE_WIDTH,
         )

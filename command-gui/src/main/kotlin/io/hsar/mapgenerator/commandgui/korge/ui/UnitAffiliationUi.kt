@@ -7,7 +7,7 @@ import java.awt.Color
 internal object UnitAffiliationUi {
     val options: List<MapViewerDropdownOption<UnitAffiliation>> =
         listOf(
-            option(null, "No Affiliation", Palette.Colours.MAIN),
+            option(null, "No Affiliation", unaffiliatedColor()),
             option(UnitAffiliation.Friend, "Friend", Palette.Colours.BLUE),
             option(UnitAffiliation.Hostile, "Hostile", Palette.Colours.RED),
             option(UnitAffiliation.Neutral, "Neutral", Palette.Colours.GREEN),
@@ -23,8 +23,11 @@ internal object UnitAffiliationUi {
             UnitAffiliation.Hostile -> Palette.Colours.RED
             UnitAffiliation.Neutral -> Palette.Colours.GREEN
             UnitAffiliation.Unknown -> Palette.Colours.YELLOW
-            null -> Palette.Colours.MAIN
+            null -> unaffiliatedColor()
         }
+
+    fun unaffiliatedColor(): Color =
+        Palette.Colours.MAIN
 
     private fun option(
         value: UnitAffiliation?,

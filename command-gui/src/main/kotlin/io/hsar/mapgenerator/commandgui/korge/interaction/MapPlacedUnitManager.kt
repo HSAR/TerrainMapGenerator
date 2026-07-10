@@ -8,6 +8,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerImageViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerNavrepDialog
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitEditDialog
+import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
 import io.hsar.mapgenerator.commandgui.korge.ui.focusTargetBounds
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.image.Palette
@@ -359,6 +360,7 @@ internal class MapPlacedUnitManager(
             destroyed = unit.destroyed,
             facingDegrees = unit.facingDegrees,
             facingActive = true,
+            facingColor = unit.template.affiliation.overlayColor(),
         ).also {
             it.container.scale = unit.view.scaleX
             it.container.x = worldPoint.x - unit.worldWidth * 0.5
@@ -759,7 +761,13 @@ internal class MapPlacedUnitManager(
             facingLayer.removeChildren()
             facingDegrees?.let { degrees ->
                 facingLayer.alpha = facingOverlayAlpha(forceActive || id in selectedUnitIds || dragState?.unit?.id == id)
-                drawFacingIndicator(facingLayer, iconView.bitmap.width.toDouble(), iconView.bitmap.height.toDouble(), degrees)
+                drawFacingIndicator(
+                    parent = facingLayer,
+                    width = iconView.bitmap.width.toDouble(),
+                    height = iconView.bitmap.height.toDouble(),
+                    facingDegrees = degrees,
+                    color = template.affiliation.overlayColor(),
+                )
             }
         }
 
@@ -834,13 +842,20 @@ internal class MapPlacedUnitManager(
         destroyed: Boolean,
         facingDegrees: Int? = null,
         facingActive: Boolean = false,
+        facingColor: Color = UnitAffiliationUi.unaffiliatedColor(),
     ): UnitVisual {
         val container = parent.container()
         val facingLayer = container.container().also { it.zIndex = 0.0 }
         val icon = MapViewerImageViews.icon(container, bitmap).also { it.zIndex = 1.0 }
         facingDegrees?.let { degrees ->
             facingLayer.alpha = facingOverlayAlpha(facingActive)
-            drawFacingIndicator(facingLayer, bitmap.width.toDouble(), bitmap.height.toDouble(), degrees)
+            drawFacingIndicator(
+                parent = facingLayer,
+                width = bitmap.width.toDouble(),
+                height = bitmap.height.toDouble(),
+                facingDegrees = degrees,
+                color = facingColor,
+            )
         }
         val overlayLayer = container.container().also { it.zIndex = 2.0 }
         if (destroyed) {
@@ -855,18 +870,19 @@ internal class MapPlacedUnitManager(
         width: Double,
         height: Double,
         facingDegrees: Int,
+        color: Color,
     ) {
         val center = Point(width * 0.5, height * 0.5)
         val baseRadius = minOf(width, height) * 0.72
         val outerRadius = baseRadius
         val innerRadius = baseRadius * 0.86
-        val color = toRgba(Palette.Colours.MAIN)
+        val ringColor = toRgba(color)
 
         repeat(FACING_RING_SEGMENTS) { index ->
             val start = (index.toDouble() / FACING_RING_SEGMENTS) * PI * 2.0
             val end = ((index + 1.0) / FACING_RING_SEGMENTS) * PI * 2.0
             parent.graphics {
-                fill(color) {
+                fill(ringColor) {
                     moveTo(center.x + cos(start) * outerRadius, center.y + sin(start) * outerRadius)
                     lineTo(center.x + cos(end) * outerRadius, center.y + sin(end) * outerRadius)
                     lineTo(center.x + cos(end) * innerRadius, center.y + sin(end) * innerRadius)
@@ -890,7 +906,7 @@ internal class MapPlacedUnitManager(
         val halfWidth = minOf(width, height) * 0.16
 
         parent.graphics {
-            fill(color) {
+            fill(ringColor) {
                 moveTo(tip.x, tip.y)
                 lineTo(base.x + perpendicular.x * halfWidth, base.y + perpendicular.y * halfWidth)
                 lineTo(base.x - perpendicular.x * halfWidth, base.y - perpendicular.y * halfWidth)

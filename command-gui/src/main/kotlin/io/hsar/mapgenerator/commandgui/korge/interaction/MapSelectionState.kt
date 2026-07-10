@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import korlibs.math.geom.Vector2D
+import java.awt.Color
 import kotlin.math.hypot
 
 internal data class MapSelectionState(
@@ -8,6 +9,7 @@ internal data class MapSelectionState(
     val box: ScreenSelectionBox? = null,
     val groupFrame: ScreenSelectionFrame? = null,
     val pivotHandle: ScreenPivotHandle? = null,
+    val gridColor: Color? = null,
 )
 
 internal data class ScreenSelectionBox(

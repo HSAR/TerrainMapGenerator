@@ -1,26 +1,34 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
-import io.hsar.mapgenerator.image.Palette
 import java.awt.Color
 
 internal fun MapPlacedObjectSnapshot.selectionAccentColor(): Color =
+    selectionAccentColor(UnitAffiliationUi.unaffiliatedColor())
+
+internal fun MapPlacedObjectSnapshot.selectionAccentColor(gridColor: Color): Color =
     when (this) {
-        is UnitSnapshot -> UnitAffiliationUi.swatchColor(template.affiliation)
-        is DrawingSnapshot -> UnitAffiliationUi.swatchColor(null)
+        is UnitSnapshot -> template.affiliation.overlayColor()
+        is DrawingSnapshot -> gridColor
     }
 
 internal fun List<MapPlacedObjectSnapshot>.selectionAccentColor(): Color =
-    selectedUnitAffiliation()?.let(UnitAffiliationUi::swatchColor) ?: UnitAffiliationUi.swatchColor(null)
+    selectionAccentColor(UnitAffiliationUi.unaffiliatedColor())
+
+internal fun List<MapPlacedObjectSnapshot>.selectionAccentColor(gridColor: Color): Color =
+    selectedUnitAffiliation()?.overlayColor() ?: gridColor
 
 internal fun MapPlacedObjectSnapshot.measureTextColor(): Color =
     when (this) {
-        is UnitSnapshot -> template.affiliation?.let(UnitAffiliationUi::swatchColor) ?: Palette.Colours.LIGHT
-        is DrawingSnapshot -> UnitAffiliationUi.swatchColor(null)
+        is UnitSnapshot -> template.affiliation.overlayColor()
+        is DrawingSnapshot -> UnitAffiliationUi.unaffiliatedColor()
     }
 
 internal fun List<MapPlacedObjectSnapshot>.measureTextColor(): Color =
-    selectedUnitAffiliation()?.let(UnitAffiliationUi::swatchColor) ?: Palette.Colours.LIGHT
+    selectedUnitAffiliation()?.overlayColor() ?: UnitAffiliationUi.unaffiliatedColor()
+
+internal fun UnitAffiliation?.overlayColor(): Color =
+    UnitAffiliationUi.swatchColor(this)
 
 private fun List<MapPlacedObjectSnapshot>.selectedUnitAffiliation(): UnitAffiliation? {
     val unitAffiliations = asSequence()

@@ -59,6 +59,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSidebar
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerToolbar
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTransientNotice
+import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
 import io.hsar.mapgenerator.commandgui.korge.ui.noteReferenceContextMenuActions
 import io.hsar.mapgenerator.commandgui.save.GeneratedImageAsset
 import io.hsar.mapgenerator.commandgui.save.LoadedOperation
@@ -642,7 +643,7 @@ internal class MapViewerScene(
                                 snapshot !is UnitSnapshot || !snapshot.destroyed || destroyedUnitsDisplay == DestroyedUnitsDisplay.Full
                             },
                             onStateChanged = { state ->
-                                selectionOverlay.update(state)
+                                selectionOverlay.update(state.copy(gridColor = renderData.gridLayer?.colour ?: UnitAffiliationUi.unaffiliatedColor()))
                                 unitManager.updateSelectedUnits(selectionController.selectedIds())
                             },
                             onMovePreviewChanged = { preview -> objectMovePreview = preview },
