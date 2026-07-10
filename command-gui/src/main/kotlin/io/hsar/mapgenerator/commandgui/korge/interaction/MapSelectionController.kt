@@ -119,15 +119,32 @@ internal class MapSelectionController(
         if (resizeableSnapshots.isEmpty()) {
             return false
         }
+        val singleDrawing = selectedSnapshots.singleOrNull() as? DrawingSnapshot
+        val originalFrame = singleDrawing?.selectionFrame(
+            coordinateSpace = coordinateSpace,
+            viewport = viewportProvider(),
+            screenPadding = SELECTION_FRAME_SCREEN_PADDING,
+        )
+        val originalFixedCorner = originalFrame
+            ?.corner(handle.corner.opposite())
+            ?.let { coordinateSpace.screenToMap(it, viewportProvider()) }
         resizeState = ResizeState(
             grabbedCorner = handle.corner,
             originalBounds = bounds,
-            anchor = MapSelectionResize.anchorFor(
+            anchor = singleDrawing?.let {
+                MapSelectionResize.anchorFor(
+                    drawing = it.drawing,
+                    grabbedCorner = handle.corner,
+                    altHeld = altHeld,
+                    aspectRatio = coordinateSpace.aspectRatio,
+                )
+            } ?: MapSelectionResize.anchorFor(
                 bounds = bounds,
                 grabbedCorner = handle.corner,
                 selectionSize = selectedSnapshots.size,
                 altHeld = altHeld,
             ),
+            originalFixedCorner = originalFixedCorner,
             originalSnapshots = selectedSnapshots,
         )
         boxState = null
@@ -284,6 +301,8 @@ internal class MapSelectionController(
             grabbedCorner = state.grabbedCorner,
             anchor = state.anchor,
             draggedCorner = coordinateSpace.screenToMap(pointer, viewportProvider()),
+            originalFixedCorner = state.originalFixedCorner,
+            aspectRatio = coordinateSpace.aspectRatio,
         )
             .forEach(objectController::updateObject)
     }
@@ -472,6 +491,7 @@ internal class MapSelectionController(
         val grabbedCorner: ScreenSelectionCorner,
         val originalBounds: MapSelectionBounds,
         val anchor: MapCoordinate,
+        val originalFixedCorner: MapCoordinate?,
         val originalSnapshots: List<MapPlacedObjectSnapshot>,
     )
 

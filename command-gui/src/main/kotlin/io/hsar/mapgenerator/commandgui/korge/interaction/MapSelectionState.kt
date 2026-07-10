@@ -45,6 +45,14 @@ internal data class ScreenSelectionFrame(
             ScreenCornerBracket.fromCorner(ScreenSelectionCorner.BOTTOM_LEFT, bottomLeft, bottomRight, topLeft, length, thickness),
         )
 
+    fun corner(corner: ScreenSelectionCorner): Vector2D =
+        when (corner) {
+            ScreenSelectionCorner.TOP_LEFT -> topLeft
+            ScreenSelectionCorner.TOP_RIGHT -> topRight
+            ScreenSelectionCorner.BOTTOM_RIGHT -> bottomRight
+            ScreenSelectionCorner.BOTTOM_LEFT -> bottomLeft
+        }
+
     fun rotatedAround(pivot: Vector2D, deltaRadians: Double): ScreenSelectionFrame =
         copy(
             topLeft = topLeft.rotateAround(pivot, deltaRadians),
@@ -124,6 +132,14 @@ internal enum class ScreenSelectionCorner {
     BOTTOM_RIGHT,
     BOTTOM_LEFT,
 }
+
+internal fun ScreenSelectionCorner.opposite(): ScreenSelectionCorner =
+    when (this) {
+        ScreenSelectionCorner.TOP_LEFT -> ScreenSelectionCorner.BOTTOM_RIGHT
+        ScreenSelectionCorner.TOP_RIGHT -> ScreenSelectionCorner.BOTTOM_LEFT
+        ScreenSelectionCorner.BOTTOM_RIGHT -> ScreenSelectionCorner.TOP_LEFT
+        ScreenSelectionCorner.BOTTOM_LEFT -> ScreenSelectionCorner.TOP_RIGHT
+    }
 
 internal data class ScreenCornerBracket(
     val corner: ScreenSelectionCorner,

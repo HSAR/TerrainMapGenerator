@@ -2,6 +2,7 @@
 
 - "Import from save" for unit type dialog in New Operation screen
 - FINISH: Optional Olympiad Dawn game logic for friendly and enemy detection narration
+- Improve autosave performance
 - Measure tool should lock to the midpoint of a unit when starting and ending, unless shift key is held
 - Dialogs minimise, which remembers their position and size and adds them to a taskbar at top of screen
 - Main menu background is a generated, scrolling map ref
