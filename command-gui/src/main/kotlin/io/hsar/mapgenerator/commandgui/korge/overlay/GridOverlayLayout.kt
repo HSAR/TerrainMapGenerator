@@ -8,7 +8,6 @@ import io.hsar.mapgenerator.grid.EpsilonGridDesignators
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.GridStyles
 import io.hsar.mapgenerator.grid.ReferenceSystem
-import io.hsar.mapgenerator.image.Palette
 import io.hsar.mapgenerator.random.GridGenerator.padZeroes
 import java.awt.Color
 import kotlin.math.abs
@@ -80,7 +79,7 @@ internal object GridOverlayLayoutBuilder {
         val mapIdStyle = GridLabelStyle(MapViewerFontRole.STRONG, mapIdFont.first.size2D.toDouble(), mapIdFont.second)
         val minorAxisStyle = GridLabelStyle(MapViewerFontRole.MAIN, minorAxisFont.first.size2D.toDouble(), minorAxisFont.second)
         val majorAxisStyle = GridLabelStyle(MapViewerFontRole.STRONG, majorAxisFont.first.size2D.toDouble(), majorAxisFont.second)
-        val referenceColor = state.activeReference?.color ?: Palette.Colours.RED
+        val referenceColor = state.activeReference?.color ?: layer.colour
         val referenceStyle = GridLabelStyle(MapViewerFontRole.MAIN, minorAxisFont.first.size2D.toDouble(), referenceColor)
         val mapIdBounds = measureText(layer.mapId, mapIdStyle)
         val axisBounds = measureText(axisMeasurementText(layer), minorAxisStyle)
@@ -199,7 +198,7 @@ internal object GridOverlayLayoutBuilder {
                 x = reference.screenX + ACTIVE_REFERENCE_LABEL_OFFSET_X + referenceBounds.width / 2,
                 y = reference.screenY - ACTIVE_REFERENCE_LABEL_OFFSET_Y - referenceBounds.height / 2,
                 style = referenceStyle,
-                shadows = accentLabelShadows(),
+                shadows = accentLabelShadows(referenceColor),
             )
 
             state.measurement?.let { measurement ->
@@ -223,14 +222,14 @@ internal object GridOverlayLayoutBuilder {
                     x = tooltipX + distanceBounds.width / 2,
                     y = tooltipY + distanceBounds.height / 2,
                     style = referenceStyle,
-                    shadows = accentLabelShadows(),
+                    shadows = accentLabelShadows(referenceColor),
                 )
                 labels += GridLabel(
                     text = measurement.bearingText,
                     x = tooltipX + bearingBounds.width / 2,
                     y = tooltipY + distanceBounds.height.absoluteValue + MEASUREMENT_TOOLTIP_LINE_GAP + bearingBounds.height / 2,
                     style = referenceStyle,
-                    shadows = accentLabelShadows(),
+                    shadows = accentLabelShadows(referenceColor),
                 )
             }
         }
@@ -438,9 +437,9 @@ internal object GridOverlayLayoutBuilder {
     private fun squareIndex(layer: GridLayer, baseLayer: GridLayer, lineId: Double): Int =
         Math.floorDiv((lineId * layer.gridScale).roundToInt(), baseLayer.gridScale)
 
-    private fun accentLabelShadows(): List<GridLabelShadow> =
+    private fun accentLabelShadows(color: Color): List<GridLabelShadow> =
         listOf(
-            GridLabelShadow(1.0, 1.0, Palette.Colours.MAIN),
+            GridLabelShadow(1.0, 1.0, color),
         )
 
     private fun measureText(text: String, style: GridLabelStyle): Rectangle =

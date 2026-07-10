@@ -431,6 +431,7 @@ internal class MapViewerInteraction(
                         gutterWidth = viewportWidth,
                         gutterHeight = viewportHeight,
                     ),
+                    color = gridLayer?.colour ?: Palette.Colours.RED,
                 )
             }
 
@@ -469,7 +470,7 @@ internal class MapViewerInteraction(
                 gutterWidth = viewportWidth,
                 gutterHeight = viewportHeight,
             ),
-            color = preview.color ?: Palette.Colours.RED,
+            color = layer.colour,
         )
     }
 

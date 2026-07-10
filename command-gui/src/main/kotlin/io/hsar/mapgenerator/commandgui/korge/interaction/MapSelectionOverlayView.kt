@@ -55,43 +55,18 @@ internal class MapSelectionOverlayView(
     }
 
     private fun drawGroupFrame(frame: ScreenSelectionFrame, color: Color) {
-        drawFilledQuad(frame.corners, fill = MapViewerUiBoxes.toRgba(color, GROUP_FILL_ALPHA))
-        drawEdge(frame.topLeft, frame.topRight, MapViewerUiBoxes.toRgba(color, GROUP_STROKE_ALPHA))
-        drawEdge(frame.topRight, frame.bottomRight, MapViewerUiBoxes.toRgba(color, GROUP_STROKE_ALPHA))
-        drawEdge(frame.bottomRight, frame.bottomLeft, MapViewerUiBoxes.toRgba(color, GROUP_STROKE_ALPHA))
-        drawEdge(frame.bottomLeft, frame.topLeft, MapViewerUiBoxes.toRgba(color, GROUP_STROKE_ALPHA))
+        drawFrame(frame, color, GROUP_FILL_ALPHA, GROUP_STROKE_ALPHA)
     }
 
     private fun drawHighlight(snapshot: MapPlacedObjectSnapshot) {
         val viewport = viewportProvider()
         val frame = snapshot.selectionFrame(coordinateSpace, viewport, SELECTION_FRAME_SCREEN_PADDING)
-        val left = frame.corners.minOf { it.x }
-        val top = frame.corners.minOf { it.y }
-        val right = frame.corners.maxOf { it.x }
-        val bottom = frame.corners.maxOf { it.y }
-        val width = right - left
-        val height = bottom - top
-
-        if (width <= 0.0 || height <= 0.0) {
-            return
-        }
-        val highlightColor = MapViewerUiBoxes.toRgba(snapshot.selectionAccentColor(), HIGHLIGHT_STROKE_ALPHA)
-        content.solidRect(width, HIGHLIGHT_STROKE_WIDTH, highlightColor) {
-            x = left
-            y = top
-        }
-        content.solidRect(width, HIGHLIGHT_STROKE_WIDTH, highlightColor) {
-            x = left
-            y = top + height - HIGHLIGHT_STROKE_WIDTH
-        }
-        content.solidRect(HIGHLIGHT_STROKE_WIDTH, height, highlightColor) {
-            x = left
-            y = top
-        }
-        content.solidRect(HIGHLIGHT_STROKE_WIDTH, height, highlightColor) {
-            x = left + width - HIGHLIGHT_STROKE_WIDTH
-            y = top
-        }
+        drawFrame(
+            frame = frame,
+            color = snapshot.selectionAccentColor(),
+            strokeAlpha = HIGHLIGHT_STROKE_ALPHA,
+            strokeWidth = HIGHLIGHT_STROKE_WIDTH,
+        )
     }
 
     private fun drawCornerBrackets(frame: ScreenSelectionFrame, color: Color) {
@@ -112,6 +87,25 @@ internal class MapSelectionOverlayView(
 
     private fun drawFilledQuad(points: List<korlibs.math.geom.Vector2D>, fill: RGBA) =
         drawFilledPolygon(points, fill)
+
+    private fun drawFrame(
+        frame: ScreenSelectionFrame,
+        color: Color,
+        fillAlpha: Int? = null,
+        strokeAlpha: Int? = null,
+        strokeWidth: Double = SELECTION_STROKE_WIDTH,
+    ) {
+        if (fillAlpha != null) {
+            drawFilledQuad(frame.corners, fill = MapViewerUiBoxes.toRgba(color, fillAlpha))
+        }
+        if (strokeAlpha != null) {
+            val strokeColor = MapViewerUiBoxes.toRgba(color, strokeAlpha)
+            drawEdge(frame.topLeft, frame.topRight, strokeColor, strokeWidth)
+            drawEdge(frame.topRight, frame.bottomRight, strokeColor, strokeWidth)
+            drawEdge(frame.bottomRight, frame.bottomLeft, strokeColor, strokeWidth)
+            drawEdge(frame.bottomLeft, frame.topLeft, strokeColor, strokeWidth)
+        }
+    }
 
     private fun drawFilledPolygon(points: List<korlibs.math.geom.Vector2D>, fill: RGBA) {
         content.graphics {

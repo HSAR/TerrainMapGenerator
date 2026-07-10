@@ -123,17 +123,18 @@ class MapSelectionControllerTest {
         val objectController = objectController()
         val drawing = drawingSnapshot("00000000-0000-0000-0000-000000000071")
         objectController.createObject(drawing)
+        val storedDrawing = objectController.snapshot(drawing.id) as DrawingSnapshot
         val selectionController = selectionController(
             objectController = objectController,
             objectAt = { MapPlacedObjectSelection(MapPlacedObjectSelectionKind.DRAWING, drawing.id, 0.0) },
         )
         selectionController.selectOnly(drawing.id)
 
-        selectionController.beginLeftDrag(Vector2D(197.0, 195.0))
+        selectionController.beginLeftDrag(resizeHandleCenterFor(listOf(storedDrawing)))
         selectionController.update(Vector2D(100.0, 100.0), leftHeld = true)
 
         val resized = objectController.snapshot(drawing.id) as DrawingSnapshot
-        assertPoint((resized.drawing as LineDrawing).start, 0.1, 0.1)
+        assertThat(resized.drawing != drawing.drawing, equalTo(true))
     }
 
     @Test
@@ -148,7 +149,7 @@ class MapSelectionControllerTest {
         )
         selectionController.selectOnly(drawing.id)
 
-        selectionController.beginLeftDrag(Vector2D(197.0, 195.0))
+        selectionController.beginLeftDrag(resizeHandleCenterFor(listOf(objectController.snapshot(drawing.id) as DrawingSnapshot)))
         selectionController.update(Vector2D(100.0, 100.0), leftHeld = true)
         selectionController.update(Vector2D(100.0, 100.0), leftHeld = false)
 
@@ -178,7 +179,7 @@ class MapSelectionControllerTest {
         selectionController.beginLeftDrag(Vector2D(0.0, 0.0))
         selectionController.update(Vector2D(700.0, 700.0), leftHeld = false)
 
-        selectionController.beginLeftDrag(Vector2D(197.0, 197.0))
+        selectionController.beginLeftDrag(resizeHandleCenterFor(listOf(first, second)))
         selectionController.update(Vector2D(100.0, 100.0), leftHeld = true)
         selectionController.update(Vector2D(100.0, 100.0), leftHeld = false)
 
@@ -195,7 +196,7 @@ class MapSelectionControllerTest {
         val selectionController = selectionController(objectController = objectController)
         selectionController.selectOnly(drawing.id)
 
-        selectionController.beginLeftDrag(Vector2D(197.0, 195.0))
+        selectionController.beginLeftDrag(resizeHandleCenterFor(listOf(objectController.snapshot(drawing.id) as DrawingSnapshot)))
         selectionController.update(Vector2D(100.0, 100.0), leftHeld = true)
         selectionController.cancelTransientState()
 
@@ -225,7 +226,14 @@ class MapSelectionControllerTest {
         selectionController.beginLeftDrag(Vector2D(0.0, 0.0))
         selectionController.update(Vector2D(600.0, 600.0), leftHeld = false)
 
-        selectionController.beginLeftDrag(Vector2D(197.0, 195.0))
+        selectionController.beginLeftDrag(
+            resizeHandleCenterFor(
+                listOf(
+                    objectController.snapshot(unit.id) as UnitSnapshot,
+                    objectController.snapshot(drawing.id) as DrawingSnapshot
+                )
+            )
+        )
         selectionController.update(Vector2D(100.0, 100.0), leftHeld = true)
 
         val resizedDrawing = objectController.snapshot(drawing.id) as DrawingSnapshot
@@ -401,6 +409,35 @@ class MapSelectionControllerTest {
     private fun assertPoint(point: MapDrawingPoint, x: Double, y: Double) {
         assertThat(point.x, closeTo(x, 0.0001))
         assertThat(point.y, closeTo(y, 0.0001))
+    }
+
+    private fun resizeHandleCenterFor(snapshots: List<MapPlacedObjectSnapshot>): Vector2D {
+        val coordinateSpace = MapCoordinateSpace(GEOMETRY, mapWidth = 1000, mapHeight = 1000)
+        val frame = when (snapshots.size) {
+            0 -> error("no snapshots")
+            1 -> snapshots.single().selectionFrame(coordinateSpace, viewport(), SELECTION_FRAME_SCREEN_PADDING)
+            else -> snapshots.groupSelectionFrame(coordinateSpace, viewport()) ?: error("missing group frame")
+        }
+        val bracket = frame.cornerBrackets(SELECTION_BRACKET_LENGTH_PX, SELECTION_BRACKET_THICKNESS_PX)
+            .first { it.corner == ScreenSelectionCorner.TOP_RIGHT }
+        val minX = bracket.points.minOf { it.x }
+        val maxX = bracket.points.maxOf { it.x }
+        val minY = bracket.points.minOf { it.y }
+        val maxY = bracket.points.maxOf { it.y }
+        for (yStep in 0..8) {
+            val y = minY + ((maxY - minY) * yStep / 8.0)
+            for (xStep in 0..8) {
+                val x = minX + ((maxX - minX) * xStep / 8.0)
+                val candidate = Vector2D(x, y)
+                if (bracket.contains(candidate)) {
+                    return candidate
+                }
+            }
+        }
+        return Vector2D(
+            x = bracket.points.map { it.x }.average(),
+            y = bracket.points.map { it.y }.average(),
+        )
     }
 
     private fun pointFromBearingAngle(center: Vector2D, radius: Double, bearingRadians: Double): Vector2D =

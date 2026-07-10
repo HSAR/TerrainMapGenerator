@@ -79,6 +79,34 @@ class MapSelectionGeometryTest {
     }
 
     @Test
+    fun `unit selection frame remains axis aligned regardless of facing`() {
+        val viewport = CameraViewport.centeredOnMap(
+            geometry = ViewerGeometry(backgroundWidth = 1000, backgroundHeight = 1000, mapOffsetX = 0, mapOffsetY = 0),
+            mapWidth = 1000,
+            mapHeight = 1000,
+            viewportWidth = 1000,
+            viewportHeight = 1000,
+            zoom = 1.0,
+        )
+        val unit = UnitSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000004")),
+            unitTemplateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
+            template = MapViewerUnitTemplate(UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000010")), "Unit", Bitmap32(4, 4)),
+            instanceName = "Unit",
+            destroyed = false,
+            facingDegrees = 135,
+            mapCoordinate = MapCoordinate(0.5, 0.5),
+            normalizedWidth = 0.2,
+            normalizedHeight = 0.2,
+        )
+
+        val frame = unit.selectionFrame(coordinateSpace, viewport)
+
+        assertThat(frame.topLeft.y, equalTo(frame.topRight.y))
+        assertThat(frame.topLeft.x, equalTo(frame.bottomLeft.x))
+    }
+
+    @Test
     fun `pivot handle appears above right of a selected unit`() {
         val viewport = CameraViewport.centeredOnMap(
             geometry = ViewerGeometry(backgroundWidth = 1660, backgroundHeight = 1660, mapOffsetX = 330, mapOffsetY = 330),
@@ -217,6 +245,18 @@ class MapSelectionGeometryTest {
     }
 
     @Test
+    fun `line selection frame follows segment orientation`() {
+        val frame = ScreenSelectionFrame.fromSegment(
+            start = Vector2D(10.0, 10.0),
+            end = Vector2D(30.0, 22.0),
+            padding = 4.0,
+        )
+
+        assertThat(frame.topLeft.y == frame.topRight.y, equalTo(false))
+        assertThat(frame.topLeft.x == frame.bottomLeft.x, equalTo(false))
+    }
+
+    @Test
     fun `pivot handle appears for a selected drawing`() {
         val viewport = CameraViewport.centeredOnMap(
             geometry = ViewerGeometry(backgroundWidth = 1660, backgroundHeight = 1660, mapOffsetX = 330, mapOffsetY = 330),
@@ -239,6 +279,32 @@ class MapSelectionGeometryTest {
 
         assertThat(handle?.center?.x, equalTo(616.0))
         assertThat(handle?.center?.y, equalTo(384.0))
+    }
+
+    @Test
+    fun `rotated drawing selection frame follows drawing orientation`() {
+        val viewport = CameraViewport.centeredOnMap(
+            geometry = ViewerGeometry(backgroundWidth = 1000, backgroundHeight = 1000, mapOffsetX = 0, mapOffsetY = 0),
+            mapWidth = 1000,
+            mapHeight = 1000,
+            viewportWidth = 1000,
+            viewportHeight = 1000,
+            zoom = 1.0,
+        )
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000015")),
+            drawing = RectangleDrawing(
+                start = MapDrawingPoint(0.4, 0.45),
+                end = MapDrawingPoint(0.6, 0.55),
+                color = Color.RED,
+                rotationDegrees = 45.0,
+            ),
+        )
+
+        val frame = drawing.selectionFrame(coordinateSpace, viewport)
+
+        assertThat(frame.topLeft.y == frame.topRight.y, equalTo(false))
+        assertThat(frame.topLeft.x == frame.bottomLeft.x, equalTo(false))
     }
 
     @Test

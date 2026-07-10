@@ -410,6 +410,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `active reference draws red crosshair and label`() {
+        val gridColor = state().gridLayer.colour
         val layout = GridOverlayLayoutBuilder.build(
             state = state(
                 mapOffsetX = 0.0,
@@ -430,21 +431,21 @@ class GridOverlayLayoutBuilderTest {
             .first {
                 it.first().height > it.first().width &&
                     it.first().width == 2.0 &&
-                    it.first().color.red == Palette.Colours.RED.red &&
-                    it.first().color.green == Palette.Colours.RED.green &&
-                    it.first().color.blue == Palette.Colours.RED.blue
+                        it.first().color.red == gridColor.red &&
+                        it.first().color.green == gridColor.green &&
+                        it.first().color.blue == gridColor.blue
             }
             .sortedBy { it.y }
 
-        assertThat(referenceLabel.style.color, equalTo(Palette.Colours.RED))
+        assertThat(referenceLabel.style.color, equalTo(gridColor))
         assertThat(referenceLabel.x, equalTo(282.0))
         assertThat(referenceLabel.y, equalTo(263.0))
         assertThat(referenceLabel.shadows.size, equalTo(1))
-        assertThat(referenceLabel.shadows.first().color, equalTo(Palette.Colours.MAIN))
+        assertThat(referenceLabel.shadows.first().color, equalTo(gridColor))
         assertThat(referenceLabel.shadows.first().offsetX, equalTo(1.0))
         assertThat(referenceLabel.shadows.first().offsetY, equalTo(1.0))
         assertThat(verticalReferenceSegments.first().color.alpha, lessThan(verticalReferenceSegments.last().color.alpha))
-        assertThat(verticalReferenceSegments.last().color.alpha, equalTo(255))
+        assertThat(verticalReferenceSegments.last().color.alpha, lessThan(255))
     }
 
     @Test
@@ -477,15 +478,15 @@ class GridOverlayLayoutBuilderTest {
 
         assertThat(distance.x, equalTo(282.0))
         assertThat(distance.y, equalTo(297.0))
-        assertThat(distance.style.color, equalTo(Palette.Colours.RED))
+        assertThat(distance.style.color, equalTo(state().gridLayer.colour))
         assertThat(bearing.x, equalTo(282.0))
         assertThat(bearing.y, equalTo(311.0))
-        assertThat(bearing.style.color, equalTo(Palette.Colours.RED))
+        assertThat(bearing.style.color, equalTo(state().gridLayer.colour))
         assertThat(arrow.x1, equalTo(120.0))
         assertThat(arrow.y1, equalTo(180.0))
         assertThat(arrow.x2, equalTo(260.0))
         assertThat(arrow.y2, equalTo(280.0))
-        assertThat(arrow.color.red, equalTo(Palette.Colours.RED.red))
+        assertThat(arrow.color, equalTo(state().gridLayer.colour))
     }
 
     @Test

@@ -97,9 +97,13 @@ internal fun MapPlacedObjectSnapshot.selectionFrame(
     viewport: CameraViewport,
     screenPadding: Double = 0.0,
 ): ScreenSelectionFrame =
-    selectionBounds(coordinateSpace)
-        .let { ScreenSelectionFrame.fromBounds(it, coordinateSpace, viewport) }
-        .expanded(screenPadding)
+    when (this) {
+        is UnitSnapshot -> selectionBounds(coordinateSpace)
+            .let { ScreenSelectionFrame.fromBounds(it, coordinateSpace, viewport) }
+            .expanded(screenPadding)
+
+        is DrawingSnapshot -> drawing.selectionFrame(coordinateSpace, viewport, screenPadding)
+    }
 
 internal fun MapPlacedObjectSnapshot.overlapsSelectionBox(
     box: MapSelectionBounds,
@@ -116,6 +120,49 @@ internal fun MapDrawing.selectionBounds(coordinateSpace: MapCoordinateSpace): Ma
         is LineDrawing -> listOf(start, end).bounds()
         is RectangleDrawing -> MapDrawingGeometry.rectangleCorners(start, end, rotationDegrees, coordinateSpace.aspectRatio).bounds()
         is OvalDrawing -> ovalPoints(coordinateSpace).bounds()
+    }
+
+internal fun MapDrawing.selectionFrame(
+    coordinateSpace: MapCoordinateSpace,
+    viewport: CameraViewport,
+    screenPadding: Double = 0.0,
+): ScreenSelectionFrame =
+    when (this) {
+        is FreeformDrawing ->
+            selectionBounds(coordinateSpace).let { ScreenSelectionFrame.fromBounds(it, coordinateSpace, viewport) }
+
+        is LineDrawing -> ScreenSelectionFrame.fromSegment(
+            start = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(start.x, start.y)), viewport),
+            end = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(end.x, end.y)), viewport),
+            padding = screenPadding.coerceAtLeast(SELECTION_FRAME_SCREEN_PADDING),
+        )
+
+        is RectangleDrawing -> {
+            val points = MapDrawingGeometry.rectangleCorners(start, end, rotationDegrees, coordinateSpace.aspectRatio)
+            ScreenSelectionFrame(
+                topLeft = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(points[0].x, points[0].y)), viewport),
+                topRight = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(points[1].x, points[1].y)), viewport),
+                bottomRight = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(points[2].x, points[2].y)), viewport),
+                bottomLeft = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(points[3].x, points[3].y)), viewport),
+            )
+        }
+
+        is OvalDrawing -> {
+            val unrotated = ScreenSelectionFrame.fromBounds(
+                MapSelectionBounds(
+                    left = center.x - xRadius,
+                    top = center.y - yRadius,
+                    right = center.x + xRadius,
+                    bottom = center.y + yRadius,
+                ),
+                coordinateSpace,
+                viewport,
+            )
+            unrotated.rotatedAround(
+                pivot = coordinateSpace.worldToScreen(coordinateSpace.toWorld(MapCoordinate(center.x, center.y)), viewport),
+                deltaRadians = Math.toRadians(rotationDegrees),
+            )
+        }
     }
 
 internal fun MapDrawing.overlapsSelectionBox(

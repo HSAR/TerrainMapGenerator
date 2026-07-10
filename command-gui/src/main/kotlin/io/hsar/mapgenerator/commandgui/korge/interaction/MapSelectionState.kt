@@ -79,6 +79,31 @@ internal data class ScreenSelectionFrame(
                 bottomLeft = bottomLeft,
             )
         }
+
+        fun fromSegment(start: Vector2D, end: Vector2D, padding: Double): ScreenSelectionFrame {
+            val dx = end.x - start.x
+            val dy = end.y - start.y
+            val length = hypot(dx, dy)
+            if (length <= 0.0) {
+                return ScreenSelectionFrame(
+                    topLeft = Vector2D(start.x - padding, start.y - padding),
+                    topRight = Vector2D(start.x + padding, start.y - padding),
+                    bottomRight = Vector2D(start.x + padding, start.y + padding),
+                    bottomLeft = Vector2D(start.x - padding, start.y + padding),
+                )
+            }
+
+            val unitX = dx / length
+            val unitY = dy / length
+            val normalX = -unitY * padding
+            val normalY = unitX * padding
+            return ScreenSelectionFrame(
+                topLeft = Vector2D(start.x + normalX, start.y + normalY),
+                topRight = Vector2D(end.x + normalX, end.y + normalY),
+                bottomRight = Vector2D(end.x - normalX, end.y - normalY),
+                bottomLeft = Vector2D(start.x - normalX, start.y - normalY),
+            )
+        }
     }
 }
 
