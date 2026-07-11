@@ -15,7 +15,9 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerCollapsiblePanel
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerCornerBrackets
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogSpacing
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDropdownMenu
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDropdownOption
@@ -24,10 +26,13 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerImageViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerScrollState
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerScrollbar
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSwatchViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputValidation
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputs
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitCreateDialog
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.commandgui.korge.ui.UiFrameStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
@@ -87,7 +92,6 @@ internal class MapViewerNewOperationView(
 ) {
     private val layer = root.container()
     private val unitRows = mutableListOf<UnitRow>()
-    private val affiliationDropdowns = mutableMapOf<Long, MapViewerDropdownMenu<UnitAffiliation>>()
     private val initialGridConfiguration = initialSetupInputs.mapImage
         ?.let { defaultGridConfiguration(it, initialUnitsPerPixel, initialSeed) }
         ?: defaultGridConfiguration(DEFAULT_GRID_WIDTH, DEFAULT_GRID_HEIGHT, initialUnitsPerPixel, initialSeed)
@@ -140,6 +144,10 @@ internal class MapViewerNewOperationView(
     private var unitScrollDragState: ScrollDragState? = null
     private var unitScrollContent: Container? = null
     private var unitListWidth = 0.0
+    private var selectedUnitRowId: Long? = null
+    private var unitIconDropTargetCollapsed = false
+    private val collapsedUnitAffiliationGroups = mutableSetOf<UnitAffiliation?>()
+    private var embeddedUnitTypeEditor: MapViewerUnitCreateDialog? = null
     private var unitScrollbarContainer: Container? = null
     private var unitScrollbarBounds: ScreenBounds? = null
     private var unitIconDropTargetBounds: ScreenBounds? = null
@@ -193,9 +201,10 @@ internal class MapViewerNewOperationView(
     private fun render(viewportWidth: Int, viewportHeight: Int) {
         captureInputs()
         hideMapImageValidationTooltip()
+        embeddedUnitTypeEditor?.dispose()
+        embeddedUnitTypeEditor = null
         layout = MapViewerNewOperationLayoutBuilder.build(viewportWidth, viewportHeight, panelFocus)
         layer.removeChildren()
-        affiliationDropdowns.values.forEach(MapViewerDropdownMenu<UnitAffiliation>::close)
         coordinateInputFields.clear()
         layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 255))
 
@@ -407,30 +416,62 @@ internal class MapViewerNewOperationView(
             alignment = TextAlignment.TOP_LEFT,
         )
             .xy(CONTENT_PADDING, CONTENT_PADDING)
-        MapViewerLaunchUi.button(panel, 150.0, 36.0, "Add Unit Type") {
-            addUnitType()
-        }.xy(layout.unitsPanelBounds.width - CONTENT_PADDING - 150.0, CONTENT_PADDING - 4.0)
-
         renderUnitIconDropTarget(panel, panelWidth - CONTENT_PADDING * 2.0)
 
+        if (!unitIconDropTargetCollapsed) {
+            val actionWidth = (panelWidth - CONTENT_PADDING * 2.0 - FIELD_GAP) * 0.5
+            val actionTop = unitActionTop()
+            MapViewerLaunchUi.button(
+                panel,
+                actionWidth,
+                36.0,
+                if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) "Add Unit Type" else "Add",
+            ) { addUnitType() }.xy(CONTENT_PADDING, actionTop)
+            MapViewerLaunchUi.button(
+                panel,
+                actionWidth,
+                36.0,
+                if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) "Import Unit Types" else "Import",
+                disabled = unitTypesImportInProgress,
+            ) { importUnitTypesFromSave() }.xy(CONTENT_PADDING + actionWidth + FIELD_GAP, actionTop)
+        }
+
         val scrollbarWidth = MapViewerScrollbar.WIDTH
-        val listViewportHeight = (layout.unitsPanelBounds.height - LIST_TOP - CONTENT_PADDING).coerceAtLeast(0.0)
-        val listWidth = (panelWidth - CONTENT_PADDING * 2.0 - scrollbarWidth - FIELD_GAP).coerceAtLeast(0.0)
+        val listViewportHeight = (layout.unitsPanelBounds.height - unitListTop() - CONTENT_PADDING).coerceAtLeast(0.0)
+        val editorWidth = if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) {
+            ((panelWidth - CONTENT_PADDING * 2.0 - scrollbarWidth - FIELD_GAP * 2.0) * 0.5).coerceAtLeast(0.0)
+        } else {
+            0.0
+        }
+        val listWidth = if (editorWidth > 0.0) {
+            editorWidth
+        } else {
+            (panelWidth - CONTENT_PADDING * 2.0 - scrollbarWidth - FIELD_GAP).coerceAtLeast(0.0)
+        }
         unitListWidth = listWidth
-        unitScrollState = unitScrollState.withContent(listViewportHeight, unitRows.size * unitRowHeight())
+        val listContentHeight = if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) {
+            focusedUnitSelectorContentHeight()
+        } else {
+            unitRows.size * unitRowHeight()
+        }
+        unitScrollState = unitScrollState.withContent(listViewportHeight, listContentHeight)
         panel.clipContainer(Size2D(listWidth, listViewportHeight)) {
-            xy(CONTENT_PADDING, LIST_TOP)
+            xy(CONTENT_PADDING, unitListTop())
             val content = container().also {
                 it.y = -unitScrollState.offset
                 unitScrollContent = it
             }
-            unitRows.forEachIndexed { index, row ->
-                renderUnitRow(content, row, index, listWidth)
+            if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) {
+                renderFocusedUnitSelector(content, listWidth)
+            } else {
+                unitRows.forEachIndexed { index, row ->
+                    renderUnitRow(content, row, index * unitRowHeight(), listWidth)
+                }
             }
         }
         val scrollbarBounds = ScreenBounds(
-            left = panelWidth - CONTENT_PADDING - scrollbarWidth,
-            top = LIST_TOP,
+            left = CONTENT_PADDING + listWidth + FIELD_GAP,
+            top = unitListTop(),
             width = scrollbarWidth,
             height = listViewportHeight,
         )
@@ -440,15 +481,45 @@ internal class MapViewerNewOperationView(
             unitScrollDragState = ScrollDragState(pointerY, unitScrollState.offset)
         }
 
-        MapViewerLaunchUi.button(
-            panel,
-            panelWidth - CONTENT_PADDING * 2.0,
-            36.0,
-            "Import Unit Types",
-            disabled = unitTypesImportInProgress,
-        ) {
-            importUnitTypesFromSave()
-        }.xy(CONTENT_PADDING, DROP_TARGET_TOP + DROP_TARGET_HEIGHT + FIELD_GAP)
+        if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) {
+            renderEmbeddedUnitTypeEditor(panel, CONTENT_PADDING + listWidth + FIELD_GAP * 2.0 + scrollbarWidth, editorWidth)
+        }
+    }
+
+    private fun renderEmbeddedUnitTypeEditor(panel: Container, editorLeft: Double, editorWidth: Double) {
+        val row = unitRows.firstOrNull { it.id == selectedUnitRowId }
+        if (row == null) {
+            MapViewerTextViews.box(panel, "Select a unit type", editorWidth, 32.0, color = Palette.Colours.LIGHT)
+                .xy(editorLeft, unitListTop())
+            return
+        }
+        val editor = MapViewerUnitCreateDialog(
+            root = root,
+            dialogManager = MapViewerDialogManager(),
+            dialogTitle = "Edit Unit Type",
+            initialTemplate = MapViewerUnitTemplate(
+                id = UnitTemplateId(UUID(0L, row.id)),
+                name = row.name,
+                bitmap = row.bitmap,
+                assetSource = row.assetSource,
+                affiliation = row.affiliation,
+                customProperties = row.customProperties,
+            ),
+            onCreated = { updated ->
+                row.name = updated.name
+                row.bitmap = updated.bitmap
+                row.assetSource = updated.assetSource
+                row.affiliation = updated.affiliation
+                row.customProperties = updated.customProperties
+                render(layout.viewportWidth, layout.viewportHeight)
+            },
+            onDismiss = {},
+        )
+        embeddedUnitTypeEditor = editor
+        panel.clipContainer(Size2D(editorWidth, UNIT_TYPE_EDITOR_HEIGHT)).also {
+            it.xy(editorLeft, unitListTop())
+            editor.renderEmbedded(it, editorWidth)
+        }
     }
 
     private fun renderPanelFocusButton() {
@@ -467,8 +538,22 @@ internal class MapViewerNewOperationView(
     }
 
     private fun renderUnitIconDropTarget(parent: Container, width: Double) {
+        MapViewerCollapsiblePanel.header(
+            parent = parent,
+            width = width,
+            height = UNIT_DROP_HEADER_HEIGHT,
+            label = "DROP UNIT ICONS HERE",
+            expanded = !unitIconDropTargetCollapsed,
+        ) {
+            unitIconDropTargetCollapsed = !unitIconDropTargetCollapsed
+            render(layout.viewportWidth, layout.viewportHeight)
+        }.xy(CONTENT_PADDING, DROP_TARGET_TOP)
+        if (unitIconDropTargetCollapsed) {
+            unitIconDropTargetBounds = null
+            return
+        }
         val dropTarget = parent.container()
-        dropTarget.xy(CONTENT_PADDING, DROP_TARGET_TOP)
+        dropTarget.xy(CONTENT_PADDING, DROP_TARGET_TOP + UNIT_DROP_HEADER_HEIGHT + FIELD_GAP)
         dropTarget.solidRect(width, DROP_TARGET_HEIGHT, RGBA(80, 80, 80, 190))
         dropTarget.solidRect(width - 2.0, DROP_TARGET_HEIGHT - 2.0, RGBA(45, 45, 45, 210)) {
             x = 1.0
@@ -477,7 +562,7 @@ internal class MapViewerNewOperationView(
         MapViewerCornerBrackets.renderAll(dropTarget, width, DROP_TARGET_HEIGHT, BRACKET_INSET)
         MapViewerTextViews.box(
             parent = dropTarget,
-            text = "Drop unit icons here",
+            text = "DROP UNIT ICONS HERE",
             width = width,
             height = DROP_TARGET_HEIGHT,
             size = 18.0,
@@ -495,11 +580,68 @@ internal class MapViewerNewOperationView(
         refreshLaunchButton()
     }
 
-    private fun renderUnitRow(parent: Container, row: UnitRow, index: Int, rowWidth: Double) {
+    private fun renderFocusedUnitSelector(parent: Container, rowWidth: Double) {
+        var top = 0.0
+        UNIT_AFFILIATION_GROUPS.forEach { group ->
+            val groupRows = unitRows.filter { it.affiliation == group.affiliation }
+            if (groupRows.size < 2) {
+                groupRows.forEach { row ->
+                    renderUnitRow(parent, row, top, rowWidth)
+                    top += unitRowHeight()
+                }
+                return@forEach
+            }
+            val collapsed = group.affiliation in collapsedUnitAffiliationGroups
+            MapViewerCollapsiblePanel.header(
+                parent = parent,
+                width = rowWidth,
+                height = UNIT_GROUP_HEADER_HEIGHT,
+                label = group.label,
+                expanded = !collapsed,
+            ) {
+                if (!collapsed && unitRows.firstOrNull { it.id == selectedUnitRowId }?.affiliation == group.affiliation) {
+                    selectedUnitRowId = null
+                }
+                if (collapsed) collapsedUnitAffiliationGroups.remove(group.affiliation) else collapsedUnitAffiliationGroups.add(group.affiliation)
+                render(layout.viewportWidth, layout.viewportHeight)
+            }.xy(0.0, top)
+            top += UNIT_GROUP_HEADER_HEIGHT + UNIT_GROUP_GAP
+            if (!collapsed) {
+                groupRows.forEach { row ->
+                    renderUnitRow(parent, row, top, rowWidth)
+                    top += unitRowHeight()
+                }
+            }
+        }
+    }
+
+    private fun focusedUnitSelectorContentHeight(): Double =
+        UNIT_AFFILIATION_GROUPS.sumOf { group ->
+            val count = unitRows.count { it.affiliation == group.affiliation }
+            if (count < 2) count * unitRowHeight() else {
+                UNIT_GROUP_HEADER_HEIGHT + UNIT_GROUP_GAP + if (group.affiliation in collapsedUnitAffiliationGroups) 0.0 else count * unitRowHeight()
+            }
+        }
+
+    private fun renderUnitRow(parent: Container, row: UnitRow, top: Double, rowWidth: Double) {
         val rowHeight = unitRowHeight()
         val rowContainer = parent.container()
-        rowContainer.xy(0.0, index * rowHeight)
-        MapViewerUiBoxes.box(rowContainer, rowWidth, rowHeight)
+        rowContainer.xy(0.0, top)
+        rowContainer.mouse {
+            onClick {
+                if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES && selectedUnitRowId != row.id) {
+                    selectedUnitRowId = row.id
+                    render(layout.viewportWidth, layout.viewportHeight)
+                }
+            }
+        }
+        val selected = selectedUnitRowId == row.id
+        MapViewerUiBoxes.box(
+            rowContainer,
+            rowWidth,
+            rowHeight,
+            style = { active -> MapViewerUiBoxes.defaultStyle(active && (panelFocus != MapViewerNewOperationPanelFocus.UNIT_TYPES || selected)) },
+        )
 
         renderPreviewFrame(
             parent = rowContainer,
@@ -507,6 +649,20 @@ internal class MapViewerNewOperationView(
             left = PREVIEW_LEFT,
             top = (rowHeight - PREVIEW_HEIGHT) * 0.5,
         )
+
+        if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) {
+            val swatchHost = rowContainer.container()
+            swatchHost.xy(rowWidth - 34.0, (rowHeight - 24.0) * 0.5)
+            MapViewerSwatchViews.render(swatchHost, UnitAffiliationUi.swatchColor(row.affiliation), 24.0)
+            MapViewerTextViews.leftBox(
+                parent = rowContainer,
+                text = row.name,
+                width = rowWidth - PREVIEW_WIDTH - 18.0,
+                height = rowHeight,
+                color = MapViewerUiStateStyle.text(selected),
+            ).xy(PREVIEW_LEFT + PREVIEW_WIDTH + 10.0, 0.0)
+            return
+        }
 
         val handleLeft = rowWidth - HANDLE_WIDTH - 10.0
         val affiliationWidth = if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) 150.0 else 0.0
@@ -523,37 +679,12 @@ internal class MapViewerNewOperationView(
             ),
         )
 
-        if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) {
-            affiliationDropdowns.getOrPut(row.id) {
-                MapViewerDropdownMenu(
-                    root = root,
-                    options = UnitAffiliationUi.options,
-                    onSelected = { affiliation ->
-                        row.affiliation = affiliation
-                        render(layout.viewportWidth, layout.viewportHeight)
-                    },
-                    labelForValue = UnitAffiliationUi::label,
-                    swatchForValue = UnitAffiliationUi::swatchColor,
-                )
-            }.let { dropdown ->
-                rowContainer.container().also {
-                    it.xy(nameRight + 10.0, (rowHeight - INPUT_HEIGHT) * 0.5)
-                    dropdown.renderTrigger(
-                        parent = it,
-                        value = row.affiliation,
-                        width = affiliationWidth,
-                        height = INPUT_HEIGHT,
-                    )
-                }
-            }
-        }
-
         renderHandle(
             parent = rowContainer,
             x = rowWidth - HANDLE_WIDTH - 10.0,
             y = (rowHeight - HANDLE_HEIGHT) * 0.5,
             rowId = row.id,
-            index = index,
+            index = unitRows.indexOf(row),
         )
     }
 
@@ -675,9 +806,11 @@ internal class MapViewerNewOperationView(
         }
         val newRows = importedRows.filter(::upsertUnitRow)
         val firstIndex = unitRows.size - newRows.size
-        unitScrollContent?.let { content ->
+        if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) {
+            render(layout.viewportWidth, layout.viewportHeight)
+        } else unitScrollContent?.let { content ->
             newRows.forEachIndexed { index, row ->
-                renderUnitRow(content, row, firstIndex + index, unitListWidth)
+                renderUnitRow(content, row, (firstIndex + index) * unitRowHeight(), unitListWidth)
             }
             unitScrollState = unitScrollState.withContent(
                 contentHeight = unitRows.size * unitRowHeight(),
@@ -919,7 +1052,7 @@ internal class MapViewerNewOperationView(
             return
         }
 
-        val listTop = layout.unitsPanelBounds.top + LIST_TOP
+        val listTop = layout.unitsPanelBounds.top + unitListTop()
         val relativeY = mousePos.y - listTop + unitScrollState.offset
         val targetIndex = (relativeY / unitRowHeight()).toInt().coerceIn(0, unitRows.lastIndex)
         if (targetIndex != currentIndex) {
@@ -1058,10 +1191,10 @@ internal class MapViewerNewOperationView(
         val drag = unitScrollDragState ?: return
         if (!unitScrollState.needsScrolling) return
         val scrollbarWidth = MapViewerScrollbar.WIDTH
-        val listViewportHeight = (layout.unitsPanelBounds.height - LIST_TOP - CONTENT_PADDING).coerceAtLeast(0.0)
+        val listViewportHeight = (layout.unitsPanelBounds.height - unitListTop() - CONTENT_PADDING).coerceAtLeast(0.0)
         val bounds = ScreenBounds(
-            left = layout.unitsPanelBounds.left + layout.unitsPanelBounds.width - CONTENT_PADDING - scrollbarWidth,
-            top = layout.unitsPanelBounds.top + LIST_TOP,
+            left = layout.unitsPanelBounds.left + (unitScrollbarBounds?.left ?: (CONTENT_PADDING + unitListWidth + FIELD_GAP)),
+            top = layout.unitsPanelBounds.top + unitListTop(),
             width = scrollbarWidth,
             height = listViewportHeight,
         )
@@ -1085,7 +1218,13 @@ internal class MapViewerNewOperationView(
     }
 
     private fun unitRowHeight(): Double =
-        if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) 72.0 else ROW_HEIGHT
+        ROW_HEIGHT
+
+    private fun unitListTop(): Double =
+        unitActionTop() + 60.0
+
+    private fun unitActionTop(): Double =
+        if (unitIconDropTargetCollapsed) DROP_TARGET_TOP + UNIT_DROP_HEADER_HEIGHT + FIELD_GAP else DROP_TARGET_TOP + UNIT_DROP_HEADER_HEIGHT + FIELD_GAP + DROP_TARGET_HEIGHT + FIELD_GAP
 
     private fun scaleLabel(): String =
         when (referenceSystem()) {
@@ -1216,12 +1355,17 @@ internal class MapViewerNewOperationView(
     private data class UnitRow(
         override val id: Long,
         override var name: String,
-        val bitmap: Bitmap32,
-        val assetSource: AssetSource?,
+        var bitmap: Bitmap32,
+        var assetSource: AssetSource?,
         var affiliation: UnitAffiliation? = null,
-        val customProperties: Map<String, String> = emptyMap(),
+        var customProperties: Map<String, String> = emptyMap(),
         var input: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null,
     ) : ReorderRow
+
+    private data class UnitAffiliationGroup(
+        val affiliation: UnitAffiliation?,
+        val label: String,
+    )
 
     private data class ReorderDragState(
         val rowId: Long,
@@ -1278,6 +1422,10 @@ internal class MapViewerNewOperationView(
         const val LIST_TOP = 208.0
         const val ROW_HEIGHT = 44.0
         const val IMPORT_BATCH_SIZE = 8
+        const val UNIT_TYPE_EDITOR_HEIGHT = 420.0
+        const val UNIT_GROUP_HEADER_HEIGHT = 36.0
+        const val UNIT_GROUP_GAP = 8.0
+        const val UNIT_DROP_HEADER_HEIGHT = 36.0
         const val PREVIEW_WIDTH = 64.0
         const val PREVIEW_HEIGHT = 36.0
         const val PREVIEW_LEFT = 0.0
@@ -1290,6 +1438,13 @@ internal class MapViewerNewOperationView(
         const val DEFAULT_GRID_WIDTH = 1_000
         const val DEFAULT_GRID_HEIGHT = 1_000
         const val BRACKET_INSET = 5.0
+        val UNIT_AFFILIATION_GROUPS = listOf(
+            UnitAffiliationGroup(UnitAffiliation.Friend, "Friend"),
+            UnitAffiliationGroup(UnitAffiliation.Hostile, "Hostile"),
+            UnitAffiliationGroup(UnitAffiliation.Neutral, "Neutral"),
+            UnitAffiliationGroup(UnitAffiliation.Unknown, "Unknown"),
+            UnitAffiliationGroup(null, "Unaffiliated"),
+        )
         private fun <T> MutableList<T>.move(fromIndex: Int, toIndex: Int) {
             if (fromIndex == toIndex) return
             val item = removeAt(fromIndex)

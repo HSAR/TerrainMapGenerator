@@ -177,30 +177,16 @@ internal class MapViewerNoteDialog(
     }
 
     private fun renderReferencesHeader(parent: Container, itemWidth: Double, top: Double) {
-        val header = parent.container()
-        header.xy(0.0, top)
-        MapViewerUiBoxes.box(header, itemWidth, CONTROL_HEIGHT)
-        val buttonWidth = 118.0
-        MapViewerTextViews.leftBox(
-            parent = header,
-            text = "${referencedObjectIds.size} references",
-            width = itemWidth - buttonWidth - BUTTON_GAP - ROW_INSET * 2.0,
+        MapViewerCollapsiblePanel.header(
+            parent = parent,
+            width = itemWidth,
             height = CONTROL_HEIGHT,
-            color = Palette.Colours.WHITE,
-        ) {
-            x = ROW_INSET
-        }
-        val toggle = header.container()
-        toggle.xy(itemWidth - buttonWidth - ROW_INSET, (CONTROL_HEIGHT - REMOVE_HEIGHT) * 0.5)
-        MapViewerActionButtons.button(
-            parent = toggle,
-            width = buttonWidth,
-            height = REMOVE_HEIGHT,
-            label = if (referencesExpanded) "Collapse" else "Expand",
+            label = "${referencedObjectIds.size} references",
+            expanded = referencesExpanded,
         ) {
             referencesExpanded = !referencesExpanded
             window?.refresh()
-        }
+        }.xy(0.0, top)
     }
 
     private fun renderReferenceDropTarget(parent: Container, width: Double, height: Double) {

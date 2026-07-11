@@ -213,27 +213,54 @@ internal class MapViewerUnitCreateDialog(
         }
     }
 
+    fun renderEmbedded(parent: Container, width: Double, confirmLabel: String = "Save") {
+        renderContent(parent, width)
+        parent.container().also { actions ->
+            actions.xy(0.0, contentHeightFor(width) + MapViewerDialogSpacing.FIELD_GAP)
+            MapViewerLaunchUi.button(actions, 120.0, MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT, confirmLabel) {
+                createTemplate()?.let(onCreated)
+            }
+        }
+    }
+
+    fun embeddedHeight(width: Double): Double =
+        contentHeightFor(width) + MapViewerDialogSpacing.FIELD_GAP + MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT
+
+    fun dispose() {
+        affiliationDropdown.close()
+        customPropertiesEditor.hideTooltip()
+    }
+
     private fun confirm() {
+        createTemplate()?.let { template ->
+            onCreated(template)
+            close()
+        }
+    }
+
+    private fun createTemplate(): MapViewerUnitTemplate? {
         val name = nameInput?.text?.trim().orEmpty()
         val bitmap = selectedBitmap
         when {
-            name.isBlank() -> showStatus(statusLabel, "Enter a type name", statusWidthFor("Enter a type name"))
-            !customPropertiesEditor.isValid -> return
-            bitmap == null -> showStatus(statusLabel, "Choose an image", statusWidthFor("Choose an image"))
-            else -> {
-                onCreated(
-                    MapViewerUnitTemplate(
-                        id = initialTemplate?.id ?: UnitTemplateId(UUID.randomUUID()),
-                        name = name,
-                        bitmap = bitmap,
-                        assetSource = selectedAssetSource,
-                        affiliation = selectedAffiliation,
-                        customProperties = customPropertiesEditor.properties(),
-                    ),
-                )
-                close()
+            name.isBlank() -> {
+                showStatus(statusLabel, "Enter a type name", statusWidthFor("Enter a type name"))
+                return null
+            }
+
+            !customPropertiesEditor.isValid -> return null
+            bitmap == null -> {
+                showStatus(statusLabel, "Choose an image", statusWidthFor("Choose an image"))
+                return null
             }
         }
+        return MapViewerUnitTemplate(
+            id = initialTemplate?.id ?: UnitTemplateId(UUID.randomUUID()),
+            name = name,
+            bitmap = bitmap,
+            assetSource = selectedAssetSource,
+            affiliation = selectedAffiliation,
+            customProperties = customPropertiesEditor.properties(),
+        )
     }
 
     private fun canConfirm(): Boolean =
