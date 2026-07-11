@@ -5,14 +5,14 @@ import kotlin.math.hypot
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-internal data class NavrepContact(
+internal data class SensorContact(
     val unit: UnitSnapshot,
     val distanceUnits: Double,
     val detectionRangeUnits: Double,
     val baseDetectionRangeUnits: Double,
 )
 
-internal data class NavrepVisibilityCheck(
+internal data class SensorVisibilityCheck(
     val unit: UnitSnapshot,
     val visible: Boolean,
     val detected: Boolean,
@@ -23,13 +23,40 @@ internal data class NavrepVisibilityCheck(
     val notes: List<String>,
 )
 
-internal data class NavrepVisibilityReport(
+internal data class SitrepVisibilityReport(
     val displayText: String,
     val copyText: String,
-    val visibleChecks: List<NavrepVisibilityCheck>,
-    val detectedChecks: List<NavrepVisibilityCheck>,
-    val unidentifiedChecks: List<NavrepVisibilityCheck> = emptyList(),
-    val hiddenChecks: List<NavrepVisibilityCheck>,
+    val visibleChecks: List<SensorVisibilityCheck>,
+    val detectedChecks: List<SensorVisibilityCheck>,
+    val unidentifiedChecks: List<SensorVisibilityCheck> = emptyList(),
+    val hiddenChecks: List<SensorVisibilityCheck>,
+)
+
+internal data class SitrepContactState(
+    val sensorContactIds: Set<MapPlacedObjectId> = emptySet(),
+    val identifiedIds: Set<MapPlacedObjectId> = emptySet(),
+    val sierraContactNumbers: Map<MapPlacedObjectId, Int> = emptyMap(),
+    val usedSierraContactNumbers: Set<Int> = emptySet(),
+    val lastSeenPositions: Map<MapPlacedObjectId, MapCoordinate> = emptyMap(),
+    val lastSeenContacts: Map<MapPlacedObjectId, SitrepLostContact> = emptyMap(),
+    val lostContacts: List<SitrepLostContact> = emptyList(),
+)
+
+internal data class SitrepLostContact(
+    val contactId: MapPlacedObjectId,
+    val sierraNumber: Int,
+    val lastSeenPosition: MapCoordinate,
+    val lastSeenRangeUnits: Double,
+    val wasIdentified: Boolean,
+    val unitTypeName: String? = null,
+    val unitClassCode: String? = null,
+)
+
+internal data class ScirepContactSegment(
+    val contactId: MapPlacedObjectId,
+    val sierraNumber: Int,
+    val opening: String,
+    val clauses: List<String>,
 )
 
 internal fun UnitSnapshot.isNavrepUnit(): Boolean =
@@ -57,6 +84,16 @@ internal fun UnitSnapshot.unitClassLabel(): String? =
 
 private const val UNIT_CLASS_KEY = "unitClass"
 internal val NAVREP_ELIGIBLE_CLASSES = setOf("FF", "F", "DD", "CL", "CA", "CVE", "CVL", "BC")
+internal val SENSOR_UNIT_CLASS_NAMES = mapOf(
+    "FF" to "frigate",
+    "F" to "fighter",
+    "DD" to "destroyer",
+    "CL" to "light cruiser",
+    "CA" to "heavy cruiser",
+    "CVE" to "escort aircraft carrier",
+    "CVL" to "light aircraft carrier",
+    "BC" to "battlecruiser",
+)
 private const val DETECTION_RANGE_BAND_MULTIPLIER = 2.0
 
 private fun Map<String, String>.warpBonus(): Int? {
@@ -77,7 +114,7 @@ private fun Map<String, String>.intProperty(key: String): Int? =
 private fun Map<String, String>.stringProperty(key: String): String? =
     entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value?.trim()?.takeIf { it.isNotBlank() }
 
-internal object NavrepDetection {
+internal object SensorDetection {
     fun visibleContacts(
         observer: UnitSnapshot,
         candidates: List<UnitSnapshot>,
@@ -86,11 +123,11 @@ internal object NavrepDetection {
         mapUnitsPerPixel: Double,
         gridLayer: GridLayer? = null,
         candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
-    ): List<NavrepContact> =
+    ): List<SensorContact> =
         visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer, candidateFilter)
             .filter { it.detected }
             .map {
-                NavrepContact(
+                SensorContact(
                     unit = it.unit,
                     distanceUnits = it.distanceUnits,
                     detectionRangeUnits = it.detectionRangeUnits,
@@ -106,7 +143,7 @@ internal object NavrepDetection {
         mapUnitsPerPixel: Double,
         gridLayer: GridLayer? = null,
         candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
-    ): List<NavrepVisibilityCheck> =
+    ): List<SensorVisibilityCheck> =
         candidates.asSequence()
             .filter { it.id != observer.id }
             .filter(candidateFilter)
@@ -117,7 +154,7 @@ internal object NavrepDetection {
                 val baseDetectionRangeUnits = candidate.unitClassLabel().baseDetectionRangeUnits()
                 val notes = candidate.visibilityNotes()
                 when {
-                    candidate.transmissionInScope() -> NavrepVisibilityCheck(
+                    candidate.transmissionInScope() -> SensorVisibilityCheck(
                         unit = candidate,
                         visible = true,
                         detected = true,
@@ -129,7 +166,7 @@ internal object NavrepDetection {
                     )
 
                     identification == null -> null
-                    else -> NavrepVisibilityCheck(
+                    else -> SensorVisibilityCheck(
                         unit = candidate,
                         visible = distanceUnits <= identification,
                         detected = distanceUnits <= detection!!,
@@ -146,7 +183,7 @@ internal object NavrepDetection {
                 }
             }
             .sortedWith(
-                compareBy<NavrepVisibilityCheck> { it.distanceUnits }
+                compareBy<SensorVisibilityCheck> { it.distanceUnits }
                     .thenBy { it.unit.instanceName.lowercase() }
                     .thenBy { it.unit.unitClassLabel() },
             )
@@ -163,7 +200,7 @@ internal object NavrepDetection {
         unidentifiedIds: Set<MapPlacedObjectId> = emptySet(),
         candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
         emptySummaryText: String = "No allied contacts to report.",
-    ): NavrepVisibilityReport {
+    ): SitrepVisibilityReport {
         val checks = visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer, candidateFilter)
         val effectiveIncludedIds = includedIds ?: checks.filter { it.visible }.mapTo(mutableSetOf()) { it.unit.id }
         val visibleChecks = checks.filter { it.unit.id in effectiveIncludedIds }
@@ -173,7 +210,7 @@ internal object NavrepDetection {
             add(buildPositionSummary(observer, visibleChecks, mapWidth, mapHeight, gridLayer, emptySummaryText))
         }
         val displayText = lines.joinToString("\n")
-        return NavrepVisibilityReport(
+        return SitrepVisibilityReport(
             displayText = displayText,
             copyText = displayText,
             visibleChecks = visibleChecks,
@@ -185,12 +222,109 @@ internal object NavrepDetection {
 
     fun hiddenContactLabel(
         observer: UnitSnapshot,
-        check: NavrepVisibilityCheck,
+        check: SensorVisibilityCheck,
         mapWidth: Int,
         mapHeight: Int,
         gridLayer: GridLayer? = null,
     ): String =
         buildHiddenLine(observer, check, mapWidth, mapHeight, gridLayer)
+
+    fun scirepText(
+        checks: List<SensorVisibilityCheck>,
+        identifiedIds: Set<MapPlacedObjectId>,
+        contactNumbers: Map<MapPlacedObjectId, Int>,
+        mapWidth: Int,
+        mapHeight: Int,
+        gridLayer: GridLayer? = null,
+        emptySummaryText: String,
+        identificationAnnouncements: List<SensorVisibilityCheck> = emptyList(),
+        lostContacts: List<SitrepLostContact> = emptyList(),
+        lowConfidenceContacts: Map<MapPlacedObjectId, SitrepLostContact> = emptyMap(),
+    ): String =
+        if (checks.isEmpty() && lostContacts.isEmpty()) {
+            emptySummaryText
+        } else {
+            val newlyIdentifiedIds = identificationAnnouncements.map { it.unit.id }.toSet()
+            combineScirepContactSegments(
+                checks.map { check ->
+                    val lowConfidence = lowConfidenceContacts[check.unit.id]
+                    val designation = if (check.unit.id in identifiedIds) "Master" else "Sierra"
+                    val opening = if (lowConfidence != null) {
+                        "New contact tentatively designated $designation ${contactNumbers.getValue(check.unit.id)} from last known position"
+                    } else if (check.unit.id !in identifiedIds) {
+                        "Contact detected at extreme range as Sierra ${contactNumbers.getValue(check.unit.id)}"
+                    } else {
+                        "Contact Master ${contactNumbers.getValue(check.unit.id)}"
+                    }
+                    val classification = when {
+                        check.unit.id in identifiedIds && lowConfidence != null ->
+                            "was identified as ${check.unit.identificationDescription()}"
+
+                        check.unit.id in newlyIdentifiedIds ->
+                            (if (lowConfidence != null) "was identified as " else "is identified as the ") +
+                                    check.unit.identificationDescription()
+
+                        check.unit.id in identifiedIds ->
+                            "is ${check.unit.identificationDescription()}"
+
+                        else -> "has unknown classification"
+                    }
+                    ScirepContactSegment(
+                        contactId = check.unit.id,
+                        sierraNumber = contactNumbers.getValue(check.unit.id),
+                        opening = opening,
+                        clauses = listOf(
+                            "at ${
+                                lowConfidence?.let { formatPosition(it.lastSeenPosition, mapWidth, mapHeight, gridLayer) } ?: formatPosition(
+                                    check.unit,
+                                    mapWidth,
+                                    mapHeight,
+                                    gridLayer
+                                )
+                            }, " +
+                                    "range ${formatDistance(lowConfidence?.lastSeenRangeUnits ?: check.distanceUnits)}U",
+                            classification,
+                        ),
+                    )
+                } + lostContacts.map { lost ->
+                    ScirepContactSegment(
+                        contactId = lost.contactId,
+                        sierraNumber = lost.sierraNumber,
+                        opening = "Contact Sierra ${lost.sierraNumber} lost",
+                        clauses = emptyList(),
+                    )
+                },
+            )
+        }
+
+    fun combineScirepContactSegments(segments: List<ScirepContactSegment>): String =
+        segments
+            .groupBy { it.contactId }
+            .values
+            .sortedBy { contactSegments -> contactSegments.minOf { it.sierraNumber } }
+            .joinToString(" ") { contactSegments ->
+                val first = contactSegments.first()
+                val clauses = contactSegments.flatMap { it.clauses }
+                buildString {
+                    append(first.opening)
+                    clauses.forEach { clause ->
+                        append(' ')
+                        append(clause.trim().trimEnd('.', '!', '?'))
+                    }
+                    append('.')
+                }
+            }
+
+    private fun UnitSnapshot.identificationDescription(): String =
+        buildString {
+            append(template.name.ifBlank { "Unknown" })
+            append("-class ")
+            append(SENSOR_UNIT_CLASS_NAMES[unitClassLabel()] ?: "unknown")
+            if (name.isNotBlank() && name != template.name) {
+                append(' ')
+                append(displayName())
+            }
+        }
 
     private fun UnitSnapshot.identificationRangeUnits(observer: UnitSnapshot): Double? {
         val base = unitClassLabel().baseDetectionRangeUnits()
@@ -260,7 +394,7 @@ internal object NavrepDetection {
 
     private fun buildPositionSummary(
         observer: UnitSnapshot,
-        visibleChecks: List<NavrepVisibilityCheck>,
+        visibleChecks: List<SensorVisibilityCheck>,
         mapWidth: Int,
         mapHeight: Int,
         gridLayer: GridLayer?,
@@ -292,27 +426,31 @@ internal object NavrepDetection {
 
     private fun buildHiddenLine(
         observer: UnitSnapshot,
-        check: NavrepVisibilityCheck,
+        check: SensorVisibilityCheck,
         mapWidth: Int,
         mapHeight: Int,
         gridLayer: GridLayer?,
     ): String =
         buildString {
             append(check.unit.navrepReportLabel())
-            append(" detection range is ")
+            append(" contact ranges are ")
             append(formatDistance(check.detectionRangeUnits))
-            append(" [base ")
-            append(formatDistance(check.baseDetectionRangeUnits))
-            append(", observer ")
-            append(observer.unitClassLabel() ?: "unknown")
-            append(' ')
-            append(observer.unitClassLabel().sensorRangeSummary())
-            append("] but actual range was ")
+            append('/')
+            append(formatDistance(check.identificationRangeUnits))
+            append(", actual range is ")
             append(formatDistance(check.distanceUnits))
         }
 
     private fun formatPosition(
         unit: UnitSnapshot,
+        mapWidth: Int,
+        mapHeight: Int,
+        gridLayer: GridLayer?,
+    ): String =
+        formatPosition(unit.mapCoordinate, mapWidth, mapHeight, gridLayer)
+
+    private fun formatPosition(
+        position: MapCoordinate,
         mapWidth: Int,
         mapHeight: Int,
         gridLayer: GridLayer?,
@@ -323,11 +461,11 @@ internal object NavrepDetection {
                     layer = layer,
                     mapWidth = mapWidth,
                     mapHeight = mapHeight,
-                    mapX = unit.mapCoordinate.x * mapWidth,
-                    mapY = unit.mapCoordinate.y * mapHeight,
+                    mapX = position.x * mapWidth,
+                    mapY = position.y * mapHeight,
                 )
             }
-            ?: "${formatDistance(unit.mapCoordinate.x * mapWidth)} ${formatDistance(unit.mapCoordinate.y * mapHeight)}"
+            ?: "${formatDistance(position.x * mapWidth)} ${formatDistance(position.y * mapHeight)}"
 
     private fun formatBearing(facingDegrees: Int?): String =
         facingDegrees?.toString() ?: "unknown"

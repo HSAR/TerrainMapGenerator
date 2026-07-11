@@ -10,7 +10,7 @@ import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import java.util.*
 
-class NavrepDetectionTest {
+class SensorDetectionTest {
 
     @Test
     fun `navrep contact detection uses the target class range and distance`() {
@@ -36,7 +36,7 @@ class NavrepDetectionTest {
             y = 0.5,
         )
 
-        val contacts = NavrepDetection.visibleContacts(
+        val contacts = SensorDetection.visibleContacts(
             observer = observer,
             candidates = listOf(observer, nearbyFF, farCL),
             mapWidth = 1_000,
@@ -75,7 +75,7 @@ class NavrepDetectionTest {
             customProperties = mapOf("silentRunning" to "true"),
         )
 
-        val contacts = NavrepDetection.visibleContacts(
+        val contacts = SensorDetection.visibleContacts(
             observer = observer,
             candidates = listOf(observer, activeSensorsContact, silentContact),
             mapWidth = 1_000,
@@ -125,7 +125,7 @@ class NavrepDetectionTest {
             x = 0.5,
             y = 0.5,
         )
-        val report = NavrepDetection.visibilityReport(
+        val report = SensorDetection.visibilityReport(
             observer = observer,
             candidates = listOf(
                 observer,
@@ -153,7 +153,7 @@ class NavrepDetectionTest {
         assertThat(report.displayText.startsWith("Position "), equalTo(true))
         assertThat(report.displayText.contains("FF Escort has position"), equalTo(true))
         assertThat(report.displayText.contains("[HIDDEN]"), equalTo(false))
-        assertThat(report.displayText.contains("- CL Cruiser detection range is"), equalTo(false))
+        assertThat(report.displayText.contains("- CL Cruiser contact ranges are"), equalTo(false))
         assertThat(report.hiddenChecks.map { it.unit.id }, equalTo(listOf(MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000032")))))
         assertThat(report.copyText.startsWith("Position "), equalTo(true))
         assertThat(report.copyText, equalTo(report.displayText))
@@ -176,7 +176,7 @@ class NavrepDetectionTest {
             y = 0.5,
         )
 
-        val report = NavrepDetection.visibilityReport(
+        val report = SensorDetection.visibilityReport(
             observer = observer,
             candidates = listOf(observer, forced),
             mapWidth = 1_000,
@@ -186,7 +186,7 @@ class NavrepDetectionTest {
         )
 
         assertThat(report.visibleChecks.map { it.unit.id }, equalTo(listOf(forced.id)))
-        assertThat(report.hiddenChecks, equalTo(emptyList<NavrepVisibilityCheck>()))
+        assertThat(report.hiddenChecks, equalTo(emptyList<SensorVisibilityCheck>()))
         assertThat(report.displayText.contains("CL Cruiser has position"), equalTo(true))
         assertThat(report.copyText, equalTo(report.displayText))
     }
@@ -208,7 +208,7 @@ class NavrepDetectionTest {
             y = 0.5,
         )
 
-        val report = NavrepDetection.visibilityReport(
+        val report = SensorDetection.visibilityReport(
             observer = observer,
             candidates = listOf(observer, contact),
             mapWidth = 1_000,
@@ -260,7 +260,7 @@ class NavrepDetectionTest {
             y = 0.5,
         )
 
-        val report = NavrepDetection.visibilityReport(
+        val report = SensorDetection.visibilityReport(
             observer = observer,
             candidates = listOf(observer, hidden, unidentifiedFar, identified, unidentifiedNear),
             mapWidth = 1_000,
@@ -328,7 +328,7 @@ class NavrepDetectionTest {
             affiliation = UnitAffiliation.Hostile,
         )
 
-        val report = NavrepDetection.visibilityReport(
+        val report = SensorDetection.visibilityReport(
             observer = observer,
             candidates = listOf(observer, friendly, hostileFar, hostileHidden, hostileNear, hostileMid),
             mapWidth = 1_000,
@@ -375,7 +375,7 @@ class NavrepDetectionTest {
             y = 0.5,
         )
 
-        val contacts = NavrepDetection.visibleContacts(
+        val contacts = SensorDetection.visibleContacts(
             observer = observer,
             candidates = listOf(observer, ffTarget, ddTarget, caTarget),
             mapWidth = 1_000,
@@ -409,7 +409,7 @@ class NavrepDetectionTest {
             y = 0.5,
         )
 
-        val check = NavrepDetection.visibilityChecks(
+        val check = SensorDetection.visibilityChecks(
             observer = observer,
             candidates = listOf(observer, contact),
             mapWidth = 1_000,
@@ -422,6 +422,164 @@ class NavrepDetectionTest {
         assertThat(check.detectionRangeUnits, equalTo(16.0))
         assertThat(check.visible, equalTo(false))
         assertThat(check.detected, equalTo(true))
+
+        val text = SensorDetection.scirepText(
+            checks = listOf(check),
+            identifiedIds = emptySet(),
+            contactNumbers = mapOf(contact.id to 1),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            emptySummaryText = "No hostile contacts to report.",
+        )
+
+        assertThat(text, equalTo("Contact detected at extreme range as Sierra 1 at 510 500, range 10U has unknown classification."))
+
+        val identificationText = SensorDetection.scirepText(
+            checks = listOf(check),
+            identifiedIds = setOf(contact.id),
+            contactNumbers = mapOf(contact.id to 1),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            emptySummaryText = "No hostile contacts to report.",
+            identificationAnnouncements = listOf(check),
+        )
+
+        assertThat(
+            identificationText,
+            equalTo("Contact Master 1 at 510 500, range 10U is identified as the DD Contact-class destroyer."),
+        )
+    }
+
+    @Test
+    fun `identified contact keeps its detected number and reports its ship name`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-000000000072",
+            instanceName = "Observer",
+            unitClass = "CA",
+            x = 0.5,
+            y = 0.5,
+        )
+        val contact = unit(
+            id = "00000000-0000-0000-0000-000000000073",
+            instanceName = "Zweihander",
+            unitClass = "CVE",
+            templateName = "Sword",
+            x = 0.5034,
+            y = 0.5,
+        )
+        val check = SensorDetection.visibilityChecks(
+            observer = observer,
+            candidates = listOf(observer, contact),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+        ).single()
+
+        assertThat(
+            SensorDetection.scirepText(
+                checks = listOf(check),
+                identifiedIds = setOf(contact.id),
+                contactNumbers = mapOf(contact.id to 9),
+                mapWidth = 1_000,
+                mapHeight = 1_000,
+                emptySummaryText = "No hostile contacts to report.",
+                identificationAnnouncements = listOf(check),
+            ),
+            equalTo("Contact Master 9 at 503.4 500, range 3.4U is identified as the Sword-class escort aircraft carrier Zweihander."),
+        )
+    }
+
+    @Test
+    fun `sensor unit class names cover the supported hull codes`() {
+        assertThat(
+            SENSOR_UNIT_CLASS_NAMES,
+            equalTo(
+                mapOf(
+                    "FF" to "frigate",
+                    "F" to "fighter",
+                    "DD" to "destroyer",
+                    "CL" to "light cruiser",
+                    "CA" to "heavy cruiser",
+                    "CVE" to "escort aircraft carrier",
+                    "CVL" to "light aircraft carrier",
+                    "BC" to "battlecruiser",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `scirep combines any number of segments for each contact into one sentence`() {
+        val firstContact = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000080"))
+        val secondContact = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000081"))
+
+        val text = SensorDetection.combineScirepContactSegments(
+            listOf(
+                ScirepContactSegment(firstContact, 1, "Contact Sierra 1", listOf("at D8 39-48", "range 18U")),
+                ScirepContactSegment(firstContact, 1, "ignored opening", listOf("is identified as a Sword-class heavy cruiser")),
+                ScirepContactSegment(secondContact, 2, "Contact Sierra 2", listOf("has unknown classification")),
+            ),
+        )
+
+        assertThat(
+            text,
+            equalTo(
+                "Contact Sierra 1 at D8 39-48 range 18U is identified as a Sword-class heavy cruiser. " +
+                        "Contact Sierra 2 has unknown classification.",
+            ),
+        )
+    }
+
+    @Test
+    fun `scirep reports lost and low confidence contacts as single sentences`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-000000000090",
+            instanceName = "FF Observer",
+            unitClass = "FF",
+            x = 0.5,
+            y = 0.5,
+        )
+        val contact = unit(
+            id = "00000000-0000-0000-0000-000000000091",
+            instanceName = "DD Contact",
+            unitClass = "DD",
+            x = 0.51,
+            y = 0.5,
+        )
+        val check = SensorDetection.visibilityChecks(
+            observer = observer,
+            candidates = listOf(observer, contact),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+        ).single()
+        val lost = SitrepLostContact(
+            contactId = observer.id,
+            sierraNumber = 6,
+            lastSeenPosition = MapCoordinate(0.52, 0.5),
+            lastSeenRangeUnits = 28.3,
+            wasIdentified = true,
+        )
+
+        val text = SensorDetection.scirepText(
+            checks = listOf(check),
+            identifiedIds = setOf(contact.id),
+            contactNumbers = mapOf(contact.id to 4),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            emptySummaryText = "No hostile contacts to report.",
+            lowConfidenceContacts = mapOf(contact.id to lost),
+            lostContacts = listOf(lost),
+        )
+
+        assertThat(
+            text,
+            equalTo(
+                "New contact tentatively designated Master 4 from last known position " +
+                        "at 520 500, range 28.3U was identified as DD Contact-class destroyer. " +
+                        "Contact Sierra 6 lost.",
+            ),
+        )
     }
 
     private fun unit(
@@ -433,13 +591,14 @@ class NavrepDetectionTest {
         affiliation: UnitAffiliation? = null,
         customProperties: Map<String, String> = emptyMap(),
         templateUnitClass: String? = unitClass,
+        templateName: String = instanceName,
     ): UnitSnapshot =
         UnitSnapshot(
             id = MapPlacedObjectId(UUID.fromString(id)),
             unitTemplateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-0000000000ab")),
             template = MapViewerUnitTemplate(
                 id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-0000000000ab")),
-                name = instanceName,
+                name = templateName,
                 bitmap = Bitmap32(4, 4),
                 customProperties = templateUnitClass?.let { mapOf("unitClass" to it) } ?: emptyMap(),
                 affiliation = affiliation,

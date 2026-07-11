@@ -1,10 +1,13 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
-import io.hsar.mapgenerator.commandgui.korge.interaction.NavrepDetection
-import io.hsar.mapgenerator.commandgui.korge.interaction.NavrepVisibilityReport
+import io.hsar.mapgenerator.commandgui.korge.interaction.SensorDetection
+import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepContactState
+import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepLostContact
+import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepVisibilityReport
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.unitClassLabel
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.text.TextAlignment
@@ -15,14 +18,18 @@ import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import kotlin.math.hypot
 
-internal class MapViewerNavrepDialog(
+internal class MapViewerSitrepDialog(
     private val root: Container,
     private val dialogManager: MapViewerDialogManager,
     private val dialogKey: Any,
     private val unitName: String,
     private val observer: UnitSnapshot,
     private val candidates: List<UnitSnapshot>,
+    private val initialContactState: SitrepContactState = SitrepContactState(),
+    private val previousContactState: SitrepContactState = SitrepContactState(),
+    private val onContactStateChanged: (SitrepContactState) -> Unit = {},
     private val mapWidth: Int,
     private val mapHeight: Int,
     private val mapUnitsPerPixel: Double,
@@ -32,8 +39,8 @@ internal class MapViewerNavrepDialog(
     private val preferredHeight: Double = PREFERRED_HEIGHT,
 ) {
     private enum class ReportMode(val label: String, val emptySummaryText: String) {
-        NAVREP("NAVREP", "No allied contacts to report."),
         SCIREP("SCIREP", "No hostile contacts to report."),
+        NAVREP("NAVREP", "No allied contacts to report."),
 
         ;
 
@@ -45,8 +52,13 @@ internal class MapViewerNavrepDialog(
     }
 
     private var window: MapViewerDialogWindow? = null
-    private var reportMode = ReportMode.NAVREP
+    private var reportMode = ReportMode.SCIREP
     private val reportStatesByMode = mutableMapOf<ReportMode, UnitReportState>()
+    private val sierraContactNumbers = initialContactState.sierraContactNumbers.toMutableMap()
+    private val usedSierraContactNumbers = (
+            initialContactState.usedSierraContactNumbers + sierraContactNumbers.values
+            ).toMutableSet()
+    private var nextSierraContactNumber = (usedSierraContactNumbers.maxOrNull() ?: 0) + 1
     private val reportModeDropdown = MapViewerDropdownMenu(
         root = root,
         options = ReportMode.entries.map { MapViewerDropdownOption(it, it.label) },
@@ -141,7 +153,7 @@ internal class MapViewerNavrepDialog(
                 size = SMALL_TEXT_SIZE,
                 color = Palette.Colours.LIGHT,
             ) {
-                y = currentTop + 2.0
+                y = currentTop + EMPTY_ROW_TOP_INSET
             }
         } else {
             currentReport.visibleChecks.forEachIndexed { index, check ->
@@ -155,7 +167,7 @@ internal class MapViewerNavrepDialog(
         }
 
         currentTop += sectionHeight(currentReport.visibleChecks.size)
-        currentTop += SECTION_GAP
+        currentTop += CONTACT_SECTION_GAP
 
         renderUnidentifiedHeader(parent, width, currentTop)
         currentTop += HEADER_HEIGHT + HEADER_TO_ROWS_GAP
@@ -169,7 +181,7 @@ internal class MapViewerNavrepDialog(
                 size = SMALL_TEXT_SIZE,
                 color = Palette.Colours.LIGHT,
             ) {
-                y = currentTop + 2.0
+                y = currentTop + EMPTY_ROW_TOP_INSET
             }
         } else {
             currentReport.unidentifiedChecks.forEachIndexed { index, check ->
@@ -183,7 +195,7 @@ internal class MapViewerNavrepDialog(
         }
 
         currentTop += sectionHeight(currentReport.unidentifiedChecks.size)
-        currentTop += SECTION_GAP
+        currentTop += CONTACT_SECTION_GAP
 
         renderHiddenHeader(parent, width, currentTop)
         currentTop += HEADER_HEIGHT + HEADER_TO_ROWS_GAP
@@ -197,7 +209,7 @@ internal class MapViewerNavrepDialog(
                 size = SMALL_TEXT_SIZE,
                 color = Palette.Colours.LIGHT,
             ) {
-                y = currentTop + 2.0
+                y = currentTop + EMPTY_ROW_TOP_INSET
             }
             return
         }
@@ -220,17 +232,19 @@ internal class MapViewerNavrepDialog(
                 reportTextHeight +
                 SECTION_GAP +
                 sectionHeight(currentReport.visibleChecks.size) +
-                SECTION_GAP +
+                CONTACT_SECTION_GAP +
                 sectionHeight(currentReport.unidentifiedChecks.size) +
-                SECTION_GAP +
+                CONTACT_SECTION_GAP +
                 sectionHeight(currentReport.hiddenChecks.size)
     }
 
     private fun contentMinimumWidth(): Double {
         val dropdownWidth = MapViewerInlineInputs.minimumWidth("Report", reportModeInputMinimumWidth())
-        val visibleTextWidth = currentReport.displayText
-            .lineSequence()
-            .maxOfOrNull { line -> MapViewerTextViews.measure(line, size = TEXT_SIZE).width }
+        val visibleTextWidth = MapViewerWrappedText.wrap(
+            currentReport.displayText,
+            PREFERRED_MIN_CONTENT_WIDTH,
+            TEXT_SIZE,
+        ).maxOfOrNull { line -> MapViewerTextViews.measure(line, size = TEXT_SIZE).width }
             ?: 0.0
         val identifiedTextWidth = currentReport.visibleChecks
             .maxOfOrNull { check -> MapViewerTextViews.measure(reportRowLabel(check), size = SMALL_TEXT_SIZE).width }
@@ -295,7 +309,7 @@ internal class MapViewerNavrepDialog(
 
     private fun renderRow(
         parent: Container,
-        check: io.hsar.mapgenerator.commandgui.korge.interaction.NavrepVisibilityCheck,
+        check: io.hsar.mapgenerator.commandgui.korge.interaction.SensorVisibilityCheck,
         top: Double,
         width: Double,
     ) {
@@ -365,18 +379,31 @@ internal class MapViewerNavrepDialog(
         reportStatesByMode.getOrPut(reportMode) { initialReportState(reportMode) }
 
     private fun initialReportState(mode: ReportMode): UnitReportState =
-        initialReportFor(mode).detectedChecks
-            .mapTo(mutableSetOf()) { it.unit.id }
-            .let { initiallyDetectedIds ->
-                UnitReportState(
-                    sensorContactIds = initiallyDetectedIds.toMutableSet(),
-                    identifiedIds = initialReportFor(mode).visibleChecks
-                        .mapTo(mutableSetOf()) { it.unit.id },
-                )
-            }
+        if (mode == ReportMode.SCIREP && initialContactState.sensorContactIds.isNotEmpty()) {
+            val naturalReport = initialReportFor(mode)
+            val sensorContactIds = initialContactState.sensorContactIds + naturalReport.detectedChecks.map { it.unit.id }
+            UnitReportState(
+                sensorContactIds = sensorContactIds.toMutableSet(),
+                identifiedIds = (
+                        initialContactState.identifiedIds + naturalReport.visibleChecks.map { it.unit.id }
+                        ).intersect(sensorContactIds).toMutableSet(),
+                lostContacts = initialContactState.lostContacts.toMutableList(),
+            )
+        } else {
+            initialReportFor(mode).detectedChecks
+                .mapTo(mutableSetOf()) { it.unit.id }
+                .let { initiallyDetectedIds ->
+                    UnitReportState(
+                        sensorContactIds = initiallyDetectedIds.toMutableSet(),
+                        identifiedIds = initialReportFor(mode).visibleChecks
+                            .mapTo(mutableSetOf()) { it.unit.id },
+                        lostContacts = mutableListOf(),
+                    )
+                }
+        }
 
-    private fun initialReportFor(mode: ReportMode): NavrepVisibilityReport =
-        NavrepDetection.visibilityReport(
+    private fun initialReportFor(mode: ReportMode): SitrepVisibilityReport =
+        SensorDetection.visibilityReport(
             observer = observer,
             candidates = candidates,
             mapWidth = mapWidth,
@@ -388,14 +415,15 @@ internal class MapViewerNavrepDialog(
             emptySummaryText = mode.emptySummaryText,
         )
 
-    private fun buildReport(): NavrepVisibilityReport {
+    private fun buildReport(): SitrepVisibilityReport {
         val reportState = currentReportState()
-        val detectedIds = initialReportFor(reportMode).detectedChecks.mapTo(mutableSetOf()) { it.unit.id }
-        reportState.sensorContactIds.retainAll(detectedIds)
-        reportState.identifiedIds.retainAll(detectedIds)
+        val selectedIds = reportState.sensorContactIds union reportState.identifiedIds
         val identifiedIds = reportState.sensorContactIds intersect reportState.identifiedIds
-        val unidentifiedIds = (reportState.sensorContactIds union reportState.identifiedIds) - identifiedIds
-        return NavrepDetection.visibilityReport(
+        val detectedOnlyIds = selectedIds - identifiedIds
+        reportState.sensorContactIds.addAll(detectedOnlyIds)
+        reportState.identifiedIds.removeAll(detectedOnlyIds)
+        val unidentifiedIds = reportState.sensorContactIds - identifiedIds
+        val report = SensorDetection.visibilityReport(
             observer = observer,
             candidates = candidates,
             mapWidth = mapWidth,
@@ -407,10 +435,98 @@ internal class MapViewerNavrepDialog(
             candidateFilter = reportMode.candidateFilter(observer.template.affiliation),
             emptySummaryText = reportMode.emptySummaryText,
         )
+        if (reportMode != ReportMode.SCIREP) {
+            return report
+        }
+
+        val physicallyDetectedIds = report.detectedChecks.mapTo(mutableSetOf()) { it.unit.id }
+        val reportContactIds = (report.visibleChecks + report.unidentifiedChecks).mapTo(mutableSetOf()) { it.unit.id }
+        sierraContactNumbers.keys.retainAll(physicallyDetectedIds + reportContactIds)
+        val matchedLostContactIds = mutableSetOf<MapPlacedObjectId>()
+        val lowConfidenceContacts = mutableMapOf<MapPlacedObjectId, SitrepLostContact>()
+        report.detectedChecks
+            .filter { it.unit.id !in sierraContactNumbers }
+            .forEach { check ->
+                val matchingLost = (previousContactState.lostContacts + reportState.lostContacts)
+                    .asSequence()
+                    .filter { it.contactId !in matchedLostContactIds }
+                    .filter { distanceTo(it.lastSeenPosition) <= LOW_CONFIDENCE_DISTANCE_UNITS }
+                    .minByOrNull { distanceTo(it.lastSeenPosition) }
+                if (matchingLost != null) {
+                    sierraContactNumbers[check.unit.id] = matchingLost.sierraNumber
+                    matchedLostContactIds += matchingLost.contactId
+                    lowConfidenceContacts[check.unit.id] = matchingLost
+                }
+            }
+        (report.visibleChecks + report.unidentifiedChecks).forEach { check ->
+            if (check.unit.id !in sierraContactNumbers) {
+                while (nextSierraContactNumber in usedSierraContactNumbers) nextSierraContactNumber++
+                sierraContactNumbers[check.unit.id] = nextSierraContactNumber
+                usedSierraContactNumbers += nextSierraContactNumber++
+            }
+        }
+        val newlyLost = previousContactState.sensorContactIds
+            .filter { it !in physicallyDetectedIds }
+            .mapNotNull { contactId ->
+                previousContactState.lastSeenContacts[contactId]
+                    ?: previousContactState.lastSeenPositions[contactId]?.let { position ->
+                        previousContactState.sierraContactNumbers[contactId]?.let { number ->
+                            SitrepLostContact(
+                                contactId = contactId,
+                                sierraNumber = number,
+                                lastSeenPosition = position,
+                                lastSeenRangeUnits = 0.0,
+                                wasIdentified = contactId in previousContactState.identifiedIds,
+                            )
+                        }
+                    }
+            }
+        val historicalLost = (previousContactState.lostContacts + reportState.lostContacts + newlyLost)
+            .filterNot { it.contactId in matchedLostContactIds }
+            .distinctBy { it.contactId }
+        val currentLastSeen = report.detectedChecks
+            .filter { it.unit.id in reportState.sensorContactIds }
+            .associate { check ->
+                check.unit.id to SitrepLostContact(
+                    contactId = check.unit.id,
+                    sierraNumber = sierraContactNumbers.getValue(check.unit.id),
+                    lastSeenPosition = check.unit.mapCoordinate,
+                    lastSeenRangeUnits = check.distanceUnits,
+                    wasIdentified = check.unit.id in identifiedIds,
+                    unitTypeName = check.unit.template.name,
+                    unitClassCode = check.unit.unitClassLabel(),
+                )
+            }
+        onContactStateChanged(
+            SitrepContactState(
+                sensorContactIds = reportState.sensorContactIds.toSet(),
+                identifiedIds = reportState.identifiedIds.toSet(),
+                sierraContactNumbers = sierraContactNumbers.toMap(),
+                usedSierraContactNumbers = usedSierraContactNumbers.toSet(),
+                lastSeenPositions = currentLastSeen.mapValues { it.value.lastSeenPosition },
+                lastSeenContacts = currentLastSeen,
+                lostContacts = historicalLost,
+            ),
+        )
+        val scirepChecks = (report.visibleChecks + report.unidentifiedChecks)
+            .sortedBy { sierraContactNumbers.getValue(it.unit.id) }
+        val scirepText = SensorDetection.scirepText(
+            checks = scirepChecks,
+            identifiedIds = report.visibleChecks.map { it.unit.id }.toSet(),
+            contactNumbers = sierraContactNumbers,
+            mapWidth = mapWidth,
+            mapHeight = mapHeight,
+            gridLayer = gridLayer,
+            emptySummaryText = reportMode.emptySummaryText,
+            identificationAnnouncements = report.visibleChecks.filter { it.unit.id !in previousContactState.identifiedIds },
+            lostContacts = newlyLost.filter { it.contactId !in matchedLostContactIds },
+            lowConfidenceContacts = lowConfidenceContacts,
+        )
+        return report.copy(displayText = scirepText, copyText = scirepText)
     }
 
-    private fun reportRowLabel(check: io.hsar.mapgenerator.commandgui.korge.interaction.NavrepVisibilityCheck): String =
-        NavrepDetection.hiddenContactLabel(
+    private fun reportRowLabel(check: io.hsar.mapgenerator.commandgui.korge.interaction.SensorVisibilityCheck): String =
+        SensorDetection.hiddenContactLabel(
             observer = observer,
             check = check,
             mapWidth = mapWidth,
@@ -420,6 +536,12 @@ internal class MapViewerNavrepDialog(
 
     private fun reportModeInputMinimumWidth(): Double =
         MapViewerDropdownLayoutBuilder.minimumMenuWidth(ReportMode.entries.map { it.label }, hasIcons = false)
+
+    private fun distanceTo(position: io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate): Double =
+        hypot(
+            (observer.mapCoordinate.x - position.x) * mapWidth,
+            (observer.mapCoordinate.y - position.y) * mapHeight,
+        ) * mapUnitsPerPixel
 
     private fun title(): String =
         "${reportMode.label} - $unitName"
@@ -443,7 +565,7 @@ internal class MapViewerNavrepDialog(
 
     private fun sectionHeight(rowCount: Int): Double =
         if (rowCount <= 0) {
-            ROW_HEIGHT
+            HEADER_HEIGHT + HEADER_TO_ROWS_GAP + EMPTY_ROW_TOP_INSET + ROW_HEIGHT
         } else {
             HEADER_HEIGHT + HEADER_TO_ROWS_GAP + (rowCount * ROW_HEIGHT) + ((rowCount - 1) * ROW_GAP)
         }
@@ -460,6 +582,7 @@ internal class MapViewerNavrepDialog(
     private data class UnitReportState(
         val sensorContactIds: MutableSet<MapPlacedObjectId>,
         val identifiedIds: MutableSet<MapPlacedObjectId>,
+        val lostContacts: MutableList<SitrepLostContact>,
     )
 
     private companion object {
@@ -471,6 +594,7 @@ internal class MapViewerNavrepDialog(
         const val HEADER_TEXT_SIZE = 22.0
         const val HEADER_HEIGHT = 34.0
         const val SECTION_GAP = 20.0
+        const val CONTACT_SECTION_GAP = 8.0
         const val HEADER_TO_ROWS_GAP = 8.0
         const val ROW_HEIGHT = 34.0
         const val ROW_GAP = 8.0
@@ -479,5 +603,7 @@ internal class MapViewerNavrepDialog(
         const val CHECKBOX_LABEL_GAP = 12.0
         const val CHECKBOX_MARK_INSET = 4.0
         const val ROW_INSET = 8.0
+        const val EMPTY_ROW_TOP_INSET = 2.0
+        const val LOW_CONFIDENCE_DISTANCE_UNITS = 3.0
     }
 }

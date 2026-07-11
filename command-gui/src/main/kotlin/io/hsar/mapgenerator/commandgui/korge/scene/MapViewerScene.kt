@@ -36,6 +36,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapSelectionOverlayView
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplatePatch
+import io.hsar.mapgenerator.commandgui.korge.interaction.OPERATION_START_TURN_NAME
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
@@ -69,6 +70,8 @@ import io.hsar.mapgenerator.commandgui.save.OperationSaveLoader
 import io.hsar.mapgenerator.commandgui.save.OperationSaveRequest
 import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
 import io.hsar.mapgenerator.commandgui.save.OperationToolStorage
+import io.hsar.mapgenerator.commandgui.save.SitrepContactKey
+import io.hsar.mapgenerator.commandgui.save.SitrepContactPersistence
 import io.hsar.mapgenerator.commandgui.save.toViewport
 import korlibs.event.Key
 import korlibs.image.bitmap.Bitmap32
@@ -246,6 +249,7 @@ internal class MapViewerScene(
                         var ledgerPanel: MapViewerLedgerPanel? = null
                         var notesPanel: MapViewerNotesPanel? = null
                         val actionHistory = MapActionHistory()
+                        val sitrepContactPersistence = SitrepContactPersistence.fromJson(loadedOperation?.additionalDataJson)
                         val noteStore = MapNoteStore()
                         val operationId = loadedOperation?.operationId ?: UUID.randomUUID()
                         val operationCreatedAt = loadedOperation?.createdAt ?: Instant.now()
@@ -280,6 +284,9 @@ internal class MapViewerScene(
 
                         fun isReadOnly(): Boolean =
                             turnMode is TurnPanelMode.ReadOnly
+
+                        fun currentTurnNumber(): Int =
+                            actionHistory.turnMarkers.count { !it.isFuture && it.name != OPERATION_START_TURN_NAME } + 1
 
                         fun effectiveTool(): MapViewerTool =
                             if (isReadOnly()) {
@@ -368,7 +375,7 @@ internal class MapViewerScene(
                                 mapAssetSource = operationMapImage?.assetSource ?: loadedOperation?.mapAssetSource,
                                 ledgerEntries = actionHistory.fullTimelineEntries,
                                 generatedImageAssets = generatedImageAssets.values.toList(),
-                                additionalDataJson = loadedOperation?.additionalDataJson,
+                                additionalDataJson = sitrepContactPersistence.toJsonOrNull(),
                             )
 
                             thread(name = "command-gui-save", isDaemon = true) {
@@ -465,6 +472,12 @@ internal class MapViewerScene(
                                 return
                             }
                             actionHistory.record(entry)
+                            if (entry is AddTurnLedgerEntry) {
+                                val newTurnNumber = currentTurnNumber()
+                                if (newTurnNumber > 1) {
+                                    sitrepContactPersistence.copyTurnState(newTurnNumber - 1, newTurnNumber)
+                                }
+                            }
                             autosaveController.enqueue(entry)
                             refreshHistoryUi()
                         }
@@ -565,6 +578,20 @@ internal class MapViewerScene(
                                 if (selectionControllerReady) {
                                     selectionController.refresh()
                                 }
+                            },
+                            sitrepTurnNumberProvider = ::currentTurnNumber,
+                            sitrepContactStateProvider = { turnNumber, observerId ->
+                                sitrepContactPersistence.stateFor(SitrepContactKey(turnNumber, observerId))
+                            },
+                            sitrepPreviousContactStateProvider = { turnNumber, observerId ->
+                                if (turnNumber <= 1) {
+                                    io.hsar.mapgenerator.commandgui.korge.interaction.SitrepContactState()
+                                } else {
+                                    sitrepContactPersistence.stateFor(SitrepContactKey(turnNumber - 1, observerId))
+                                }
+                            },
+                            onSitrepContactStateChanged = { turnNumber, observerId, state ->
+                                sitrepContactPersistence.update(SitrepContactKey(turnNumber, observerId), state)
                             },
                         )
                         unitManagerReady = true

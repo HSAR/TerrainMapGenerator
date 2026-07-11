@@ -5,7 +5,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.DestroyedUnitsDisplay
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogPositionSync
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerImageViews
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerNavrepDialog
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSitrepDialog
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitEditDialog
 import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
@@ -53,6 +53,10 @@ internal class MapPlacedUnitManager(
     private val onObjectDeleted: (MapPlacedObjectSnapshot) -> Unit = {},
     private val onUnitEdited: (UnitSnapshot, UnitSnapshot) -> Unit = { _, _ -> },
     private val onUnitsChanged: () -> Unit = {},
+    private val sitrepTurnNumberProvider: () -> Int = { 1 },
+    private val sitrepContactStateProvider: (Int, MapPlacedObjectId) -> SitrepContactState = { _, _ -> SitrepContactState() },
+    private val sitrepPreviousContactStateProvider: (Int, MapPlacedObjectId) -> SitrepContactState = { _, _ -> SitrepContactState() },
+    private val onSitrepContactStateChanged: (Int, MapPlacedObjectId, SitrepContactState) -> Unit = { _, _, _ -> },
 ) {
     private val coordinateSpace = MapCoordinateSpace(geometry, mapWidth, mapHeight)
     private val units = mutableListOf<PlacedUnit>()
@@ -711,7 +715,8 @@ internal class MapPlacedUnitManager(
 
         private fun openNavrepVisibilityDialog(unit: PlacedUnit) {
             val snapshot = unit.snapshot()
-            MapViewerNavrepDialog(
+            val turnNumber = sitrepTurnNumberProvider()
+            MapViewerSitrepDialog(
                 root = root,
                 dialogManager = dialogManager,
                 dialogKey = "navrep-report-${unit.id.value}",
@@ -722,6 +727,11 @@ internal class MapPlacedUnitManager(
                 mapHeight = mapHeight,
                 mapUnitsPerPixel = mapUnitsPerPixel,
                 gridLayer = gridLayer,
+                initialContactState = sitrepContactStateProvider(turnNumber, snapshot.id),
+                previousContactState = sitrepPreviousContactStateProvider(turnNumber, snapshot.id),
+                onContactStateChanged = { state ->
+                    onSitrepContactStateChanged(turnNumber, snapshot.id, state)
+                },
                 onTransientNotice = onTransientNotice,
             ).open()
         }
