@@ -88,6 +88,68 @@ class SensorDetectionTest {
     }
 
     @Test
+    fun `active sensors on the observer doubles detection and identification ranges`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-000000000013",
+            instanceName = "Observer",
+            unitClass = "CA",
+            x = 0.5,
+            y = 0.5,
+            customProperties = mapOf("activeSensors" to "true"),
+        )
+        val target = unit(
+            id = "00000000-0000-0000-0000-000000000014",
+            instanceName = "Target",
+            unitClass = "CL",
+            x = 0.53,
+            y = 0.5,
+        )
+
+        val check = SensorDetection.visibilityChecks(
+            observer = observer,
+            candidates = listOf(observer, target),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+        ).single()
+
+        assertThat(check.identificationRangeUnits, equalTo(36.0))
+        assertThat(check.detectionRangeUnits, equalTo(72.0))
+        assertThat(check.visible, equalTo(true))
+        assertThat(check.detected, equalTo(true))
+    }
+
+    @Test
+    fun `silent running on a target reduces its detection and identification ranges by one band`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-000000000015",
+            instanceName = "Observer",
+            unitClass = "CA",
+            x = 0.5,
+            y = 0.5,
+        )
+        val target = unit(
+            id = "00000000-0000-0000-0000-000000000016",
+            instanceName = "Target",
+            unitClass = "CL",
+            x = 0.53,
+            y = 0.5,
+            customProperties = mapOf("silentRunning" to "true"),
+        )
+
+        val check = SensorDetection.visibilityChecks(
+            observer = observer,
+            candidates = listOf(observer, target),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+        ).single()
+
+        assertThat(check.identificationRangeUnits, equalTo(9.0))
+        assertThat(check.detectionRangeUnits, equalTo(18.0))
+    }
+
+    @Test
     fun `navrep labels use the unit class when present`() {
         val snapshot = unit(
             id = "00000000-0000-0000-0000-000000000020",
@@ -446,7 +508,7 @@ class SensorDetectionTest {
 
         assertThat(
             identificationText,
-            equalTo("Contact Master 1 at 510 500, range 10U is identified as the DD Contact-class destroyer."),
+            equalTo("Contact Master 1 at 510 500, range 10U is identified as DD Contact-class destroyer."),
         )
     }
 
@@ -485,7 +547,7 @@ class SensorDetectionTest {
                 emptySummaryText = "No hostile contacts to report.",
                 identificationAnnouncements = listOf(check),
             ),
-            equalTo("Contact Master 9 at 503.4 500, range 3.4U is identified as the Sword-class escort aircraft carrier Zweihander."),
+            equalTo("Contact Master 9 at 503.4 500, range 3.4U is identified as Sword-class escort aircraft carrier Zweihander."),
         )
     }
 

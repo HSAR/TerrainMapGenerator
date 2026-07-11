@@ -22,12 +22,14 @@ internal class SitrepContactPersistence private constructor(
         states[key] ?: SitrepContactState()
 
     fun update(key: SitrepContactKey, state: SitrepContactState) {
-        if (state.sensorContactIds.isEmpty() && state.lostContacts.isEmpty() && state.usedSierraContactNumbers.isEmpty()) {
+        if (state.sensorContactIds.isEmpty() && state.lostContacts.isEmpty() &&
+            state.usedSierraContactNumbers.isEmpty() && state.sierraContactNumbers.isEmpty()
+        ) {
             states.remove(key)
         } else {
             states[key] = state.copy(
                 identifiedIds = state.identifiedIds intersect state.sensorContactIds,
-                sierraContactNumbers = state.sierraContactNumbers.filterKeys { it in state.sensorContactIds },
+                sierraContactNumbers = state.sierraContactNumbers.toMap(),
                 usedSierraContactNumbers = state.usedSierraContactNumbers + state.sierraContactNumbers.values,
                 lastSeenPositions = state.lastSeenPositions.filterKeys { it in state.sensorContactIds },
                 lastSeenContacts = state.lastSeenContacts.filterKeys { it in state.sensorContactIds },
@@ -68,13 +70,14 @@ internal class SitrepContactPersistence private constructor(
                         putArray("usedSierraNumbers").also { usedNumbers ->
                             state.usedSierraContactNumbers.sorted().forEach(usedNumbers::add)
                         }
-                        state.sensorContactIds
+                        (state.sensorContactIds + state.sierraContactNumbers.keys)
                             .sortedBy { state.sierraContactNumbers[it] ?: Int.MAX_VALUE }
                             .forEach { contactId ->
                                 contacts.addObject().apply {
                                     put("unitId", contactId.value.toString())
+                                    put("active", contactId in state.sensorContactIds)
                                     state.sierraContactNumbers[contactId]?.let { put("sierraNumber", it) }
-                                    put("identified", contactId in state.identifiedIds)
+                                    put("identified", contactId in state.identifiedIds && contactId in state.sensorContactIds)
                                     state.lastSeenPositions[contactId]?.let { position ->
                                         put("x", position.x)
                                         put("y", position.y)
@@ -137,8 +140,8 @@ internal class SitrepContactPersistence private constructor(
                 val lastSeenContacts = mutableMapOf<MapPlacedObjectId, SitrepLostContact>()
                 (record.get("contacts") as? ArrayNode)?.forEach { contact ->
                     val unitId = contact.path("unitId").textValue()?.toMapObjectId() ?: return@forEach
-                    sensorContactIds += unitId
-                    if (contact.path("identified").booleanValue()) identifiedIds += unitId
+                    if (!contact.has("active") || contact.path("active").booleanValue()) sensorContactIds += unitId
+                    if (contact.path("identified").booleanValue() && unitId in sensorContactIds) identifiedIds += unitId
                     contact.path("sierraNumber").takeIf { it.isInt }?.intValue()?.let { sierraNumbers[unitId] = it }
                     if (contact.has("x") && contact.has("y")) {
                         val position = MapCoordinate(contact.path("x").doubleValue(), contact.path("y").doubleValue())

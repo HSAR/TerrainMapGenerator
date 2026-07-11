@@ -87,6 +87,37 @@ class SitrepContactPersistenceTest {
     }
 
     @Test
+    fun `known Sierra mapping remains available when contact is hidden in the current turn`() {
+        val observer = id("00000000-0000-0000-0000-000000000014")
+        val contact = id("00000000-0000-0000-0000-000000000015")
+        val key = SitrepContactKey(1, observer)
+        val persistence = SitrepContactPersistence.fromJson(null)
+
+        persistence.update(
+            key,
+            SitrepContactState(
+                sensorContactIds = setOf(contact),
+                sierraContactNumbers = mapOf(contact to 8),
+                usedSierraContactNumbers = setOf(8),
+            ),
+        )
+        persistence.update(
+            key,
+            SitrepContactState(
+                sierraContactNumbers = mapOf(contact to 8),
+                usedSierraContactNumbers = setOf(8),
+            ),
+        )
+
+        val restored = SitrepContactPersistence.fromJson(persistence.toJson())
+        assertThat(restored.stateFor(key).sensorContactIds, equalTo(emptySet()))
+        assertThat(
+            restored.stateFor(key).sierraContactNumbers,
+            equalTo(mapOf(contact to 8)),
+        )
+    }
+
+    @Test
     fun `copying a turn carries observer contact state into the new turn`() {
         val observer = id("00000000-0000-0000-0000-000000000020")
         val contact = id("00000000-0000-0000-0000-000000000021")

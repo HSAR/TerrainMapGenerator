@@ -25,11 +25,12 @@ internal class MapViewerSitrepDialog(
     private val dialogManager: MapViewerDialogManager,
     private val dialogKey: Any,
     private val unitName: String,
-    private val observer: UnitSnapshot,
-    private val candidates: List<UnitSnapshot>,
+    private var observer: UnitSnapshot,
+    private var candidates: List<UnitSnapshot>,
     private val initialContactState: SitrepContactState = SitrepContactState(),
     private val previousContactState: SitrepContactState = SitrepContactState(),
     private val onContactStateChanged: (SitrepContactState) -> Unit = {},
+    private val onObserverCustomPropertiesChanged: (UnitSnapshot, UnitSnapshot) -> Unit = { _, _ -> },
     private val mapWidth: Int,
     private val mapHeight: Int,
     private val mapUnitsPerPixel: Double,
@@ -101,6 +102,9 @@ internal class MapViewerSitrepDialog(
             owner = this,
             targetKey = dialogKey,
             blocksScreenPoint = { point -> window?.blocksScreenPoint(point) == true },
+            sync = { payload ->
+                (payload as? UnitSnapshot)?.let { updateObserver(it) }
+            },
             close = ::close,
         )
         window?.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
@@ -121,8 +125,103 @@ internal class MapViewerSitrepDialog(
             inputMinimumWidth = reportModeInputMinimumWidth(),
         )
         currentTop += MapViewerDialogSpacing.INPUT_HEIGHT + SECTION_GAP
+        renderSensorOptions(parent, width, currentTop)
+        currentTop += SENSOR_OPTIONS_HEIGHT + SECTION_GAP
         renderReportSections(parent, width, currentTop)
     }
+
+    private fun renderSensorOptions(parent: Container, width: Double, top: Double) {
+        val optionWidth = (width - SENSOR_OPTION_SPLIT_GAP) / 2.0
+        renderSensorOption(
+            parent = parent,
+            label = "Silent Running",
+            checked = observer.sensorOptionEnabled(SILENT_RUNNING_KEY),
+            y = top,
+            left = 0.0,
+            width = optionWidth,
+            onToggle = { updateObserverSensorOption(SILENT_RUNNING_KEY) },
+        )
+        renderSensorOption(
+            parent = parent,
+            label = "Active Sensors",
+            checked = observer.sensorOptionEnabled(ACTIVE_SENSORS_KEY),
+            y = top,
+            left = optionWidth + SENSOR_OPTION_SPLIT_GAP,
+            width = optionWidth,
+            onToggle = { updateObserverSensorOption(ACTIVE_SENSORS_KEY) },
+        )
+    }
+
+    private fun renderSensorOption(
+        parent: Container,
+        label: String,
+        checked: Boolean,
+        y: Double,
+        left: Double,
+        width: Double,
+        onToggle: () -> Unit,
+    ) {
+        val row = parent.container().xy(left, y)
+        MapViewerUiBoxes.box(row, width, SENSOR_OPTION_ROW_HEIGHT, active = checked)
+        renderCheckbox(row, ROW_INSET, checked, onToggle)
+        MapViewerTextViews.leftBox(
+            parent = row,
+            text = label,
+            width = width - ROW_INSET - CHECKBOX_SIZE - CHECKBOX_LABEL_GAP,
+            height = SENSOR_OPTION_ROW_HEIGHT,
+            size = SMALL_TEXT_SIZE,
+            color = Palette.Colours.WHITE,
+        ) {
+            x = ROW_INSET + CHECKBOX_SIZE + CHECKBOX_LABEL_GAP
+        }
+    }
+
+    private fun updateObserverSensorOption(key: String) {
+        val before = observer
+        val enabled = !before.sensorOptionEnabled(key)
+        val after = before.copy(customProperties = before.customProperties + (key to enabled.toString()))
+        onObserverCustomPropertiesChanged(before, after)
+        observer = after
+        candidates = candidates.map { candidate -> if (candidate.id == after.id) after else candidate }
+        currentReport = buildReport()
+        window?.refresh()
+    }
+
+    private fun updateObserver(updatedObserver: UnitSnapshot) {
+        val previousNaturalReport = initialReportFor(reportMode)
+        val updatedCandidates = candidates.map { candidate ->
+            if (candidate.id == updatedObserver.id) updatedObserver else candidate
+        }
+        val updatedObserverSnapshot = if (updatedObserver.id == observer.id) updatedObserver else observer
+        val updatedNaturalReport = SensorDetection.visibilityReport(
+            observer = updatedObserverSnapshot,
+            candidates = updatedCandidates,
+            mapWidth = mapWidth,
+            mapHeight = mapHeight,
+            mapUnitsPerPixel = mapUnitsPerPixel,
+            gridLayer = gridLayer,
+            includedIds = null,
+            candidateFilter = reportMode.candidateFilter(updatedObserverSnapshot.template.affiliation),
+            emptySummaryText = reportMode.emptySummaryText,
+        )
+        if (updatedObserver.id == observer.id) observer = updatedObserver
+        candidates = updatedCandidates
+        val naturalReport = initialReportFor(reportMode)
+        val reportState = currentReportState()
+        val previousDetectedIds = previousNaturalReport.detectedChecks.mapTo(mutableSetOf()) { it.unit.id }
+        val updatedDetectedIds = updatedNaturalReport.detectedChecks.mapTo(mutableSetOf()) { it.unit.id }
+        val previousIdentifiedIds = previousNaturalReport.visibleChecks.mapTo(mutableSetOf()) { it.unit.id }
+        val updatedIdentifiedIds = updatedNaturalReport.visibleChecks.mapTo(mutableSetOf()) { it.unit.id }
+        reportState.sensorContactIds.removeAll(previousDetectedIds - updatedDetectedIds)
+        reportState.identifiedIds.removeAll(previousIdentifiedIds - updatedIdentifiedIds)
+        reportState.sensorContactIds += naturalReport.detectedChecks.map { it.unit.id }
+        reportState.identifiedIds += naturalReport.visibleChecks.map { it.unit.id }
+        currentReport = buildReport()
+        window?.refresh()
+    }
+
+    private fun UnitSnapshot.sensorOptionEnabled(key: String): Boolean =
+        customProperties[key]?.equals("true", ignoreCase = true) == true
 
     private fun renderReportSections(parent: Container, width: Double, top: Double) {
         var currentTop = top
@@ -228,6 +327,8 @@ internal class MapViewerSitrepDialog(
         currentReport = buildReport()
         val reportTextHeight = MapViewerWrappedText.height(MapViewerWrappedText.wrap(currentReport.displayText, width, TEXT_SIZE).size)
         return MapViewerDialogSpacing.INPUT_HEIGHT +
+                SECTION_GAP +
+                SENSOR_OPTIONS_HEIGHT +
                 SECTION_GAP +
                 reportTextHeight +
                 SECTION_GAP +
@@ -440,8 +541,6 @@ internal class MapViewerSitrepDialog(
         }
 
         val physicallyDetectedIds = report.detectedChecks.mapTo(mutableSetOf()) { it.unit.id }
-        val reportContactIds = (report.visibleChecks + report.unidentifiedChecks).mapTo(mutableSetOf()) { it.unit.id }
-        sierraContactNumbers.keys.retainAll(physicallyDetectedIds + reportContactIds)
         val matchedLostContactIds = mutableSetOf<MapPlacedObjectId>()
         val lowConfidenceContacts = mutableMapOf<MapPlacedObjectId, SitrepLostContact>()
         report.detectedChecks
@@ -586,6 +685,8 @@ internal class MapViewerSitrepDialog(
     )
 
     private companion object {
+        const val SILENT_RUNNING_KEY = "silentRunning"
+        const val ACTIVE_SENSORS_KEY = "activeSensors"
         const val PREFERRED_WIDTH = 900.0
         const val PREFERRED_HEIGHT = 680.0
         const val PREFERRED_MIN_CONTENT_WIDTH = 600.0
@@ -598,6 +699,9 @@ internal class MapViewerSitrepDialog(
         const val HEADER_TO_ROWS_GAP = 8.0
         const val ROW_HEIGHT = 34.0
         const val ROW_GAP = 8.0
+        const val SENSOR_OPTION_ROW_HEIGHT = 34.0
+        const val SENSOR_OPTION_SPLIT_GAP = 8.0
+        const val SENSOR_OPTIONS_HEIGHT = SENSOR_OPTION_ROW_HEIGHT
         const val CHECKBOX_SIZE = 16.0
         const val CHECKBOX_GAP = 8.0
         const val CHECKBOX_LABEL_GAP = 12.0

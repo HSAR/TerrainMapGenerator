@@ -261,7 +261,7 @@ internal object SensorDetection {
                             "was identified as ${check.unit.identificationDescription()}"
 
                         check.unit.id in newlyIdentifiedIds ->
-                            (if (lowConfidence != null) "was identified as " else "is identified as the ") +
+                            (if (lowConfidence != null) "was identified as " else "is identified as ") +
                                     check.unit.identificationDescription()
 
                         check.unit.id in identifiedIds ->
@@ -346,7 +346,8 @@ internal object SensorDetection {
             return Double.POSITIVE_INFINITY
         }
 
-        return (base * observerModifier) * 2.0.pow(bandOffset)
+        val observerSensorModifier = if (observer.customProperties.booleanProperty("activeSensors")) 1 else 0
+        return (base * observerModifier) * 2.0.pow(bandOffset + observerSensorModifier)
     }
 
     private fun UnitSnapshot.transmissionInScope(): Boolean =
@@ -435,7 +436,7 @@ internal object SensorDetection {
             append(check.unit.navrepReportLabel())
             append(" contact ranges are ")
             append(formatDistance(check.detectionRangeUnits))
-            append('/')
+            append(" / ")
             append(formatDistance(check.identificationRangeUnits))
             append(", actual range is ")
             append(formatDistance(check.distanceUnits))

@@ -26,4 +26,23 @@ class MapViewerDialogManagerTest {
         assertThat(syncPayload, equalTo(MapViewerDialogPositionSync("5414", "8198")))
         assertThat(manager.blocksScreenPoint(Vector2D(0.0, 0.0)), equalTo(false))
     }
+
+    @Test
+    fun `broadcast dispatches a unit update to every registered dialog`() {
+        val manager = MapViewerDialogManager()
+        val payloads = mutableListOf<Any>()
+
+        listOf("first", "second").forEach { owner ->
+            manager.register(
+                owner = owner,
+                blocksScreenPoint = { false },
+                sync = { payloads += it },
+                close = {},
+            )
+        }
+
+        manager.broadcast("updated-unit")
+
+        assertThat(payloads, equalTo(listOf("updated-unit", "updated-unit")))
+    }
 }

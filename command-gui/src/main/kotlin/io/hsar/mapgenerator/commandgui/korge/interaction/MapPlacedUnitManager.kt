@@ -732,6 +732,13 @@ internal class MapPlacedUnitManager(
                 onContactStateChanged = { state ->
                     onSitrepContactStateChanged(turnNumber, snapshot.id, state)
                 },
+                onObserverCustomPropertiesChanged = { before, after ->
+                    unit.customProperties = after.customProperties
+                    unit.updateStateOverlay()
+                    onUnitsChanged()
+                    onUnitEdited(before, after)
+                    dialogManager.broadcast(after)
+                },
                 onTransientNotice = onTransientNotice,
             ).open()
         }

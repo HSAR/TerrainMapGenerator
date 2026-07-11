@@ -45,6 +45,10 @@ internal class MapViewerDialogManager {
             .forEach { it.sync(payload) }
     }
 
+    fun broadcast(payload: Any) {
+        dialogs.values.forEach { it.sync(payload) }
+    }
+
     fun hasTarget(targetKey: Any): Boolean =
         dialogs.values.any { it.targetKey == targetKey }
 
