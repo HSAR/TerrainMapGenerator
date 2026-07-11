@@ -20,3 +20,4 @@
 - `java.lang.IllegalStateException: Epsilon X square index 100 is outside supported designators.`
     - Input boxes should clamp to min/max permitted values when user input would violate them.
 - Move-induced measure tool isn't coloured by affiliation
+- When editing a unit name, the dialog title only updates for the first character

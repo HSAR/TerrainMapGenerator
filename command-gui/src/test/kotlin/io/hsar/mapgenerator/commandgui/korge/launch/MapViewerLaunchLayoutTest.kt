@@ -29,12 +29,32 @@ class MapViewerLaunchLayoutTest {
         val layout = MapViewerNewOperationLayoutBuilder.build(1600, 900)
 
         assertThat(layout.mapPanelBounds.left < layout.unitsPanelBounds.left, equalTo(true))
-        assertThat(layout.screenHeaderBounds.left, equalTo(200.0))
-        assertThat(layout.titleBounds.left, equalTo(200.0))
+        assertThat(layout.screenHeaderBounds.left, equalTo(100.0))
+        assertThat(layout.titleBounds.left, equalTo(100.0))
         assertThat(layout.operationNameBounds.left < layout.mapPanelBounds.right, equalTo(true))
         assertThat(layout.backButtonBounds.left < layout.launchButtonBounds.left, equalTo(true))
         assertThat(layout.launchButtonBounds.left > layout.unitsPanelBounds.left, equalTo(true))
         assertThat(layout.launchButtonBounds.top, equalTo(132.0))
+        assertThat(layout.unitsPanelBounds.left - layout.mapPanelBounds.right, equalTo(32.0))
+        assertThat(layout.panelFocusButtonBounds.width < layout.panelFocusButtonBounds.height, equalTo(true))
+        assertThat(layout.panelFocusButtonBounds.top, equalTo(layout.mapPanelBounds.top))
+        assertThat(layout.panelFocusButtonBounds.height, equalTo(layout.mapPanelBounds.height))
+    }
+
+    @Test
+    fun `unit types focus expands from the right to the details panel width`() {
+        val detailsLayout = MapViewerNewOperationLayoutBuilder.build(1600, 900)
+        val unitsLayout = MapViewerNewOperationLayoutBuilder.build(
+            1600,
+            900,
+            MapViewerNewOperationPanelFocus.UNIT_TYPES,
+        )
+
+        assertThat(unitsLayout.unitsPanelBounds.width, equalTo(detailsLayout.mapPanelBounds.width))
+        assertThat(unitsLayout.unitsPanelBounds.right, equalTo(detailsLayout.unitsPanelBounds.right))
+        assertThat(unitsLayout.unitsPanelBounds.left < detailsLayout.unitsPanelBounds.left, equalTo(true))
+        assertThat(unitsLayout.compactDetailsPanelBounds.width, equalTo(300.0))
+        assertThat(unitsLayout.panelFocusButtonBounds.height, equalTo(unitsLayout.unitsPanelBounds.height))
     }
 
     @Test
