@@ -28,6 +28,16 @@ class MapViewerCustomPropertiesEditorTest {
     }
 
     @Test
+    fun `properties include inherited defaults and allow instance values to replace them`() {
+        val editor = MapViewerCustomPropertiesEditor(
+            initialProperties = mapOf("callsign" to "R1"),
+            inheritedProperties = mapOf("callsign" to "Default", "morale" to "steady"),
+        )
+
+        assertThat(editor.properties(), equalTo(mapOf("callsign" to "R1", "morale" to "steady")))
+    }
+
+    @Test
     fun `editor is valid when initial reserved keys are filtered out`() {
         val editor = MapViewerCustomPropertiesEditor(
             initialProperties = mapOf("instanceName" to "reserved"),

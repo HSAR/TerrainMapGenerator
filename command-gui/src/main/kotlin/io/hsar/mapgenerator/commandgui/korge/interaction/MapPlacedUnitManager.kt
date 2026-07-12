@@ -139,7 +139,12 @@ internal class MapPlacedUnitManager(
     fun replaceUnitTemplate(snapshot: UnitTemplateSnapshot) {
         units
             .filter { it.unitTemplateId == snapshot.id }
-            .forEach { it.updateTemplate(snapshot.template) }
+            .forEach { unit ->
+                if (OlympiadDawnShip.DAMAGE_KEY !in unit.customProperties) {
+                    unit.customProperties += OlympiadDawnShip.instanceProperties(snapshot.template)
+                }
+                unit.updateTemplate(snapshot.template)
+            }
     }
 
     private fun interactionsEnabled(): Boolean =
@@ -243,7 +248,7 @@ internal class MapPlacedUnitManager(
         mapCoordinate: MapCoordinate,
         destroyed: Boolean = false,
         facingDegrees: Int? = null,
-        customProperties: Map<String, String> = emptyMap(),
+        customProperties: Map<String, String> = OlympiadDawnShip.instanceProperties(template),
     ): UnitSnapshot {
         val unitSize = worldUnitSize(template.bitmap)
         return UnitSnapshot(

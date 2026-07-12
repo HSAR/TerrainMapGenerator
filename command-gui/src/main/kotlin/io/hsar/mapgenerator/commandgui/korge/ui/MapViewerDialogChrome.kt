@@ -66,14 +66,14 @@ internal object MapViewerDialogChrome {
 
         val close = parent.container()
         close.xy(layout.closeButton.left, layout.closeButton.top)
-        MapViewerUiBoxes.button(close, layout.closeButton.width, layout.closeButton.height)
-        MapViewerTextViews.titleBox(
+        MapViewerBoxedIcon.frame(
             parent = close,
-            text = "X",
             width = layout.closeButton.width,
             height = layout.closeButton.height,
-            color = Palette.Colours.WHITE,
-        )
+            sharedRightEdge = true,
+        ).also { frame ->
+            MapViewerCross.render(frame, layout.closeButton.width, layout.closeButton.height)
+        }
         close.mouse {
             onClick {
                 onClose()

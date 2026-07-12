@@ -11,10 +11,8 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.unitClassLabel
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.text.TextAlignment
-import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
-import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
@@ -447,21 +445,14 @@ internal class MapViewerSitrepDialog(
     }
 
     private fun renderCheckbox(parent: Container, x: Double, checked: Boolean, onToggle: () -> Unit) {
-        val checkbox = parent.container()
-        checkbox.xy(x, (ROW_HEIGHT - CHECKBOX_SIZE) * 0.5)
-        MapViewerUiBoxes.box(checkbox, CHECKBOX_SIZE, CHECKBOX_SIZE, active = checked)
-        if (checked) {
-            checkbox.solidRect(
-                CHECKBOX_SIZE - CHECKBOX_MARK_INSET * 2.0,
-                CHECKBOX_SIZE - CHECKBOX_MARK_INSET * 2.0,
-                korlibs.image.color.RGBA(255, 255, 255, 255),
-            ).xy(CHECKBOX_MARK_INSET, CHECKBOX_MARK_INSET)
-        }
-        checkbox.mouse {
-            onClick {
-                onToggle()
-            }
-        }
+        MapViewerCheckbox.render(
+            parent = parent,
+            x = x,
+            y = (ROW_HEIGHT - CHECKBOX_SIZE) * 0.5,
+            size = CHECKBOX_SIZE,
+            checked = checked,
+            onToggle = onToggle,
+        )
     }
 
     private fun toggleSensorContact(unitId: MapPlacedObjectId) {
@@ -705,7 +696,6 @@ internal class MapViewerSitrepDialog(
         const val CHECKBOX_SIZE = 16.0
         const val CHECKBOX_GAP = 8.0
         const val CHECKBOX_LABEL_GAP = 12.0
-        const val CHECKBOX_MARK_INSET = 4.0
         const val ROW_INSET = 8.0
         const val EMPTY_ROW_TOP_INSET = 2.0
         const val LOW_CONFIDENCE_DISTANCE_UNITS = 3.0

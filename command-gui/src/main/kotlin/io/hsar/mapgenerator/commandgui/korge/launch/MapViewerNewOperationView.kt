@@ -15,6 +15,8 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerChevron
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerChevronDirection
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerCollapsiblePanel
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerCornerBrackets
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
@@ -516,18 +518,18 @@ internal class MapViewerNewOperationView(
             onDismiss = {},
         )
         embeddedUnitTypeEditor = editor
-        panel.clipContainer(Size2D(editorWidth, UNIT_TYPE_EDITOR_HEIGHT)).also {
+        panel.container().also {
             it.xy(editorLeft, unitListTop())
             editor.renderEmbedded(it, editorWidth)
         }
     }
 
     private fun renderPanelFocusButton() {
-        MapViewerLaunchUi.button(
+        val button = MapViewerLaunchUi.button(
             parent = layer,
             width = layout.panelFocusButtonBounds.width,
             height = layout.panelFocusButtonBounds.height,
-            label = if (panelFocus == MapViewerNewOperationPanelFocus.OPERATIONAL_DETAILS) "<" else ">",
+            label = "",
         ) {
             panelFocus = when (panelFocus) {
                 MapViewerNewOperationPanelFocus.OPERATIONAL_DETAILS -> MapViewerNewOperationPanelFocus.UNIT_TYPES
@@ -535,6 +537,16 @@ internal class MapViewerNewOperationView(
             }
             render(layout.viewportWidth, layout.viewportHeight)
         }.xy(layout.panelFocusButtonBounds.left, layout.panelFocusButtonBounds.top)
+        MapViewerChevron.render(
+            parent = button,
+            width = layout.panelFocusButtonBounds.width,
+            height = layout.panelFocusButtonBounds.height,
+            direction = if (panelFocus == MapViewerNewOperationPanelFocus.OPERATIONAL_DETAILS) {
+                MapViewerChevronDirection.LEFT
+            } else {
+                MapViewerChevronDirection.RIGHT
+            },
+        )
     }
 
     private fun renderUnitIconDropTarget(parent: Container, width: Double) {
@@ -1422,7 +1434,6 @@ internal class MapViewerNewOperationView(
         const val LIST_TOP = 208.0
         const val ROW_HEIGHT = 44.0
         const val IMPORT_BATCH_SIZE = 8
-        const val UNIT_TYPE_EDITOR_HEIGHT = 420.0
         const val UNIT_GROUP_HEADER_HEIGHT = 36.0
         const val UNIT_GROUP_GAP = 8.0
         const val UNIT_DROP_HEADER_HEIGHT = 36.0

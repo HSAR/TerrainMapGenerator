@@ -1,6 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
-import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogChrome
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputValidation
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
@@ -22,7 +22,6 @@ import java.util.concurrent.TimeUnit
 @OptIn(KorgeInternal::class)
 internal class ContextMenuManager(
     private val root: Container,
-    private val featureFlags: Set<MapViewerFeatureFlag> = emptySet(),
 ) {
     private val layer = root.container()
     private val surfaceLayer = layer.container()
@@ -70,7 +69,7 @@ internal class ContextMenuManager(
         actions: List<MapPlacedObjectMenuAction> = target.contextMenuActions(),
         onActionSelected: () -> Unit = {},
     ) {
-        val visibleActions = actions.visibleFor(featureFlags)
+        val visibleActions = actions.visibleFor(MapViewerFeatureFlags.enabled)
         if (visibleActions.isEmpty()) {
             return
         }

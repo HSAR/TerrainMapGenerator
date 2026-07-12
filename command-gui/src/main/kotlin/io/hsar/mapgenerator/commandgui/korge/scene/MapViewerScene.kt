@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.scene
 
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
@@ -119,6 +120,7 @@ internal class MapViewerScene(
 
     @OptIn(KorgeExperimental::class)
     fun showWindow() {
+        MapViewerFeatureFlags.initialize(initialSettings.featureFlags)
         thread(name = "command-gui-korge", isDaemon = false) {
             val screenSize = Toolkit.getDefaultToolkit().screenSize
             val fontPreloadStartedAt = System.nanoTime()
@@ -530,7 +532,7 @@ internal class MapViewerScene(
                         }
                         resizeSceneViewport(gameWindow.width, gameWindow.height)
 
-                        contextMenuManager = ContextMenuManager(sceneLayers.ui, initialSettings.featureFlags)
+                        contextMenuManager = ContextMenuManager(sceneLayers.ui)
                         val deferredContextMenuActions = ContextMenuDeferredActionRunner(sceneLayers.ui)
                         val dialogManager = MapViewerDialogManager()
 
@@ -1130,9 +1132,7 @@ internal class MapViewerScene(
                         launchpadView?.close()
                         launchpadView = null
                         showViewer(
-                            settings = loaded.settings.copy(
-                                featureFlags = loaded.settings.featureFlags + initialSettings.featureFlags,
-                            ),
+                            settings = loaded.settings,
                             initialLedgerEntries = emptyList(),
                             loadedOperation = loaded,
                         )

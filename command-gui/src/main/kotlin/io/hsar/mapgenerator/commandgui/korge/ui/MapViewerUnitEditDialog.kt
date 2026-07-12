@@ -1,10 +1,13 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip
+import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDamage
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.annotations.KorgeExperimental
-import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.xy
@@ -58,8 +61,16 @@ internal class MapViewerUnitEditDialog(
     private var positionWasValid = isPositionValid(positionXValue, positionYValue)
     private var facingWasValid = isFacingValid(facingValue)
     private var pendingNameFocus = false
+    private val shipDefinition = OlympiadDawnShip.definition(unitType.customProperties)
+    private var shipDamage = shipDefinition?.let { OlympiadDawnShip.instanceDamage(initialCustomProperties, it) }
+    private var shipPanelCollapsed = true
+    private var shipComponentsCollapsed = true
+    private var shipWeaponsCollapsed = true
+    private var customPropertiesExpanded = false
+    private val initialShipProperties = initialCustomProperties.filterKeys { it in SHIP_PROPERTY_KEYS }
     private val customPropertiesEditor = MapViewerCustomPropertiesEditor(
-        initialProperties = initialCustomProperties,
+        initialProperties = initialCustomProperties.filterKeys { it !in SHIP_PROPERTY_KEYS },
+        inheritedProperties = unitType.customProperties.filterKeys { it !in SHIP_PROPERTY_KEYS },
         reservedKeys = UNIT_FIELD_KEYS,
         onRowsChanged = { window?.refresh() },
         onValidationChanged = { window?.refresh() },
@@ -147,7 +158,11 @@ internal class MapViewerUnitEditDialog(
         val nameTop = NAME_TOP
         val affiliationTop = if (twoColumn) NAME_TOP else AFFILIATION_TOP
         val facingTop = if (twoColumn) AFFILIATION_TOP else FACING_TOP
-        val destroyedTop = facingTop + MapViewerDialogSpacing.INPUT_HEIGHT + MapViewerDialogSpacing.SECTION_GAP
+        val destroyedTop = if (twoColumn) {
+            facingTop
+        } else {
+            facingTop + MapViewerDialogSpacing.INPUT_HEIGHT + MapViewerDialogSpacing.SECTION_GAP
+        }
         val customPropertiesTop = destroyedTop + MapViewerDialogSpacing.INPUT_HEIGHT + MapViewerDialogSpacing.SECTION_GAP
 
         val typePreview = parent.container()
@@ -259,7 +274,7 @@ internal class MapViewerUnitEditDialog(
             text = facingValue,
             x = 0.0,
             y = facingTop,
-            width = fieldWidth,
+            width = splitWidth,
             inputMinimumWidth = facingTextInputMinimumWidth(),
             frameStyle = MapViewerTextInputValidation.frameStyle(isFacingValid(facingValue)),
         ).also { input ->
@@ -273,25 +288,51 @@ internal class MapViewerUnitEditDialog(
         inlineBlock.control(
             parent = parent,
             label = "KIA",
-            x = 0.0,
+            x = if (twoColumn) splitWidth + MapViewerDialogSpacing.FIELD_GAP else 0.0,
             y = destroyedTop,
-            width = fieldWidth,
+            width = splitWidth,
             inputMinimumWidth = DESTROYED_CHECKBOX_SIZE,
             height = MapViewerDialogSpacing.INPUT_HEIGHT,
         ) { input, _ ->
             renderDestroyedToggle(input)
-            input.mouse {
-                onClick {
-                    destroyedValue = !destroyedValue
-                    onDestroyedPreviewChanged(destroyedValue)
-                    renderDestroyedToggle(input)
-                }
-            }
         }
 
         val customPropertiesContainer = parent.container()
         customPropertiesContainer.xy(0.0, customPropertiesTop)
-        customPropertiesEditor.render(customPropertiesContainer, fieldWidth)
+        renderCustomPropertiesPanel(customPropertiesContainer, fieldWidth)
+
+        if (shipPanelEnabled) {
+            shipDefinition?.let { definition ->
+                val shipPanel = parent.container()
+                shipPanel.xy(0.0, customPropertiesTop + customPropertiesPanelHeight() + MapViewerDialogSpacing.SECTION_GAP)
+                OlympiadDawnShipStatusPanel.render(
+                    parent = shipPanel,
+                    width = fieldWidth,
+                    definition = definition,
+                    damage = shipDamage ?: OlympiadDawnShipDamage(),
+                    collapsed = shipPanelCollapsed,
+                    editable = true,
+                    onCollapsedChanged = {
+                        shipPanelCollapsed = !shipPanelCollapsed
+                        window?.refresh()
+                    },
+                    componentsCollapsed = shipComponentsCollapsed,
+                    onComponentsCollapsedChanged = {
+                        shipComponentsCollapsed = !shipComponentsCollapsed
+                        window?.refresh()
+                    },
+                    weaponsCollapsed = shipWeaponsCollapsed,
+                    onWeaponsCollapsedChanged = {
+                        shipWeaponsCollapsed = !shipWeaponsCollapsed
+                        window?.refresh()
+                    },
+                    onDamageChanged = { damage ->
+                        shipDamage = damage
+                        window?.refresh()
+                    },
+                )
+            }
+        }
 
         if (!initialFocusApplied) {
             nameInput?.focus()
@@ -319,19 +360,16 @@ internal class MapViewerUnitEditDialog(
 
     private fun renderDestroyedToggle(parent: Container) {
         parent.removeChildren()
-        val box = parent.container()
-        box.xy(0.0, (MapViewerDialogSpacing.INPUT_HEIGHT - DESTROYED_CHECKBOX_SIZE) / 2.0)
-        MapViewerUiBoxes.box(box, DESTROYED_CHECKBOX_SIZE, DESTROYED_CHECKBOX_SIZE)
-        if (destroyedValue) {
-            MapViewerTextViews.box(
-                box,
-                "X",
-                DESTROYED_CHECKBOX_SIZE,
-                DESTROYED_CHECKBOX_SIZE,
-                role = MapViewerFontRole.STRONG,
-                color = Palette.Colours.RED,
-            )
-                .xy(0.0, 0.0)
+        MapViewerCheckbox.render(
+            parent = parent,
+            x = 0.0,
+            y = (MapViewerDialogSpacing.INPUT_HEIGHT - DESTROYED_CHECKBOX_SIZE) / 2.0,
+            size = DESTROYED_CHECKBOX_SIZE,
+            checked = destroyedValue,
+        ) {
+            destroyedValue = !destroyedValue
+            onDestroyedPreviewChanged(destroyedValue)
+            renderDestroyedToggle(parent)
         }
     }
 
@@ -376,7 +414,7 @@ internal class MapViewerUnitEditDialog(
                 destroyedValue,
                 facingValue.trim(),
                 affiliationValue,
-                customPropertiesEditor.properties(),
+                unitProperties(),
             )
         ) {
             dismiss()
@@ -387,15 +425,60 @@ internal class MapViewerUnitEditDialog(
         (width.let {
             val twoColumn = it >= splitRowMinimumWidth()
             val facingTop = if (twoColumn) AFFILIATION_TOP else FACING_TOP
-            val destroyedTop = facingTop + MapViewerDialogSpacing.INPUT_HEIGHT + MapViewerDialogSpacing.SECTION_GAP
-            destroyedTop + MapViewerDialogSpacing.INPUT_HEIGHT + MapViewerDialogSpacing.SECTION_GAP + customPropertiesEditor.height()
+            val destroyedTop = if (twoColumn) {
+                facingTop
+            } else {
+                facingTop + MapViewerDialogSpacing.INPUT_HEIGHT + MapViewerDialogSpacing.SECTION_GAP
+            }
+            destroyedTop + MapViewerDialogSpacing.INPUT_HEIGHT + MapViewerDialogSpacing.SECTION_GAP + customPropertiesPanelHeight() + shipPanelHeight()
         })
+
+    private fun renderCustomPropertiesPanel(parent: Container, width: Double) {
+        MapViewerCollapsiblePanel.header(
+            parent = parent,
+            width = width,
+            height = MapViewerDialogSpacing.INPUT_HEIGHT,
+            label = "${customPropertiesEditor.propertyCount()} additional properties",
+            expanded = customPropertiesExpanded,
+            onToggle = {
+                customPropertiesExpanded = !customPropertiesExpanded
+                window?.refresh()
+            },
+        )
+        if (customPropertiesExpanded) {
+            val body = parent.container().xy(0.0, MapViewerDialogSpacing.INPUT_HEIGHT)
+            customPropertiesEditor.renderBody(body, width)
+        }
+    }
+
+    private fun customPropertiesPanelHeight(): Double =
+        MapViewerDialogSpacing.INPUT_HEIGHT +
+                if (customPropertiesExpanded) customPropertiesEditor.bodyHeight() else 0.0
 
     private fun canSave(): Boolean =
         MapViewerTextInputValidation.isPresent(nameValue) &&
                 isPositionValid(positionXValue, positionYValue) &&
                 isFacingValid(facingValue) &&
                 customPropertiesEditor.isValid
+
+    private val shipPanelEnabled: Boolean
+        get() = shipDefinition != null && MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL in MapViewerFeatureFlags.enabled
+
+    private fun shipPanelHeight(): Double =
+        if (shipPanelEnabled) shipDefinition?.let {
+            OlympiadDawnShipStatusPanel.height(
+                it,
+                shipPanelCollapsed,
+                shipComponentsCollapsed,
+                shipWeaponsCollapsed
+            ) + MapViewerDialogSpacing.SECTION_GAP
+        } ?: 0.0 else 0.0
+
+    private fun unitProperties(): Map<String, String> =
+        shipDefinition?.let { definition ->
+            customPropertiesEditor.properties() + initialShipProperties +
+                    (OlympiadDawnShip.DAMAGE_KEY to OlympiadDawnShip.encodeDamage(shipDamage ?: OlympiadDawnShip.instanceDamage(initialShipProperties, definition)))
+        } ?: customPropertiesEditor.properties() + initialShipProperties
 
     private fun fieldWidth(width: Double): Double =
         width
@@ -466,8 +549,6 @@ internal class MapViewerUnitEditDialog(
         const val NAME_TOP = 150.0
         const val AFFILIATION_TOP = 204.0
         const val FACING_TOP = 258.0
-        const val DESTROYED_TOP = 312.0
-        const val CUSTOM_PROPERTIES_TOP = 366.0
         val UNIT_INLINE_LABELS = listOf("Name", "Facing", "KIA")
         val UNIT_FIELD_KEYS = setOf(
             "type",
@@ -479,5 +560,6 @@ internal class MapViewerUnitEditDialog(
             "normalizedWidth",
             "normalizedHeight",
         )
+        val SHIP_PROPERTY_KEYS = setOf(OlympiadDawnShip.DAMAGE_KEY)
     }
 }

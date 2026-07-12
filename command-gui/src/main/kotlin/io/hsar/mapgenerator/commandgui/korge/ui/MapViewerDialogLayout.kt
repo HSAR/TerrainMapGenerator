@@ -68,7 +68,7 @@ internal object MapViewerDialogLayoutBuilder {
     const val FOOTER_BOTTOM_PADDING = 16.0
     const val FOOTER_BUTTON_HEIGHT = 40.0
     const val RESIZE_HANDLE_SIZE = 24.0
-    const val CLOSE_BUTTON_SIZE = 28.0
+    const val CLOSE_BUTTON_SIZE = TITLE_BAR_HEIGHT + BORDER_INSET * 2.0
     const val MIN_HEIGHT = 300.0
 
     fun defaultBounds(
@@ -140,8 +140,8 @@ internal object MapViewerDialogLayoutBuilder {
                 height = (bounds.height - (BORDER_INSET * 2.0) - TITLE_BAR_HEIGHT - footerHeight).coerceAtLeast(0.0),
             ),
             closeButton = ScreenBounds(
-                left = (bounds.width - BORDER_INSET - CONTENT_PADDING - CLOSE_BUTTON_SIZE).coerceAtLeast(BORDER_INSET),
-                top = BORDER_INSET + (TITLE_BAR_HEIGHT - CLOSE_BUTTON_SIZE) * 0.5,
+                left = (bounds.width - BORDER_INSET - CLOSE_BUTTON_SIZE).coerceAtLeast(BORDER_INSET),
+                top = BORDER_INSET - BORDER_INSET,
                 width = CLOSE_BUTTON_SIZE,
                 height = CLOSE_BUTTON_SIZE,
             ),

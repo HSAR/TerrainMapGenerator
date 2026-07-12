@@ -13,14 +13,15 @@ import kotlin.math.max
 @OptIn(KorgeExperimental::class, KorgeInternal::class)
 internal class MapViewerCustomPropertiesEditor(
     initialProperties: Map<String, String>,
+    inheritedProperties: Map<String, String> = emptyMap(),
     private val reservedKeys: Set<String> = emptySet(),
     private val onRowsChanged: () -> Unit = {},
     private val onValidationChanged: () -> Unit = {},
     private val tooltipRoot: Container? = null,
 ) {
-    private val rows = initialProperties
+    private val rows = (inheritedProperties + initialProperties)
         .filterKeys { it !in reservedKeys }
-        .map { (key, value) -> CustomPropertyRow(key, value) }
+        .map { (key, value) -> CustomPropertyRow(key, value, key in inheritedProperties) }
         .toMutableList()
     private val inputs = mutableListOf<MapViewerInputField>()
     private var renderedParent: Container? = null
@@ -48,12 +49,27 @@ internal class MapViewerCustomPropertiesEditor(
     }
 
     fun render(parent: Container, width: Double) {
+        renderInternal(parent, width, showLabel = true)
+    }
+
+    fun renderBody(parent: Container, width: Double) {
+        renderInternal(parent, width, showLabel = false)
+    }
+
+    fun propertyCount(): Int = rows.size
+
+    fun bodyHeight(): Double =
+        MapViewerDialogSpacing.LABEL_TO_FIELD_GAP + (rows.size * ROW_HEIGHT) + BUTTON_HEIGHT
+
+    private fun renderInternal(parent: Container, width: Double, showLabel: Boolean) {
         renderedParent = parent
         renderedWidth = width
         parent.removeChildren()
         inputs.clear()
 
-        MapViewerTextViews.label(parent, "Additional Properties", color = Palette.Colours.WHITE)
+        if (showLabel) {
+            MapViewerTextViews.label(parent, "Additional Properties", color = Palette.Colours.WHITE)
+        }
 
         val layout = layout(width)
         rows.forEachIndexed { index, row ->
@@ -64,7 +80,7 @@ internal class MapViewerCustomPropertiesEditor(
         addButton.xy(0.0, addButtonTop())
         renderButton(addButton, ADD_BUTTON_WIDTH, "Add Property") {
             syncRowsFromInputs()
-            rows += CustomPropertyRow("", "")
+            rows += CustomPropertyRow("", "", isInherited = false)
             onRowsChanged()
             rerender()
         }
@@ -83,28 +99,42 @@ internal class MapViewerCustomPropertiesEditor(
         layout: CustomPropertyEditorLayout,
     ) {
         val top = MapViewerDialogSpacing.LABEL_TO_FIELD_GAP + (index * ROW_HEIGHT)
+        val firstInputIndex = inputIndexForRow(index)
 
         val isConflicting = row.isConflicting()
-        val keyInput = MapViewerTextInputs.input(
-            parent = parent,
-            text = row.key,
-            width = layout.keyWidth,
-            height = MapViewerDialogSpacing.INPUT_HEIGHT,
-            x = 0.0,
-            y = top,
-            frameStyle = MapViewerTextInputValidation.frameStyle(!isConflicting),
-        )
-        keyInput.controller.onTextUpdated.add {
-            val wasConflicting = row.isConflicting()
-            row.key = keyInput.text
-            if (row.isConflicting() != wasConflicting) {
-                pendingFocusInputIndex = index * INPUTS_PER_ROW
-                onValidationChanged()
-                rerender()
+        if (row.isInherited) {
+            MapViewerUiBoxes.box(parent, layout.keyWidth, MapViewerDialogSpacing.INPUT_HEIGHT, active = false).xy(0.0, top)
+                .also { keyField ->
+                    MapViewerTextViews.leftBox(
+                        parent = keyField,
+                        text = row.key,
+                        width = layout.keyWidth - 12.0,
+                        height = MapViewerDialogSpacing.INPUT_HEIGHT,
+                        color = Palette.Colours.WHITE,
+                    ) { x = 6.0 }
+                }
+        } else {
+            val keyInput = MapViewerTextInputs.input(
+                parent = parent,
+                text = row.key,
+                width = layout.keyWidth,
+                height = MapViewerDialogSpacing.INPUT_HEIGHT,
+                x = 0.0,
+                y = top,
+                frameStyle = MapViewerTextInputValidation.frameStyle(!isConflicting),
+            )
+            keyInput.controller.onTextUpdated.add {
+                val wasConflicting = row.isConflicting()
+                row.key = keyInput.text
+                if (row.isConflicting() != wasConflicting) {
+                    pendingFocusInputIndex = firstInputIndex
+                    onValidationChanged()
+                    rerender()
+                }
             }
+            inputs += keyInput
+            focusIfPending(keyInput, firstInputIndex)
         }
-        inputs += keyInput
-        focusIfPending(keyInput, index * INPUTS_PER_ROW)
 
         if (isConflicting) {
             renderConflictWarning(parent, layout.keyWidth, top, row.key.trim())
@@ -122,19 +152,21 @@ internal class MapViewerCustomPropertiesEditor(
             row.value = valueInput.text
         }
         inputs += valueInput
-        focusIfPending(valueInput, index * INPUTS_PER_ROW + 1)
+        focusIfPending(valueInput, firstInputIndex + if (row.isInherited) 0 else 1)
 
-        val removeButton = parent.container()
-        removeButton.xy(layout.removeLeft, top)
-        renderButton(removeButton, REMOVE_BUTTON_WIDTH, "X") {
-            syncRowsFromInputs()
-            val wasValid = rows.none { it.isConflicting() }
-            rows.removeAt(index)
-            if (rows.none { it.isConflicting() } != wasValid) {
-                onValidationChanged()
+        if (!row.isInherited) {
+            val removeButton = parent.container()
+            removeButton.xy(layout.removeLeft, top)
+            renderButton(removeButton, REMOVE_BUTTON_WIDTH, "X") {
+                syncRowsFromInputs()
+                val wasValid = rows.none { it.isConflicting() }
+                rows.removeAt(index)
+                if (rows.none { it.isConflicting() } != wasValid) {
+                    onValidationChanged()
+                }
+                onRowsChanged()
+                rerender()
             }
-            onRowsChanged()
-            rerender()
         }
     }
 
@@ -187,10 +219,12 @@ internal class MapViewerCustomPropertiesEditor(
     }
 
     private fun syncRowsFromInputs() {
-        rows.forEachIndexed { index, row ->
-            val inputIndex = index * INPUTS_PER_ROW
-            inputs.getOrNull(inputIndex)?.let { row.key = it.text }
-            inputs.getOrNull(inputIndex + 1)?.let { row.value = it.text }
+        var inputIndex = 0
+        rows.forEach { row ->
+            if (!row.isInherited) {
+                inputs.getOrNull(inputIndex++)?.let { row.key = it.text }
+            }
+            inputs.getOrNull(inputIndex++)?.let { row.value = it.text }
         }
     }
 
@@ -221,7 +255,11 @@ internal class MapViewerCustomPropertiesEditor(
     private data class CustomPropertyRow(
         var key: String,
         var value: String,
+        val isInherited: Boolean,
     )
+
+    private fun inputIndexForRow(rowIndex: Int): Int =
+        rows.take(rowIndex).sumOf { if (it.isInherited) 1 else INPUTS_PER_ROW }
 
     private data class CustomPropertyEditorLayout(
         val keyWidth: Double,

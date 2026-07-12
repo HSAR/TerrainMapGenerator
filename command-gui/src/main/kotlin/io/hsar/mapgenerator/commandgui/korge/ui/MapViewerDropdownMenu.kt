@@ -130,13 +130,14 @@ internal class MapViewerDropdownMenu<T>(
         )
         triggerSwatch = swatchHost
 
-        val caretHost = parent.container().also { it.xy(width - CARET_WIDTH - CARET_RIGHT_PADDING, 0.0) }
-        MapViewerTextViews.box(
+        val caretHost = parent.container().also {
+            it.xy(width - MapViewerCollapsiblePanel.CHEVRON_WIDTH, 0.0)
+        }
+        MapViewerCollapsiblePanel.chevronButton(
             parent = caretHost,
-            text = "v",
-            width = CARET_WIDTH,
+            width = MapViewerCollapsiblePanel.CHEVRON_WIDTH,
             height = height,
-            color = Palette.Colours.WHITE,
+            direction = MapViewerChevronDirection.DOWN,
         )
 
         parent.mouse {
@@ -328,9 +329,7 @@ internal class MapViewerDropdownMenu<T>(
         private const val TEXT_LEFT_PADDING = 8.0
         private const val OPTION_TEXT_LEFT = 30.0
         private const val OPTION_TEXT_LEFT_WITHOUT_ICON = 10.0
-        private const val CARET_WIDTH = 18.0
-        private const val CARET_RIGHT_PADDING = 8.0
-        private const val TRAILING_AREA_WIDTH = 44.0
+        private const val TRAILING_AREA_WIDTH = MapViewerCollapsiblePanel.CHEVRON_WIDTH
     }
 }
 

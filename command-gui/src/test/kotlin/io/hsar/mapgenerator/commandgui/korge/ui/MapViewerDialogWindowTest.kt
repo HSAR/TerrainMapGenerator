@@ -9,6 +9,22 @@ import org.junit.jupiter.api.Test
 
 class MapViewerDialogWindowTest {
     @Test
+    fun `close button is title height and flush with the title bar right edge`() {
+        val layout = MapViewerDialogLayoutBuilder.build(
+            bounds = MapViewerDialogBounds(left = 0.0, top = 0.0, width = 400.0, height = 300.0),
+        )
+
+        assertThat(layout.closeButton.width, equalTo(layout.closeButton.height))
+        assertThat(layout.closeButton.height, equalTo(layout.titleBar.height + MapViewerDialogLayoutBuilder.BORDER_INSET))
+        assertThat(layout.closeButton.top, equalTo(layout.titleBar.top - MapViewerDialogLayoutBuilder.BORDER_INSET))
+        assertThat(
+            layout.closeButton.top + layout.closeButton.height,
+            equalTo(layout.titleBar.top + layout.titleBar.height + MapViewerDialogLayoutBuilder.BORDER_INSET),
+        )
+        assertThat(layout.closeButton.left + layout.closeButton.width, equalTo(layout.titleBar.left + layout.titleBar.width))
+    }
+
+    @Test
     fun `non modal dialog only blocks points inside its bounds`() {
         val root = Container()
         val window = MapViewerDialogWindow(

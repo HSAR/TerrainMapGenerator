@@ -1,21 +1,30 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.commandgui.AssetSource
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip
+import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDamage
+import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDefinition
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchUi
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
 import korlibs.korge.annotations.KorgeExperimental
+import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
+import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
 import korlibs.korge.view.xy
 import korlibs.math.geom.Vector2D
 import java.io.File
 import java.util.*
+import java.util.concurrent.ConcurrentLinkedQueue
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
+import kotlin.concurrent.thread
 import kotlin.math.max
 
 @OptIn(KorgeExperimental::class)
@@ -35,6 +44,7 @@ internal class MapViewerUnitCreateDialog(
     private var selectedAffiliation: UnitAffiliation? = initialTemplate?.affiliation
     private var nameValue: String = initialTemplate?.name ?: "Unit Type Name"
     private var statusText: String? = null
+    private var shipImportError: String? = null
     private var nameInput: MapViewerInputField? = null
     private var statusLabel: Container? = null
     private var previewFrame: Container? = null
@@ -42,6 +52,17 @@ internal class MapViewerUnitCreateDialog(
     private var initialFocusApplied = false
     private var nameWasValid = MapViewerTextInputValidation.isPresent(nameValue)
     private var pendingNameFocus = false
+    private var shipDefinition = initialTemplate?.customProperties?.let(OlympiadDawnShip::definition)
+    private var shipPanelCollapsed = true
+    private var shipComponentsCollapsed = true
+    private var shipWeaponsCollapsed = true
+    private var customPropertiesExpanded = false
+    private var shipImportInProgress = false
+    private var shipImportTooltip: Container? = null
+    private val pendingShipImports = ConcurrentLinkedQueue<Result<OlympiadDawnShipDefinition>>()
+    private var embeddedParent: Container? = null
+    private var embeddedWidth = 0.0
+    private val initialShipProperties = initialTemplate?.customProperties.orEmpty().filterKeys { it in SHIP_PROPERTY_KEYS }
     private val affiliationDropdown = MapViewerDropdownMenu(
         root = root,
         options = UnitAffiliationUi.options,
@@ -56,6 +77,10 @@ internal class MapViewerUnitCreateDialog(
         onValidationChanged = { dialogWindow?.refresh() },
         tooltipRoot = root,
     )
+
+    init {
+        root.addUpdater { consumePendingShipImport() }
+    }
 
     fun show(viewportWidth: Int, viewportHeight: Int) {
         if (isOpen) {
@@ -73,7 +98,6 @@ internal class MapViewerUnitCreateDialog(
             contentHeight = { width -> contentHeightFor(width) },
             actions = listOf(
                 MapViewerDialogAction(confirmLabel, enabled = { canConfirm() }) { confirm() },
-                MapViewerDialogAction("Cancel") { close() },
             ),
             onClose = { close() },
             renderContent = { content, contentWidth ->
@@ -198,10 +222,72 @@ internal class MapViewerUnitCreateDialog(
                 height = MapViewerDialogSpacing.INPUT_HEIGHT,
             )
         }
-
         val customPropertiesContainer = content.container()
         customPropertiesContainer.xy(0.0, layout.customPropertiesTop)
-        customPropertiesEditor.render(customPropertiesContainer, contentWidth.coerceAtLeast(MIN_FIELD_WIDTH))
+        renderCustomPropertiesPanel(customPropertiesContainer, contentWidth.coerceAtLeast(MIN_FIELD_WIDTH))
+
+        if (shipImportEnabled) {
+            val importButton = content.container()
+            importButton.xy(
+                (contentWidth - SHIP_IMPORT_BUTTON_WIDTH - SHIP_IMPORT_ERROR_WIDTH - FIELD_GAP).coerceAtLeast(0.0),
+                layout.customPropertiesTop,
+            )
+            MapViewerLaunchUi.button(
+                parent = importButton,
+                width = SHIP_IMPORT_BUTTON_WIDTH,
+                height = MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT,
+                label = if (shipImportInProgress) "Importing..." else "Import Ship",
+                disabled = shipImportInProgress,
+            ) {
+                importShip()
+            }
+            shipImportError?.let { error ->
+                val marker = content.container()
+                marker.xy(contentWidth - SHIP_IMPORT_ERROR_WIDTH, layout.customPropertiesTop)
+                MapViewerTextInputValidation.validationFailedIndicator(marker)
+                marker.mouse {
+                    onOver {
+                        shipImportTooltip?.removeFromParent()
+                        shipImportTooltip = MapViewerTextInputValidation.validationExplanationTooltip(
+                            parent = content,
+                            anchor = marker.globalPos + Vector2D(SHIP_IMPORT_ERROR_WIDTH, 0.0),
+                            text = error,
+                        )
+                    }
+                    onOut {
+                        shipImportTooltip?.removeFromParent()
+                        shipImportTooltip = null
+                    }
+                }
+            }
+        }
+
+        if (shipImportEnabled) shipDefinition?.let { definition ->
+            val shipPanel = content.container()
+            shipPanel.xy(0.0, layout.customPropertiesTop + customPropertiesPanelHeight() + MapViewerDialogSpacing.SECTION_GAP)
+            OlympiadDawnShipStatusPanel.render(
+                parent = shipPanel,
+                width = contentWidth,
+                definition = definition,
+                damage = OlympiadDawnShip.defaultDamage(templateProperties()) ?: OlympiadDawnShipDamage(),
+                collapsed = shipPanelCollapsed,
+                editable = false,
+                onCollapsedChanged = {
+                    shipPanelCollapsed = !shipPanelCollapsed
+                    refreshShipPanel()
+                },
+                componentsCollapsed = shipComponentsCollapsed,
+                onComponentsCollapsedChanged = {
+                    shipComponentsCollapsed = !shipComponentsCollapsed
+                    refreshShipPanel()
+                },
+                weaponsCollapsed = shipWeaponsCollapsed,
+                onWeaponsCollapsedChanged = {
+                    shipWeaponsCollapsed = !shipWeaponsCollapsed
+                    refreshShipPanel()
+                },
+            )
+        }
 
         if (!initialFocusApplied) {
             nameInput?.focus()
@@ -213,18 +299,14 @@ internal class MapViewerUnitCreateDialog(
         }
     }
 
-    fun renderEmbedded(parent: Container, width: Double, confirmLabel: String = "Save") {
+    fun renderEmbedded(parent: Container, width: Double) {
+        embeddedParent = parent
+        embeddedWidth = width
         renderContent(parent, width)
-        parent.container().also { actions ->
-            actions.xy(0.0, contentHeightFor(width) + MapViewerDialogSpacing.FIELD_GAP)
-            MapViewerLaunchUi.button(actions, 120.0, MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT, confirmLabel) {
-                createTemplate()?.let(onCreated)
-            }
-        }
     }
 
     fun embeddedHeight(width: Double): Double =
-        contentHeightFor(width) + MapViewerDialogSpacing.FIELD_GAP + MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT
+        contentHeightFor(width)
 
     fun dispose() {
         affiliationDropdown.close()
@@ -259,7 +341,7 @@ internal class MapViewerUnitCreateDialog(
             bitmap = bitmap,
             assetSource = selectedAssetSource,
             affiliation = selectedAffiliation,
-            customProperties = customPropertiesEditor.properties(),
+            customProperties = templateProperties(),
         )
     }
 
@@ -277,6 +359,28 @@ internal class MapViewerUnitCreateDialog(
         statusText = text
         MapViewerTextViews.leftBox(parent, text, width, 28.0, color = Palette.Colours.WHITE)
     }
+
+    private fun renderCustomPropertiesPanel(parent: Container, width: Double) {
+        MapViewerCollapsiblePanel.header(
+            parent = parent,
+            width = width,
+            height = MapViewerDialogSpacing.INPUT_HEIGHT,
+            label = "${customPropertiesEditor.propertyCount()} additional properties",
+            expanded = customPropertiesExpanded,
+            onToggle = {
+                customPropertiesExpanded = !customPropertiesExpanded
+                if (embeddedParent != null) refreshEmbedded() else dialogWindow?.refresh()
+            },
+        )
+        if (customPropertiesExpanded) {
+            val body = parent.container().xy(0.0, MapViewerDialogSpacing.INPUT_HEIGHT)
+            customPropertiesEditor.renderBody(body, width)
+        }
+    }
+
+    private fun customPropertiesPanelHeight(): Double =
+        MapViewerDialogSpacing.INPUT_HEIGHT +
+                if (customPropertiesExpanded) customPropertiesEditor.bodyHeight() else 0.0
 
     private fun layoutForWidth(contentWidth: Double): UnitTypeDialogLayout {
         val nameBlockMinimumWidth = MapViewerInlineInputs.minimumWidth("Name", nameMinimumWidth(nameValue))
@@ -316,7 +420,15 @@ internal class MapViewerUnitCreateDialog(
 
     private fun contentHeightFor(contentWidth: Double): Double {
         val layout = layoutForWidth(contentWidth)
-        return layout.customPropertiesTop + customPropertiesEditor.height() + MapViewerDialogSpacing.FORM_BOTTOM_PADDING
+        val shipHeight = if (shipImportEnabled) shipDefinition?.let {
+            OlympiadDawnShipStatusPanel.height(
+                it,
+                shipPanelCollapsed,
+                shipComponentsCollapsed,
+                shipWeaponsCollapsed
+            ) + MapViewerDialogSpacing.SECTION_GAP
+        } ?: 0.0 else 0.0
+        return layout.customPropertiesTop + customPropertiesPanelHeight() + shipHeight + MapViewerDialogSpacing.FORM_BOTTOM_PADDING
     }
 
     private fun minimumContentWidth(): Double =
@@ -325,6 +437,7 @@ internal class MapViewerUnitCreateDialog(
             affiliationMinimumWidth(),
             MIN_FIELD_WIDTH,
             BROWSE_BUTTON_WIDTH,
+            SHIP_IMPORT_BUTTON_WIDTH + SHIP_IMPORT_ERROR_WIDTH + FIELD_GAP,
             customPropertiesEditor.minimumWidth(),
             MapViewerDialogActions.minimumWidth(2),
         )
@@ -337,6 +450,67 @@ internal class MapViewerUnitCreateDialog(
 
         return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) chooser.selectedFile else null
     }
+
+    private val shipImportEnabled: Boolean
+        get() = initialTemplate != null && MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL in MapViewerFeatureFlags.enabled
+
+    private fun importShip() {
+        if (shipImportInProgress) return
+        val file = JFileChooser().apply {
+            isAcceptAllFileFilterUsed = false
+            lastShipImportDirectory?.let { currentDirectory = it }
+            fileFilter = FileNameExtensionFilter("Ship files", "json")
+        }.let { chooser ->
+            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) chooser.selectedFile else null
+        } ?: return
+        shipImportInProgress = true
+        statusText = "Importing ship..."
+        refreshEmbedded()
+        dialogWindow?.refresh()
+        thread(name = "command-gui-ship-import", isDaemon = true) {
+            pendingShipImports += runCatching { OlympiadDawnShip.import(file) }
+                .onSuccess { lastShipImportDirectory = file.parentFile }
+        }
+        dialogWindow?.refresh()
+    }
+
+    private fun consumePendingShipImport() {
+        pendingShipImports.poll()?.let { result ->
+            shipImportInProgress = false
+            result.onSuccess { imported ->
+                shipDefinition = imported
+                shipPanelCollapsed = false
+                shipImportError = null
+                statusText = "Imported ${imported.shipClass} ${imported.name}"
+                if (embeddedParent != null) {
+                    createTemplate()?.let(onCreated)
+                } else {
+                    dialogWindow?.refresh()
+                }
+            }.onFailure { error ->
+                shipImportError = error.message ?: "The ship file could not be imported."
+                statusText = "Could not import ship"
+                refreshEmbedded()
+            }
+            dialogWindow?.refresh()
+        }
+    }
+
+    private fun refreshEmbedded() {
+        embeddedParent?.let { renderEmbedded(it, embeddedWidth) }
+    }
+
+    private fun refreshShipPanel() {
+        if (embeddedParent != null) refreshEmbedded() else dialogWindow?.refresh()
+    }
+
+    private fun templateProperties(): Map<String, String> =
+        if (shipImportEnabled) {
+            shipDefinition?.let { OlympiadDawnShip.importedTemplateProperties(customPropertiesEditor.properties(), it) }
+                ?: customPropertiesEditor.properties() + initialShipProperties
+        } else {
+            customPropertiesEditor.properties() + initialShipProperties
+        }
 
     private fun loadBitmap(file: File): Bitmap32? =
         MapViewerIconLoader.load(file)
@@ -360,9 +534,13 @@ internal class MapViewerUnitCreateDialog(
         const val PREFERRED_HEIGHT = 420.0
         const val BROWSE_BUTTON_WIDTH = 140.0
         const val BROWSE_RIGHT_GUTTER = 12.0
+        const val SHIP_IMPORT_BUTTON_WIDTH = 120.0
+        const val SHIP_IMPORT_ERROR_WIDTH = MapViewerTextInputValidation.VALIDATION_ICON_SIZE
         const val FIELD_GAP = MapViewerDialogSpacing.FIELD_GAP
         const val MIN_FIELD_WIDTH = MapViewerDialogSpacing.MIN_FIELD_WIDTH
-        val UNIT_TYPE_FIELD_KEYS = setOf("name", "assetId", "affiliation")
+        var lastShipImportDirectory: File? = null
+        val SHIP_PROPERTY_KEYS = setOf(OlympiadDawnShip.DEFINITION_KEY, OlympiadDawnShip.DEFAULT_DAMAGE_KEY)
+        val UNIT_TYPE_FIELD_KEYS = setOf("name", "assetId", "affiliation") + SHIP_PROPERTY_KEYS
     }
 }
 
