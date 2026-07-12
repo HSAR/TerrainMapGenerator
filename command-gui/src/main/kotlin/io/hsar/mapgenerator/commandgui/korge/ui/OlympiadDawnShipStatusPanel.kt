@@ -18,7 +18,11 @@ internal object OlympiadDawnShipStatusPanel {
         componentsCollapsed: Boolean = true,
         weaponsCollapsed: Boolean = true,
     ): Double =
-        if (collapsed) HEADER_HEIGHT else HEADER_HEIGHT + POINT_ROW_HEIGHT * (definition.hullRows + 1) + sectionHeight(definition, componentsCollapsed, weaponsCollapsed)
+        if (collapsed) HEADER_HEIGHT else HEADER_HEIGHT + POINT_ROW_HEIGHT * (definition.hullRows + if (definition.armourPoints == null) 0 else 1) + sectionHeight(
+            definition,
+            componentsCollapsed,
+            weaponsCollapsed
+        )
 
     fun render(
         parent: Container,
@@ -38,14 +42,16 @@ internal object OlympiadDawnShipStatusPanel {
         if (collapsed) return
 
         var top = HEADER_HEIGHT
-        renderPoints(parent, top, width, "Armour", definition.armourPoints, damage.destroyedArmour, editable) { index ->
-            onDamageChanged(damage.copy(destroyedArmour = damage.destroyedArmour.toggle(index)))
+        definition.armourPoints?.let { armourPoints ->
+            renderPoints(parent, top, width, "Armour", armourPoints, damage.destroyedArmour, editable) { index ->
+                onDamageChanged(damage.copy(destroyedArmour = damage.destroyedArmour.toggle(index)))
+            }
+            top += POINT_ROW_HEIGHT
         }
-        top += POINT_ROW_HEIGHT
-        val pointsPerRow = (definition.hullPoints + definition.hullRows - 1) / definition.hullRows
+        val hullRowSizes = hullRowSizes(definition.hullPoints, definition.hullRows)
         repeat(definition.hullRows) { row ->
-            val start = row * pointsPerRow
-            val count = (definition.hullPoints - start).coerceIn(0, pointsPerRow)
+            val start = hullRowSizes.take(row).sum()
+            val count = hullRowSizes[row]
             renderPoints(parent, top, width, if (row == 0) "Hull" else "", count, damage.destroyedHull.map { it - start }.toSet(), editable) { index ->
                 onDamageChanged(damage.copy(destroyedHull = damage.destroyedHull.toggle(start + index)))
             }
@@ -74,15 +80,26 @@ internal object OlympiadDawnShipStatusPanel {
         definition.systems.forEach { system ->
             val destroyed = system.id in damage.destroyedSystems
             val row = section.container().also { it.xy(0.0, top) }
-            val rowButton = MapViewerUiBoxes.box(row, width, SYSTEM_HEIGHT, active = !destroyed)
+            MapViewerUiBoxes.box(row, width, SYSTEM_HEIGHT, active = !destroyed)
+            MapViewerCheckbox.render(
+                parent = row,
+                x = CHECKBOX_INSET,
+                y = (SYSTEM_HEIGHT - CHECKBOX_SIZE) * 0.5,
+                size = CHECKBOX_SIZE,
+                checked = !destroyed,
+                onToggle = if (editable) {
+                    { onDamageChanged(damage.copy(destroyedSystems = damage.destroyedSystems.toggle(system.id))) }
+                } else {
+                    {}
+                },
+            )
             MapViewerTextViews.leftBox(
                 row,
-                "${if (destroyed) "X" else "O"}  ${system.name}",
-                width,
+                system.name,
+                width - TEXT_INSET,
                 SYSTEM_HEIGHT,
-                color = if (destroyed) Palette.Colours.RED else Palette.Colours.WHITE
-            )
-            if (editable) rowButton.mouse { onClick { onDamageChanged(damage.copy(destroyedSystems = damage.destroyedSystems.toggle(system.id))) } }
+                color = if (destroyed) Palette.Colours.RED else Palette.Colours.WHITE,
+            ) { x = TEXT_INSET }
             top += SYSTEM_HEIGHT
         }
         return top
@@ -128,6 +145,13 @@ internal object OlympiadDawnShipStatusPanel {
     private fun <T> Set<T>.toggle(value: T): Set<T> =
         if (value in this) this - value else this + value
 
+    internal fun hullRowSizes(points: Int, rows: Int): List<Int> {
+        if (rows <= 0) return emptyList()
+        val pointsPerRow = points / rows
+        val remainder = points % rows
+        return List(rows) { row -> pointsPerRow + if (row < remainder) 1 else 0 }
+    }
+
     private const val HEADER_HEIGHT = 34.0
     private const val POINT_ROW_HEIGHT = 30.0
     private const val SYSTEM_HEIGHT = 30.0
@@ -135,4 +159,7 @@ internal object OlympiadDawnShipStatusPanel {
     private const val POINT_SIZE = 28.0
     private const val POINT_GAP = 3.0
     private const val POINT_INSET = 2.0
+    private const val CHECKBOX_SIZE = 20.0
+    private const val CHECKBOX_INSET = 6.0
+    private const val TEXT_INSET = 32.0
 }

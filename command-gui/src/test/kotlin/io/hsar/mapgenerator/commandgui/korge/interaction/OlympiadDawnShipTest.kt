@@ -8,14 +8,24 @@ class OlympiadDawnShipTest {
     @Test
     fun `parses a ship definition and preserves untracked source sections`() {
         val definition = OlympiadDawnShip.parse(
-            """{"hull":{"points":24,"rows":4},"armour":[[5,0]],"systems":[{"name":"drive","id":"drive-1"}],"weapons":[{"name":"beam"}],"class":"Heavy Cruiser","name":"Vandenburg"}""",
+            """{"hull":{"points":24,"rows":4},"armour":[[5,0]],"systems":[{"name":"drive","thrust":2,"id":"drive-1"},{"name":"fireControl","id":"fc-1"},{"name":"hangar","id":"hangar-1"}],"weapons":[{"name":"beam","class":2}],"fighters":[{"name":"standard","hangar":"hangar-1"}],"class":"Heavy Cruiser","name":"Vandenburg"}""",
         )
 
         assertThat(definition.name, equalTo("Vandenburg"))
         assertThat(definition.hullPoints, equalTo(24))
         assertThat(definition.armourPoints, equalTo(5))
-        assertThat(definition.systems.single().id, equalTo("drive-1"))
+        assertThat(definition.systems.map { it.name }, equalTo(listOf("Impulse Drive", "Impulse Drive", "Gunnery Fire Control System", "Hangar - standard")))
+        assertThat(definition.weapons.single().name, equalTo("Beam Turret Class 2"))
         assertThat(definition.sourceJson.contains("weapons"), equalTo(true))
+    }
+
+    @Test
+    fun `accepts ships without armour`() {
+        val definition = OlympiadDawnShip.parse(
+            """{"hull":{"points":1,"rows":1},"armour":[],"systems":[],"weapons":[],"class":"Scout","name":"Test"}""",
+        )
+
+        assertThat(definition.armourPoints, equalTo(null))
     }
 
     @Test

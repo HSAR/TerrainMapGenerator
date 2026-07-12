@@ -48,6 +48,8 @@ internal class MapViewerDialogWindow(
     private var lastFocusTargetBounds: List<ScreenBounds> = emptyList()
     private var scrollState = MapViewerScrollState(0.0, 0.0)
     private var scrollDragState: ScrollDragState? = null
+    private var contentContainer: Container? = null
+    private var scrollbarContainer: Container? = null
     private var dragState: DialogDragState? = null
     private var isOpen = false
 
@@ -117,7 +119,7 @@ internal class MapViewerDialogWindow(
             onScrollAnywhere {
                 if (bounds?.contains(views.input.mousePos) == true && scrollState.needsScrolling) {
                     scrollState = scrollState.scrolledBy(scrollDeltaYLines * MapViewerScrollbar.SCROLL_STEP_PX)
-                    render()
+                    updateScrollPosition()
                 }
             }
         }
@@ -187,6 +189,8 @@ internal class MapViewerDialogWindow(
             scrollDragState = null
         }
 
+        contentContainer = null
+        scrollbarContainer = null
         panelLayer.removeChildren()
         renderShadow(focusTargetBounds)
 
@@ -208,15 +212,17 @@ internal class MapViewerDialogWindow(
             onBeginResize = { beginDrag(DialogDragMode.RESIZE) },
         )
 
-        val contentClip = panel.clipContainer(Size2D(layout.contentViewport.width, layout.contentViewport.height)) {
+        panel.clipContainer(Size2D(layout.contentViewport.width, layout.contentViewport.height)) {
             xy(layout.contentViewport.left, layout.contentViewport.top)
             zIndex = CONTENT_Z_INDEX
             val content = container()
+            contentContainer = content
             content.xy(0.0, -scrollState.offset)
             renderContent(content, layout.contentViewport.width)
         }
         if (scrollState.needsScrolling) {
-            MapViewerScrollbar.render(panel, layout.scrollbar, scrollState) { pointerY ->
+            scrollbarContainer = panel.container()
+            MapViewerScrollbar.render(scrollbarContainer!!, layout.scrollbar, scrollState) { pointerY ->
                 scrollDragState = ScrollDragState(pointerY, scrollState.offset)
             }
         }
@@ -270,7 +276,19 @@ internal class MapViewerDialogWindow(
                 currentPointerY = pointer.y,
             ),
         )
-        render()
+        updateScrollPosition()
+    }
+
+    private fun updateScrollPosition() {
+        contentContainer?.y = -scrollState.offset
+        val currentBounds = bounds ?: return
+        val layout = MapViewerDialogLayoutBuilder.build(currentBounds, actions.size)
+        scrollbarContainer?.let { scrollbar ->
+            scrollbar.removeChildren()
+            MapViewerScrollbar.render(scrollbar, layout.scrollbar, scrollState) { pointerY ->
+                scrollDragState = ScrollDragState(pointerY, scrollState.offset)
+            }
+        }
     }
 
     private fun renderShadow(focusTargetBounds: List<ScreenBounds>) {

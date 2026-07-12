@@ -9,7 +9,7 @@ internal data class OlympiadDawnShipDefinition(
     val shipClass: String,
     val hullPoints: Int,
     val hullRows: Int,
-    val armourPoints: Int,
+    val armourPoints: Int?,
     val systems: List<OlympiadDawnShipSystem>,
     val weapons: List<OlympiadDawnShipWeapon>,
     val sourceJson: String,
@@ -52,19 +52,36 @@ internal object OlympiadDawnShip {
         val hullRows = hull.requiredPositiveInt("rows")
         val armour = root.path("armour").takeIf(JsonNode::isArray)
             ?: throw IllegalArgumentException("Ship file must contain armour data")
-        val armourPoints = armour.firstOrNull()
+        val armourPoints = if (armour.isEmpty()) null else armour.firstOrNull()
             ?.takeIf(JsonNode::isArray)
             ?.firstOrNull()
             ?.takeIf(JsonNode::isInt)
             ?.intValue()
             ?.takeIf { it >= 0 }
             ?: throw IllegalArgumentException("Ship armour must begin with a non-negative point count")
+        val fighterNamesByHangar = root.path("fighters")
+            .takeIf(JsonNode::isArray)
+            ?.mapNotNull { fighter ->
+                val hangar = fighter.path("hangar").textValue()?.trim()?.takeIf(String::isNotEmpty)
+                val name = fighter.path("name").textValue()?.trim()?.takeIf(String::isNotEmpty)
+                hangar?.let { it to name }
+            }
+            ?.groupBy({ it.first }, { it.second })
+            ?.mapValues { (_, names) -> names.filterNotNull().firstOrNull() }
+            .orEmpty()
         val systems = root.path("systems").takeIf(JsonNode::isArray)
-            ?.map { system ->
-                OlympiadDawnShipSystem(
-                    id = system.requiredText("id"),
-                    name = system.requiredText("name"),
-                )
+            ?.flatMap { system ->
+                val id = system.requiredText("id")
+                val name = system.friendlySystemName(fighterNamesByHangar[id])
+                val count = if (system.path("name").textValue() == "drive") {
+                    system.path("thrust").intValue().coerceAtLeast(1)
+                } else 1
+                (1..count).map { index ->
+                    OlympiadDawnShipSystem(
+                        id = if (count == 1) id else "$id-$index",
+                        name = name,
+                    )
+                }
             }
             ?: throw IllegalArgumentException("Ship file must contain systems")
         if (systems.map(OlympiadDawnShipSystem::id).toSet().size != systems.size) {
@@ -72,9 +89,14 @@ internal object OlympiadDawnShip {
         }
         val weapons = root.path("weapons").takeIf(JsonNode::isArray)
             ?.map { weapon ->
+                val rawName = weapon.requiredText("name")
                 OlympiadDawnShipWeapon(
                     id = weapon.path("id").textValue()?.trim()?.takeIf(String::isNotEmpty),
-                    name = weapon.requiredText("name"),
+                    name = when (rawName) {
+                        "pds" -> "Point Defence System"
+                        "beam" -> "Beam Turret Class ${weapon.path("class").intValue()}"
+                        else -> rawName
+                    },
                 )
             }
             .orEmpty()
@@ -131,7 +153,7 @@ internal object OlympiadDawnShip {
         runCatching {
             val root = mapper.readTree(source)
             OlympiadDawnShipDamage(
-                destroyedArmour = root.indexSet("destroyedArmour", definition.armourPoints),
+                destroyedArmour = root.indexSet("destroyedArmour", definition.armourPoints ?: 0),
                 destroyedHull = root.indexSet("destroyedHull", definition.hullPoints),
                 destroyedSystems = root.path("destroyedSystems")
                     .takeIf(JsonNode::isArray)
@@ -147,6 +169,18 @@ internal object OlympiadDawnShip {
     private fun JsonNode.requiredText(field: String): String =
         path(field).textValue()?.trim()?.takeIf(String::isNotEmpty)
             ?: throw IllegalArgumentException("Ship $field is required")
+
+    private fun JsonNode.friendlySystemName(hangarFighterName: String?): String =
+        when (path("name").textValue()) {
+            "fireControl" -> "Gunnery Fire Control System"
+            "adfcs" -> "Area Defence Fire Control System"
+            "ftl" -> "Warp Drive"
+            "drive" -> "Impulse Drive"
+            "pds" -> "Point Defence System"
+            "screen" -> "Shields"
+            "hangar" -> hangarFighterName?.let { "Hangar - $it" } ?: "Hangar"
+            else -> requiredText("name")
+        }
 
     private fun JsonNode.requiredPositiveInt(field: String): Int =
         path(field).takeIf(JsonNode::isInt)?.intValue()?.takeIf { it > 0 }
