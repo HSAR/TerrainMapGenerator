@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.io.File
+import kotlin.math.floor
 
 internal data class OlympiadDawnShipDefinition(
     val name: String,
@@ -23,12 +24,28 @@ internal data class OlympiadDawnShipSystem(
 internal data class OlympiadDawnShipWeapon(
     val id: String?,
     val name: String,
+    val arcs: List<String> = emptyList(),
+    val beamClass: Int? = null,
 )
+
+internal object OlympiadDawnBeamRules {
+    const val RANGE_BAND_SIZE_U = 6.0
+
+    fun firepowerAtRange(beamClass: Int, rangeU: Double): Int {
+        if (beamClass <= 0 || rangeU < 0.0) return 0
+        val rangeBand = floor(rangeU / RANGE_BAND_SIZE_U).toInt() + 1
+        return (beamClass - rangeBand + 1).coerceAtLeast(0)
+    }
+
+    fun maximumRangeU(beamClass: Int): Double =
+        beamClass.coerceAtLeast(0) * RANGE_BAND_SIZE_U
+}
 
 internal data class OlympiadDawnShipDamage(
     val destroyedArmour: Set<Int> = emptySet(),
     val destroyedHull: Set<Int> = emptySet(),
     val destroyedSystems: Set<String> = emptySet(),
+    val destroyedWeapons: Set<String> = emptySet(),
 )
 
 internal object OlympiadDawnShip {
@@ -97,6 +114,11 @@ internal object OlympiadDawnShip {
                         "beam" -> "Beam Turret Class ${weapon.path("class").intValue()}"
                         else -> rawName
                     },
+                    arcs = weapon.parseArcs(),
+                    beamClass = if (rawName == "beam") {
+                        weapon.path("class").intValue().takeIf { it > 0 }
+                            ?: throw IllegalArgumentException("Beam weapon class must be positive")
+                    } else null,
                 )
             }
             .orEmpty()
@@ -146,6 +168,7 @@ internal object OlympiadDawnShip {
                 "destroyedArmour" to damage.destroyedArmour.sorted(),
                 "destroyedHull" to damage.destroyedHull.sorted(),
                 "destroyedSystems" to damage.destroyedSystems.sorted(),
+                "destroyedWeapons" to damage.destroyedWeapons.sorted(),
             ),
         )
 
@@ -161,6 +184,12 @@ internal object OlympiadDawnShip {
                     ?.filter { it in definition.systems.map(OlympiadDawnShipSystem::id) }
                     ?.toSet()
                     .orEmpty(),
+                destroyedWeapons = root.path("destroyedWeapons")
+                    .takeIf(JsonNode::isArray)
+                    ?.mapNotNull(JsonNode::textValue)
+                    ?.filter { it in definition.weapons.indices.map { index -> weaponKey(definition, index) } }
+                    ?.toSet()
+                    .orEmpty(),
             )
         }.getOrDefault(intactDamage())
 
@@ -173,7 +202,7 @@ internal object OlympiadDawnShip {
     private fun JsonNode.friendlySystemName(hangarFighterName: String?): String =
         when (path("name").textValue()) {
             "fireControl" -> "Gunnery Fire Control System"
-            "adfcs" -> "Area Defence Fire Control System"
+            "adfc" -> "Area Defence Fire Control System"
             "ftl" -> "Warp Drive"
             "drive" -> "Impulse Drive"
             "pds" -> "Point Defence System"
@@ -181,6 +210,26 @@ internal object OlympiadDawnShip {
             "hangar" -> hangarFighterName?.let { "Hangar - $it" } ?: "Hangar"
             else -> requiredText("name")
         }
+
+    private fun JsonNode.parseArcs(): List<String> {
+        val leftArc = path("leftArc").textValue()?.trim()?.takeIf(String::isNotEmpty) ?: return emptyList()
+        val start = ARC_ORDER.indexOf(leftArc)
+        if (start < 0) throw IllegalArgumentException("Unknown weapon leftArc: $leftArc")
+        val count = path("numArcs").intValue().takeIf { it in 1..ARC_ORDER.size }
+            ?: throw IllegalArgumentException("Weapon numArcs must be between 1 and ${ARC_ORDER.size}")
+        return List(count) { offset -> ARC_ORDER[(start + offset) % ARC_ORDER.size] }
+    }
+
+    fun weaponKey(definition: OlympiadDawnShipDefinition, index: Int): String =
+        definition.weapons[index].id ?: "weapon-$index"
+
+    fun beamFirepowerAtRange(weapon: OlympiadDawnShipWeapon, rangeU: Double): Int =
+        weapon.beamClass?.let { OlympiadDawnBeamRules.firepowerAtRange(it, rangeU) } ?: 0
+
+    fun totalBeamFirepowerAtRange(weapons: List<OlympiadDawnShipWeapon>, rangeU: Double): Int =
+        weapons.sumOf { beamFirepowerAtRange(it, rangeU) }
+
+    private val ARC_ORDER = listOf("F", "FS", "AS", "A", "AP", "FP")
 
     private fun JsonNode.requiredPositiveInt(field: String): Int =
         path(field).takeIf(JsonNode::isInt)?.intValue()?.takeIf { it > 0 }

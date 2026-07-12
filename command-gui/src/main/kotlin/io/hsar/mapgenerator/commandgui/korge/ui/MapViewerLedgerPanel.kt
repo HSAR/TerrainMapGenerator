@@ -1,5 +1,8 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
+import io.hsar.mapgenerator.commandgui.korge.interaction.FireArcDisplayMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnMarker
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelRow
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelState
@@ -34,6 +37,8 @@ internal class MapViewerLedgerPanel(
     private val onDestroyedUnitsDisplayChanged: (DestroyedUnitsDisplay) -> Unit = {},
     initialUnitIconSizePx: Double = UnitIconDisplaySize.DEFAULT_PX,
     private val onUnitIconSizeChanged: (Double) -> Unit = {},
+    initialFireArcDisplayMode: FireArcDisplayMode = FireArcDisplayMode.AllUnits,
+    private val onFireArcDisplayModeChanged: (FireArcDisplayMode) -> Unit = {},
     private val turnThumbnail: (UUID) -> Bitmap32? = { null },
 ) {
     private val overlay = root.container()
@@ -48,11 +53,23 @@ internal class MapViewerLedgerPanel(
         labelForValue = { value -> (value ?: DestroyedUnitsDisplay.Full).label },
         menuWidth = DESTROYED_UNITS_DROPDOWN_MINIMUM_WIDTH,
     )
+    private val fireArcDisplayDropdown = MapViewerDropdownMenu(
+        root = overlay,
+        options = FireArcDisplayMode.entries.map { MapViewerDropdownOption(it, it.label) },
+        onSelected = { value ->
+            fireArcDisplayMode = value ?: FireArcDisplayMode.AllUnits
+            onFireArcDisplayModeChanged(fireArcDisplayMode)
+            refresh()
+        },
+        labelForValue = { value -> (value ?: FireArcDisplayMode.AllUnits).label },
+        menuWidth = FIRE_ARCS_DROPDOWN_MINIMUM_WIDTH,
+    )
     private var collapsed = true
     private var activeTab = LedgerPanelTab.Turns
     private var destroyedUnitsDisplay = initialDestroyedUnitsDisplay
     private var unitIconSizePx = UnitIconDisplaySize.coerce(initialUnitIconSizePx)
     private var unitIconSizeText = UnitIconDisplaySize.format(unitIconSizePx)
+    private var fireArcDisplayMode = initialFireArcDisplayMode
     private var markerInput: MapViewerStyledTextInput? = null
     private var unitIconSizeInput: MapViewerInputField? = null
     private var inputActive = false
@@ -277,6 +294,24 @@ internal class MapViewerLedgerPanel(
                 }
             }
         }
+        if (fireArcSettingsEnabled) {
+            inlineBlock.control(
+                parent = parent,
+                label = "Fire Arcs",
+                x = 0.0,
+                y = top + (CONTROL_BUTTON_HEIGHT + SETTINGS_ROW_GAP) * 2.0,
+                width = itemWidth,
+                inputMinimumWidth = FIRE_ARCS_DROPDOWN_MINIMUM_WIDTH,
+                height = CONTROL_BUTTON_HEIGHT,
+            ) { input, inputWidth ->
+                fireArcDisplayDropdown.renderTrigger(
+                    parent = input,
+                    value = fireArcDisplayMode,
+                    width = inputWidth,
+                    height = CONTROL_BUTTON_HEIGHT,
+                )
+            }
+        }
     }
 
     private fun renderRows(parent: Container, top: Double, turnPanel: TurnPanelState, itemWidth: Double) {
@@ -433,15 +468,19 @@ internal class MapViewerLedgerPanel(
                     SECTION_GAP +
                     renderMarkersHeight()
 
-            LedgerPanelTab.Settings -> (CONTROL_BUTTON_HEIGHT * 2.0) + SETTINGS_ROW_GAP
+            LedgerPanelTab.Settings -> if (fireArcSettingsEnabled) {
+                (CONTROL_BUTTON_HEIGHT + SETTINGS_ROW_GAP) * 3.0 - SETTINGS_ROW_GAP
+            } else {
+                (CONTROL_BUTTON_HEIGHT * 2.0) + SETTINGS_ROW_GAP
+            }
         }
 
     private fun contentMinimumWidth(): Double =
         maxOf(
             CONTENT_MINIMUM_WIDTH,
             if (activeTab == LedgerPanelTab.Settings) {
-                MapViewerInlineInputs.block(SETTINGS_INLINE_LABELS)
-                    .minimumWidth(maxOf(DESTROYED_UNITS_DROPDOWN_MINIMUM_WIDTH, UNIT_ICON_SIZE_INPUT_MINIMUM_WIDTH))
+                MapViewerInlineInputs.block(settingsInlineLabels())
+                    .minimumWidth(maxOf(DESTROYED_UNITS_DROPDOWN_MINIMUM_WIDTH, UNIT_ICON_SIZE_INPUT_MINIMUM_WIDTH, FIRE_ARCS_DROPDOWN_MINIMUM_WIDTH))
             } else {
                 0.0
             },
@@ -452,6 +491,12 @@ internal class MapViewerLedgerPanel(
 
     private fun layoutViewportHeight(): Int =
         overlay.stage?.views?.actualVirtualHeight ?: 0
+
+    private val fireArcSettingsEnabled: Boolean
+        get() = MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL in MapViewerFeatureFlags.enabled
+
+    private fun settingsInlineLabels(): List<String> =
+        if (fireArcSettingsEnabled) SETTINGS_INLINE_LABELS + "Fire Arcs" else SETTINGS_INLINE_LABELS
 
     companion object {
         fun destroyedUnitsDropdownMinimumWidth(): Double =
@@ -466,6 +511,13 @@ internal class MapViewerLedgerPanel(
             160.0,
             MapViewerDropdownLayoutBuilder.minimumMenuWidth(
                 labels = DestroyedUnitsDisplay.entries.map { it.label },
+                hasIcons = false,
+            ),
+        )
+        val FIRE_ARCS_DROPDOWN_MINIMUM_WIDTH = maxOf(
+            180.0,
+            MapViewerDropdownLayoutBuilder.minimumMenuWidth(
+                labels = FireArcDisplayMode.entries.map { it.label },
                 hasIcons = false,
             ),
         )

@@ -1,8 +1,8 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDamage
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDefinition
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipWeapon
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.color.RGBA
 import korlibs.korge.input.mouse
@@ -59,7 +59,7 @@ internal object OlympiadDawnShipStatusPanel {
         }
         val sections = parent.container().also { it.xy(0.0, top) }
         val componentHeight = renderComponentSection(sections, width, definition, damage, editable, componentsCollapsed, onComponentsCollapsedChanged, onDamageChanged)
-        renderWeaponSection(sections, width, definition.weapons, componentHeight, weaponsCollapsed, onWeaponsCollapsedChanged)
+        renderWeaponSection(sections, width, definition, damage, editable, componentHeight, weaponsCollapsed, onWeaponsCollapsedChanged, onDamageChanged)
     }
 
     private fun renderComponentSection(
@@ -105,14 +105,42 @@ internal object OlympiadDawnShipStatusPanel {
         return top
     }
 
-    private fun renderWeaponSection(parent: Container, width: Double, weapons: List<OlympiadDawnShipWeapon>, top: Double, collapsed: Boolean, onCollapsedChanged: () -> Unit) {
+    private fun renderWeaponSection(
+        parent: Container,
+        width: Double,
+        definition: OlympiadDawnShipDefinition,
+        damage: OlympiadDawnShipDamage,
+        editable: Boolean,
+        top: Double,
+        collapsed: Boolean,
+        onCollapsedChanged: () -> Unit,
+        onDamageChanged: (OlympiadDawnShipDamage) -> Unit,
+    ) {
         val section = parent.container().also { it.xy(0.0, top) }
-        MapViewerCollapsiblePanel.header(section, width, HEADER_HEIGHT, "${weapons.size} weapons", !collapsed, onCollapsedChanged)
+        val intactWeapons = definition.weapons.indices.count { index -> OlympiadDawnShip.weaponKey(definition, index) !in damage.destroyedWeapons }
+        MapViewerCollapsiblePanel.header(section, width, HEADER_HEIGHT, "$intactWeapons weapons", !collapsed, onCollapsedChanged)
         if (collapsed) return
-        weapons.forEachIndexed { index, weapon ->
+        definition.weapons.forEachIndexed { index, weapon ->
             val row = section.container().also { it.xy(0.0, HEADER_HEIGHT + index * SYSTEM_HEIGHT) }
-            MapViewerUiBoxes.box(row, width, SYSTEM_HEIGHT)
-            MapViewerTextViews.leftBox(row, weapon.name, width, SYSTEM_HEIGHT, color = Palette.Colours.WHITE)
+            val weaponKey = OlympiadDawnShip.weaponKey(definition, index)
+            val destroyed = weaponKey in damage.destroyedWeapons
+            MapViewerUiBoxes.box(row, width, SYSTEM_HEIGHT, active = !destroyed)
+            MapViewerCheckbox.render(
+                parent = row,
+                x = CHECKBOX_INSET,
+                y = (SYSTEM_HEIGHT - CHECKBOX_SIZE) * 0.5,
+                size = CHECKBOX_SIZE,
+                checked = !destroyed,
+                onToggle = if (editable) {
+                    { onDamageChanged(damage.copy(destroyedWeapons = damage.destroyedWeapons.toggle(weaponKey))) }
+                } else {
+                    {}
+                },
+            )
+            val arcs = weapon.arcs.takeIf(List<String>::isNotEmpty)?.joinToString(", ")?.let { " [$it]" }.orEmpty()
+            MapViewerTextViews.leftBox(row, weapon.name + arcs, width - TEXT_INSET, SYSTEM_HEIGHT, color = if (destroyed) Palette.Colours.RED else Palette.Colours.WHITE) {
+                x = TEXT_INSET
+            }
         }
     }
 

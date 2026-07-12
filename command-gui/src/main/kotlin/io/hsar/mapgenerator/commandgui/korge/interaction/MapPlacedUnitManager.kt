@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
 import io.hsar.mapgenerator.commandgui.korge.ui.DestroyedUnitsDisplay
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
@@ -21,6 +23,7 @@ import korlibs.korge.view.Image
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
 import korlibs.korge.view.graphics
+import korlibs.math.geom.Angle
 import korlibs.math.geom.Point
 import korlibs.math.geom.Vector2D
 import java.awt.Color
@@ -45,6 +48,7 @@ internal class MapPlacedUnitManager(
     private val onTransientNotice: (String) -> Unit = {},
     initialDestroyedUnitsDisplay: DestroyedUnitsDisplay = DestroyedUnitsDisplay.Full,
     initialUnitIconSizePx: Double = UnitIconDisplaySize.DEFAULT_PX,
+    initialFireArcDisplayMode: FireArcDisplayMode = FireArcDisplayMode.AllUnits,
     private val canInteractWithUnits: () -> Boolean = { true },
     private val isHigherPriorityDragInProgress: () -> Boolean = { false },
     private val noteReferenceMenuActionsProvider: (MapPlacedObjectSnapshot) -> List<MapPlacedObjectMenuAction> = { emptyList() },
@@ -64,6 +68,7 @@ internal class MapPlacedUnitManager(
     private var selectedUnitIds = emptySet<MapPlacedObjectId>()
     private var destroyedUnitsDisplay = initialDestroyedUnitsDisplay
     private var unitIconSizePx = UnitIconDisplaySize.coerce(initialUnitIconSizePx)
+    private var fireArcDisplayMode = initialFireArcDisplayMode
     private var lastAppliedViewportZoom: Double? = null
     private var dragState: DragState? = null
     private val editSessions = mutableMapOf<MapPlacedObjectId, UnitEditSession>()
@@ -109,6 +114,12 @@ internal class MapPlacedUnitManager(
 
         unitIconSizePx = coerced
         refreshIconDisplay(force = true)
+    }
+
+    fun updateFireArcDisplayMode(mode: FireArcDisplayMode) {
+        if (mode == fireArcDisplayMode) return
+        fireArcDisplayMode = mode
+        units.forEach { it.updateFacingOverlay() }
     }
 
     fun refreshIconDisplay(force: Boolean = false) {
@@ -783,6 +794,19 @@ internal class MapPlacedUnitManager(
             facingLayer.removeChildren()
             facingDegrees?.let { degrees ->
                 facingLayer.alpha = facingOverlayAlpha(forceActive || id in selectedUnitIds || dragState?.unit?.id == id)
+                if (MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL in MapViewerFeatureFlags.enabled && shouldDrawFireArcs(this)) {
+                    OlympiadDawnShip.definition(template.customProperties)?.let { definition ->
+                        drawBeamFireArcs(
+                            parent = facingLayer,
+                            width = iconView.bitmap.width.toDouble(),
+                            height = iconView.bitmap.height.toDouble(),
+                            facingDegrees = degrees,
+                            color = template.affiliation.overlayColor(),
+                            localPixelsPerUnit = 1.0 / (mapUnitsPerPixel * view.scaleX),
+                            weapons = definition.weapons,
+                        )
+                    }
+                }
                 drawFacingIndicator(
                     parent = facingLayer,
                     width = iconView.bitmap.width.toDouble(),
@@ -820,6 +844,15 @@ internal class MapPlacedUnitManager(
         fun canOpenContextMenu(): Boolean =
             !destroyed || destroyedUnitsDisplay != DestroyedUnitsDisplay.Hide
     }
+
+    private fun shouldDrawFireArcs(unit: PlacedUnit): Boolean =
+        FireArcSelectionResolver.shouldDraw(
+            mode = fireArcDisplayMode,
+            selectedUnitIds = selectedUnitIds,
+            selectedAffiliations = units.filter { it.id in selectedUnitIds }.map { it.template.affiliation },
+            targetId = unit.id,
+            targetAffiliation = unit.template.affiliation,
+        )
 
     private data class DragState(
         val unit: PlacedUnit,
@@ -900,21 +933,36 @@ internal class MapPlacedUnitManager(
         val innerRadius = baseRadius * 0.86
         val ringColor = toRgba(color)
 
-        repeat(FACING_RING_SEGMENTS) { index ->
-            val start = (index.toDouble() / FACING_RING_SEGMENTS) * PI * 2.0
-            val end = ((index + 1.0) / FACING_RING_SEGMENTS) * PI * 2.0
-            parent.graphics {
-                fill(ringColor) {
-                    moveTo(center.x + cos(start) * outerRadius, center.y + sin(start) * outerRadius)
-                    lineTo(center.x + cos(end) * outerRadius, center.y + sin(end) * outerRadius)
-                    lineTo(center.x + cos(end) * innerRadius, center.y + sin(end) * innerRadius)
-                    lineTo(center.x + cos(start) * innerRadius, center.y + sin(start) * innerRadius)
-                    close()
-                }
+        val radians = Math.toRadians(facingDegrees.toDouble())
+        val arcRadius = (outerRadius + innerRadius) * 0.5
+        val arcThickness = outerRadius - innerRadius
+        parent.graphics {
+            lineWidth = arcThickness
+            stroke(ringColor) {
+                arc(
+                    center,
+                    arcRadius,
+                    Angle.fromRadians(radians - (PI * 2.0 / 3.0)),
+                    Angle.fromRadians(radians - (PI / 3.0)),
+                )
+            }
+            lineWidth = arcThickness * 0.5
+            stroke(ringColor) {
+                arc(
+                    center,
+                    arcRadius,
+                    Angle.fromRadians(radians - PI),
+                    Angle.fromRadians(radians - (PI * 2.0 / 3.0)),
+                )
+                arc(
+                    center,
+                    arcRadius,
+                    Angle.fromRadians(radians - (PI / 3.0)),
+                    Angle.fromRadians(radians),
+                )
             }
         }
 
-        val radians = Math.toRadians(facingDegrees.toDouble())
         val direction = Vector2D(sin(radians), -cos(radians))
         val perpendicular = Vector2D(cos(radians), sin(radians))
         val tip = Point(
@@ -922,8 +970,8 @@ internal class MapPlacedUnitManager(
             center.y + direction.y * outerRadius * 1.22,
         )
         val base = Point(
-            center.x + direction.x * outerRadius * 0.72,
-            center.y + direction.y * outerRadius * 0.72,
+            center.x + direction.x * arcRadius,
+            center.y + direction.y * arcRadius,
         )
         val halfWidth = minOf(width, height) * 0.16
 
@@ -935,6 +983,77 @@ internal class MapPlacedUnitManager(
                 close()
             }
         }
+    }
+
+    private fun drawBeamFireArcs(
+        parent: Container,
+        width: Double,
+        height: Double,
+        facingDegrees: Int,
+        color: Color,
+        localPixelsPerUnit: Double,
+        weapons: List<OlympiadDawnShipWeapon>,
+    ) {
+        val center = Point(width * 0.5, height * 0.5)
+        val borderColor = toRgba(color)
+        val rangeBandColor = toRgba(color, (color.alpha * BEAM_RANGE_BAND_ALPHA).toInt())
+        weapons.forEach { weapon ->
+            val beamClass = weapon.beamClass ?: return@forEach
+            if (weapon.arcs.isEmpty()) return@forEach
+            val firstArc = BEAM_ARC_ORDER.indexOf(weapon.arcs.first())
+            if (firstArc < 0) return@forEach
+            val startDegrees = facingDegrees + firstArc * BEAM_ARC_WIDTH_DEGREES - BEAM_ARC_WIDTH_DEGREES * 0.5
+            val endDegrees = startDegrees + weapon.arcs.size * BEAM_ARC_WIDTH_DEGREES
+            val maximumRadius = OlympiadDawnBeamRules.maximumRangeU(beamClass) * localPixelsPerUnit
+            drawSectorArc(parent, center, maximumRadius, startDegrees, endDegrees, borderColor, BEAM_BORDER_WIDTH)
+            drawSectorRadius(parent, center, maximumRadius, startDegrees, borderColor, BEAM_BORDER_WIDTH)
+            drawSectorRadius(parent, center, maximumRadius, endDegrees, borderColor, BEAM_BORDER_WIDTH)
+            (1 until beamClass).forEach { band ->
+                drawSectorArc(
+                    parent,
+                    center,
+                    band * OlympiadDawnBeamRules.RANGE_BAND_SIZE_U * localPixelsPerUnit,
+                    startDegrees,
+                    endDegrees,
+                    rangeBandColor,
+                    BEAM_RANGE_BAND_WIDTH,
+                )
+            }
+        }
+    }
+
+    private fun drawSectorArc(parent: Container, center: Point, radius: Double, startDegrees: Double, endDegrees: Double, color: RGBA, width: Double) {
+        parent.graphics {
+            lineWidth = width
+            stroke(color) {
+                sectorPoints(center, radius, startDegrees, endDegrees).forEachIndexed { index, point ->
+                    if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
+                }
+            }
+        }
+    }
+
+    private fun drawSectorRadius(parent: Container, center: Point, radius: Double, degrees: Double, color: RGBA, width: Double) {
+        val end = sectorPoint(center, radius, degrees)
+        parent.graphics {
+            lineWidth = width
+            stroke(color) {
+                moveTo(center.x, center.y)
+                lineTo(end.x, end.y)
+            }
+        }
+    }
+
+    private fun sectorPoints(center: Point, radius: Double, startDegrees: Double, endDegrees: Double): List<Point> {
+        val segments = (kotlin.math.abs(endDegrees - startDegrees) / BEAM_ARC_SAMPLE_DEGREES).toInt().coerceAtLeast(1)
+        return (0..segments).map { index ->
+            sectorPoint(center, radius, startDegrees + (endDegrees - startDegrees) * index / segments)
+        }
+    }
+
+    private fun sectorPoint(center: Point, radius: Double, degrees: Double): Point {
+        val radians = Math.toRadians(degrees)
+        return Point(center.x + sin(radians) * radius, center.y - cos(radians) * radius)
     }
 
     private fun facingOverlayAlpha(active: Boolean): Double =
@@ -1016,10 +1135,15 @@ internal class MapPlacedUnitManager(
 
     private companion object {
         const val DRAG_PREVIEW_Z_INDEX = 15_000.0
-        private const val FACING_RING_SEGMENTS = 48
         private const val HIT_TOLERANCE = 8.0
         private const val DESTROYED_PARTIAL_ICON_ALPHA = 0.5
         private const val MIN_VIEWPORT_ZOOM = 0.0001
+        private const val BEAM_ARC_WIDTH_DEGREES = 60.0
+        private const val BEAM_ARC_SAMPLE_DEGREES = 5.0
+        private const val BEAM_BORDER_WIDTH = 1.5
+        private const val BEAM_RANGE_BAND_WIDTH = 1.0
+        private const val BEAM_RANGE_BAND_ALPHA = 0.5
+        private val BEAM_ARC_ORDER = listOf("F", "FS", "AS", "A", "AP", "FP")
     }
 }
 

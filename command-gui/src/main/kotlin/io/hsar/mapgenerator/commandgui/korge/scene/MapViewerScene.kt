@@ -20,6 +20,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.FireArcDisplayMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerController
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapActionHistory
@@ -260,6 +261,7 @@ internal class MapViewerScene(
                         val toolSettings = toolStorage.readSettings()
                         var destroyedUnitsDisplay = DestroyedUnitsDisplay.fromSettingsValue(toolSettings.displayDestroyedUnits)
                         var unitIconSizePx = UnitIconDisplaySize.coerce(toolSettings.unitIconSizePx)
+                        var fireArcDisplayMode = FireArcDisplayMode.fromSettingsValue(toolSettings.fireArcDisplayMode)
                         val thumbnailRenderer = MapThumbnailRenderer()
                         val generatedImageAssets = loadedOperation
                             ?.generatedImageAssets
@@ -551,6 +553,7 @@ internal class MapViewerScene(
                             onTransientNotice = { message -> transientNotice?.show(message) },
                             initialDestroyedUnitsDisplay = destroyedUnitsDisplay,
                             initialUnitIconSizePx = unitIconSizePx,
+                            initialFireArcDisplayMode = fireArcDisplayMode,
                             canInteractWithUnits = { effectiveTool() == MapViewerTool.SELECT },
                             isHigherPriorityDragInProgress = { drawingManager.isDragging },
                             noteReferenceMenuActionsProvider = { snapshot ->
@@ -849,6 +852,18 @@ internal class MapViewerScene(
                                 runCatching {
                                     toolStorage.writeSettings(
                                         toolStorage.readSettings().copy(unitIconSizePx = unitIconSizePx),
+                                    )
+                                }.onFailure { throwable ->
+                                    logger.error("Failed to save operation tool settings", throwable)
+                                }
+                            },
+                            initialFireArcDisplayMode = fireArcDisplayMode,
+                            onFireArcDisplayModeChanged = { displayMode ->
+                                fireArcDisplayMode = displayMode
+                                unitManager.updateFireArcDisplayMode(displayMode)
+                                runCatching {
+                                    toolStorage.writeSettings(
+                                        toolStorage.readSettings().copy(fireArcDisplayMode = displayMode.label),
                                     )
                                 }.onFailure { throwable ->
                                     logger.error("Failed to save operation tool settings", throwable)
