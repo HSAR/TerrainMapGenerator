@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.SensorDetection
+import io.hsar.mapgenerator.commandgui.korge.interaction.SensorReportMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepContactState
 import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepLostContact
 import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepVisibilityReport
@@ -12,10 +13,13 @@ import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.text.TextAlignment
 import korlibs.korge.view.Container
+import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
 import korlibs.korge.view.xy
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import java.util.concurrent.ConcurrentLinkedQueue
+import kotlin.concurrent.thread
 import kotlin.math.hypot
 
 internal class MapViewerSitrepDialog(
@@ -37,9 +41,13 @@ internal class MapViewerSitrepDialog(
     private val preferredWidth: Double = PREFERRED_WIDTH,
     private val preferredHeight: Double = PREFERRED_HEIGHT,
 ) {
-    private enum class ReportMode(val label: String, val emptySummaryText: String) {
-        SCIREP("SCIREP", "No hostile contacts to report."),
-        NAVREP("NAVREP", "No allied contacts to report."),
+    private enum class ReportMode(
+        val label: String,
+        val emptySummaryText: String,
+        val sensorReportMode: SensorReportMode,
+    ) {
+        SCIREP("SCIREP", "No hostile contacts to report.", SensorReportMode.SCIREP),
+        NAVREP("NAVREP", "No allied contacts to report.", SensorReportMode.NAVREP),
 
         ;
 
@@ -53,6 +61,11 @@ internal class MapViewerSitrepDialog(
     private var window: MapViewerDialogWindow? = null
     private var reportMode = ReportMode.SCIREP
     private val reportStatesByMode = mutableMapOf<ReportMode, UnitReportState>()
+    private val reportLock = Any()
+    private val pendingReports = ConcurrentLinkedQueue<PendingReport>()
+    private var reportGeneration = 0L
+    private var reportReady = false
+    private var lastCalculatedContactState: SitrepContactState? = null
     private val sierraContactNumbers = initialContactState.sierraContactNumbers.toMutableMap()
     private val usedSierraContactNumbers = (
             initialContactState.usedSierraContactNumbers + sierraContactNumbers.values
@@ -65,21 +78,25 @@ internal class MapViewerSitrepDialog(
             selected?.let { nextMode ->
                 if (reportMode != nextMode) {
                     reportMode = nextMode
-                    currentReport = buildReport()
-                    window?.refresh()
+                    requestReportRefresh()
                 }
             }
         },
         labelForValue = { it?.label ?: reportMode.label },
         menuWidth = MapViewerDropdownLayoutBuilder.minimumMenuWidth(ReportMode.entries.map { it.label }, hasIcons = false),
     )
-    private var currentReport = buildReport()
+    private var currentReport = emptyReport()
+
+    init {
+        root.addUpdater { consumePendingReport() }
+    }
 
     fun open(): Boolean {
         if (dialogManager.hasTarget(dialogKey)) {
             return false
         }
         val stage = root.stage ?: return false
+        requestReportRefresh()
         window = MapViewerDialogWindow(
             root = root,
             title = title(),
@@ -89,7 +106,7 @@ internal class MapViewerSitrepDialog(
             contentMinimumWidth = ::contentMinimumWidth,
             contentHeight = ::contentHeight,
             actions = listOf(
-                MapViewerDialogAction("Copy") { copyToClipboard() },
+                MapViewerDialogAction("Copy", enabled = { reportReady }) { copyToClipboard() },
                 MapViewerDialogAction("Dismiss") { close() },
             ),
             onClose = ::close,
@@ -110,7 +127,6 @@ internal class MapViewerSitrepDialog(
     }
 
     private fun renderContent(parent: Container, width: Double) {
-        currentReport = buildReport()
         var currentTop = 0.0
         MapViewerInlineInputs.dropdown(
             parent = parent,
@@ -130,23 +146,33 @@ internal class MapViewerSitrepDialog(
 
     private fun renderSensorOptions(parent: Container, width: Double, top: Double) {
         val optionWidth = (width - SENSOR_OPTION_SPLIT_GAP) / 2.0
+        val firstOption = if (reportMode == ReportMode.SCIREP) {
+            "Silent Running" to SILENT_RUNNING_KEY
+        } else {
+            "In Nebula" to IN_NEBULA_KEY
+        }
+        val secondOption = if (reportMode == ReportMode.SCIREP) {
+            "Active Sensors" to ACTIVE_SENSORS_KEY
+        } else {
+            "Active Warp" to ACTIVE_WARP_KEY
+        }
         renderSensorOption(
             parent = parent,
-            label = "Silent Running",
-            checked = observer.sensorOptionEnabled(SILENT_RUNNING_KEY),
+            label = firstOption.first,
+            checked = observer.sensorOptionEnabled(firstOption.second),
             y = top,
             left = 0.0,
             width = optionWidth,
-            onToggle = { updateObserverSensorOption(SILENT_RUNNING_KEY) },
+            onToggle = { updateObserverSensorOption(firstOption.second) },
         )
         renderSensorOption(
             parent = parent,
-            label = "Active Sensors",
-            checked = observer.sensorOptionEnabled(ACTIVE_SENSORS_KEY),
+            label = secondOption.first,
+            checked = observer.sensorOptionEnabled(secondOption.second),
             y = top,
             left = optionWidth + SENSOR_OPTION_SPLIT_GAP,
             width = optionWidth,
-            onToggle = { updateObserverSensorOption(ACTIVE_SENSORS_KEY) },
+            onToggle = { updateObserverSensorOption(secondOption.second) },
         )
     }
 
@@ -175,47 +201,50 @@ internal class MapViewerSitrepDialog(
     }
 
     private fun updateObserverSensorOption(key: String) {
-        val before = observer
-        val enabled = !before.sensorOptionEnabled(key)
-        val after = before.copy(customProperties = before.customProperties + (key to enabled.toString()))
-        onObserverCustomPropertiesChanged(before, after)
-        observer = after
-        candidates = candidates.map { candidate -> if (candidate.id == after.id) after else candidate }
-        currentReport = buildReport()
-        window?.refresh()
+        synchronized(reportLock) {
+            val before = observer
+            val enabled = !before.sensorOptionEnabled(key)
+            val after = before.copy(customProperties = before.customProperties + (key to enabled.toString()))
+            onObserverCustomPropertiesChanged(before, after)
+            observer = after
+            candidates = candidates.map { candidate -> if (candidate.id == after.id) after else candidate }
+        }
+        requestReportRefresh()
     }
 
     private fun updateObserver(updatedObserver: UnitSnapshot) {
-        val previousNaturalReport = initialReportFor(reportMode)
-        val updatedCandidates = candidates.map { candidate ->
-            if (candidate.id == updatedObserver.id) updatedObserver else candidate
+        synchronized(reportLock) {
+            val previousNaturalReport = initialReportFor(reportMode)
+            val updatedCandidates = candidates.map { candidate ->
+                if (candidate.id == updatedObserver.id) updatedObserver else candidate
+            }
+            val updatedObserverSnapshot = if (updatedObserver.id == observer.id) updatedObserver else observer
+            val updatedNaturalReport = SensorDetection.visibilityReport(
+                observer = updatedObserverSnapshot,
+                candidates = updatedCandidates,
+                mapWidth = mapWidth,
+                mapHeight = mapHeight,
+                mapUnitsPerPixel = mapUnitsPerPixel,
+                gridLayer = gridLayer,
+                includedIds = null,
+                candidateFilter = reportMode.candidateFilter(updatedObserverSnapshot.template.affiliation),
+                emptySummaryText = reportMode.emptySummaryText,
+                sensorReportMode = reportMode.sensorReportMode,
+            )
+            if (updatedObserver.id == observer.id) observer = updatedObserver
+            candidates = updatedCandidates
+            val naturalReport = initialReportFor(reportMode)
+            val reportState = currentReportState()
+            val previousDetectedIds = previousNaturalReport.detectedChecks.mapTo(mutableSetOf()) { it.unit.id }
+            val updatedDetectedIds = updatedNaturalReport.detectedChecks.mapTo(mutableSetOf()) { it.unit.id }
+            val previousIdentifiedIds = previousNaturalReport.visibleChecks.mapTo(mutableSetOf()) { it.unit.id }
+            val updatedIdentifiedIds = updatedNaturalReport.visibleChecks.mapTo(mutableSetOf()) { it.unit.id }
+            reportState.sensorContactIds.removeAll(previousDetectedIds - updatedDetectedIds)
+            reportState.identifiedIds.removeAll(previousIdentifiedIds - updatedIdentifiedIds)
+            reportState.sensorContactIds += naturalReport.detectedChecks.map { it.unit.id }
+            reportState.identifiedIds += naturalReport.visibleChecks.map { it.unit.id }
         }
-        val updatedObserverSnapshot = if (updatedObserver.id == observer.id) updatedObserver else observer
-        val updatedNaturalReport = SensorDetection.visibilityReport(
-            observer = updatedObserverSnapshot,
-            candidates = updatedCandidates,
-            mapWidth = mapWidth,
-            mapHeight = mapHeight,
-            mapUnitsPerPixel = mapUnitsPerPixel,
-            gridLayer = gridLayer,
-            includedIds = null,
-            candidateFilter = reportMode.candidateFilter(updatedObserverSnapshot.template.affiliation),
-            emptySummaryText = reportMode.emptySummaryText,
-        )
-        if (updatedObserver.id == observer.id) observer = updatedObserver
-        candidates = updatedCandidates
-        val naturalReport = initialReportFor(reportMode)
-        val reportState = currentReportState()
-        val previousDetectedIds = previousNaturalReport.detectedChecks.mapTo(mutableSetOf()) { it.unit.id }
-        val updatedDetectedIds = updatedNaturalReport.detectedChecks.mapTo(mutableSetOf()) { it.unit.id }
-        val previousIdentifiedIds = previousNaturalReport.visibleChecks.mapTo(mutableSetOf()) { it.unit.id }
-        val updatedIdentifiedIds = updatedNaturalReport.visibleChecks.mapTo(mutableSetOf()) { it.unit.id }
-        reportState.sensorContactIds.removeAll(previousDetectedIds - updatedDetectedIds)
-        reportState.identifiedIds.removeAll(previousIdentifiedIds - updatedIdentifiedIds)
-        reportState.sensorContactIds += naturalReport.detectedChecks.map { it.unit.id }
-        reportState.identifiedIds += naturalReport.visibleChecks.map { it.unit.id }
-        currentReport = buildReport()
-        window?.refresh()
+        requestReportRefresh()
     }
 
     private fun UnitSnapshot.sensorOptionEnabled(key: String): Boolean =
@@ -322,7 +351,6 @@ internal class MapViewerSitrepDialog(
     }
 
     private fun contentHeight(width: Double): Double {
-        currentReport = buildReport()
         val reportTextHeight = MapViewerWrappedText.height(MapViewerWrappedText.wrap(currentReport.displayText, width, TEXT_SIZE).size)
         return MapViewerDialogSpacing.INPUT_HEIGHT +
                 SECTION_GAP +
@@ -456,15 +484,17 @@ internal class MapViewerSitrepDialog(
     }
 
     private fun toggleSensorContact(unitId: MapPlacedObjectId) {
-        currentReportState().sensorContactIds.toggle(unitId)
-        currentReport = buildReport()
-        window?.refresh()
+        synchronized(reportLock) {
+            currentReportState().sensorContactIds.toggle(unitId)
+        }
+        requestReportRefresh()
     }
 
     private fun toggleIdentification(unitId: MapPlacedObjectId) {
-        currentReportState().identifiedIds.toggle(unitId)
-        currentReport = buildReport()
-        window?.refresh()
+        synchronized(reportLock) {
+            currentReportState().identifiedIds.toggle(unitId)
+        }
+        requestReportRefresh()
     }
 
     private fun currentReportState(): UnitReportState =
@@ -505,9 +535,50 @@ internal class MapViewerSitrepDialog(
             includedIds = null,
             candidateFilter = mode.candidateFilter(observer.template.affiliation),
             emptySummaryText = mode.emptySummaryText,
+            sensorReportMode = mode.sensorReportMode,
         )
 
-    private fun buildReport(): SitrepVisibilityReport {
+    private fun requestReportRefresh() {
+        val generation = ++reportGeneration
+        reportReady = false
+        currentReport = emptyReport()
+        window?.refresh()
+        thread(name = "command-gui-sitrep-report", isDaemon = true) {
+            val pending = synchronized(reportLock) {
+                val report = buildReport(notifyContactState = false)
+                PendingReport(generation, report, lastCalculatedContactState)
+            }
+            pendingReports += pending
+        }
+    }
+
+    private fun consumePendingReport() {
+        var pending: PendingReport? = null
+        while (true) {
+            val next = pendingReports.poll() ?: break
+            if (next.generation == reportGeneration) {
+                pending = next
+            }
+        }
+        pending?.let { result ->
+            currentReport = result.report
+            reportReady = true
+            result.contactState?.let(onContactStateChanged)
+            window?.refresh()
+        }
+    }
+
+    private fun emptyReport(): SitrepVisibilityReport =
+        SitrepVisibilityReport(
+            displayText = "Calculating SITREP...",
+            copyText = "",
+            visibleChecks = emptyList(),
+            detectedChecks = emptyList(),
+            unidentifiedChecks = emptyList(),
+            hiddenChecks = emptyList(),
+        )
+
+    private fun buildReport(notifyContactState: Boolean = true): SitrepVisibilityReport {
         val reportState = currentReportState()
         val selectedIds = reportState.sensorContactIds union reportState.identifiedIds
         val identifiedIds = reportState.sensorContactIds intersect reportState.identifiedIds
@@ -526,6 +597,7 @@ internal class MapViewerSitrepDialog(
             unidentifiedIds = unidentifiedIds,
             candidateFilter = reportMode.candidateFilter(observer.template.affiliation),
             emptySummaryText = reportMode.emptySummaryText,
+            sensorReportMode = reportMode.sensorReportMode,
         )
         if (reportMode != ReportMode.SCIREP) {
             return report
@@ -587,8 +659,7 @@ internal class MapViewerSitrepDialog(
                     unitClassCode = check.unit.unitClassLabel(),
                 )
             }
-        onContactStateChanged(
-            SitrepContactState(
+        val calculatedContactState = SitrepContactState(
                 sensorContactIds = reportState.sensorContactIds.toSet(),
                 identifiedIds = reportState.identifiedIds.toSet(),
                 sierraContactNumbers = sierraContactNumbers.toMap(),
@@ -596,8 +667,9 @@ internal class MapViewerSitrepDialog(
                 lastSeenPositions = currentLastSeen.mapValues { it.value.lastSeenPosition },
                 lastSeenContacts = currentLastSeen,
                 lostContacts = historicalLost,
-            ),
         )
+        lastCalculatedContactState = calculatedContactState
+        if (notifyContactState) onContactStateChanged(calculatedContactState)
         val scirepChecks = (report.visibleChecks + report.unidentifiedChecks)
             .sortedBy { sierraContactNumbers.getValue(it.unit.id) }
         val scirepText = SensorDetection.scirepText(
@@ -611,6 +683,7 @@ internal class MapViewerSitrepDialog(
             identificationAnnouncements = report.visibleChecks.filter { it.unit.id !in previousContactState.identifiedIds },
             lostContacts = newlyLost.filter { it.contactId !in matchedLostContactIds },
             lowConfidenceContacts = lowConfidenceContacts,
+            sensorConditionsPoor = reportMode == ReportMode.SCIREP && observer.sensorOptionEnabled(IN_NEBULA_KEY),
         )
         return report.copy(displayText = scirepText, copyText = scirepText)
     }
@@ -637,8 +710,8 @@ internal class MapViewerSitrepDialog(
         "${reportMode.label} - $unitName"
 
     private fun copyToClipboard() {
+        if (!reportReady) return
         runCatching {
-            currentReport = buildReport()
             Toolkit.getDefaultToolkit()
                 .systemClipboard
                 .setContents(StringSelection(currentReport.copyText), null)
@@ -647,6 +720,8 @@ internal class MapViewerSitrepDialog(
     }
 
     private fun close() {
+        reportGeneration++
+        reportReady = false
         dialogManager.unregister(this)
         window?.close()
         window = null
@@ -675,9 +750,17 @@ internal class MapViewerSitrepDialog(
         val lostContacts: MutableList<SitrepLostContact>,
     )
 
+    private data class PendingReport(
+        val generation: Long,
+        val report: SitrepVisibilityReport,
+        val contactState: SitrepContactState?,
+    )
+
     private companion object {
         const val SILENT_RUNNING_KEY = "silentRunning"
         const val ACTIVE_SENSORS_KEY = "activeSensors"
+        const val IN_NEBULA_KEY = "inNebula"
+        const val ACTIVE_WARP_KEY = "activeWarp"
         const val PREFERRED_WIDTH = 900.0
         const val PREFERRED_HEIGHT = 680.0
         const val PREFERRED_MIN_CONTENT_WIDTH = 600.0

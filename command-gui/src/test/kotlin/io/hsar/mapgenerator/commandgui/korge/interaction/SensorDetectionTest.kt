@@ -120,6 +120,109 @@ class SensorDetectionTest {
     }
 
     @Test
+    fun `active sensors are ignored by navrep visibility`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-000000000017",
+            instanceName = "Observer",
+            unitClass = "CA",
+            x = 0.5,
+            y = 0.5,
+            customProperties = mapOf("activeSensors" to "true"),
+        )
+        val target = unit(
+            id = "00000000-0000-0000-0000-000000000018",
+            instanceName = "Target",
+            unitClass = "CL",
+            x = 0.53,
+            y = 0.5,
+        )
+
+        val check = SensorDetection.visibilityChecks(
+            observer = observer,
+            candidates = listOf(observer, target),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+            sensorReportMode = SensorReportMode.NAVREP,
+        ).single()
+
+        assertThat(check.identificationRangeUnits, equalTo(18.0))
+        assertThat(check.detectionRangeUnits, equalTo(36.0))
+    }
+
+    @Test
+    fun `nebula and active warp affect navrep ranges by their configured bands`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-000000000019",
+            instanceName = "Observer",
+            unitClass = "CA",
+            x = 0.5,
+            y = 0.5,
+            customProperties = mapOf("inNebula" to "true", "activeWarp" to "true"),
+        )
+        val target = unit(
+            id = "00000000-0000-0000-0000-00000000001a",
+            instanceName = "Target",
+            unitClass = "CL",
+            x = 0.53,
+            y = 0.5,
+        )
+
+        val check = SensorDetection.visibilityChecks(
+            observer = observer,
+            candidates = listOf(observer, target),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+            sensorReportMode = SensorReportMode.NAVREP,
+        ).single()
+
+        assertThat(check.identificationRangeUnits, equalTo(36.0))
+        assertThat(check.detectionRangeUnits, equalTo(72.0))
+    }
+
+    @Test
+    fun `scirep reports poor nebula conditions and active radiation`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-00000000001b",
+            instanceName = "Observer",
+            unitClass = "CA",
+            x = 0.5,
+            y = 0.5,
+            customProperties = mapOf("inNebula" to "true"),
+        )
+        val target = unit(
+            id = "00000000-0000-0000-0000-00000000001c",
+            instanceName = "Target",
+            unitClass = "CL",
+            x = 0.51,
+            y = 0.5,
+            customProperties = mapOf("activeSensors" to "true"),
+        )
+        val check = SensorDetection.visibilityChecks(
+            observer = observer,
+            candidates = listOf(observer, target),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+            sensorReportMode = SensorReportMode.SCIREP,
+        ).single()
+
+        assertThat(
+            SensorDetection.scirepText(
+                checks = listOf(check),
+                identifiedIds = emptySet(),
+                contactNumbers = mapOf(target.id to 1),
+                mapWidth = 1_000,
+                mapHeight = 1_000,
+                emptySummaryText = "No hostile contacts to report.",
+                sensorConditionsPoor = true,
+            ),
+            equalTo("Sensor conditions poor. Contact actively radiating at extreme range as Sierra 1 at 510 500, range 10U has unknown midweight classification."),
+        )
+    }
+
+    @Test
     fun `silent running on a target reduces its detection and identification ranges by one band`() {
         val observer = unit(
             id = "00000000-0000-0000-0000-000000000015",

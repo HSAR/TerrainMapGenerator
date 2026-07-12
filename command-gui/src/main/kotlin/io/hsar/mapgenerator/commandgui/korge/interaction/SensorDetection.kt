@@ -12,6 +12,11 @@ internal data class SensorContact(
     val baseDetectionRangeUnits: Double,
 )
 
+internal enum class SensorReportMode {
+    SCIREP,
+    NAVREP,
+}
+
 internal data class SensorVisibilityCheck(
     val unit: UnitSnapshot,
     val visible: Boolean,
@@ -136,8 +141,9 @@ internal object SensorDetection {
         mapUnitsPerPixel: Double,
         gridLayer: GridLayer? = null,
         candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
+        sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
     ): List<SensorContact> =
-        visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer, candidateFilter)
+        visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer, candidateFilter, sensorReportMode)
             .filter { it.detected }
             .map {
                 SensorContact(
@@ -156,16 +162,17 @@ internal object SensorDetection {
         mapUnitsPerPixel: Double,
         gridLayer: GridLayer? = null,
         candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
+        sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
     ): List<SensorVisibilityCheck> =
         candidates.asSequence()
             .filter { it.id != observer.id }
             .filter(candidateFilter)
             .mapNotNull { candidate ->
                 val distanceUnits = observer.distanceTo(candidate, mapWidth, mapHeight, mapUnitsPerPixel)
-                val identification = candidate.identificationRangeUnits(observer)
+                val identification = candidate.identificationRangeUnits(observer, sensorReportMode)
                 val detection = identification?.let { it * DETECTION_RANGE_BAND_MULTIPLIER }
                 val baseDetectionRangeUnits = candidate.unitClassLabel().baseDetectionRangeUnits()
-                val notes = candidate.visibilityNotes()
+                val notes = candidate.visibilityNotes(sensorReportMode)
                 when {
                     candidate.transmissionInScope() -> SensorVisibilityCheck(
                         unit = candidate,
@@ -213,8 +220,9 @@ internal object SensorDetection {
         unidentifiedIds: Set<MapPlacedObjectId> = emptySet(),
         candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
         emptySummaryText: String = "No allied contacts to report.",
+        sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
     ): SitrepVisibilityReport {
-        val checks = visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer, candidateFilter)
+        val checks = visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer, candidateFilter, sensorReportMode)
         val effectiveIncludedIds = includedIds ?: checks.filter { it.visible }.mapTo(mutableSetOf()) { it.unit.id }
         val visibleChecks = checks.filter { it.unit.id in effectiveIncludedIds }
         val unidentifiedChecks = checks.filter { it.unit.id in unidentifiedIds && it.unit.id !in effectiveIncludedIds }
@@ -253,8 +261,9 @@ internal object SensorDetection {
         identificationAnnouncements: List<SensorVisibilityCheck> = emptyList(),
         lostContacts: List<SitrepLostContact> = emptyList(),
         lowConfidenceContacts: Map<MapPlacedObjectId, SitrepLostContact> = emptyMap(),
-    ): String =
-        if (checks.isEmpty() && lostContacts.isEmpty()) {
+        sensorConditionsPoor: Boolean = false,
+    ): String {
+        val report = if (checks.isEmpty() && lostContacts.isEmpty()) {
             emptySummaryText
         } else {
             val newlyIdentifiedIds = identificationAnnouncements.map { it.unit.id }.toSet()
@@ -265,7 +274,12 @@ internal object SensorDetection {
                     val opening = if (lowConfidence != null) {
                         "New contact tentatively designated $designation ${contactNumbers.getValue(check.unit.id)} from last known position"
                     } else if (check.unit.id !in identifiedIds) {
-                        "Contact detected at extreme range as Sierra ${contactNumbers.getValue(check.unit.id)}"
+                        val contactPrefix = if (check.unit.customProperties.booleanProperty("activeSensors")) {
+                            "Contact actively radiating"
+                        } else {
+                            "Contact detected"
+                        }
+                        "$contactPrefix at extreme range as Sierra ${contactNumbers.getValue(check.unit.id)}"
                     } else {
                         "Contact Master ${contactNumbers.getValue(check.unit.id)}"
                     }
@@ -309,6 +323,8 @@ internal object SensorDetection {
                 },
             )
         }
+        return if (sensorConditionsPoor) "Sensor conditions poor. $report" else report
+    }
 
     fun combineScirepContactSegments(segments: List<ScirepContactSegment>): String =
         segments
@@ -354,27 +370,33 @@ internal object SensorDetection {
             ?: template.customProperties.stringProperty(OlympiadDawnShip.MASS_KEY))
             ?.toIntOrNull()
 
-    private fun UnitSnapshot.identificationRangeUnits(observer: UnitSnapshot): Double? {
+    private fun UnitSnapshot.identificationRangeUnits(observer: UnitSnapshot, sensorReportMode: SensorReportMode): Double? {
         val base = unitClassLabel().baseDetectionRangeUnits()
         val observerModifier = observer.unitClassLabel().sensorRangeModifier()
 
         val bandOffset = buildList {
-            if (customProperties.booleanProperty("activeSensors")) add(1)
             customProperties.warpBonus()?.let(::add)
+            if (sensorReportMode == SensorReportMode.NAVREP && customProperties.booleanProperty("activeWarp")) add(2)
             if (customProperties.booleanProperty("transmitting") && !customProperties.booleanProperty("transmissionInScope")) {
                 add(1)
             }
             repeat(customProperties.intProperty("nebula") ?: 0) {
                 add(-1)
             }
-            if (customProperties.booleanProperty("silentRunning")) add(-1)
+            if (sensorReportMode == SensorReportMode.NAVREP && customProperties.booleanProperty("inNebula")) add(-1)
+            if (sensorReportMode == SensorReportMode.SCIREP && customProperties.booleanProperty("silentRunning")) add(-1)
+            if (sensorReportMode == SensorReportMode.SCIREP && customProperties.booleanProperty("activeSensors")) add(1)
         }.sum()
 
         if (customProperties.booleanProperty("transmissionInScope")) {
             return Double.POSITIVE_INFINITY
         }
 
-        val observerSensorModifier = if (observer.customProperties.booleanProperty("activeSensors")) 1 else 0
+        val observerSensorModifier = buildList {
+            if (sensorReportMode == SensorReportMode.SCIREP && observer.customProperties.booleanProperty("activeSensors")) add(1)
+            if (sensorReportMode == SensorReportMode.NAVREP && observer.customProperties.booleanProperty("activeWarp")) add(2)
+            if (sensorReportMode == SensorReportMode.NAVREP && observer.customProperties.booleanProperty("inNebula")) add(-1)
+        }.sum()
         return (base * observerModifier) * 2.0.pow(bandOffset + observerSensorModifier)
     }
 
@@ -392,10 +414,10 @@ internal object SensorDetection {
             (mapCoordinate.y - other.mapCoordinate.y) * mapHeight,
         ) * mapUnitsPerPixel
 
-    private fun UnitSnapshot.visibilityNotes(): List<String> =
+    private fun UnitSnapshot.visibilityNotes(sensorReportMode: SensorReportMode): List<String> =
         buildList {
             unitClassLabel()?.let { add("Class $it baseline.") }
-            if (customProperties.booleanProperty("activeSensors")) {
+            if (sensorReportMode == SensorReportMode.SCIREP && customProperties.booleanProperty("activeSensors")) {
                 add("Active sensors: +100% range, +1 signature.")
             }
             customProperties.warpBonus()?.let {
@@ -410,11 +432,17 @@ internal object SensorDetection {
             if (customProperties.booleanProperty("transmitting")) {
                 add("Transmitting: automatically detected if in cone and range.")
             }
-            if (customProperties.booleanProperty("silentRunning")) {
+            if (sensorReportMode == SensorReportMode.SCIREP && customProperties.booleanProperty("silentRunning")) {
                 add("Silent running: -1 signature, drive rating halved.")
             }
             customProperties.intProperty("nebula")?.takeIf { it > 0 }?.let {
                 add("Nebula: -$it signature.")
+            }
+            if (sensorReportMode == SensorReportMode.NAVREP && customProperties.booleanProperty("activeWarp")) {
+                add("Active warp: +2 detection bands.")
+            }
+            if (sensorReportMode == SensorReportMode.NAVREP && customProperties.booleanProperty("inNebula")) {
+                add("In nebula: -1 detection band.")
             }
         }
 
