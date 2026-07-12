@@ -118,13 +118,18 @@ internal class SitrepContactPersistence private constructor(
 
         fun fromJson(json: ByteArray?): SitrepContactPersistence = load(json)
 
-        fun load(json: ByteArray?): SitrepContactPersistence {
-            val root = runCatching {
+        internal fun fromRoot(root: ObjectNode): SitrepContactPersistence = load(root)
+
+        fun load(json: ByteArray?): SitrepContactPersistence = load(
+            runCatching {
                 json?.takeIf { it.isNotEmpty() }
                     ?.let { OperationSaveJson.objectMapper.readTree(it) }
                     ?.takeIf { it.isObject }
                     ?.deepCopy<ObjectNode>()
-            }.getOrNull() ?: JsonNodeFactory.instance.objectNode()
+            }.getOrNull() ?: JsonNodeFactory.instance.objectNode(),
+        )
+
+        private fun load(root: ObjectNode): SitrepContactPersistence {
             val states = mutableMapOf<SitrepContactKey, SitrepContactState>()
             (root.get(FIELD_NAME) as? ArrayNode)?.forEach { record ->
                 val turn = record.path("turn").intValue()

@@ -276,7 +276,16 @@ internal class MapPlacedUnitManager(
         )
     }
 
-    fun upsert(snapshot: UnitSnapshot) {
+    fun upsert(snapshot: UnitSnapshot) = upsert(snapshot, notify = true)
+
+    fun restoreAll(snapshots: List<UnitSnapshot>) {
+        units.forEach { it.view.removeFromParent() }
+        units.clear()
+        snapshots.forEach { upsert(it, notify = false) }
+        onUnitsChanged()
+    }
+
+    private fun upsert(snapshot: UnitSnapshot, notify: Boolean) {
         val unitSize = worldUnitSize(snapshot.template.bitmap)
         val existing = units.firstOrNull { it.id == snapshot.id }
         if (existing != null) {
@@ -296,7 +305,7 @@ internal class MapPlacedUnitManager(
             existing.applyDestroyedUnitsDisplay()
             positionView(existing)
             syncEditDialog(existing)
-            onUnitsChanged()
+            if (notify) onUnitsChanged()
             return
         }
 
@@ -319,7 +328,7 @@ internal class MapPlacedUnitManager(
         placedUnit.applyDestroyedUnitsDisplay()
         positionView(placedUnit)
         units += placedUnit
-        onUnitsChanged()
+        if (notify) onUnitsChanged()
     }
 
     fun remove(id: MapPlacedObjectId): UnitSnapshot? =
@@ -343,6 +352,13 @@ internal class MapPlacedUnitManager(
 
     fun snapshots(): List<UnitSnapshot> =
         units.map { it.snapshot() }
+
+    fun restoreSitrepDialog(dialog: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog): Boolean =
+        dialog.targetId
+            ?.let { value -> runCatching { MapPlacedObjectId(java.util.UUID.fromString(value)) }.getOrNull() }
+            ?.let { id -> units.firstOrNull { it.id == id } }
+            ?.let { unit -> unit.openNavrepVisibilityDialog(unit, dialog.bounds); true }
+            ?: false
 
     fun cancelTransientState(targetId: MapPlacedObjectId? = null) {
         if (targetId == null || dragState?.unit?.id == targetId) {
@@ -729,7 +745,10 @@ internal class MapPlacedUnitManager(
                 onSelected = { deferredActionRunner.launch { openNavrepVisibilityDialog(this@PlacedUnit) } },
             ).withRequiredFeatureFlags(io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL)
 
-        private fun openNavrepVisibilityDialog(unit: PlacedUnit) {
+        fun openNavrepVisibilityDialog(
+            unit: PlacedUnit,
+            restoredBounds: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogBounds? = null,
+        ) {
             val snapshot = unit.snapshot()
             val turnNumber = sitrepTurnNumberProvider()
             MapViewerSitrepDialog(
@@ -756,6 +775,7 @@ internal class MapPlacedUnitManager(
                     dialogManager.broadcast(after)
                 },
                 onTransientNotice = onTransientNotice,
+                restoredBounds = restoredBounds,
             ).open()
         }
 
@@ -997,27 +1017,84 @@ internal class MapPlacedUnitManager(
         val center = Point(width * 0.5, height * 0.5)
         val borderColor = toRgba(color)
         val rangeBandColor = toRgba(color, (color.alpha * BEAM_RANGE_BAND_ALPHA).toInt())
-        weapons.forEach { weapon ->
-            val beamClass = weapon.beamClass ?: return@forEach
-            if (weapon.arcs.isEmpty()) return@forEach
-            val firstArc = BEAM_ARC_ORDER.indexOf(weapon.arcs.first())
-            if (firstArc < 0) return@forEach
-            val startDegrees = facingDegrees + firstArc * BEAM_ARC_WIDTH_DEGREES - BEAM_ARC_WIDTH_DEGREES * 0.5
-            val endDegrees = startDegrees + weapon.arcs.size * BEAM_ARC_WIDTH_DEGREES
-            val maximumRadius = OlympiadDawnBeamRules.maximumRangeU(beamClass) * localPixelsPerUnit
-            drawSectorArc(parent, center, maximumRadius, startDegrees, endDegrees, borderColor, BEAM_BORDER_WIDTH)
-            drawSectorRadius(parent, center, maximumRadius, startDegrees, borderColor, BEAM_BORDER_WIDTH)
-            drawSectorRadius(parent, center, maximumRadius, endDegrees, borderColor, BEAM_BORDER_WIDTH)
-            (1 until beamClass).forEach { band ->
+
+        data class ArcRange(val arcIndex: Int, val band: Int)
+
+        val beamWeapons = weapons.mapNotNull { weapon ->
+            val beamClass = weapon.beamClass ?: return@mapNotNull null
+            val arcIndices = weapon.arcs.mapNotNull { BEAM_ARC_ORDER.indexOf(it).takeIf { index -> index >= 0 } }.distinct()
+            arcIndices.takeIf { it.isNotEmpty() }?.let { beamClass to it }
+        }
+        val coverage = mutableMapOf<ArcRange, Int>()
+        beamWeapons.forEach { (beamClass, arcIndices) ->
+            arcIndices.forEach { arcIndex ->
+                (1..beamClass).forEach { band ->
+                    val key = ArcRange(arcIndex, band)
+                    coverage[key] = (coverage[key] ?: 0) + 1
+                }
+            }
+        }
+
+        val maximumBand = beamWeapons.maxOfOrNull { it.first } ?: return
+        (1..maximumBand).forEach { band ->
+            val counts = BEAM_ARC_ORDER.indices.map { arcIndex -> coverage[ArcRange(arcIndex, band)] ?: 0 }
+            val outerCounts = BEAM_ARC_ORDER.indices.map { arcIndex ->
+                beamWeapons.count { (beamClass, arcIndices) -> beamClass == band && arcIndex in arcIndices }
+            }
+            val commonCount = counts.minOrNull() ?: 0
+            val radius = band * OlympiadDawnBeamRules.RANGE_BAND_SIZE_U * localPixelsPerUnit
+            val widthForCount = { count: Int, isOuter: Boolean ->
+                if (count > 1) {
+                    (if (isOuter) BEAM_BORDER_WIDTH else BEAM_RANGE_BAND_WIDTH) * 2.0
+                } else {
+                    if (isOuter) BEAM_BORDER_WIDTH else BEAM_RANGE_BAND_WIDTH
+                }
+            }
+
+            val uniformBoundary = outerCounts.distinct().size <= 1
+            if (commonCount > 0 && uniformBoundary) {
+                drawCircle(
+                    parent,
+                    center,
+                    radius,
+                    if (outerCounts.firstOrNull()?.let { it > 0 } == true) borderColor else rangeBandColor,
+                    widthForCount(commonCount, outerCounts.firstOrNull()?.let { it > 0 } == true),
+                )
+            }
+            counts.forEachIndexed { arcIndex, count ->
+                if (count == 0 || (count <= commonCount && uniformBoundary)) return@forEachIndexed
+                val startDegrees = facingDegrees + arcIndex * BEAM_ARC_WIDTH_DEGREES - BEAM_ARC_WIDTH_DEGREES * 0.5
                 drawSectorArc(
                     parent,
                     center,
-                    band * OlympiadDawnBeamRules.RANGE_BAND_SIZE_U * localPixelsPerUnit,
+                    radius,
                     startDegrees,
-                    endDegrees,
-                    rangeBandColor,
-                    BEAM_RANGE_BAND_WIDTH,
+                    startDegrees + BEAM_ARC_WIDTH_DEGREES,
+                    if (outerCounts[arcIndex] > 0) borderColor else rangeBandColor,
+                    widthForCount(count, outerCounts[arcIndex] > 0),
                 )
+            }
+        }
+
+        beamWeapons.forEach { (beamClass, arcIndices) ->
+            if (arcIndices.size < BEAM_ARC_ORDER.size) {
+                val firstArc = arcIndices.first()
+                val startDegrees = facingDegrees + firstArc * BEAM_ARC_WIDTH_DEGREES - BEAM_ARC_WIDTH_DEGREES * 0.5
+                val endDegrees = startDegrees + arcIndices.size * BEAM_ARC_WIDTH_DEGREES
+                val maximumRadius = beamClass * OlympiadDawnBeamRules.RANGE_BAND_SIZE_U * localPixelsPerUnit
+                drawSectorRadius(parent, center, maximumRadius, startDegrees, borderColor, BEAM_BORDER_WIDTH)
+                drawSectorRadius(parent, center, maximumRadius, endDegrees, borderColor, BEAM_BORDER_WIDTH)
+            }
+        }
+    }
+
+    private fun drawCircle(parent: Container, center: Point, radius: Double, color: RGBA, width: Double) {
+        parent.graphics {
+            lineWidth = width
+            stroke(color) {
+                sectorPoints(center, radius, 0.0, 360.0).forEachIndexed { index, point ->
+                    if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
+                }
             }
         }
     }

@@ -1,6 +1,42 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.ObjectNode
+import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
 import korlibs.math.geom.Vector2D
+
+internal data class MapViewerPersistedDialog(
+    val type: String,
+    val targetId: String? = null,
+    val bounds: MapViewerDialogBounds,
+    val draft: JsonNode? = null,
+) {
+    fun toJson(): ObjectNode = OperationSaveJson.objectMapper.createObjectNode().apply {
+        put("type", type)
+        targetId?.let { put("targetId", it) }
+        putObject("bounds").apply {
+            put("left", bounds.left)
+            put("top", bounds.top)
+            put("width", bounds.width)
+            put("height", bounds.height)
+        }
+        draft?.let { set<JsonNode>("draft", it) }
+    }
+
+    companion object {
+        fun fromJson(node: JsonNode): MapViewerPersistedDialog? {
+            val bounds = node.path("bounds").takeIf { it.isObject } ?: return null
+            val values = listOf("left", "top", "width", "height").map { bounds.path(it) }
+            if (node.path("type").textValue() == null || values.any { !it.isNumber }) return null
+            return MapViewerPersistedDialog(
+                type = node.path("type").textValue(),
+                targetId = node.path("targetId").textValue(),
+                bounds = MapViewerDialogBounds(values[0].doubleValue(), values[1].doubleValue(), values[2].doubleValue(), values[3].doubleValue()),
+                draft = node.get("draft")?.deepCopy(),
+            )
+        }
+    }
+}
 
 internal class MapViewerDialogManager {
     private val dialogs = linkedMapOf<Any, DialogEntry>()
@@ -11,6 +47,7 @@ internal class MapViewerDialogManager {
         blocksScreenPoint: (Vector2D) -> Boolean,
         isTextInputActive: () -> Boolean = { false },
         sync: (Any) -> Unit = {},
+        persistedDialog: (() -> MapViewerPersistedDialog?)? = null,
         close: () -> Unit,
     ) {
         dialogs[owner] = DialogEntry(
@@ -18,6 +55,7 @@ internal class MapViewerDialogManager {
             blocksScreenPoint = blocksScreenPoint,
             isTextInputActive = isTextInputActive,
             sync = sync,
+            persistedDialog = persistedDialog,
             close = close,
         )
     }
@@ -61,11 +99,15 @@ internal class MapViewerDialogManager {
     fun hasOpenDialogs(): Boolean =
         dialogs.isNotEmpty()
 
+    fun persistedDialogs(): List<MapViewerPersistedDialog> =
+        dialogs.values.mapNotNull { it.persistedDialog?.invoke() }
+
     private data class DialogEntry(
         val targetKey: Any,
         val blocksScreenPoint: (Vector2D) -> Boolean,
         val isTextInputActive: () -> Boolean,
         val sync: (Any) -> Unit,
+        val persistedDialog: (() -> MapViewerPersistedDialog?)?,
         val close: () -> Unit,
     )
 }

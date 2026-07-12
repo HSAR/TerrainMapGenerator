@@ -39,6 +39,7 @@ internal class MapViewerNotesPanel(
     private val toggleButton = overlay.container()
     private var collapsed = true
     private var dialogWindow: MapViewerDialogWindow? = null
+    private var restoredPanelBounds: MapViewerDialogBounds? = null
     private val noteDialogs = mutableSetOf<MapViewerNoteDialog>()
     private var layout = MapViewerNotesPanelLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
 
@@ -73,6 +74,22 @@ internal class MapViewerNotesPanel(
     fun openNote(noteId: MapNoteId): Boolean =
         noteStore.snapshot(noteId)?.let { openNote(it) } ?: false
 
+    fun persistedDialog(): MapViewerPersistedDialog? =
+        dialogWindow?.currentBounds?.let { bounds -> MapViewerPersistedDialog("notes", bounds = bounds) }
+
+    fun restoreDialog(dialog: MapViewerPersistedDialog) {
+        restoredPanelBounds = dialog.bounds
+        closeDialog()
+        openDialog()
+    }
+
+    fun restoreNote(dialog: MapViewerPersistedDialog): Boolean =
+        dialog.targetId
+            ?.let { runCatching { MapNoteId(java.util.UUID.fromString(it)) }.getOrNull() }
+            ?.let(noteStore::snapshot)
+            ?.let { openNote(it, dialog) }
+            ?: false
+
     private fun relayout(viewportWidth: Int, viewportHeight: Int) {
         layout = MapViewerNotesPanelLayoutBuilder.build(viewportWidth, viewportHeight, collapsed = true)
         MapViewerSidePanelChrome.renderToggle(
@@ -89,6 +106,7 @@ internal class MapViewerNotesPanel(
             root = overlay,
             title = "Notes",
             initialPosition = ::initialDialogPosition,
+            restoredBounds = restoredPanelBounds,
             preferredWidth = MapViewerNotesPanelLayoutBuilder.PANEL_WIDTH,
             preferredHeight = PREFERRED_DIALOG_HEIGHT,
             contentMinimumWidth = { CONTENT_MINIMUM_WIDTH },
@@ -98,6 +116,7 @@ internal class MapViewerNotesPanel(
             mode = MapViewerDialogMode.FLOATING,
         )
         dialogWindow?.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
+        restoredPanelBounds = null
     }
 
     private fun initialDialogPosition(defaultBounds: MapViewerDialogBounds): Vector2D =
@@ -197,7 +216,7 @@ internal class MapViewerNotesPanel(
         }
     }
 
-    private fun openNote(note: MapNoteSnapshot): Boolean {
+    private fun openNote(note: MapNoteSnapshot, restored: MapViewerPersistedDialog? = null): Boolean {
         MapViewerNoteDialog(
             root = overlay,
             dialogManager = dialogManager,
@@ -219,6 +238,7 @@ internal class MapViewerNotesPanel(
                 dialogWindow?.refresh()
             },
             onClosed = { dialog -> noteDialogs -= dialog },
+            restored = restored,
         ).also { dialog ->
             if (dialog.open()) {
                 noteDialogs += dialog

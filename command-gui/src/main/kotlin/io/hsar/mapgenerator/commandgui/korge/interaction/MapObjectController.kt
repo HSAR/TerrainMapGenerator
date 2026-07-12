@@ -43,6 +43,13 @@ internal class MapObjectController(
         clearTransientState()
     }
 
+    fun restoreAll(snapshots: List<MapPlacedObjectSnapshot>) {
+        unitManager.restoreAll(snapshots.filterIsInstance<UnitSnapshot>())
+        drawingStore.replaceAll(snapshots.filterIsInstance<DrawingSnapshot>())
+        onDrawingsChanged(drawingStore.state)
+        clearTransientState()
+    }
+
     fun updateObject(snapshot: MapPlacedObjectSnapshot) {
         when (snapshot) {
             is UnitSnapshot -> unitManager.upsert(snapshot)

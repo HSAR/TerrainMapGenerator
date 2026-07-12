@@ -6,6 +6,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapNotePatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
+import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.color.RGBA
 import korlibs.image.text.TextAlignment
@@ -14,6 +15,7 @@ import korlibs.korge.view.Container
 import korlibs.korge.view.container
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
+import java.util.*
 
 @OptIn(KorgeExperimental::class)
 internal class MapViewerNoteDialog(
@@ -27,6 +29,7 @@ internal class MapViewerNoteDialog(
     private val onSaved: (MapNoteSnapshot, MapNoteSnapshot) -> Unit,
     private val onDeleted: (MapNoteSnapshot) -> Unit,
     private val onClosed: (MapViewerNoteDialog) -> Unit = {},
+    private val restored: MapViewerPersistedDialog? = null,
 ) {
     private var current = note
     private var titleValue = note.title
@@ -37,6 +40,18 @@ internal class MapViewerNoteDialog(
     private var window: MapViewerDialogWindow? = null
     private var referenceDropTargetBounds: ScreenBounds? = null
     private var referencesExpanded = false
+
+    init {
+        restored?.draft?.let { draft ->
+            titleValue = draft.path("title").textValue() ?: titleValue
+            bodyValue = draft.path("body").textValue() ?: bodyValue
+            val references = draft.path("references").mapNotNull { value ->
+                value.textValue()?.let { runCatching { MapPlacedObjectId(UUID.fromString(it)) }.getOrNull() }
+            }
+            if (references.isNotEmpty()) referencedObjectIds = references.toMutableSet()
+            referencesExpanded = draft.path("referencesExpanded").booleanValue()
+        }
+    }
 
     val isTextInputActive: Boolean
         get() = titleInput?.isFocused == true || bodyInput?.isFocused == true
@@ -70,6 +85,7 @@ internal class MapViewerNoteDialog(
             onClose = ::close,
             renderContent = ::renderContent,
             focusTargetBoundsProvider = { focusTargetBoundsProvider() },
+            restoredBounds = restored?.bounds,
             mode = MapViewerDialogMode.FLOATING,
         )
         dialogManager.register(
@@ -77,6 +93,21 @@ internal class MapViewerNoteDialog(
             targetKey = note.id,
             blocksScreenPoint = { point -> window?.blocksScreenPoint(point) == true },
             isTextInputActive = { isTextInputActive },
+            persistedDialog = {
+                window?.currentBounds?.let { bounds ->
+                    MapViewerPersistedDialog(
+                        type = TYPE,
+                        targetId = note.id.value.toString(),
+                        bounds = bounds,
+                        draft = OperationSaveJson.objectMapper.createObjectNode().apply {
+                            put("title", titleValue)
+                            put("body", bodyValue)
+                            put("referencesExpanded", referencesExpanded)
+                            putArray("references").also { ids -> referencedObjectIds.forEach { ids.add(it.value.toString()) } }
+                        },
+                    )
+                }
+            },
             close = ::close,
         )
         window?.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
@@ -311,6 +342,7 @@ internal class MapViewerNoteDialog(
         "Note - ${title.ifBlank { "Untitled Note" }}"
 
     private companion object {
+        const val TYPE = "note"
         const val PREFERRED_WIDTH = 700.0
         const val PREFERRED_HEIGHT = 720.0
         const val CONTENT_MINIMUM_WIDTH = 420.0

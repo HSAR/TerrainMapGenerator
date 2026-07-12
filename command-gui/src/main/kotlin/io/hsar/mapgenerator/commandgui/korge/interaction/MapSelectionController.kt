@@ -75,6 +75,12 @@ internal class MapSelectionController(
         publish()
     }
 
+    fun restoreSelection(ids: Iterable<MapPlacedObjectId>) {
+        selectedIds.clear()
+        selectedIds += ids.filter { objectController.snapshot(it)?.let(isSelectableObject) == true }
+        publish()
+    }
+
     fun beginLeftDrag(screenPoint: Vector2D, altHeld: Boolean = false, shiftHeld: Boolean = false): Boolean {
         if (beginResizeIfHandleHit(screenPoint, altHeld)) {
             return true

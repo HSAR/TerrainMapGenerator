@@ -35,6 +35,12 @@ internal class MapDrawingStore {
         activePreview = null
     }
 
+    fun replaceAll(snapshots: List<DrawingSnapshot>) {
+        committedDrawings.clear()
+        committedDrawings += snapshots.map { PlacedDrawing(it.id, it.drawing) }
+        activePreview = null
+    }
+
     fun remove(id: MapPlacedObjectId): DrawingSnapshot? =
         committedDrawings.indexOfFirst { it.id == id }
             .takeIf { it >= 0 }

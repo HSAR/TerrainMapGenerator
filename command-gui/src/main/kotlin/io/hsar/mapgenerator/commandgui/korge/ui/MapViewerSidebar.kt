@@ -43,6 +43,7 @@ internal class MapViewerSidebar(
     private var dragState: DragState? = null
     private var lastDragPointer: Vector2D? = null
     private var dialogWindow: MapViewerDialogWindow? = null
+    private var restoredPanelBounds: MapViewerDialogBounds? = null
     private var layout = MapViewerSidebarLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
 
     internal val isUnitDragging: Boolean
@@ -116,6 +117,13 @@ internal class MapViewerSidebar(
         }
     }
 
+    fun restoreUnitTemplates(snapshots: List<UnitTemplateSnapshot>) {
+        unitTemplates.clear()
+        unitTemplates += snapshots.sortedBy { it.index }.map { UnitTemplateRow(it.id, it.template) }
+        relayout(layoutViewportWidth(), layoutViewportHeight())
+        dialogWindow?.refresh()
+    }
+
     fun removeUnitTemplate(id: UnitTemplateId, notify: Boolean = true): UnitTemplateSnapshot? {
         dialogManager.closeTarget(id)
         val index = unitTemplates.indexOfFirst { it.id == id }
@@ -132,6 +140,15 @@ internal class MapViewerSidebar(
     fun snapshotUnitTemplate(id: UnitTemplateId): UnitTemplateSnapshot? {
         val index = unitTemplates.indexOfFirst { it.id == id }
         return unitTemplates.getOrNull(index)?.snapshot(index)
+    }
+
+    fun persistedDialog(): MapViewerPersistedDialog? =
+        dialogWindow?.currentBounds?.let { bounds -> MapViewerPersistedDialog("unit-types", bounds = bounds) }
+
+    fun restoreDialog(dialog: MapViewerPersistedDialog) {
+        restoredPanelBounds = dialog.bounds
+        closeDialog()
+        openDialog()
     }
 
     private fun relayout(viewportWidth: Int, viewportHeight: Int) {
@@ -154,6 +171,7 @@ internal class MapViewerSidebar(
             root = overlay,
             title = "Unit Types",
             initialPosition = ::initialDialogPosition,
+            restoredBounds = restoredPanelBounds,
             preferredWidth = MapViewerSidebarLayoutBuilder.PANEL_WIDTH,
             preferredHeight = preferredDialogHeight(),
             contentMinimumWidth = { CONTENT_MINIMUM_WIDTH },
@@ -163,6 +181,7 @@ internal class MapViewerSidebar(
             mode = MapViewerDialogMode.FLOATING,
         )
         dialogWindow?.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
+        restoredPanelBounds = null
     }
 
     private fun initialDialogPosition(defaultBounds: MapViewerDialogBounds): Vector2D =

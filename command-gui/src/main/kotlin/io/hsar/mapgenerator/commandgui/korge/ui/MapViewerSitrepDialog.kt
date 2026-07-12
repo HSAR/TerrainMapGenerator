@@ -40,6 +40,7 @@ internal class MapViewerSitrepDialog(
     private val onTransientNotice: (String) -> Unit = {},
     private val preferredWidth: Double = PREFERRED_WIDTH,
     private val preferredHeight: Double = PREFERRED_HEIGHT,
+    private val restoredBounds: MapViewerDialogBounds? = null,
 ) {
     private enum class ReportMode(
         val label: String,
@@ -111,6 +112,7 @@ internal class MapViewerSitrepDialog(
             ),
             onClose = ::close,
             renderContent = ::renderContent,
+            restoredBounds = restoredBounds,
             mode = MapViewerDialogMode.FLOATING,
         )
         dialogManager.register(
@@ -119,6 +121,15 @@ internal class MapViewerSitrepDialog(
             blocksScreenPoint = { point -> window?.blocksScreenPoint(point) == true },
             sync = { payload ->
                 (payload as? UnitSnapshot)?.let { updateObserver(it) }
+            },
+            persistedDialog = {
+                window?.currentBounds?.let { bounds ->
+                    MapViewerPersistedDialog(
+                        type = "sitrep",
+                        targetId = observer.id.value.toString(),
+                        bounds = bounds,
+                    )
+                }
             },
             close = ::close,
         )

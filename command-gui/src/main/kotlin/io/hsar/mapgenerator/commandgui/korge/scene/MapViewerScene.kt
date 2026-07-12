@@ -23,6 +23,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.FireArcDisplayMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerController
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
+import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerReplay
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapActionHistory
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteId
@@ -39,6 +40,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplatePatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.OPERATION_START_TURN_NAME
+import io.hsar.mapgenerator.commandgui.korge.interaction.ReplayedLedger
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
@@ -67,13 +69,14 @@ import io.hsar.mapgenerator.commandgui.korge.ui.noteReferenceContextMenuActions
 import io.hsar.mapgenerator.commandgui.save.GeneratedImageAsset
 import io.hsar.mapgenerator.commandgui.save.LoadedOperation
 import io.hsar.mapgenerator.commandgui.save.MapThumbnailRenderer
+import io.hsar.mapgenerator.commandgui.save.OperationAdditionalData
 import io.hsar.mapgenerator.commandgui.save.OperationSaveCatalogue
 import io.hsar.mapgenerator.commandgui.save.OperationSaveLoader
 import io.hsar.mapgenerator.commandgui.save.OperationSaveRequest
 import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
 import io.hsar.mapgenerator.commandgui.save.OperationToolStorage
 import io.hsar.mapgenerator.commandgui.save.SitrepContactKey
-import io.hsar.mapgenerator.commandgui.save.SitrepContactPersistence
+import io.hsar.mapgenerator.commandgui.save.UiSessionState
 import io.hsar.mapgenerator.commandgui.save.toViewport
 import korlibs.event.Key
 import korlibs.image.bitmap.Bitmap32
@@ -160,8 +163,10 @@ internal class MapViewerScene(
                         List<LedgerEntry>,
                         OperationMapImage?,
                         LoadedOperation?,
+                        ReplayedLedger,
                         MapViewerRenderData,
                         RenderedMap,
+                        Container,
                     ) -> Unit
                     val exitProgram = {
                         gameWindow.exit(0)
@@ -178,7 +183,7 @@ internal class MapViewerScene(
                             layer.solidRect(gameWindow.width, gameWindow.height, Colors.BLACK)
                             MapViewerTextViews.box(
                                 layer,
-                                "Rendering map...",
+                                "RENDERING MAP...",
                                 gameWindow.width.toDouble(),
                                 gameWindow.height.toDouble(),
                                 color = io.hsar.mapgenerator.image.Palette.Colours.WHITE,
@@ -190,13 +195,16 @@ internal class MapViewerScene(
                             runCatching {
                                 val renderData = renderMap(settings)
                                 val renderedMap = renderer.render(renderData)
-                                renderData to renderedMap
-                            }.onSuccess { (renderData, renderedMap) ->
+                                val entries = loadedOperation?.ledgerEntries ?: initialLedgerEntries
+                                val replayStartedAt = System.nanoTime()
+                                val replayedLedger = LedgerReplay.replay(entries)
+                                logger.info("Viewer ledger replay took {}ms for {} entries", (System.nanoTime() - replayStartedAt) / 1_000_000, entries.size)
+                                Triple(renderData, renderedMap, replayedLedger)
+                            }.onSuccess { (renderData, renderedMap, replayedLedger) ->
                                 val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
                                 logger.info("Viewer map render took {}ms for {}x{}", elapsedMs, renderedMap.bitmap.width, renderedMap.bitmap.height)
                                 runOnUiThread {
-                                    loadingLayer.parent?.removeChild(loadingLayer)
-                                    showPreparedViewer(settings, initialLedgerEntries, operationMapImage, loadedOperation, renderData, renderedMap)
+                                    showPreparedViewer(settings, initialLedgerEntries, operationMapImage, loadedOperation, replayedLedger, renderData, renderedMap, loadingLayer)
                                 }
                             }.onFailure { throwable ->
                                 logger.error("Failed to render viewer map", throwable)
@@ -208,7 +216,7 @@ internal class MapViewerScene(
                         }
                     }
 
-                    showPreparedViewer = { settings, initialLedgerEntries, operationMapImage, loadedOperation, renderData, renderedMap ->
+                    showPreparedViewer = { settings, initialLedgerEntries, operationMapImage, loadedOperation, replayedLedger, renderData, renderedMap, loadingLayer ->
                         var currentViewport = loadedOperation?.camera?.let { camera ->
                             camera.toViewport(
                                 geometry = renderedMap.geometry,
@@ -232,7 +240,9 @@ internal class MapViewerScene(
                         )
                         gameWindow.title = settings.windowTitle()
 
-                        var currentTool = MapViewerTool.SELECT
+                        val additionalData = OperationAdditionalData.fromJson(loadedOperation?.additionalDataJson)
+                        val restoredUiState = additionalData.uiState()
+                        var currentTool = restoredUiState.selectedTool
                         var currentDrawingMode = MapDrawingMode.FREEFORM
                         var currentDrawingColour = MapDrawingColour.RED
                         lateinit var world: Camera
@@ -247,12 +257,14 @@ internal class MapViewerScene(
                         lateinit var unitManager: MapPlacedUnitManager
                         lateinit var objectController: MapObjectController
                         lateinit var selectionController: MapSelectionController
+                        lateinit var dialogManager: MapViewerDialogManager
+                        lateinit var sidebar: MapViewerSidebar
                         var transientNotice: MapViewerTransientNotice? = null
                         var toolbar: MapViewerToolbar? = null
                         var ledgerPanel: MapViewerLedgerPanel? = null
                         var notesPanel: MapViewerNotesPanel? = null
                         val actionHistory = MapActionHistory()
-                        val sitrepContactPersistence = SitrepContactPersistence.fromJson(loadedOperation?.additionalDataJson)
+                        val sitrepContactPersistence = additionalData.sitrepContacts
                         val noteStore = MapNoteStore()
                         val operationId = loadedOperation?.operationId ?: UUID.randomUUID()
                         val operationCreatedAt = loadedOperation?.createdAt ?: Instant.now()
@@ -285,6 +297,7 @@ internal class MapViewerScene(
                         var previousRightHeld = false
                         var selectionControllerReady = false
                         var unitManagerReady = false
+                        var startupReplayInProgress = true
 
                         fun isReadOnly(): Boolean =
                             turnMode is TurnPanelMode.ReadOnly
@@ -379,7 +392,18 @@ internal class MapViewerScene(
                                 mapAssetSource = operationMapImage?.assetSource ?: loadedOperation?.mapAssetSource,
                                 ledgerEntries = actionHistory.fullTimelineEntries,
                                 generatedImageAssets = generatedImageAssets.values.toList(),
-                                additionalDataJson = sitrepContactPersistence.toJsonOrNull(),
+                                additionalDataJson = additionalData.apply {
+                                    updateUiState(
+                                        UiSessionState(
+                                            selectedTool = currentTool,
+                                            selectedObjectIds = selectionController.selectedIds().toList(),
+                                            dialogs = dialogManager.persistedDialogs() + listOfNotNull(
+                                                sidebar.persistedDialog(),
+                                                notesPanel?.persistedDialog(),
+                                            ),
+                                        ),
+                                    )
+                                }.toJsonOrNull(),
                             )
 
                             thread(name = "command-gui-save", isDaemon = true) {
@@ -536,7 +560,7 @@ internal class MapViewerScene(
 
                         contextMenuManager = ContextMenuManager(sceneLayers.ui)
                         val deferredContextMenuActions = ContextMenuDeferredActionRunner(sceneLayers.ui)
-                        val dialogManager = MapViewerDialogManager()
+                        dialogManager = MapViewerDialogManager()
 
                         unitManager = MapPlacedUnitManager(
                             root = sceneLayers.ui,
@@ -580,7 +604,7 @@ internal class MapViewerScene(
                                     ?.let { recordLedgerEntry(EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before))) }
                             },
                             onUnitsChanged = {
-                                if (selectionControllerReady) {
+                                if (selectionControllerReady && !startupReplayInProgress) {
                                     selectionController.refresh()
                                 }
                             },
@@ -641,14 +665,18 @@ internal class MapViewerScene(
                             unitManager = unitManager,
                             drawingStore = drawingStore,
                             onDrawingsChanged = { state ->
-                                drawingView.update(state, currentViewport.zoom)
+                                if (!startupReplayInProgress) {
+                                    drawingView.update(state, currentViewport.zoom)
+                                }
                             },
                             clearTransientState = {
-                                contextMenuManager.close()
-                                unitManager.cancelTransientState()
-                                drawingManager.cancelTransientState()
-                                drawingStore.clearPreview()
-                                drawingView.update(drawingStore.state, currentViewport.zoom)
+                                if (!startupReplayInProgress) {
+                                    contextMenuManager.close()
+                                    unitManager.cancelTransientState()
+                                    drawingManager.cancelTransientState()
+                                    drawingStore.clearPreview()
+                                    drawingView.update(drawingStore.state, currentViewport.zoom)
+                                }
                             },
                         )
 
@@ -689,7 +717,7 @@ internal class MapViewerScene(
                                 sceneLayers.overlay.addChild(it)
                             }
                         }
-                        val sidebar = MapViewerSidebar(
+                        sidebar = MapViewerSidebar(
                             root = sceneLayers.ui,
                             viewportWidth = gameWindow.width,
                             viewportHeight = gameWindow.height,
@@ -905,7 +933,6 @@ internal class MapViewerScene(
                             onDrawingModeSelected = { currentDrawingMode = it },
                             onDrawingColourSelected = { currentDrawingColour = it },
                         )
-
                         transientNotice = MapViewerTransientNotice(
                             root = sceneLayers.ui,
                             viewportHeightProvider = { gameWindow.height },
@@ -954,15 +981,31 @@ internal class MapViewerScene(
                             },
                         )
 
-                        val startupLedgerEntries = loadedOperation?.ledgerEntries ?: initialLedgerEntries
-                        startupLedgerEntries.forEach { entry ->
-                            val startupEntry = (entry as? AddTurnLedgerEntry)?.withGeneratedThumbnailIfRequired() ?: entry
-                            startupEntry.redo(ledgerController)
-                            actionHistory.record(startupEntry)
+                        fun completeStartupReplay() {
+                            startupReplayInProgress = false
+                            drawingView.update(drawingStore.state, currentViewport.zoom)
+                            refreshHistoryUi()
+                            selectionController.restoreSelection(restoredUiState.selectedObjectIds)
+                            restoredUiState.dialogs
+                                .filter { it.type == "note" }
+                                .forEach { dialog -> notesPanel?.restoreNote(dialog) }
+                            restoredUiState.dialogs.firstOrNull { it.type == "unit-types" }?.let(sidebar::restoreDialog)
+                            restoredUiState.dialogs.firstOrNull { it.type == "notes" }?.let { dialog -> notesPanel?.restoreDialog(dialog) }
+                            restoredUiState.dialogs
+                                .filter { it.type == "sitrep" }
+                                .forEach(unitManager::restoreSitrepDialog)
+                            loadingLayer.parent?.removeChild(loadingLayer)
                         }
-                        refreshHistoryUi()
+                        sidebar.restoreUnitTemplates(replayedLedger.unitTemplates)
+                        objectController.restoreAll(replayedLedger.objects)
+                        replayedLedger.notes.forEach(noteStore::upsert)
+                        (loadedOperation?.ledgerEntries ?: initialLedgerEntries).forEach(actionHistory::record)
+                        completeStartupReplay()
 
                         sceneLayers.ui.addUpdater {
+                            if (startupReplayInProgress) {
+                                return@addUpdater
+                            }
                             val now = System.currentTimeMillis()
                             val input = views.input
                             val pointer = input.mousePos

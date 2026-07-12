@@ -24,4 +24,4 @@
     - Input boxes should clamp to min/max permitted values when user input would violate them.
 - Move-induced measure tool isn't coloured by affiliation
 - When editing a unit name, the dialog title only updates for the first character
-- Facing arrow is drawn using many lines instead of a circle tool
+- Generic perf pass on all dynamically sized panels, these should not rebuild trees or force redraw per frame when scrolling
