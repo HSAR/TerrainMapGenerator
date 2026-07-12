@@ -90,9 +90,22 @@ internal val SENSOR_UNIT_CLASS_NAMES = mapOf(
     "DD" to "destroyer",
     "CL" to "light cruiser",
     "CA" to "heavy cruiser",
-    "CVE" to "escort aircraft carrier",
-    "CVL" to "light aircraft carrier",
+    "CVE" to "escort carrier",
+    "CVL" to "light carrier",
+    "CV" to "carrier",
     "BC" to "battlecruiser",
+    "AK" to "Cargo Ship",
+)
+internal val SENSOR_UNIT_CLASS_BRACKETS = mapOf(
+    "F" to "lightweight",
+    "FF" to "lightweight",
+    "DD" to "midweight",
+    "CL" to "midweight",
+    "CA" to "heavyweight",
+    "CVE" to "heavyweight",
+    "CVL" to "heavyweight",
+    "CV" to "heavyweight",
+    "BC" to "heavyweight",
 )
 private const val DETECTION_RANGE_BAND_MULTIPLIER = 2.0
 
@@ -267,7 +280,7 @@ internal object SensorDetection {
                         check.unit.id in identifiedIds ->
                             "is ${check.unit.identificationDescription()}"
 
-                        else -> "has unknown classification"
+                        else -> "has unknown ${check.unit.unknownClassificationBracket()} classification"
                     }
                     ScirepContactSegment(
                         contactId = check.unit.id,
@@ -325,6 +338,21 @@ internal object SensorDetection {
                 append(displayName())
             }
         }
+
+    private fun UnitSnapshot.unknownClassificationBracket(): String =
+        mass()?.let {
+            when {
+                it in 0..29 -> "lightweight"
+                it in 30..59 -> "midweight"
+                it >= 60 -> "heavyweight"
+                else -> "unknown"
+            }
+        } ?: SENSOR_UNIT_CLASS_BRACKETS[unitClassLabel()] ?: "unknown"
+
+    private fun UnitSnapshot.mass(): Int? =
+        (customProperties.stringProperty(OlympiadDawnShip.MASS_KEY)
+            ?: template.customProperties.stringProperty(OlympiadDawnShip.MASS_KEY))
+            ?.toIntOrNull()
 
     private fun UnitSnapshot.identificationRangeUnits(observer: UnitSnapshot): Double? {
         val base = unitClassLabel().baseDetectionRangeUnits()

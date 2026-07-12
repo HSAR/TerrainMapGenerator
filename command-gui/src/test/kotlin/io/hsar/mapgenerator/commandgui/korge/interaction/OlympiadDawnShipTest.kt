@@ -8,16 +8,34 @@ class OlympiadDawnShipTest {
     @Test
     fun `parses a ship definition and preserves untracked source sections`() {
         val definition = OlympiadDawnShip.parse(
-            """{"hull":{"points":24,"rows":4},"armour":[[5,0]],"systems":[{"name":"drive","thrust":2,"id":"drive-1"},{"name":"fireControl","id":"fc-1"},{"name":"hangar","id":"hangar-1"}],"weapons":[{"name":"beam","class":2,"leftArc":"FS","numArcs":2}],"fighters":[{"name":"standard","hangar":"hangar-1"}],"class":"Heavy Cruiser","name":"Vandenburg"}""",
+            """{"hull":{"points":24,"rows":4},"armour":[[5,0]],"systems":[{"name":"drive","thrust":2,"id":"drive-1"},{"name":"fireControl","id":"fc-1"},{"name":"hangar","id":"hangar-1"}],"weapons":[{"name":"beam","class":2,"leftArc":"FS","numArcs":2}],"fighters":[{"name":"standard","hangar":"hangar-1"}],"mass":55,"class":"Heavy Cruiser","name":"Vandenburg"}""",
         )
 
         assertThat(definition.name, equalTo("Vandenburg"))
+        assertThat(definition.mass, equalTo(55))
         assertThat(definition.hullPoints, equalTo(24))
         assertThat(definition.armourPoints, equalTo(5))
         assertThat(definition.systems.map { it.name }, equalTo(listOf("Impulse Drive", "Impulse Drive", "Gunnery Fire Control System", "Hangar - standard")))
         assertThat(definition.weapons.single().name, equalTo("Beam Turret Class 2"))
         assertThat(definition.weapons.single().arcs, equalTo(listOf("FS", "AS")))
         assertThat(definition.sourceJson.contains("weapons"), equalTo(true))
+
+        val properties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition)
+        assertThat(properties[OlympiadDawnShip.UNIT_CLASS_KEY], equalTo("CA"))
+        assertThat(properties[OlympiadDawnShip.MASS_KEY], equalTo("55"))
+    }
+
+    @Test
+    fun `maps escort cruisers and cargo ship classes during import`() {
+        val escortCruiser = OlympiadDawnShip.parse(
+            """{"hull":{"points":1,"rows":1},"armour":[],"systems":[],"class":"Escort Cruiser","name":"Escort"}""",
+        )
+        val cargoShip = OlympiadDawnShip.parse(
+            """{"hull":{"points":1,"rows":1},"armour":[],"systems":[],"mass":10,"class":"Armed Cargo Ship Freighter","name":"Cargo"}""",
+        )
+
+        assertThat(OlympiadDawnShip.importedTemplateProperties(emptyMap(), escortCruiser)[OlympiadDawnShip.UNIT_CLASS_KEY], equalTo("CA"))
+        assertThat(OlympiadDawnShip.importedTemplateProperties(emptyMap(), cargoShip)[OlympiadDawnShip.UNIT_CLASS_KEY], equalTo("AK"))
     }
 
     @Test

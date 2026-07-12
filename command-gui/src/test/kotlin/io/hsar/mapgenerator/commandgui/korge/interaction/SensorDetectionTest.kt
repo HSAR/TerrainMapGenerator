@@ -494,7 +494,7 @@ class SensorDetectionTest {
             emptySummaryText = "No hostile contacts to report.",
         )
 
-        assertThat(text, equalTo("Contact detected at extreme range as Sierra 1 at 510 500, range 10U has unknown classification."))
+        assertThat(text, equalTo("Contact detected at extreme range as Sierra 1 at 510 500, range 10U has unknown midweight classification."))
 
         val identificationText = SensorDetection.scirepText(
             checks = listOf(check),
@@ -509,6 +509,44 @@ class SensorDetectionTest {
         assertThat(
             identificationText,
             equalTo("Contact Master 1 at 510 500, range 10U is identified as DD Contact-class destroyer."),
+        )
+    }
+
+    @Test
+    fun `scirep uses imported mass for rough classification`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-000000000074",
+            instanceName = "FF Observer",
+            unitClass = "FF",
+            x = 0.5,
+            y = 0.5,
+        )
+        val contact = unit(
+            id = "00000000-0000-0000-0000-000000000075",
+            instanceName = "FF Contact",
+            unitClass = "FF",
+            x = 0.51,
+            y = 0.5,
+            customProperties = mapOf(OlympiadDawnShip.MASS_KEY to "55"),
+        )
+        val check = SensorDetection.visibilityChecks(
+            observer = observer,
+            candidates = listOf(observer, contact),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+        ).single()
+
+        assertThat(
+            SensorDetection.scirepText(
+                checks = listOf(check),
+                identifiedIds = emptySet(),
+                contactNumbers = mapOf(contact.id to 1),
+                mapWidth = 1_000,
+                mapHeight = 1_000,
+                emptySummaryText = "No hostile contacts to report.",
+            ),
+            equalTo("Contact detected at extreme range as Sierra 1 at 510 500, range 10U has unknown midweight classification."),
         )
     }
 
@@ -547,7 +585,7 @@ class SensorDetectionTest {
                 emptySummaryText = "No hostile contacts to report.",
                 identificationAnnouncements = listOf(check),
             ),
-            equalTo("Contact Master 9 at 503.4 500, range 3.4U is identified as Sword-class escort aircraft carrier Zweihander."),
+            equalTo("Contact Master 9 at 503.4 500, range 3.4U is identified as Sword-class escort carrier Zweihander."),
         )
     }
 
@@ -562,9 +600,31 @@ class SensorDetectionTest {
                     "DD" to "destroyer",
                     "CL" to "light cruiser",
                     "CA" to "heavy cruiser",
-                    "CVE" to "escort aircraft carrier",
-                    "CVL" to "light aircraft carrier",
+                    "CVE" to "escort carrier",
+                    "CVL" to "light carrier",
+                    "CV" to "carrier",
                     "BC" to "battlecruiser",
+                    "AK" to "Cargo Ship",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `unknown contacts use the correct rough classification bracket`() {
+        assertThat(
+            SENSOR_UNIT_CLASS_BRACKETS,
+            equalTo(
+                mapOf(
+                    "F" to "lightweight",
+                    "FF" to "lightweight",
+                    "DD" to "midweight",
+                    "CL" to "midweight",
+                    "CA" to "heavyweight",
+                    "CVE" to "heavyweight",
+                    "CVL" to "heavyweight",
+                    "CV" to "heavyweight",
+                    "BC" to "heavyweight",
                 ),
             ),
         )

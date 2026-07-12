@@ -181,7 +181,7 @@ internal class MapViewerNoteDialog(
             parent = parent,
             width = itemWidth,
             height = CONTROL_HEIGHT,
-            label = "${referencedObjectIds.size} references",
+            label = MapViewerCountText.of(referencedObjectIds.size, "reference"),
             expanded = referencesExpanded,
         ) {
             referencesExpanded = !referencesExpanded

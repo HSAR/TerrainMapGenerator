@@ -74,7 +74,7 @@ internal object OlympiadDawnShipStatusPanel {
     ): Double {
         val section = parent.container()
         val intactSystems = definition.systems.count { it.id !in damage.destroyedSystems }
-        MapViewerCollapsiblePanel.header(section, width, HEADER_HEIGHT, "$intactSystems systems", !collapsed, onCollapsedChanged)
+        MapViewerCollapsiblePanel.header(section, width, HEADER_HEIGHT, MapViewerCountText.of(intactSystems, "system"), !collapsed, onCollapsedChanged)
         if (collapsed) return HEADER_HEIGHT
         var top = HEADER_HEIGHT
         definition.systems.forEach { system ->
@@ -118,7 +118,7 @@ internal object OlympiadDawnShipStatusPanel {
     ) {
         val section = parent.container().also { it.xy(0.0, top) }
         val intactWeapons = definition.weapons.indices.count { index -> OlympiadDawnShip.weaponKey(definition, index) !in damage.destroyedWeapons }
-        MapViewerCollapsiblePanel.header(section, width, HEADER_HEIGHT, "$intactWeapons weapons", !collapsed, onCollapsedChanged)
+        MapViewerCollapsiblePanel.header(section, width, HEADER_HEIGHT, MapViewerCountText.of(intactWeapons, "weapon"), !collapsed, onCollapsedChanged)
         if (collapsed) return
         definition.weapons.forEachIndexed { index, weapon ->
             val row = section.container().also { it.xy(0.0, HEADER_HEIGHT + index * SYSTEM_HEIGHT) }

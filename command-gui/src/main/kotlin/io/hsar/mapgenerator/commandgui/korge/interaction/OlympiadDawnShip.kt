@@ -8,6 +8,7 @@ import kotlin.math.floor
 internal data class OlympiadDawnShipDefinition(
     val name: String,
     val shipClass: String,
+    val mass: Int?,
     val hullPoints: Int,
     val hullRows: Int,
     val armourPoints: Int?,
@@ -52,6 +53,8 @@ internal object OlympiadDawnShip {
     const val DEFINITION_KEY = "olympiadDawn.shipDefinition"
     const val DEFAULT_DAMAGE_KEY = "olympiadDawn.shipDefaultDamage"
     const val DAMAGE_KEY = "olympiadDawn.shipDamage"
+    const val UNIT_CLASS_KEY = "unitClass"
+    const val MASS_KEY = "mass"
 
     private val mapper = jacksonObjectMapper()
 
@@ -63,6 +66,12 @@ internal object OlympiadDawnShip {
             ?: throw IllegalArgumentException("Ship file must contain an object")
         val name = root.requiredText("name")
         val shipClass = root.requiredText("class")
+        val mass = root.path("mass").takeUnless { it.isMissingNode || it.isNull }?.let {
+            if (!it.isIntegralNumber || it.intValue() < 0) {
+                throw IllegalArgumentException("Ship mass must be a non-negative integer")
+            }
+            it.intValue()
+        }
         val hull = root.path("hull").takeIf(JsonNode::isObject)
             ?: throw IllegalArgumentException("Ship file must contain hull data")
         val hullPoints = hull.requiredPositiveInt("points")
@@ -125,6 +134,7 @@ internal object OlympiadDawnShip {
         return OlympiadDawnShipDefinition(
             name = name,
             shipClass = shipClass,
+            mass = mass,
             hullPoints = hullPoints,
             hullRows = hullRows,
             armourPoints = armourPoints,
@@ -151,10 +161,24 @@ internal object OlympiadDawnShip {
         properties: Map<String, String>,
         definition: OlympiadDawnShipDefinition,
     ): Map<String, String> =
-        properties + mapOf(
+        (properties - UNIT_CLASS_KEY - MASS_KEY) + mapOf(
             DEFINITION_KEY to definition.sourceJson,
             DEFAULT_DAMAGE_KEY to encodeDamage(intactDamage()),
-        )
+        ) + buildMap {
+            unitClassFor(definition.shipClass)?.let { put(UNIT_CLASS_KEY, it) }
+            definition.mass?.let { put(MASS_KEY, it.toString()) }
+        }
+
+    private fun unitClassFor(shipClass: String): String? {
+        val normalized = shipClass.trim().lowercase()
+        return when {
+            "cargo ship" in normalized -> "AK"
+            normalized == "escort cruiser" -> "CA"
+            else -> SENSOR_UNIT_CLASS_NAMES.entries
+                .firstOrNull { (_, friendlyName) -> friendlyName.lowercase() == normalized }
+                ?.key
+        }
+    }
 
     fun instanceProperties(template: MapViewerUnitTemplate): Map<String, String> =
         template.customProperties

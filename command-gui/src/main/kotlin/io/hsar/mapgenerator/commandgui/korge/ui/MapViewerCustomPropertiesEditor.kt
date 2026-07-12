@@ -28,6 +28,7 @@ internal class MapViewerCustomPropertiesEditor(
     private var renderedWidth: Double = 0.0
     private var tooltip: Container? = null
     private var pendingFocusInputIndex: Int? = null
+    private var trailingAction: ((Container, Double, Double) -> Unit)? = null
 
     val isTextInputActive: Boolean
         get() = inputs.any { it.isFocused }
@@ -49,11 +50,12 @@ internal class MapViewerCustomPropertiesEditor(
     }
 
     fun render(parent: Container, width: Double) {
-        renderInternal(parent, width, showLabel = true)
+        renderInternal(parent, width)
     }
 
-    fun renderBody(parent: Container, width: Double) {
-        renderInternal(parent, width, showLabel = false)
+    fun renderBody(parent: Container, width: Double, trailingAction: ((Container, Double, Double) -> Unit)? = null) {
+        this.trailingAction = trailingAction
+        renderInternal(parent, width)
     }
 
     fun propertyCount(): Int = rows.size
@@ -61,15 +63,11 @@ internal class MapViewerCustomPropertiesEditor(
     fun bodyHeight(): Double =
         MapViewerDialogSpacing.LABEL_TO_FIELD_GAP + (rows.size * ROW_HEIGHT) + BUTTON_HEIGHT
 
-    private fun renderInternal(parent: Container, width: Double, showLabel: Boolean) {
+    private fun renderInternal(parent: Container, width: Double) {
         renderedParent = parent
         renderedWidth = width
         parent.removeChildren()
         inputs.clear()
-
-        if (showLabel) {
-            MapViewerTextViews.label(parent, "Additional Properties", color = Palette.Colours.WHITE)
-        }
 
         val layout = layout(width)
         rows.forEachIndexed { index, row ->
@@ -84,6 +82,7 @@ internal class MapViewerCustomPropertiesEditor(
             onRowsChanged()
             rerender()
         }
+        trailingAction?.invoke(parent, ADD_BUTTON_WIDTH + MapViewerDialogSpacing.FIELD_GAP, addButtonTop())
     }
 
     fun height(): Double =

@@ -226,42 +226,6 @@ internal class MapViewerUnitCreateDialog(
         customPropertiesContainer.xy(0.0, layout.customPropertiesTop)
         renderCustomPropertiesPanel(customPropertiesContainer, contentWidth.coerceAtLeast(MIN_FIELD_WIDTH))
 
-        if (shipImportEnabled) {
-            val importButton = content.container()
-            importButton.xy(
-                (contentWidth - SHIP_IMPORT_BUTTON_WIDTH - SHIP_IMPORT_ERROR_WIDTH - FIELD_GAP).coerceAtLeast(0.0),
-                layout.customPropertiesTop,
-            )
-            MapViewerLaunchUi.button(
-                parent = importButton,
-                width = SHIP_IMPORT_BUTTON_WIDTH,
-                height = MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT,
-                label = if (shipImportInProgress) "Importing..." else "Import Ship",
-                disabled = shipImportInProgress,
-            ) {
-                importShip()
-            }
-            shipImportError?.let { error ->
-                val marker = content.container()
-                marker.xy(contentWidth - SHIP_IMPORT_ERROR_WIDTH, layout.customPropertiesTop)
-                MapViewerTextInputValidation.validationFailedIndicator(marker)
-                marker.mouse {
-                    onOver {
-                        shipImportTooltip?.removeFromParent()
-                        shipImportTooltip = MapViewerTextInputValidation.validationExplanationTooltip(
-                            parent = content,
-                            anchor = marker.globalPos + Vector2D(SHIP_IMPORT_ERROR_WIDTH, 0.0),
-                            text = error,
-                        )
-                    }
-                    onOut {
-                        shipImportTooltip?.removeFromParent()
-                        shipImportTooltip = null
-                    }
-                }
-            }
-        }
-
         if (shipImportEnabled) shipDefinition?.let { definition ->
             val shipPanel = content.container()
             shipPanel.xy(0.0, layout.customPropertiesTop + customPropertiesPanelHeight() + MapViewerDialogSpacing.SECTION_GAP)
@@ -365,7 +329,7 @@ internal class MapViewerUnitCreateDialog(
             parent = parent,
             width = width,
             height = MapViewerDialogSpacing.INPUT_HEIGHT,
-            label = "${customPropertiesEditor.propertyCount()} additional properties",
+            label = MapViewerCountText.of(customPropertiesEditor.propertyCount(), "additional property"),
             expanded = customPropertiesExpanded,
             onToggle = {
                 customPropertiesExpanded = !customPropertiesExpanded
@@ -374,7 +338,42 @@ internal class MapViewerUnitCreateDialog(
         )
         if (customPropertiesExpanded) {
             val body = parent.container().xy(0.0, MapViewerDialogSpacing.INPUT_HEIGHT)
-            customPropertiesEditor.renderBody(body, width)
+            customPropertiesEditor.renderBody(body, width) { actionParent, actionLeft, actionTop ->
+                if (shipImportEnabled) {
+                    renderShipImportAction(actionParent, actionLeft, actionTop)
+                }
+            }
+        }
+    }
+
+    private fun renderShipImportAction(parent: Container, left: Double, top: Double) {
+        val action = parent.container().xy(left, top)
+        MapViewerLaunchUi.button(
+            parent = action,
+            width = SHIP_IMPORT_BUTTON_WIDTH,
+            height = MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT,
+            label = if (shipImportInProgress) "Importing..." else "Import Ship",
+            disabled = shipImportInProgress,
+        ) {
+            importShip()
+        }
+        shipImportError?.let { error ->
+            val marker = parent.container().xy(left + SHIP_IMPORT_BUTTON_WIDTH + FIELD_GAP, top)
+            MapViewerTextInputValidation.validationFailedIndicator(marker)
+            marker.mouse {
+                onOver {
+                    shipImportTooltip?.removeFromParent()
+                    shipImportTooltip = MapViewerTextInputValidation.validationExplanationTooltip(
+                        parent = root,
+                        anchor = marker.globalPos + Vector2D(SHIP_IMPORT_ERROR_WIDTH, 0.0),
+                        text = error,
+                    )
+                }
+                onOut {
+                    shipImportTooltip?.removeFromParent()
+                    shipImportTooltip = null
+                }
+            }
         }
     }
 

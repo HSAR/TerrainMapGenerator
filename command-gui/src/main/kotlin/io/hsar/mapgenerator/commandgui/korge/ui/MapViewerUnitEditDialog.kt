@@ -438,7 +438,7 @@ internal class MapViewerUnitEditDialog(
             parent = parent,
             width = width,
             height = MapViewerDialogSpacing.INPUT_HEIGHT,
-            label = "${customPropertiesEditor.propertyCount()} additional properties",
+            label = MapViewerCountText.of(customPropertiesEditor.propertyCount(), "additional property"),
             expanded = customPropertiesExpanded,
             onToggle = {
                 customPropertiesExpanded = !customPropertiesExpanded
