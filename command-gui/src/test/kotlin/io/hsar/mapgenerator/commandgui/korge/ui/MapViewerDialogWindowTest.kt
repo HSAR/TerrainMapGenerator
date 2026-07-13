@@ -31,6 +31,7 @@ class MapViewerDialogWindowTest {
         val window = MapViewerDialogWindow(
             root = root,
             title = "Test",
+            persistence = MapViewerDialogPersistence("test"),
             focusTargetBoundsProvider = { emptyList() },
             preferredWidth = 400.0,
             preferredHeight = 300.0,
@@ -48,11 +49,69 @@ class MapViewerDialogWindowTest {
     }
 
     @Test
+    fun `non modal dialog persists its configured identity draft and bounds`() {
+        val root = Container()
+        val window = MapViewerDialogWindow(
+            root = root,
+            title = "Test",
+            persistence = MapViewerDialogPersistence(
+                type = "unit-edit",
+                targetId = "unit-id",
+                draft = { io.hsar.mapgenerator.commandgui.save.OperationSaveJson.objectMapper.readTree("""{"name":"Alpha"}""") },
+            ),
+            preferredWidth = 400.0,
+            preferredHeight = 300.0,
+            contentHeight = { 0.0 },
+            actions = emptyList(),
+            onClose = {},
+            renderContent = { _, _ -> },
+            mode = MapViewerDialogMode.FLOATING,
+        )
+
+        window.show(800, 600)
+
+        val persisted = window.persistedDialog()
+
+        assertThat(persisted?.type, equalTo("unit-edit"))
+        assertThat(persisted?.targetId, equalTo("unit-id"))
+        assertThat(persisted?.draft?.path("name")?.textValue(), equalTo("Alpha"))
+        assertThat(persisted?.bounds?.width, equalTo(400.0))
+    }
+
+    @Test
+    fun `non modal dialog restores bounds from its persistence descriptor`() {
+        val root = Container()
+        val window = MapViewerDialogWindow(
+            root = root,
+            title = "Test",
+            persistence = MapViewerDialogPersistence(
+                type = "unit-edit",
+                restored = MapViewerPersistedDialog(
+                    type = "unit-edit",
+                    bounds = MapViewerDialogBounds(16.0, 32.0, 500.0, 350.0),
+                ),
+            ),
+            preferredWidth = 400.0,
+            preferredHeight = 300.0,
+            contentHeight = { 0.0 },
+            actions = emptyList(),
+            onClose = {},
+            renderContent = { _, _ -> },
+            mode = MapViewerDialogMode.FLOATING,
+        )
+
+        window.show(800, 600)
+
+        assertThat(window.currentBounds, equalTo(MapViewerDialogBounds(16.0, 32.0, 500.0, 350.0)))
+    }
+
+    @Test
     fun `modal dialog blocks the whole screen`() {
         val root = Container()
         val window = MapViewerDialogWindow(
             root = root,
             title = "Test",
+            persistence = MapViewerDialogPersistence("test"),
             preferredWidth = 400.0,
             preferredHeight = 300.0,
             contentHeight = { 0.0 },
@@ -74,6 +133,7 @@ class MapViewerDialogWindowTest {
         val window = MapViewerDialogWindow(
             root = root,
             title = "Test",
+            persistence = MapViewerDialogPersistence("test"),
             initialPosition = { Vector2D(16.0, 64.0) },
             preferredWidth = 400.0,
             preferredHeight = 300.0,
@@ -97,6 +157,7 @@ class MapViewerDialogWindowTest {
         val window = MapViewerDialogWindow(
             root = root,
             title = "Test",
+            persistence = MapViewerDialogPersistence("test"),
             focusTargetBoundsProvider = { emptyList() },
             preferredWidth = 400.0,
             preferredHeight = 300.0,
@@ -120,6 +181,7 @@ class MapViewerDialogWindowTest {
         val window = MapViewerDialogWindow(
             root = root,
             title = "Test",
+            persistence = MapViewerDialogPersistence("test"),
             focusTargetBoundsProvider = { emptyList() },
             preferredWidth = 400.0,
             preferredHeight = 300.0,
@@ -153,6 +215,7 @@ class MapViewerDialogWindowTest {
         val window = MapViewerDialogWindow(
             root = root,
             title = "Edit Unit",
+            persistence = MapViewerDialogPersistence("test"),
             titleProvider = { title },
             focusTargetBoundsProvider = { emptyList() },
             preferredWidth = 400.0,

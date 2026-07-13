@@ -38,6 +38,7 @@ internal class MapViewerTextDialog(
         window = MapViewerDialogWindow(
             root = root,
             title = title,
+            persistence = MapViewerDialogPersistence("text"),
             preferredWidth = preferredWidth,
             preferredHeight = preferredHeight,
             contentMinimumWidth = { CONTENT_MIN_WIDTH },

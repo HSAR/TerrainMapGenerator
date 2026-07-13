@@ -8,6 +8,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDamage
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnSquadronStatus
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
+import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.view.Container
@@ -20,6 +21,7 @@ internal class MapViewerUnitEditDialog(
     private val root: Container,
     private val dialogManager: MapViewerDialogManager,
     private val dialogKey: Any,
+    private val persistenceTargetId: String? = null,
     private val unitType: MapViewerUnitTemplate,
     initialName: String,
     initialPositionX: String,
@@ -41,6 +43,7 @@ internal class MapViewerUnitEditDialog(
     private val isFacingValid: (String) -> Boolean = { true },
     private val onSave: (String, String, String, Boolean, String, UnitAffiliation?, Map<String, String>) -> Boolean,
     private val onDismiss: () -> Unit,
+    private val restored: MapViewerPersistedDialog? = null,
 ) {
     private var nameValue = initialName
     private var positionXValue = initialPositionX
@@ -75,15 +78,35 @@ internal class MapViewerUnitEditDialog(
     private var shipFightersCollapsed = true
     private var squadronPanelCollapsed = true
     private var customPropertiesExpanded = false
+    private val restoredCustomProperties = restored?.draft?.path("customProperties")
+        ?.takeIf { it.isObject }
+        ?.fields()
+        ?.asSequence()
+        ?.mapNotNull { (key, value) -> value.textValue()?.let { key to it } }
+        ?.toMap()
     private val initialShipProperties = initialCustomProperties.filterKeys { it in SHIP_PROPERTY_KEYS }
     private val customPropertiesEditor = MapViewerCustomPropertiesEditor(
-        initialProperties = initialCustomProperties.filterKeys { it !in SHIP_PROPERTY_KEYS },
+        initialProperties = (restoredCustomProperties ?: initialCustomProperties).filterKeys { it !in SHIP_PROPERTY_KEYS },
         inheritedProperties = unitType.customProperties.filterKeys { it !in SHIP_PROPERTY_KEYS },
         reservedKeys = UNIT_FIELD_KEYS,
         onRowsChanged = { window?.refresh() },
         onValidationChanged = { window?.refresh() },
         tooltipRoot = root,
     )
+
+    init {
+        restored?.draft?.let { draft ->
+            nameValue = draft.path("name").textValue() ?: nameValue
+            positionXValue = draft.path("positionX").textValue() ?: positionXValue
+            positionYValue = draft.path("positionY").textValue() ?: positionYValue
+            destroyedValue = draft.path("destroyed").takeIf { it.isBoolean }?.booleanValue() ?: destroyedValue
+            facingValue = draft.path("facing").textValue() ?: facingValue
+            affiliationValue = draft.path("affiliation").textValue()
+                ?.let { value -> UnitAffiliation.entries.firstOrNull { it.name == value } }
+                ?: affiliationValue
+            customPropertiesExpanded = draft.path("customPropertiesExpanded").booleanValue()
+        }
+    }
 
     fun show(viewportWidth: Int, viewportHeight: Int) {
         if (isOpen) {
@@ -106,6 +129,25 @@ internal class MapViewerUnitEditDialog(
             onClose = { close() },
             renderContent = ::renderContent,
             focusTargetBoundsProvider = focusTargetBoundsProvider,
+            persistence = MapViewerDialogPersistence(
+                type = TYPE,
+                targetId = persistenceTargetId,
+                restored = restored,
+                draft = {
+                    OperationSaveJson.objectMapper.createObjectNode().apply {
+                        put("name", nameValue)
+                        put("positionX", positionXValue)
+                        put("positionY", positionYValue)
+                        put("destroyed", destroyedValue)
+                        put("facing", facingValue)
+                        affiliationValue?.let { affiliation -> put("affiliation", affiliation.name) }
+                        put("customPropertiesExpanded", customPropertiesExpanded)
+                        putObject("customProperties").also { properties ->
+                            unitProperties().forEach { (key, value) -> properties.put(key, value) }
+                        }
+                    }
+                },
+            ),
             mode = MapViewerDialogMode.FLOATING,
         ).also {
             it.show(viewportWidth, viewportHeight)
@@ -117,6 +159,7 @@ internal class MapViewerUnitEditDialog(
                 sync = { payload ->
                     (payload as? MapViewerDialogPositionSync)?.let(::syncFields)
                 },
+                persistedDialog = { it.persistedDialog() },
                 close = { close() },
             )
         }
@@ -591,6 +634,7 @@ internal class MapViewerUnitEditDialog(
                 affiliationMinimumWidth()
 
     private companion object {
+        const val TYPE = "unit-edit"
         const val PREFERRED_WIDTH = 560.0
         const val PREFERRED_HEIGHT = 540.0
         const val ICON_SLOT_WIDTH = 34.0

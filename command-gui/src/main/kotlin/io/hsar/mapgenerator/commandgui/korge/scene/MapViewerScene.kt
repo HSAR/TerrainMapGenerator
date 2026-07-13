@@ -995,6 +995,9 @@ internal class MapViewerScene(
                             restoredUiState.dialogs
                                 .filter { it.type == "sitrep" }
                                 .forEach(unitManager::restoreSitrepDialog)
+                            restoredUiState.dialogs
+                                .filter { it.type == "unit-edit" }
+                                .forEach(unitManager::restoreUnitEditDialog)
                             loadingLayer.parent?.removeChild(loadingLayer)
                         }
                         sidebar.restoreUnitTemplates(replayedLedger.unitTemplates)

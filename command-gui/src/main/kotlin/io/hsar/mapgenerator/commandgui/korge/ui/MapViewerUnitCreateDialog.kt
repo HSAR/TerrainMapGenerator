@@ -91,6 +91,7 @@ internal class MapViewerUnitCreateDialog(
         dialogWindow = MapViewerDialogWindow(
             root = root,
             title = dialogTitle,
+            persistence = MapViewerDialogPersistence("unit-create"),
             titleProvider = { MapViewerDialogTitles.unitType(dialogTitle, nameValue) },
             preferredWidth = PREFERRED_WIDTH,
             preferredHeight = PREFERRED_HEIGHT,

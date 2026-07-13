@@ -406,6 +406,13 @@ internal class MapPlacedUnitManager(
             ?.let { unit -> unit.openNavrepVisibilityDialog(unit, dialog.bounds); true }
             ?: false
 
+    fun restoreUnitEditDialog(dialog: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog): Boolean =
+        dialog.targetId
+            ?.let { value -> runCatching { MapPlacedObjectId(java.util.UUID.fromString(value)) }.getOrNull() }
+            ?.let { id -> units.firstOrNull { it.id == id } }
+            ?.let { unit -> openEditDialog(unit, dialog); true }
+            ?: false
+
     fun cancelTransientState(targetId: MapPlacedObjectId? = null) {
         if (targetId == null || dragState?.unit?.id == targetId) {
             dragState?.let { state ->
@@ -523,7 +530,10 @@ internal class MapPlacedUnitManager(
         )
     }
 
-    private fun openEditDialog(unit: PlacedUnit) {
+    private fun openEditDialog(
+        unit: PlacedUnit,
+        restored: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog? = null,
+    ) {
         if (dialogManager.hasTarget(unit.id)) {
             return
         }
@@ -543,6 +553,7 @@ internal class MapPlacedUnitManager(
             root = root,
             dialogManager = dialogManager,
             dialogKey = unit.id,
+            persistenceTargetId = unit.id.value.toString(),
             unitType = unit.template,
             initialName = unit.instanceName,
             initialPositionX = position.easting,
@@ -684,6 +695,7 @@ internal class MapPlacedUnitManager(
                 openUnitEditDialogs.remove(unit.id)
                 onMovePreviewChanged(null)
             },
+            restored = restored,
         ).also { dialog ->
             openUnitEditDialogs[unit.id] = dialog
             dialog.show(viewportWidth, viewportHeight)

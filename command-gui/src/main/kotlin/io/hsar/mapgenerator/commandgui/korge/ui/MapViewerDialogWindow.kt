@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import com.fasterxml.jackson.databind.JsonNode
 import korlibs.image.color.RGBA
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
@@ -18,13 +19,24 @@ internal enum class MapViewerDialogMode {
     FLOATING,
 }
 
+/** Required save/restore contract for a floating dialog. */
+internal data class MapViewerDialogPersistence(
+    val type: String,
+    val targetId: String? = null,
+    val restored: MapViewerPersistedDialog? = null,
+    val draft: () -> JsonNode? = { null },
+) {
+    fun persisted(bounds: MapViewerDialogBounds): MapViewerPersistedDialog =
+        MapViewerPersistedDialog(type, targetId, bounds, draft())
+}
+
 internal class MapViewerDialogWindow(
     private val root: Container,
     private val title: String,
     private val titleProvider: () -> String = { title },
     private val titleTabs: () -> List<MapViewerDialogTitleTab> = { emptyList() },
     private val initialPosition: ((MapViewerDialogBounds) -> Vector2D?) = { null },
-    private val restoredBounds: MapViewerDialogBounds? = null,
+    private val persistence: MapViewerDialogPersistence,
     private val focusTargetBoundsProvider: (() -> List<ScreenBounds>) = { emptyList() },
     private val preferredWidth: Double,
     private val preferredHeight: Double,
@@ -75,7 +87,7 @@ internal class MapViewerDialogWindow(
             actionButtonCount = actions.size,
             contentHeight = contentHeight,
         )
-        bounds = restoredBounds
+        bounds = persistence.restored?.bounds
             ?.let { with(MapViewerDialogLayoutBuilder) { it.clampedTo(viewportWidth, viewportHeight, minimumWidth()) } }
             ?: initialPosition(defaultBounds)
             ?.let { position -> defaultBounds.movedTo(position.x, position.y) }
@@ -103,6 +115,9 @@ internal class MapViewerDialogWindow(
 
     val isModal: Boolean
         get() = mode == MapViewerDialogMode.MODAL
+
+    fun persistedDialog(): MapViewerPersistedDialog? =
+        bounds?.let(persistence::persisted)
 
     val currentBounds: MapViewerDialogBounds?
         get() = bounds

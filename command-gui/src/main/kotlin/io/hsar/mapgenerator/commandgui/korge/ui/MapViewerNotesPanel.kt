@@ -75,7 +75,7 @@ internal class MapViewerNotesPanel(
         noteStore.snapshot(noteId)?.let { openNote(it) } ?: false
 
     fun persistedDialog(): MapViewerPersistedDialog? =
-        dialogWindow?.currentBounds?.let { bounds -> MapViewerPersistedDialog("notes", bounds = bounds) }
+        dialogWindow?.persistedDialog()
 
     fun restoreDialog(dialog: MapViewerPersistedDialog) {
         restoredPanelBounds = dialog.bounds
@@ -106,7 +106,10 @@ internal class MapViewerNotesPanel(
             root = overlay,
             title = "Notes",
             initialPosition = ::initialDialogPosition,
-            restoredBounds = restoredPanelBounds,
+            persistence = MapViewerDialogPersistence(
+                type = "notes",
+                restored = restoredPanelBounds?.let { bounds -> MapViewerPersistedDialog("notes", bounds = bounds) },
+            ),
             preferredWidth = MapViewerNotesPanelLayoutBuilder.PANEL_WIDTH,
             preferredHeight = PREFERRED_DIALOG_HEIGHT,
             contentMinimumWidth = { CONTENT_MINIMUM_WIDTH },

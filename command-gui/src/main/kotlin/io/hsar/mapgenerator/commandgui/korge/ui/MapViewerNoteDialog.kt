@@ -85,7 +85,19 @@ internal class MapViewerNoteDialog(
             onClose = ::close,
             renderContent = ::renderContent,
             focusTargetBoundsProvider = { focusTargetBoundsProvider() },
-            restoredBounds = restored?.bounds,
+            persistence = MapViewerDialogPersistence(
+                type = TYPE,
+                targetId = note.id.value.toString(),
+                restored = restored,
+                draft = {
+                    OperationSaveJson.objectMapper.createObjectNode().apply {
+                        put("title", titleValue)
+                        put("body", bodyValue)
+                        put("referencesExpanded", referencesExpanded)
+                        putArray("references").also { ids -> referencedObjectIds.forEach { ids.add(it.value.toString()) } }
+                    }
+                },
+            ),
             mode = MapViewerDialogMode.FLOATING,
         )
         dialogManager.register(
@@ -93,21 +105,7 @@ internal class MapViewerNoteDialog(
             targetKey = note.id,
             blocksScreenPoint = { point -> window?.blocksScreenPoint(point) == true },
             isTextInputActive = { isTextInputActive },
-            persistedDialog = {
-                window?.currentBounds?.let { bounds ->
-                    MapViewerPersistedDialog(
-                        type = TYPE,
-                        targetId = note.id.value.toString(),
-                        bounds = bounds,
-                        draft = OperationSaveJson.objectMapper.createObjectNode().apply {
-                            put("title", titleValue)
-                            put("body", bodyValue)
-                            put("referencesExpanded", referencesExpanded)
-                            putArray("references").also { ids -> referencedObjectIds.forEach { ids.add(it.value.toString()) } }
-                        },
-                    )
-                }
-            },
+            persistedDialog = { window?.persistedDialog() },
             close = ::close,
         )
         window?.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)

@@ -144,7 +144,7 @@ internal class MapViewerSidebar(
     }
 
     fun persistedDialog(): MapViewerPersistedDialog? =
-        dialogWindow?.currentBounds?.let { bounds -> MapViewerPersistedDialog("unit-types", bounds = bounds) }
+        dialogWindow?.persistedDialog()
 
     fun restoreDialog(dialog: MapViewerPersistedDialog) {
         restoredPanelBounds = dialog.bounds
@@ -172,7 +172,10 @@ internal class MapViewerSidebar(
             root = overlay,
             title = "Unit Types",
             initialPosition = ::initialDialogPosition,
-            restoredBounds = restoredPanelBounds,
+            persistence = MapViewerDialogPersistence(
+                type = "unit-types",
+                restored = restoredPanelBounds?.let { bounds -> MapViewerPersistedDialog("unit-types", bounds = bounds) },
+            ),
             preferredWidth = MapViewerSidebarLayoutBuilder.PANEL_WIDTH,
             preferredHeight = preferredDialogHeight(),
             contentMinimumWidth = { CONTENT_MINIMUM_WIDTH },

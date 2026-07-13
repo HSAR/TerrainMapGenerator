@@ -37,4 +37,23 @@ class OperationAdditionalDataTest {
 
         assertThat(data.uiState(), equalTo(UiSessionState()))
     }
+
+    @Test
+    fun `unit edit dialog state round trips through additional data`() {
+        val dialog = MapViewerPersistedDialog(
+            type = "unit-edit",
+            targetId = "00000000-0000-0000-0000-000000000002",
+            bounds = MapViewerDialogBounds(10.0, 20.0, 300.0, 400.0),
+            draft = OperationSaveJson.objectMapper.readTree("""{"name":"Alpha","positionX":"12","positionY":"34"}"""),
+        )
+        val data = OperationAdditionalData.fromJson(null)
+
+        data.updateUiState(UiSessionState(dialogs = listOf(dialog)))
+
+        val restored = OperationAdditionalData.fromJson(data.toJsonOrNull()).uiState().dialogs.single()
+
+        assertThat(restored.type, equalTo("unit-edit"))
+        assertThat(restored.targetId, equalTo(dialog.targetId))
+        assertThat(restored.draft?.path("name")?.textValue(), equalTo("Alpha"))
+    }
 }

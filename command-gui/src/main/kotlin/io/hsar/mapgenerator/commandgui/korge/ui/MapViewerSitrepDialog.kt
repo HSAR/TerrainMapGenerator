@@ -112,7 +112,11 @@ internal class MapViewerSitrepDialog(
             ),
             onClose = ::close,
             renderContent = ::renderContent,
-            restoredBounds = restoredBounds,
+            persistence = MapViewerDialogPersistence(
+                type = "sitrep",
+                targetId = observer.id.value.toString(),
+                restored = restoredBounds?.let { bounds -> MapViewerPersistedDialog("sitrep", observer.id.value.toString(), bounds) },
+            ),
             mode = MapViewerDialogMode.FLOATING,
         )
         dialogManager.register(
@@ -122,15 +126,7 @@ internal class MapViewerSitrepDialog(
             sync = { payload ->
                 (payload as? UnitSnapshot)?.let { updateObserver(it) }
             },
-            persistedDialog = {
-                window?.currentBounds?.let { bounds ->
-                    MapViewerPersistedDialog(
-                        type = "sitrep",
-                        targetId = observer.id.value.toString(),
-                        bounds = bounds,
-                    )
-                }
-            },
+            persistedDialog = { window?.persistedDialog() },
             close = ::close,
         )
         window?.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)

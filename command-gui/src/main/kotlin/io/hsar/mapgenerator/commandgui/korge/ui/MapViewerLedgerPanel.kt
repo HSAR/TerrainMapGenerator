@@ -134,6 +134,7 @@ internal class MapViewerLedgerPanel(
         dialogWindow = MapViewerDialogWindow(
             root = overlay,
             title = "Game",
+            persistence = MapViewerDialogPersistence("ledger"),
             titleTabs = ::titleTabs,
             initialPosition = ::initialDialogPosition,
             preferredWidth = MapViewerLedgerPanelLayoutBuilder.PANEL_WIDTH,
