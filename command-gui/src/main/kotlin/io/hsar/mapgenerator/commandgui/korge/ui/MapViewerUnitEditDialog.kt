@@ -26,6 +26,7 @@ internal class MapViewerUnitEditDialog(
     private val initialFacing: String,
     initialAffiliation: UnitAffiliation?,
     initialCustomProperties: Map<String, String>,
+    private val deployedFightersBySquadronProvider: () -> Map<String, Int> = { emptyMap() },
     private val onPositionPreviewChanged: (String, String) -> Unit,
     private val onDestroyedPreviewChanged: (Boolean) -> Unit,
     private val onFacingPreviewChanged: (String) -> Unit,
@@ -66,6 +67,7 @@ internal class MapViewerUnitEditDialog(
     private var shipPanelCollapsed = true
     private var shipComponentsCollapsed = true
     private var shipWeaponsCollapsed = true
+    private var shipFightersCollapsed = true
     private var customPropertiesExpanded = false
     private val initialShipProperties = initialCustomProperties.filterKeys { it in SHIP_PROPERTY_KEYS }
     private val customPropertiesEditor = MapViewerCustomPropertiesEditor(
@@ -326,6 +328,12 @@ internal class MapViewerUnitEditDialog(
                         shipWeaponsCollapsed = !shipWeaponsCollapsed
                         window?.refresh()
                     },
+                    fightersCollapsed = shipFightersCollapsed,
+                    onFightersCollapsedChanged = {
+                        shipFightersCollapsed = !shipFightersCollapsed
+                        window?.refresh()
+                    },
+                    deployedFightersBySquadron = deployedFightersBySquadronProvider(),
                     onDamageChanged = { damage ->
                         shipDamage = damage
                         window?.refresh()
@@ -474,7 +482,8 @@ internal class MapViewerUnitEditDialog(
                 it,
                 shipPanelCollapsed,
                 shipComponentsCollapsed,
-                shipWeaponsCollapsed
+                shipWeaponsCollapsed,
+                shipFightersCollapsed,
             ) + MapViewerDialogSpacing.SECTION_GAP
         } ?: 0.0 else 0.0
 

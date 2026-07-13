@@ -11,6 +11,36 @@ import org.junit.jupiter.api.Test
 import java.util.*
 
 class SensorDetectionTest {
+    @Test
+    fun `sitrep validation requires a recognised unit class from the unit or type`() {
+        val missingUnitClass = unit(
+            id = "00000000-0000-0000-0000-0000000000a1",
+            instanceName = "Missing",
+            unitClass = null,
+            x = 0.5,
+            y = 0.5,
+        )
+        val invalidUnitClass = unit(
+            id = "00000000-0000-0000-0000-0000000000a2",
+            instanceName = "Invalid",
+            unitClass = "XX",
+            x = 0.5,
+            y = 0.5,
+        )
+        val typeUnitClass = unit(
+            id = "00000000-0000-0000-0000-0000000000a3",
+            instanceName = "Type default",
+            unitClass = null,
+            templateUnitClass = "CA",
+            x = 0.5,
+            y = 0.5,
+        )
+
+        assertThat(missingUnitClass.sitrepValidationError(), equalTo("This unit has no unitClass setting."))
+        assertThat(invalidUnitClass.sitrepValidationError(), equalTo("The unitClass value \"XX\" is not recognised."))
+        assertThat(typeUnitClass.sitrepValidationError(), equalTo(null))
+    }
+
 
     @Test
     fun `navrep contact detection uses the target class range and distance`() {

@@ -14,6 +14,7 @@ internal data class OlympiadDawnShipDefinition(
     val armourPoints: Int?,
     val systems: List<OlympiadDawnShipSystem>,
     val weapons: List<OlympiadDawnShipWeapon>,
+    val fighters: List<OlympiadDawnFighterSquadron>,
     val sourceJson: String,
 )
 
@@ -27,6 +28,21 @@ internal data class OlympiadDawnShipWeapon(
     val name: String,
     val arcs: List<String> = emptyList(),
     val beamClass: Int? = null,
+)
+
+internal data class OlympiadDawnFighterSquadron(
+    val id: String,
+    val name: String,
+    val hangarName: String,
+    val hangar: String?,
+    val count: Int,
+    val weapons: List<OlympiadDawnShipWeapon>,
+)
+
+internal data class OlympiadDawnFighterWeaponTotal(
+    val name: String,
+    val arcs: List<String>,
+    val count: Int,
 )
 
 internal object OlympiadDawnBeamRules {
@@ -47,6 +63,7 @@ internal data class OlympiadDawnShipDamage(
     val destroyedHull: Set<Int> = emptySet(),
     val destroyedSystems: Set<String> = emptySet(),
     val destroyedWeapons: Set<String> = emptySet(),
+    val remainingFighters: Map<String, Int> = emptyMap(),
 )
 
 internal object OlympiadDawnShip {
@@ -54,6 +71,7 @@ internal object OlympiadDawnShip {
     const val DEFAULT_DAMAGE_KEY = "olympiadDawn.shipDefaultDamage"
     const val DAMAGE_KEY = "olympiadDawn.shipDamage"
     const val UNIT_CLASS_KEY = "unitClass"
+    const val FIGHTER_UNIT_ID_KEY = "unitId"
     const val MASS_KEY = "mass"
 
     private val mapper = jacksonObjectMapper()
@@ -85,16 +103,26 @@ internal object OlympiadDawnShip {
             ?.intValue()
             ?.takeIf { it >= 0 }
             ?: throw IllegalArgumentException("Ship armour must begin with a non-negative point count")
-        val fighterNamesByHangar = root.path("fighters")
+        val fighters = root.path("fighters")
             .takeIf(JsonNode::isArray)
-            ?.mapNotNull { fighter ->
-                val hangar = fighter.path("hangar").textValue()?.trim()?.takeIf(String::isNotEmpty)
-                val name = fighter.path("name").textValue()?.trim()?.takeIf(String::isNotEmpty)
-                hangar?.let { it to name }
+            ?.map { fighter ->
+                val profile = fighterProfile(fighter.requiredText("type"))
+                OlympiadDawnFighterSquadron(
+                    id = fighter.requiredText("id"),
+                    name = profile.name,
+                    hangarName = profile.hangarName,
+                    hangar = fighter.path("hangar").textValue()?.trim()?.takeIf(String::isNotEmpty),
+                    count = profile.count,
+                    weapons = profile.weapons,
+                )
             }
-            ?.groupBy({ it.first }, { it.second })
-            ?.mapValues { (_, names) -> names.filterNotNull().firstOrNull() }
             .orEmpty()
+        if (fighters.map(OlympiadDawnFighterSquadron::id).toSet().size != fighters.size) {
+            throw IllegalArgumentException("Fighter squadrons must have unique IDs")
+        }
+        val fighterNamesByHangar = fighters.mapNotNull { fighter -> fighter.hangar?.let { it to "${fighter.hangarName} [${fighter.id}]" } }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, names) -> names.distinct().joinToString(", ") }
         val systems = root.path("systems").takeIf(JsonNode::isArray)
             ?.flatMap { system ->
                 val id = system.requiredText("id")
@@ -114,22 +142,7 @@ internal object OlympiadDawnShip {
             throw IllegalArgumentException("Ship systems must have unique IDs")
         }
         val weapons = root.path("weapons").takeIf(JsonNode::isArray)
-            ?.map { weapon ->
-                val rawName = weapon.requiredText("name")
-                OlympiadDawnShipWeapon(
-                    id = weapon.path("id").textValue()?.trim()?.takeIf(String::isNotEmpty),
-                    name = when (rawName) {
-                        "pds" -> "Point Defence System"
-                        "beam" -> "Beam Turret Class ${weapon.path("class").intValue()}"
-                        else -> rawName
-                    },
-                    arcs = weapon.parseArcs(),
-                    beamClass = if (rawName == "beam") {
-                        weapon.path("class").intValue().takeIf { it > 0 }
-                            ?: throw IllegalArgumentException("Beam weapon class must be positive")
-                    } else null,
-                )
-            }
+            ?.map { it.parseWeapon() }
             .orEmpty()
         return OlympiadDawnShipDefinition(
             name = name,
@@ -140,6 +153,7 @@ internal object OlympiadDawnShip {
             armourPoints = armourPoints,
             systems = systems,
             weapons = weapons,
+            fighters = fighters,
             sourceJson = mapper.writeValueAsString(root),
         )
     }
@@ -193,12 +207,14 @@ internal object OlympiadDawnShip {
                 "destroyedHull" to damage.destroyedHull.sorted(),
                 "destroyedSystems" to damage.destroyedSystems.sorted(),
                 "destroyedWeapons" to damage.destroyedWeapons.sorted(),
+                "remainingFighters" to damage.remainingFighters.toSortedMap(),
             ),
         )
 
     fun decodeDamage(source: String, definition: OlympiadDawnShipDefinition): OlympiadDawnShipDamage =
         runCatching {
             val root = mapper.readTree(source)
+            val fighterCounts = definition.fighters.associate { fighter -> fighterKey(fighter) to fighter.count }
             OlympiadDawnShipDamage(
                 destroyedArmour = root.indexSet("destroyedArmour", definition.armourPoints ?: 0),
                 destroyedHull = root.indexSet("destroyedHull", definition.hullPoints),
@@ -213,6 +229,13 @@ internal object OlympiadDawnShip {
                     ?.mapNotNull(JsonNode::textValue)
                     ?.filter { it in definition.weapons.indices.map { index -> weaponKey(definition, index) } }
                     ?.toSet()
+                    .orEmpty(),
+                remainingFighters = root.path("remainingFighters")
+                    .takeIf(JsonNode::isObject)
+                    ?.fields()
+                    ?.asSequence()
+                    ?.mapNotNull { (key, value) -> fighterCounts[key]?.let { count -> key to value.intValue().coerceIn(0, count) } }
+                    ?.toMap()
                     .orEmpty(),
             )
         }.getOrDefault(intactDamage())
@@ -246,6 +269,60 @@ internal object OlympiadDawnShip {
 
     fun weaponKey(definition: OlympiadDawnShipDefinition, index: Int): String =
         definition.weapons[index].id ?: "weapon-$index"
+
+    fun fighterKey(fighter: OlympiadDawnFighterSquadron): String = fighter.id
+
+    fun remainingFighters(definition: OlympiadDawnShipDefinition, damage: OlympiadDawnShipDamage, index: Int): Int {
+        val fighter = definition.fighters[index]
+        return damage.remainingFighters[fighterKey(fighter)]?.coerceIn(0, fighter.count) ?: fighter.count
+    }
+
+    fun fighterWeaponTotals(definition: OlympiadDawnShipDefinition, damage: OlympiadDawnShipDamage): List<OlympiadDawnFighterWeaponTotal> =
+        definition.fighters.flatMapIndexed { index, fighter ->
+            fighter.weapons.map { weapon -> Triple(weapon.name, weapon.arcs, remainingFighters(definition, damage, index)) }
+        }
+            .groupBy { (name, arcs, _) -> name to arcs }
+            .map { (weapon, mounts) -> OlympiadDawnFighterWeaponTotal(weapon.first, weapon.second, mounts.sumOf { it.third }) }
+
+    fun deployedFighterCounts(units: Iterable<UnitSnapshot>): Map<String, Int> =
+        units.asSequence()
+            .filter { it.unitClassLabel() == "F" }
+            .mapNotNull { unit -> unit.customProperties[FIGHTER_UNIT_ID_KEY]?.trim()?.takeIf(String::isNotEmpty) }
+            .groupingBy { it }
+            .eachCount()
+
+    private fun JsonNode.parseWeapon(): OlympiadDawnShipWeapon {
+        val rawName = requiredText("name")
+        return OlympiadDawnShipWeapon(
+            id = path("id").textValue()?.trim()?.takeIf(String::isNotEmpty),
+            name = when (rawName) {
+                "pds" -> "Point Defence System"
+                "beam" -> "Beam Turret Class ${path("class").intValue()}"
+                else -> rawName
+            },
+            arcs = parseArcs(),
+            beamClass = if (rawName == "beam") {
+                path("class").intValue().takeIf { it > 0 }
+                    ?: throw IllegalArgumentException("Beam weapon class must be positive")
+            } else null,
+        )
+    }
+
+    private fun fighterProfile(type: String): OlympiadDawnFighterProfile =
+        when (type) {
+            "standard" -> OlympiadDawnFighterProfile("Fighter", "Fighters", 6, listOf(OlympiadDawnShipWeapon(null, "Beam Turret Class 1", beamClass = 1)))
+            "interceptor" -> OlympiadDawnFighterProfile("Interceptor", "Interceptors", 6, listOf(OlympiadDawnShipWeapon(null, "Interception Beam Class 1", beamClass = 1)))
+            "torpedo" -> OlympiadDawnFighterProfile("Torpedo Fighter", "Torpedo Fighters", 6, listOf(OlympiadDawnShipWeapon(null, "Torpedo Launcher")))
+            "assault" -> OlympiadDawnFighterProfile("Assault Shuttle", "Assault Shuttles", 3, emptyList())
+            else -> throw IllegalArgumentException("Unknown fighter type: $type")
+        }
+
+    private data class OlympiadDawnFighterProfile(
+        val name: String,
+        val hangarName: String,
+        val count: Int,
+        val weapons: List<OlympiadDawnShipWeapon>,
+    )
 
     fun beamFirepowerAtRange(weapon: OlympiadDawnShipWeapon, rangeU: Double): Int =
         weapon.beamClass?.let { OlympiadDawnBeamRules.firepowerAtRange(it, rangeU) } ?: 0

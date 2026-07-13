@@ -67,6 +67,12 @@ internal data class ScirepContactSegment(
 internal fun UnitSnapshot.isNavrepUnit(): Boolean =
     unitClassLabel() in NAVREP_ELIGIBLE_CLASSES
 
+internal fun UnitSnapshot.sitrepValidationError(): String? {
+    val unitClass = unitClassLabel() ?: return "This unit has no unitClass setting."
+    return unitClass.takeUnless { it in SENSOR_UNIT_CLASS_NAMES }
+        ?.let { "The unitClass value \"$it\" is not recognised." }
+}
+
 internal fun UnitSnapshot.displayName(): String =
     name.ifBlank { template.name }
 

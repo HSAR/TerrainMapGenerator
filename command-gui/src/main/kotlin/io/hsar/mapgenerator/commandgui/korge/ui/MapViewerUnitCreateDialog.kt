@@ -55,6 +55,7 @@ internal class MapViewerUnitCreateDialog(
     private var shipPanelCollapsed = true
     private var shipComponentsCollapsed = true
     private var shipWeaponsCollapsed = true
+    private var shipFightersCollapsed = true
     private var customPropertiesExpanded = false
     private var shipImportInProgress = false
     private var shipImportTooltip: Container? = null
@@ -240,6 +241,11 @@ internal class MapViewerUnitCreateDialog(
                     shipWeaponsCollapsed = !shipWeaponsCollapsed
                     refreshShipPanel()
                 },
+                fightersCollapsed = shipFightersCollapsed,
+                onFightersCollapsedChanged = {
+                    shipFightersCollapsed = !shipFightersCollapsed
+                    refreshShipPanel()
+                },
             )
         }
 
@@ -413,7 +419,8 @@ internal class MapViewerUnitCreateDialog(
                 it,
                 shipPanelCollapsed,
                 shipComponentsCollapsed,
-                shipWeaponsCollapsed
+                shipWeaponsCollapsed,
+                shipFightersCollapsed,
             ) + MapViewerDialogSpacing.SECTION_GAP
         } ?: 0.0 else 0.0
         return layout.customPropertiesTop + customPropertiesPanelHeight() + shipHeight + MapViewerDialogSpacing.FORM_BOTTOM_PADDING

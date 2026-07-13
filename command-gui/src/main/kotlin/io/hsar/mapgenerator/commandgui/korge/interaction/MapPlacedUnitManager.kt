@@ -548,6 +548,7 @@ internal class MapPlacedUnitManager(
             initialFacing = UnitFacingResolver.format(unit.facingDegrees),
             initialAffiliation = unit.template.affiliation,
             initialCustomProperties = unit.customProperties,
+            deployedFightersBySquadronProvider = { OlympiadDawnShip.deployedFighterCounts(units.map { it.snapshot() }) },
             onPositionPreviewChanged = { previewPositionX, previewPositionY ->
                 val updatedCoordinate = UnitEditPositionResolver.resolve(
                     currentCoordinate = session.baselineSnapshot.mapCoordinate,
@@ -782,11 +783,15 @@ internal class MapPlacedUnitManager(
                 add(sitrepMenuAction())
             }
 
-        private fun sitrepMenuAction(): MapPlacedObjectMenuAction =
-            MapPlacedObjectMenuAction(
+        private fun sitrepMenuAction(): MapPlacedObjectMenuAction {
+            val validationError = snapshot().sitrepValidationError()
+            return MapPlacedObjectMenuAction(
                 label = "SITREP",
                 onSelected = { deferredActionRunner.launch { openNavrepVisibilityDialog(this@PlacedUnit) } },
+                enabled = validationError == null,
+                disabledTooltipText = validationError,
             ).withRequiredFeatureFlags(io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL)
+        }
 
         fun openNavrepVisibilityDialog(
             unit: PlacedUnit,
