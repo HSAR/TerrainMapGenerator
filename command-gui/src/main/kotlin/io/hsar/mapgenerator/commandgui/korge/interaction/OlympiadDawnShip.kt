@@ -21,6 +21,7 @@ internal data class OlympiadDawnShipDefinition(
 internal data class OlympiadDawnShipSystem(
     val id: String,
     val name: String,
+    val fighterSquadronIds: Set<String> = emptySet(),
 )
 
 internal data class OlympiadDawnShipWeapon(
@@ -43,6 +44,19 @@ internal data class OlympiadDawnFighterWeaponTotal(
     val name: String,
     val arcs: List<String>,
     val count: Int,
+)
+
+internal data class OlympiadDawnFighterLaunchStatus(
+    val destroyed: Boolean,
+)
+
+internal data class OlympiadDawnSquadronStatus(
+    val carrierId: MapPlacedObjectId,
+    val squadronId: String,
+    val name: String,
+    val count: Int,
+    val remaining: Int,
+    val weapons: List<OlympiadDawnShipWeapon>,
 )
 
 internal object OlympiadDawnBeamRules {
@@ -123,6 +137,9 @@ internal object OlympiadDawnShip {
         val fighterNamesByHangar = fighters.mapNotNull { fighter -> fighter.hangar?.let { it to "${fighter.hangarName} [${fighter.id}]" } }
             .groupBy({ it.first }, { it.second })
             .mapValues { (_, names) -> names.distinct().joinToString(", ") }
+        val fighterIdsByHangar = fighters.mapNotNull { fighter -> fighter.hangar?.let { it to fighter.id } }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, ids) -> ids.toSet() }
         val systems = root.path("systems").takeIf(JsonNode::isArray)
             ?.flatMap { system ->
                 val id = system.requiredText("id")
@@ -134,6 +151,7 @@ internal object OlympiadDawnShip {
                     OlympiadDawnShipSystem(
                         id = if (count == 1) id else "$id-$index",
                         name = name,
+                        fighterSquadronIds = fighterIdsByHangar[id].orEmpty(),
                     )
                 }
             }
@@ -284,12 +302,90 @@ internal object OlympiadDawnShip {
             .groupBy { (name, arcs, _) -> name to arcs }
             .map { (weapon, mounts) -> OlympiadDawnFighterWeaponTotal(weapon.first, weapon.second, mounts.sumOf { it.third }) }
 
-    fun deployedFighterCounts(units: Iterable<UnitSnapshot>): Map<String, Int> =
-        units.asSequence()
+    fun fighterLaunchStatuses(
+        carrier: UnitSnapshot,
+        units: Iterable<UnitSnapshot>,
+    ): Map<String, OlympiadDawnFighterLaunchStatus> {
+        val snapshots = units.toList()
+        val squadronIds = definitionFor(carrier)?.fighters?.mapTo(linkedSetOf(), OlympiadDawnFighterSquadron::id).orEmpty()
+        return snapshots.asSequence()
             .filter { it.unitClassLabel() == "F" }
-            .mapNotNull { unit -> unit.customProperties[FIGHTER_UNIT_ID_KEY]?.trim()?.takeIf(String::isNotEmpty) }
-            .groupingBy { it }
-            .eachCount()
+            .mapNotNull { fighter ->
+                fighter.customProperties[FIGHTER_UNIT_ID_KEY]?.trim()?.takeIf { it in squadronIds }
+                    ?.takeIf { linkedCarrier(fighter, snapshots)?.id == carrier.id }
+                    ?.let { it to fighter.destroyed }
+            }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, destroyedStates) -> OlympiadDawnFighterLaunchStatus(destroyed = destroyedStates.all { it }) }
+    }
+
+    fun hasUniqueFighterLink(
+        fighter: UnitSnapshot,
+        units: Iterable<UnitSnapshot>,
+    ): Boolean = linkedCarrier(fighter, units.toList()) != null
+
+    fun validatedFighterProperties(
+        fighter: UnitSnapshot,
+        units: Iterable<UnitSnapshot>,
+    ): Map<String, String> =
+        fighter.customProperties[FIGHTER_UNIT_ID_KEY]?.trim()?.takeIf(String::isNotEmpty)
+            ?.takeIf { fighter.unitClassLabel() == "F" }
+            ?.takeUnless { hasUniqueFighterLink(fighter, units) }
+            ?.let { fighter.customProperties - FIGHTER_UNIT_ID_KEY }
+            ?: fighter.customProperties
+
+    fun squadronStatus(
+        fighter: UnitSnapshot,
+        units: Iterable<UnitSnapshot>,
+    ): OlympiadDawnSquadronStatus? {
+        val snapshots = units.toList()
+        val carrier = linkedCarrier(fighter, snapshots) ?: return null
+        val definition = definitionFor(carrier) ?: return null
+        val squadronId = fighter.customProperties[FIGHTER_UNIT_ID_KEY]?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val index = definition.fighters.indexOfFirst { it.id == squadronId }.takeIf { it >= 0 } ?: return null
+        val squadron = definition.fighters[index]
+        return OlympiadDawnSquadronStatus(
+            carrierId = carrier.id,
+            squadronId = squadron.id,
+            name = squadron.name,
+            count = squadron.count,
+            remaining = remainingFighters(definition, instanceDamage(carrier.customProperties, definition), index),
+            weapons = squadron.weapons,
+        )
+    }
+
+    fun updatedSquadronProperties(
+        carrier: UnitSnapshot,
+        squadronId: String,
+        remaining: Int,
+    ): Map<String, String>? {
+        val definition = definitionFor(carrier) ?: return null
+        val squadron = definition.fighters.firstOrNull { it.id == squadronId } ?: return null
+        val damage = instanceDamage(carrier.customProperties, definition)
+        return carrier.customProperties + (
+                DAMAGE_KEY to encodeDamage(
+                    damage.copy(
+                        remainingFighters = damage.remainingFighters + (squadron.id to remaining.coerceIn(0, squadron.count)),
+                    ),
+                )
+                )
+    }
+
+    fun shipDamage(unit: UnitSnapshot): OlympiadDawnShipDamage? =
+        definitionFor(unit)?.let { definition -> instanceDamage(unit.customProperties, definition) }
+
+    private fun linkedCarrier(
+        fighter: UnitSnapshot,
+        units: List<UnitSnapshot>,
+    ): UnitSnapshot? {
+        if (fighter.unitClassLabel() != "F") return null
+        val squadronId = fighter.customProperties[FIGHTER_UNIT_ID_KEY]?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        return units.filter { candidate -> squadronId in definitionFor(candidate)?.fighters.orEmpty().map(OlympiadDawnFighterSquadron::id) }
+            .singleOrNull()
+    }
+
+    private fun definitionFor(unit: UnitSnapshot): OlympiadDawnShipDefinition? =
+        definition(unit.customProperties) ?: definition(unit.template.customProperties)
 
     private fun JsonNode.parseWeapon(): OlympiadDawnShipWeapon {
         val rawName = requiredText("name")

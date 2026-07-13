@@ -3,6 +3,7 @@
 # Features
 
 - FINISH: Optional Olympiad Dawn game logic for friendly and enemy detection narration
+- Unit manager architecture to improve performance when units interact with each other in complex queries
 - Improve autosave performance
 - Measure tool should lock to the midpoint of a unit when starting and ending, unless shift key is held
 - Dialogs minimise, which remembers their position and size and adds them to a taskbar at top of screen

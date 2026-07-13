@@ -1,14 +1,12 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnFighterLaunchStatus
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDamage
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDefinition
 import io.hsar.mapgenerator.image.Palette
-import korlibs.image.color.RGBA
-import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
-import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 
 internal object OlympiadDawnShipStatusPanel {
@@ -19,7 +17,7 @@ internal object OlympiadDawnShipStatusPanel {
         weaponsCollapsed: Boolean = true,
         fightersCollapsed: Boolean = true,
     ): Double =
-        if (collapsed) HEADER_HEIGHT else HEADER_HEIGHT + POINT_ROW_HEIGHT * (definition.hullRows + if (definition.armourPoints == null) 0 else 1) + sectionHeight(
+        if (collapsed) HEADER_HEIGHT else HEADER_HEIGHT + OlympiadDawnStatusRows.POINT_ROW_HEIGHT * (definition.hullRows + if (definition.armourPoints == null) 0 else 1) + sectionHeight(
             definition,
             componentsCollapsed,
             weaponsCollapsed,
@@ -40,7 +38,7 @@ internal object OlympiadDawnShipStatusPanel {
         onWeaponsCollapsedChanged: () -> Unit = {},
         fightersCollapsed: Boolean = true,
         onFightersCollapsedChanged: () -> Unit = {},
-        deployedFightersBySquadron: Map<String, Int> = emptyMap(),
+        fighterLaunchStatuses: Map<String, OlympiadDawnFighterLaunchStatus> = emptyMap(),
         onDamageChanged: (OlympiadDawnShipDamage) -> Unit = {},
     ) {
         MapViewerCollapsiblePanel.header(parent, width, HEADER_HEIGHT, "Ship Status", !collapsed, onCollapsedChanged)
@@ -48,22 +46,23 @@ internal object OlympiadDawnShipStatusPanel {
 
         var top = HEADER_HEIGHT
         definition.armourPoints?.let { armourPoints ->
-            renderPoints(parent, top, width, "Armour", armourPoints, damage.destroyedArmour, editable) { index ->
+            OlympiadDawnStatusRows.renderPoints(parent, top, width, "Armour", armourPoints, damage.destroyedArmour, editable) { index ->
                 onDamageChanged(damage.copy(destroyedArmour = damage.destroyedArmour.toggle(index)))
             }
-            top += POINT_ROW_HEIGHT
+            top += OlympiadDawnStatusRows.POINT_ROW_HEIGHT
         }
         val hullRowSizes = hullRowSizes(definition.hullPoints, definition.hullRows)
         repeat(definition.hullRows) { row ->
             val start = hullRowSizes.take(row).sum()
             val count = hullRowSizes[row]
-            renderPoints(parent, top, width, if (row == 0) "Hull" else "", count, damage.destroyedHull.map { it - start }.toSet(), editable) { index ->
+            OlympiadDawnStatusRows.renderPoints(parent, top, width, if (row == 0) "Hull" else "", count, damage.destroyedHull.map { it - start }.toSet(), editable) { index ->
                 onDamageChanged(damage.copy(destroyedHull = damage.destroyedHull.toggle(start + index)))
             }
-            top += POINT_ROW_HEIGHT
+            top += OlympiadDawnStatusRows.POINT_ROW_HEIGHT
         }
         val sections = parent.container().also { it.xy(0.0, top) }
-        val componentHeight = renderComponentSection(sections, width, definition, damage, editable, componentsCollapsed, onComponentsCollapsedChanged, onDamageChanged)
+        val componentHeight =
+            renderComponentSection(sections, width, definition, damage, editable, componentsCollapsed, onComponentsCollapsedChanged, fighterLaunchStatuses, onDamageChanged)
         val weaponHeight = renderWeaponSection(sections, width, definition, damage, editable, componentHeight, weaponsCollapsed, onWeaponsCollapsedChanged, onDamageChanged)
         renderFighterSection(
             sections,
@@ -74,7 +73,7 @@ internal object OlympiadDawnShipStatusPanel {
             componentHeight + weaponHeight,
             fightersCollapsed,
             onFightersCollapsedChanged,
-            deployedFightersBySquadron,
+            fighterLaunchStatuses,
             onDamageChanged
         )
     }
@@ -87,6 +86,7 @@ internal object OlympiadDawnShipStatusPanel {
         editable: Boolean,
         collapsed: Boolean,
         onCollapsedChanged: () -> Unit,
+        fighterLaunchStatuses: Map<String, OlympiadDawnFighterLaunchStatus>,
         onDamageChanged: (OlympiadDawnShipDamage) -> Unit,
     ): Double {
         val section = parent.container()
@@ -112,7 +112,7 @@ internal object OlympiadDawnShipStatusPanel {
             )
             MapViewerTextViews.leftBox(
                 row,
-                system.name,
+                systemDisplayName(system, fighterLaunchStatuses),
                 width - TEXT_INSET,
                 SYSTEM_HEIGHT,
                 color = if (destroyed) Palette.Colours.RED else Palette.Colours.WHITE,
@@ -171,7 +171,7 @@ internal object OlympiadDawnShipStatusPanel {
         top: Double,
         collapsed: Boolean,
         onCollapsedChanged: () -> Unit,
-        deployedFightersBySquadron: Map<String, Int>,
+        fighterLaunchStatuses: Map<String, OlympiadDawnFighterLaunchStatus>,
         onDamageChanged: (OlympiadDawnShipDamage) -> Unit,
     ) {
         if (definition.fighters.isEmpty()) return
@@ -182,14 +182,14 @@ internal object OlympiadDawnShipStatusPanel {
         var fighterTop = HEADER_HEIGHT
         definition.fighters.forEachIndexed { index, fighter ->
             val remaining = OlympiadDawnShip.remainingFighters(definition, damage, index)
-            val deployed = deployedFightersBySquadron[OlympiadDawnShip.fighterKey(fighter)] ?: 0
-            val label = fighter.name + if (deployed > 0) " ($deployed deployed)" else ""
-            renderPoints(section, fighterTop, width, label, fighter.count, (remaining until fighter.count).toSet(), editable) {
+            val launchStatus = fighterLaunchStatuses[OlympiadDawnShip.fighterKey(fighter)]
+            val statusText = fighterStatusText(fighter.id, launchStatus)
+            OlympiadDawnStatusRows.renderPoints(section, fighterTop, width, fighter.name, fighter.count, (remaining until fighter.count).toSet(), editable, statusText) {
                 val updatedRemaining = if (it < remaining) remaining - 1 else remaining + 1
                 val key = OlympiadDawnShip.fighterKey(fighter)
                 onDamageChanged(damage.copy(remainingFighters = damage.remainingFighters + (key to updatedRemaining.coerceIn(0, fighter.count))))
             }
-            fighterTop += POINT_ROW_HEIGHT
+            fighterTop += OlympiadDawnStatusRows.POINT_ROW_HEIGHT
         }
         OlympiadDawnShip.fighterWeaponTotals(definition, damage).forEach { weapon ->
             val row = section.container().also { it.xy(0.0, fighterTop) }
@@ -213,28 +213,8 @@ internal object OlympiadDawnShipStatusPanel {
         val weapons = HEADER_HEIGHT + if (weaponsCollapsed) 0.0 else definition.weapons.size * SYSTEM_HEIGHT
         val fighterWeapons = OlympiadDawnShip.fighterWeaponTotals(definition, OlympiadDawnShipDamage()).size
         val fighters =
-            if (definition.fighters.isEmpty()) 0.0 else HEADER_HEIGHT + if (fightersCollapsed) 0.0 else definition.fighters.size * POINT_ROW_HEIGHT + fighterWeapons * SYSTEM_HEIGHT
+            if (definition.fighters.isEmpty()) 0.0 else HEADER_HEIGHT + if (fightersCollapsed) 0.0 else definition.fighters.size * OlympiadDawnStatusRows.POINT_ROW_HEIGHT + fighterWeapons * SYSTEM_HEIGHT
         return components + weapons + fighters
-    }
-
-    private fun renderPoints(
-        parent: Container,
-        top: Double,
-        width: Double,
-        label: String,
-        count: Int,
-        destroyed: Set<Int>,
-        editable: Boolean,
-        onToggle: (Int) -> Unit,
-    ) {
-        MapViewerTextViews.leftBox(parent, label, LABEL_WIDTH, POINT_ROW_HEIGHT, color = Palette.Colours.WHITE) { y = top }
-        val pointWidth = ((width - LABEL_WIDTH) / count.coerceAtLeast(1)).coerceAtMost(POINT_SIZE)
-        repeat(count) { index ->
-            val point = parent.container().also { it.xy(LABEL_WIDTH + index * pointWidth, top + POINT_INSET) }
-            val pointButton = MapViewerUiBoxes.box(point, pointWidth - POINT_GAP, POINT_SIZE - POINT_INSET * 2.0, active = index !in destroyed)
-            if (index in destroyed) point.solidRect(pointWidth - POINT_GAP, POINT_SIZE - POINT_INSET * 2.0, RGBA(120, 20, 20, 255))
-            if (editable) pointButton.mouse { onClick { onToggle(index) } }
-        }
     }
 
     private fun <T> Set<T>.toggle(value: T): Set<T> =
@@ -247,13 +227,20 @@ internal object OlympiadDawnShipStatusPanel {
         return List(rows) { row -> pointsPerRow + if (row < remainder) 1 else 0 }
     }
 
+    internal fun fighterStatusText(
+        fighterId: String,
+        status: OlympiadDawnFighterLaunchStatus?,
+    ): String =
+        status?.let { if (it.destroyed) "DESTROYED" else "LAUNCHED" } ?: fighterId
+
+    internal fun systemDisplayName(
+        system: io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipSystem,
+        fighterLaunchStatuses: Map<String, OlympiadDawnFighterLaunchStatus>,
+    ): String =
+        if (system.fighterSquadronIds.any { it in fighterLaunchStatuses }) "Hangar - Launched" else system.name
+
     private const val HEADER_HEIGHT = 34.0
-    private const val POINT_ROW_HEIGHT = 30.0
     private const val SYSTEM_HEIGHT = 30.0
-    private const val LABEL_WIDTH = 82.0
-    private const val POINT_SIZE = 28.0
-    private const val POINT_GAP = 3.0
-    private const val POINT_INSET = 2.0
     private const val CHECKBOX_SIZE = 20.0
     private const val CHECKBOX_INSET = 6.0
     private const val TEXT_INSET = 32.0

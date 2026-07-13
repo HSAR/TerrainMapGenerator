@@ -3,8 +3,10 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnFighterLaunchStatus
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDamage
+import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnSquadronStatus
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.annotations.KorgeExperimental
@@ -26,7 +28,10 @@ internal class MapViewerUnitEditDialog(
     private val initialFacing: String,
     initialAffiliation: UnitAffiliation?,
     initialCustomProperties: Map<String, String>,
-    private val deployedFightersBySquadronProvider: () -> Map<String, Int> = { emptyMap() },
+    private val fighterLaunchStatusesProvider: () -> Map<String, OlympiadDawnFighterLaunchStatus> = { emptyMap() },
+    private val squadronStatusProvider: () -> OlympiadDawnSquadronStatus? = { null },
+    private val onSquadronRemainingChanged: (Int) -> Unit = {},
+    private val onShipDamageChanged: (OlympiadDawnShipDamage) -> Unit = {},
     private val onPositionPreviewChanged: (String, String) -> Unit,
     private val onDestroyedPreviewChanged: (Boolean) -> Unit,
     private val onFacingPreviewChanged: (String) -> Unit,
@@ -68,6 +73,7 @@ internal class MapViewerUnitEditDialog(
     private var shipComponentsCollapsed = true
     private var shipWeaponsCollapsed = true
     private var shipFightersCollapsed = true
+    private var squadronPanelCollapsed = true
     private var customPropertiesExpanded = false
     private val initialShipProperties = initialCustomProperties.filterKeys { it in SHIP_PROPERTY_KEYS }
     private val customPropertiesEditor = MapViewerCustomPropertiesEditor(
@@ -125,6 +131,15 @@ internal class MapViewerUnitEditDialog(
         onFacingPreviewChanged(initialFacing)
         onAffiliationPreviewChanged(initialAffiliationValue)
         dismiss()
+    }
+
+    fun refreshShipStatus() {
+        if (isOpen) window?.refresh()
+    }
+
+    fun syncShipDamage(damage: OlympiadDawnShipDamage) {
+        shipDamage = damage
+        window?.refresh()
     }
 
     private fun dismiss() {
@@ -333,11 +348,31 @@ internal class MapViewerUnitEditDialog(
                         shipFightersCollapsed = !shipFightersCollapsed
                         window?.refresh()
                     },
-                    deployedFightersBySquadron = deployedFightersBySquadronProvider(),
+                    fighterLaunchStatuses = fighterLaunchStatusesProvider(),
                     onDamageChanged = { damage ->
                         shipDamage = damage
+                        onShipDamageChanged(damage)
                         window?.refresh()
                     },
+                )
+            }
+        }
+
+        if (squadronPanelEnabled) {
+            squadronStatusProvider()?.let { status ->
+                val squadronPanel = parent.container()
+                squadronPanel.xy(0.0, customPropertiesTop + customPropertiesPanelHeight() + MapViewerDialogSpacing.SECTION_GAP + shipPanelHeight())
+                OlympiadDawnSquadronStatusPanel.render(
+                    parent = squadronPanel,
+                    width = fieldWidth,
+                    status = status,
+                    collapsed = squadronPanelCollapsed,
+                    editable = true,
+                    onCollapsedChanged = {
+                        squadronPanelCollapsed = !squadronPanelCollapsed
+                        window?.refresh()
+                    },
+                    onRemainingChanged = onSquadronRemainingChanged,
                 )
             }
         }
@@ -438,7 +473,7 @@ internal class MapViewerUnitEditDialog(
             } else {
                 facingTop + MapViewerDialogSpacing.INPUT_HEIGHT + MapViewerDialogSpacing.SECTION_GAP
             }
-            destroyedTop + MapViewerDialogSpacing.INPUT_HEIGHT + MapViewerDialogSpacing.SECTION_GAP + customPropertiesPanelHeight() + shipPanelHeight()
+            destroyedTop + MapViewerDialogSpacing.INPUT_HEIGHT + MapViewerDialogSpacing.SECTION_GAP + customPropertiesPanelHeight() + shipPanelHeight() + squadronPanelHeight()
         })
 
     private fun renderCustomPropertiesPanel(parent: Container, width: Double) {
@@ -485,6 +520,14 @@ internal class MapViewerUnitEditDialog(
                 shipWeaponsCollapsed,
                 shipFightersCollapsed,
             ) + MapViewerDialogSpacing.SECTION_GAP
+        } ?: 0.0 else 0.0
+
+    private val squadronPanelEnabled: Boolean
+        get() = squadronStatusProvider() != null && MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL in MapViewerFeatureFlags.enabled
+
+    private fun squadronPanelHeight(): Double =
+        if (squadronPanelEnabled) squadronStatusProvider()?.let {
+            OlympiadDawnSquadronStatusPanel.height(it, squadronPanelCollapsed) + MapViewerDialogSpacing.SECTION_GAP
         } ?: 0.0 else 0.0
 
     private fun unitProperties(): Map<String, String> =

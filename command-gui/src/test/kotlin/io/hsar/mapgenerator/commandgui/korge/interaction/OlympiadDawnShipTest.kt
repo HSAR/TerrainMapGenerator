@@ -16,6 +16,7 @@ class OlympiadDawnShipTest {
         assertThat(definition.hullPoints, equalTo(24))
         assertThat(definition.armourPoints, equalTo(5))
         assertThat(definition.systems.map { it.name }, equalTo(listOf("Impulse Drive", "Impulse Drive", "Gunnery Fire Control System", "Hangar - Fighters [squadron-1]")))
+        assertThat(definition.systems.last().fighterSquadronIds, equalTo(setOf("squadron-1")))
         assertThat(definition.weapons.single().name, equalTo("Beam Turret Class 2"))
         assertThat(definition.weapons.single().arcs, equalTo(listOf("FS", "AS")))
         assertThat(definition.sourceJson.contains("weapons"), equalTo(true))
@@ -130,7 +131,27 @@ class OlympiadDawnShipTest {
     }
 
     @Test
-    fun `counts placed fighter units linked by their additional unit ID property`() {
+    fun `resolves fighter links against exactly one carrier squadron`() {
+        val definition = OlympiadDawnShip.parse(
+            """{"hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"hangar","id":"hangar-1"}],"class":"Carrier","name":"Carrier","fighters":[{"name":"fighters","type":"standard","id":"squadron-1","mods":[],"hangar":"hangar-1"}]}""",
+        )
+        val carrierTemplate = MapViewerUnitTemplate(
+            id = UnitTemplateId(java.util.UUID.randomUUID()),
+            name = "Carrier",
+            bitmap = korlibs.image.bitmap.Bitmap32(2, 2),
+            customProperties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),
+        )
+        val carrier = UnitSnapshot(
+            id = MapPlacedObjectId(java.util.UUID.randomUUID()),
+            unitTemplateId = carrierTemplate.id,
+            template = carrierTemplate,
+            instanceName = "Carrier",
+            destroyed = false,
+            facingDegrees = null,
+            mapCoordinate = MapCoordinate(0.0, 0.0),
+            normalizedWidth = 1.0,
+            normalizedHeight = 1.0,
+        )
         val fighterTemplate = MapViewerUnitTemplate(
             id = UnitTemplateId(java.util.UUID.randomUUID()),
             name = "Fighter",
@@ -147,13 +168,34 @@ class OlympiadDawnShipTest {
             mapCoordinate = MapCoordinate(0.0, 0.0),
             normalizedWidth = 1.0,
             normalizedHeight = 1.0,
-            customProperties = mapOf(OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to "0rDUM"),
+            customProperties = mapOf(OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to "squadron-1"),
         )
         val unrelated = fighter.copy(
             id = MapPlacedObjectId(java.util.UUID.randomUUID()),
-            customProperties = mapOf("unitClass" to "DD", OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to "0rDUM"),
+            customProperties = mapOf("unitClass" to "DD", OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to "squadron-1"),
+        )
+        val statuses = OlympiadDawnShip.fighterLaunchStatuses(carrier, listOf(carrier, fighter, unrelated))
+        val duplicateCarrier = carrier.copy(id = MapPlacedObjectId(java.util.UUID.randomUUID()))
+        val squadronStatus = OlympiadDawnShip.squadronStatus(fighter, listOf(carrier, fighter))!!
+        val damagedCarrier = carrier.copy(
+            customProperties = OlympiadDawnShip.updatedSquadronProperties(carrier, squadronStatus.squadronId, 3)!!,
         )
 
-        assertThat(OlympiadDawnShip.deployedFighterCounts(listOf(fighter, unrelated)), equalTo(mapOf("0rDUM" to 1)))
+        assertThat(statuses["squadron-1"]?.destroyed, equalTo(false))
+        assertThat(OlympiadDawnShip.fighterLaunchStatuses(carrier, listOf(carrier)), equalTo(emptyMap()))
+        assertThat(squadronStatus.remaining, equalTo(6))
+        assertThat(squadronStatus.weapons.single().name, equalTo("Beam Turret Class 1"))
+        assertThat(OlympiadDawnShip.squadronStatus(fighter, listOf(damagedCarrier, fighter))?.remaining, equalTo(3))
+        assertThat(OlympiadDawnShip.hasUniqueFighterLink(fighter, listOf(carrier, fighter)), equalTo(true))
+        assertThat(OlympiadDawnShip.hasUniqueFighterLink(fighter, listOf(fighter)), equalTo(false))
+        assertThat(OlympiadDawnShip.hasUniqueFighterLink(fighter, listOf(carrier, duplicateCarrier, fighter)), equalTo(false))
+        assertThat(
+            OlympiadDawnShip.validatedFighterProperties(fighter, listOf(carrier, duplicateCarrier, fighter)),
+            equalTo(emptyMap()),
+        )
+        assertThat(
+            OlympiadDawnShip.fighterLaunchStatuses(carrier, listOf(carrier, fighter.copy(destroyed = true)))["squadron-1"]?.destroyed,
+            equalTo(true),
+        )
     }
 }

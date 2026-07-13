@@ -72,6 +72,7 @@ internal class MapPlacedUnitManager(
     private var lastAppliedViewportZoom: Double? = null
     private var dragState: DragState? = null
     private val editSessions = mutableMapOf<MapPlacedObjectId, UnitEditSession>()
+    private val openUnitEditDialogs = mutableMapOf<MapPlacedObjectId, MapViewerUnitEditDialog>()
     private var fullVisualRebuildCount = 0
     private var facingGeometryRebuildCount = 0
 
@@ -348,7 +349,7 @@ internal class MapPlacedUnitManager(
             existing.applyDestroyedUnitsDisplay()
             if (positionChanged || sizeChanged) positionView(existing)
             if (syncDialog) syncEditDialog(existing)
-            if (notify) onUnitsChanged()
+            if (notify) notifyUnitStateChanged()
             return
         }
 
@@ -371,7 +372,7 @@ internal class MapPlacedUnitManager(
         placedUnit.applyDestroyedUnitsDisplay()
         positionView(placedUnit)
         units += placedUnit
-        if (notify) onUnitsChanged()
+        if (notify) notifyUnitStateChanged()
     }
 
     fun remove(id: MapPlacedObjectId): UnitSnapshot? =
@@ -386,7 +387,9 @@ internal class MapPlacedUnitManager(
                         dragState = null
                     }
                     editSessions.remove(removed.id)
+                    openUnitEditDialogs.remove(removed.id)
                     dialogManager.closeTarget(removed.id)
+                    notifyUnitStateChanged()
                 }.snapshot()
             }
 
@@ -548,7 +551,24 @@ internal class MapPlacedUnitManager(
             initialFacing = UnitFacingResolver.format(unit.facingDegrees),
             initialAffiliation = unit.template.affiliation,
             initialCustomProperties = unit.customProperties,
-            deployedFightersBySquadronProvider = { OlympiadDawnShip.deployedFighterCounts(units.map { it.snapshot() }) },
+            fighterLaunchStatusesProvider = {
+                OlympiadDawnShip.fighterLaunchStatuses(
+                    carrier = unit.snapshot(),
+                    units = units.map { it.snapshot() },
+                )
+            },
+            squadronStatusProvider = {
+                OlympiadDawnShip.squadronStatus(
+                    fighter = unit.snapshot(),
+                    units = units.map { it.snapshot() },
+                )
+            },
+            onSquadronRemainingChanged = { remaining ->
+                updateLinkedSquadronHealth(unit, remaining)
+            },
+            onShipDamageChanged = { damage ->
+                updateShipDamage(unit, damage)
+            },
             onPositionPreviewChanged = { previewPositionX, previewPositionY ->
                 val updatedCoordinate = UnitEditPositionResolver.resolve(
                     currentCoordinate = session.baselineSnapshot.mapCoordinate,
@@ -578,6 +598,7 @@ internal class MapPlacedUnitManager(
             onDestroyedPreviewChanged = { destroyed ->
                 unit.destroyed = destroyed
                 unit.updateStateOverlay()
+                refreshOpenShipStatusPanels()
             },
             onFacingPreviewChanged = { facingText ->
                 UnitFacingResolver.parse(facingText)
@@ -625,7 +646,16 @@ internal class MapPlacedUnitManager(
                 val destroyedChanged = newDestroyed != session.baselineSnapshot.destroyed
                 val facingChanged = updatedFacing != session.baselineSnapshot.facingDegrees
                 val affiliationChanged = newAffiliation != session.baselineSnapshot.template.affiliation
-                val customPropertiesChanged = customProperties != session.baselineSnapshot.customProperties
+                val prospectiveSnapshot = unit.snapshot().copy(
+                    destroyed = newDestroyed,
+                    customProperties = customProperties,
+                )
+                val prospectiveUnits = units.map { existing ->
+                    if (existing.id == unit.id) prospectiveSnapshot else existing.snapshot()
+                }
+                val savedCustomProperties = OlympiadDawnShip.validatedFighterProperties(prospectiveSnapshot, prospectiveUnits)
+                val invalidFighterLink = savedCustomProperties != customProperties
+                val customPropertiesChanged = savedCustomProperties != session.baselineSnapshot.customProperties
                 if (nameChanged || positionChanged || destroyedChanged || facingChanged || affiliationChanged || customPropertiesChanged) {
                     saveRequested = true
                     unit.instanceName = newName
@@ -633,27 +663,57 @@ internal class MapPlacedUnitManager(
                     unit.destroyed = newDestroyed
                     unit.facingDegrees = updatedFacing
                     unit.template = unit.template.copy(affiliation = newAffiliation)
-                    unit.customProperties = customProperties
+                    unit.customProperties = savedCustomProperties
                     unit.updateStateOverlay()
                     unit.updateFacingOverlay()
                     positionView(unit)
-                    onUnitsChanged()
+                    notifyUnitStateChanged()
                     onMovePreviewChanged(null)
                     onUnitEdited(session.baselineSnapshot, unit.snapshot())
+                }
+                if (invalidFighterLink) {
+                    onTransientNotice("Fighter unitId could not be linked to exactly one carrier squadron and was cleared.")
                 }
                 true
             },
             onDismiss = {
-                if (!saveRequested) {
+                val activeSession = editSessions.remove(unit.id)
+                if (!saveRequested && activeSession != null) {
                     upsert(session.baselineSnapshot)
-                    onUnitsChanged()
                 }
-                editSessions.remove(unit.id)
+                openUnitEditDialogs.remove(unit.id)
                 onMovePreviewChanged(null)
             },
-        ).also {
-            it.show(viewportWidth, viewportHeight)
+        ).also { dialog ->
+            openUnitEditDialogs[unit.id] = dialog
+            dialog.show(viewportWidth, viewportHeight)
         }
+    }
+
+    private fun notifyUnitStateChanged() {
+        refreshOpenShipStatusPanels()
+        onUnitsChanged()
+    }
+
+    private fun refreshOpenShipStatusPanels() =
+        openUnitEditDialogs.values.forEach(MapViewerUnitEditDialog::refreshShipStatus)
+
+    private fun updateLinkedSquadronHealth(fighter: PlacedUnit, remaining: Int) {
+        val status = OlympiadDawnShip.squadronStatus(fighter.snapshot(), units.map { it.snapshot() }) ?: return
+        val carrier = units.firstOrNull { it.id == status.carrierId } ?: return
+        OlympiadDawnShip.updatedSquadronProperties(carrier.snapshot(), status.squadronId, remaining)
+            ?.let { properties -> updateShipDamage(carrier, OlympiadDawnShip.shipDamage(carrier.snapshot().copy(customProperties = properties)) ?: return) }
+    }
+
+    private fun updateShipDamage(unit: PlacedUnit, damage: OlympiadDawnShipDamage) {
+        val before = unit.snapshot()
+        val customProperties = before.customProperties + (OlympiadDawnShip.DAMAGE_KEY to OlympiadDawnShip.encodeDamage(damage))
+        if (customProperties == before.customProperties) return
+        unit.customProperties = customProperties
+        openUnitEditDialogs[unit.id]?.syncShipDamage(damage)
+        syncEditDialog(unit)
+        notifyUnitStateChanged()
+        onUnitEdited(before, unit.snapshot())
     }
 
     private fun initialReferenceFields(unit: PlacedUnit): GridReferenceFields {
