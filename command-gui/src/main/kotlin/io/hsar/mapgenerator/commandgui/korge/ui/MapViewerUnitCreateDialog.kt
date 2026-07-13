@@ -37,16 +37,15 @@ internal class MapViewerUnitCreateDialog(
     private val initialTemplate: MapViewerUnitTemplate? = null,
     private val onCreated: (MapViewerUnitTemplate) -> Unit,
     private val onDismiss: () -> Unit,
+    private val onTransientNotice: (String) -> Unit = {},
 ) {
     private var dialogWindow: MapViewerDialogWindow? = null
     private var selectedBitmap: Bitmap32? = initialTemplate?.bitmap
     private var selectedAssetSource: AssetSource? = initialTemplate?.assetSource
     private var selectedAffiliation: UnitAffiliation? = initialTemplate?.affiliation
     private var nameValue: String = initialTemplate?.name ?: "Unit Type Name"
-    private var statusText: String? = null
     private var shipImportError: String? = null
     private var nameInput: MapViewerInputField? = null
-    private var statusLabel: Container? = null
     private var previewFrame: Container? = null
     private var isOpen = false
     private var initialFocusApplied = false
@@ -168,23 +167,14 @@ internal class MapViewerUnitCreateDialog(
         MapViewerLaunchUi.button(browseButton, layout.browseButtonWidth, MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT, "Browse Image") {
             val file = chooseImageFile() ?: return@button
             val bitmap = loadBitmap(file) ?: run {
-                showStatus(statusLabel, "Could not load image", statusWidthFor("Could not load image"))
+                onTransientNotice("Could not load image")
                 return@button
             }
 
             selectedBitmap = bitmap
             selectedAssetSource = AssetSource.fromFile(file)
-            statusText = null
-            statusLabel?.removeChildren()
             dialogWindow?.refresh()
         }
-
-        statusLabel = content.container().also {
-            it.xy(layout.browseLeft, layout.statusTop)
-        }
-        statusText?.let {
-            showStatus(statusLabel, it, statusWidthFor(it))
-        } ?: statusLabel?.removeChildren()
 
         nameInput = inlineBlock.text(
             parent = content,
@@ -289,13 +279,13 @@ internal class MapViewerUnitCreateDialog(
         val bitmap = selectedBitmap
         when {
             name.isBlank() -> {
-                showStatus(statusLabel, "Enter a type name", statusWidthFor("Enter a type name"))
+                onTransientNotice("Enter a type name")
                 return null
             }
 
             !customPropertiesEditor.isValid -> return null
             bitmap == null -> {
-                showStatus(statusLabel, "Choose an image", statusWidthFor("Choose an image"))
+                onTransientNotice("Choose an image")
                 return null
             }
         }
@@ -317,19 +307,16 @@ internal class MapViewerUnitCreateDialog(
         MapViewerUiBoxes.imageBox(previewFrame, bitmap, previewWidth, MapViewerDialogSpacing.PREVIEW_HEIGHT)
     }
 
-    private fun showStatus(parent: Container?, text: String, width: Double) {
-        parent ?: return
-        parent.removeChildren()
-        statusText = text
-        MapViewerTextViews.leftBox(parent, text, width, 28.0, color = Palette.Colours.WHITE)
-    }
-
     private fun renderCustomPropertiesPanel(parent: Container, width: Double) {
         MapViewerCollapsiblePanel.header(
             parent = parent,
             width = width,
             height = MapViewerDialogSpacing.INPUT_HEIGHT,
-            label = MapViewerCountText.of(customPropertiesEditor.propertyCount(), "additional property"),
+            label = MapViewerCountText.of(
+                customPropertiesEditor.propertyCount(),
+                "additional property",
+                "additional properties",
+            ),
             expanded = customPropertiesExpanded,
             onToggle = {
                 customPropertiesExpanded = !customPropertiesExpanded
@@ -350,15 +337,18 @@ internal class MapViewerUnitCreateDialog(
         val action = parent.container().xy(left, top)
         MapViewerLaunchUi.button(
             parent = action,
-            width = SHIP_IMPORT_BUTTON_WIDTH,
-            height = MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT,
+            width = MapViewerCustomPropertiesEditor.ACTION_BUTTON_WIDTH,
+            height = MapViewerCustomPropertiesEditor.ACTION_BUTTON_HEIGHT,
             label = if (shipImportInProgress) "Importing..." else "Import Ship",
             disabled = shipImportInProgress,
         ) {
             importShip()
         }
         shipImportError?.let { error ->
-            val marker = parent.container().xy(left + SHIP_IMPORT_BUTTON_WIDTH + FIELD_GAP, top)
+            val marker = parent.container().xy(
+                left + MapViewerCustomPropertiesEditor.ACTION_BUTTON_WIDTH + FIELD_GAP,
+                top + (MapViewerCustomPropertiesEditor.ACTION_BUTTON_HEIGHT - SHIP_IMPORT_ERROR_WIDTH) * 0.5,
+            )
             MapViewerTextInputValidation.validationFailedIndicator(marker)
             marker.mouse {
                 onOver {
@@ -367,6 +357,7 @@ internal class MapViewerUnitCreateDialog(
                         parent = root,
                         anchor = marker.globalPos + Vector2D(SHIP_IMPORT_ERROR_WIDTH, 0.0),
                         text = error,
+                        anchorHeight = SHIP_IMPORT_ERROR_WIDTH,
                     )
                 }
                 onOut {
@@ -393,8 +384,7 @@ internal class MapViewerUnitCreateDialog(
         val previewTop = 0.0
         val browseTop = previewTop + (MapViewerDialogSpacing.PREVIEW_HEIGHT - MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT) * 0.5
         val browseBottom = browseTop + MapViewerDialogSpacing.ACTION_BUTTON_HEIGHT
-        val statusTop = browseBottom + 8.0
-        val nameTop = statusTop + 36.0
+        val nameTop = MapViewerDialogSpacing.sectionTop(browseBottom)
         val affiliationTop = if (twoColumn) {
             nameTop
         } else {
@@ -412,7 +402,6 @@ internal class MapViewerUnitCreateDialog(
             browseTop = browseTop,
             browseLeft = (contentWidth - BROWSE_BUTTON_WIDTH - BROWSE_RIGHT_GUTTER).coerceAtLeast(0.0),
             browseButtonWidth = BROWSE_BUTTON_WIDTH,
-            statusTop = statusTop,
             customPropertiesTop = customPropertiesTop,
         )
     }
@@ -436,7 +425,7 @@ internal class MapViewerUnitCreateDialog(
             affiliationMinimumWidth(),
             MIN_FIELD_WIDTH,
             BROWSE_BUTTON_WIDTH,
-            SHIP_IMPORT_BUTTON_WIDTH + SHIP_IMPORT_ERROR_WIDTH + FIELD_GAP,
+            MapViewerCustomPropertiesEditor.ACTION_BUTTON_WIDTH + SHIP_IMPORT_ERROR_WIDTH + FIELD_GAP,
             customPropertiesEditor.minimumWidth(),
             MapViewerDialogActions.minimumWidth(2),
         )
@@ -463,7 +452,6 @@ internal class MapViewerUnitCreateDialog(
             if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) chooser.selectedFile else null
         } ?: return
         shipImportInProgress = true
-        statusText = "Importing ship..."
         refreshEmbedded()
         dialogWindow?.refresh()
         thread(name = "command-gui-ship-import", isDaemon = true) {
@@ -480,7 +468,6 @@ internal class MapViewerUnitCreateDialog(
                 shipDefinition = imported
                 shipPanelCollapsed = false
                 shipImportError = null
-                statusText = "Imported ${imported.shipClass} ${imported.name}"
                 if (embeddedParent != null) {
                     createTemplate()?.let(onCreated)
                 } else {
@@ -488,7 +475,7 @@ internal class MapViewerUnitCreateDialog(
                 }
             }.onFailure { error ->
                 shipImportError = error.message ?: "The ship file could not be imported."
-                statusText = "Could not import ship"
+                onTransientNotice("Could not import ship")
                 refreshEmbedded()
             }
             dialogWindow?.refresh()
@@ -517,9 +504,6 @@ internal class MapViewerUnitCreateDialog(
     private fun nameMinimumWidth(text: String): Double =
         maxOf(MIN_FIELD_WIDTH, MapViewerTextViews.measure(text.ifBlank { "Unit Type Name" }).width + 24.0)
 
-    private fun statusWidthFor(text: String): Double =
-        maxOf(180.0, MapViewerTextViews.measure(text).width + 24.0)
-
     private fun affiliationMinimumWidth(): Double =
         maxOf(
             MIN_FIELD_WIDTH,
@@ -533,7 +517,6 @@ internal class MapViewerUnitCreateDialog(
         const val PREFERRED_HEIGHT = 420.0
         const val BROWSE_BUTTON_WIDTH = 140.0
         const val BROWSE_RIGHT_GUTTER = 12.0
-        const val SHIP_IMPORT_BUTTON_WIDTH = 120.0
         const val SHIP_IMPORT_ERROR_WIDTH = MapViewerTextInputValidation.VALIDATION_ICON_SIZE
         const val FIELD_GAP = MapViewerDialogSpacing.FIELD_GAP
         const val MIN_FIELD_WIDTH = MapViewerDialogSpacing.MIN_FIELD_WIDTH
@@ -554,6 +537,5 @@ private data class UnitTypeDialogLayout(
     val browseTop: Double,
     val browseLeft: Double,
     val browseButtonWidth: Double,
-    val statusTop: Double,
     val customPropertiesTop: Double,
 )

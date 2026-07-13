@@ -30,6 +30,7 @@ internal class MapViewerSidebar(
     private val onUnitTemplateCreated: (UnitTemplateSnapshot) -> Unit = {},
     private val onUnitTemplateDeleted: (UnitTemplateSnapshot) -> Unit = {},
     private val onUnitTemplateEdited: (UnitTemplateSnapshot, UnitTemplateSnapshot) -> Unit = { _, _ -> },
+    private val onTransientNotice: (String) -> Unit = {},
     private val canStartUnitDrag: () -> Boolean = { true },
     initialUnitTemplates: List<MapViewerUnitTemplate> = MapViewerUnitTemplateFactory.defaults(),
 ) {
@@ -321,6 +322,7 @@ internal class MapViewerSidebar(
             },
             onDismiss = {
             },
+            onTransientNotice = onTransientNotice,
         ).also {
             it.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
         }
@@ -340,6 +342,7 @@ internal class MapViewerSidebar(
             },
             onDismiss = {
             },
+            onTransientNotice = onTransientNotice,
         ).also {
             it.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
         }

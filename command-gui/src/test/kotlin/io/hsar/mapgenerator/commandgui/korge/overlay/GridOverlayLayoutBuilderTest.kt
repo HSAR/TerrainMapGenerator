@@ -558,6 +558,50 @@ class GridOverlayLayoutBuilderTest {
         assertThat(arrow.color, equalTo(Palette.Colours.BLUE))
     }
 
+    @Test
+    fun `red active reference colour drives move preview crosshairs arrow and labels`() {
+        val layout = GridOverlayLayoutBuilder.build(
+            state = state(
+                mapOffsetX = 0.0,
+                mapOffsetY = 0.0,
+                activeReference = GridCursorReference(
+                    screenX = 260.0,
+                    screenY = 280.0,
+                    text = "0730 3900",
+                    color = Palette.Colours.RED,
+                ),
+                measurement = GridMeasurement(
+                    originMapX = 120.0,
+                    originMapY = 180.0,
+                    destinationMapX = 260.0,
+                    destinationMapY = 280.0,
+                    distanceUnits = 344.0,
+                    unitLabel = "m",
+                    bearingDegrees = 125,
+                ),
+            ),
+            measureText = ::measureText,
+        )
+
+        val referenceLabel = layout.labels.first { it.text == "0730 3900" }
+        val distance = layout.labels.first { it.text == "344m" }
+        val bearing = layout.labels.first { it.text == "125°" }
+        val arrow = layout.overlayArrows.single()
+
+        assertThat(referenceLabel.style.color, equalTo(Palette.Colours.RED))
+        assertThat(distance.style.color, equalTo(Palette.Colours.RED))
+        assertThat(bearing.style.color, equalTo(Palette.Colours.RED))
+        assertThat(arrow.color, equalTo(Palette.Colours.RED))
+        assertThat(
+            layout.lineRects.any { it.x == 259.0 && it.width == 2.0 && it.color.red == Palette.Colours.RED.red && it.color.green == Palette.Colours.RED.green && it.color.blue == Palette.Colours.RED.blue },
+            equalTo(true),
+        )
+        assertThat(
+            layout.lineRects.any { it.y == 279.0 && it.height == 2.0 && it.color.red == Palette.Colours.RED.red && it.color.green == Palette.Colours.RED.green && it.color.blue == Palette.Colours.RED.blue },
+            equalTo(true),
+        )
+    }
+
     private fun state(
         mapOffsetX: Double = -140.0,
         mapOffsetY: Double = -120.0,

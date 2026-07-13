@@ -32,6 +32,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSwatchViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputValidation
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputs
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTransientNotice
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitCreateDialog
@@ -93,6 +94,7 @@ internal class MapViewerNewOperationView(
     private val onTitleChanged: (String) -> Unit = {},
 ) {
     private val layer = root.container()
+    private val transientNotice = MapViewerTransientNotice(root, viewportHeightProvider = { viewportHeight })
     private val unitRows = mutableListOf<UnitRow>()
     private val initialGridConfiguration = initialSetupInputs.mapImage
         ?.let { defaultGridConfiguration(it, initialUnitsPerPixel, initialSeed) }
@@ -178,6 +180,7 @@ internal class MapViewerNewOperationView(
             pointer?.let(::updateUnitScrollDrag)
             consumePendingDroppedUnitIconFiles()
             consumePendingUnitTypeImports()
+            transientNotice.update()
             updatePreviewIfNeeded()
             if (nativeDropTargetInstallPending) {
                 nativeDropTargetInstallPending = false
@@ -197,6 +200,7 @@ internal class MapViewerNewOperationView(
     fun close() {
         nativeDropTargetComponent?.dropTarget = null
         referenceSystemDropdown.close()
+        transientNotice.dispose()
         layer.removeFromParent()
     }
 
@@ -516,6 +520,7 @@ internal class MapViewerNewOperationView(
                 render(layout.viewportWidth, layout.viewportHeight)
             },
             onDismiss = {},
+            onTransientNotice = transientNotice::show,
         )
         embeddedUnitTypeEditor = editor
         panel.container().also {

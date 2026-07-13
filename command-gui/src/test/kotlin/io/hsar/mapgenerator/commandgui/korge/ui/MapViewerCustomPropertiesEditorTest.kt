@@ -53,4 +53,20 @@ class MapViewerCustomPropertiesEditorTest {
         assertThat(MapViewerTextInputValidation.isPresent(" "), equalTo(false))
         assertThat(MapViewerTextInputValidation.isReservedKey(" instanceName ", setOf("instanceName")), equalTo(true))
     }
+
+    @Test
+    fun `trailing actions begin after the shared add property button`() {
+        val editor = MapViewerCustomPropertiesEditor(emptyMap())
+        var actionLeft = 0.0
+        var actionTop = 0.0
+
+        editor.renderBody(korlibs.korge.view.Container(), 400.0) { _, left, top ->
+            actionLeft = left
+            actionTop = top
+        }
+
+        assertThat(actionLeft, equalTo(MapViewerCustomPropertiesEditor.ACTION_BUTTON_WIDTH + MapViewerDialogSpacing.FIELD_GAP))
+        assertThat(actionTop, equalTo(MapViewerDialogSpacing.LABEL_TO_FIELD_GAP))
+        assertThat(MapViewerCustomPropertiesEditor.ACTION_BUTTON_HEIGHT, equalTo(32.0))
+    }
 }

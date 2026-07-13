@@ -470,7 +470,7 @@ internal class MapViewerInteraction(
                 gutterWidth = viewportWidth,
                 gutterHeight = viewportHeight,
             ),
-            color = layer.colour,
+            color = preview.color ?: layer.colour,
         )
     }
 

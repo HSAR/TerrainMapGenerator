@@ -8,7 +8,6 @@ import io.hsar.mapgenerator.grid.EpsilonGridDesignators
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.GridStyles
 import io.hsar.mapgenerator.grid.ReferenceSystem
-import io.hsar.mapgenerator.image.Palette
 import io.hsar.mapgenerator.random.GridGenerator.padZeroes
 import java.awt.Color
 import kotlin.math.abs
@@ -80,7 +79,7 @@ internal object GridOverlayLayoutBuilder {
         val mapIdStyle = GridLabelStyle(MapViewerFontRole.STRONG, mapIdFont.first.size2D.toDouble(), mapIdFont.second)
         val minorAxisStyle = GridLabelStyle(MapViewerFontRole.MAIN, minorAxisFont.first.size2D.toDouble(), minorAxisFont.second)
         val majorAxisStyle = GridLabelStyle(MapViewerFontRole.STRONG, majorAxisFont.first.size2D.toDouble(), majorAxisFont.second)
-        val referenceColor = state.activeReference?.color?.takeIf { it != Palette.Colours.RED } ?: layer.colour
+        val referenceColor = state.activeReference?.color ?: layer.colour
         val referenceStyle = GridLabelStyle(MapViewerFontRole.MAIN, minorAxisFont.first.size2D.toDouble(), referenceColor)
         val mapIdBounds = measureText(layer.mapId, mapIdStyle)
         val axisBounds = measureText(axisMeasurementText(layer), minorAxisStyle)

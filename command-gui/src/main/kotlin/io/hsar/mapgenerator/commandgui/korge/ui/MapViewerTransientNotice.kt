@@ -31,6 +31,11 @@ internal class MapViewerTransientNotice(
         update(nowMs)
     }
 
+    fun dispose() {
+        layer.removeFromParent()
+        notices.clear()
+    }
+
     fun update(nowMs: Long = System.currentTimeMillis()) {
         val previousUpdateMs = lastUpdateMs
         notices

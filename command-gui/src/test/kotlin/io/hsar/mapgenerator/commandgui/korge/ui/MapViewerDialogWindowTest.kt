@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.view.Container
+import korlibs.korge.view.Text
 import korlibs.math.geom.Vector2D
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
@@ -145,6 +146,32 @@ class MapViewerDialogWindowTest {
     }
 
     @Test
+    fun `refreshing a dialog title does not rebuild its content tree`() {
+        val root = Container()
+        var title = "Edit Unit - A"
+        var renderCount = 0
+        val window = MapViewerDialogWindow(
+            root = root,
+            title = "Edit Unit",
+            titleProvider = { title },
+            focusTargetBoundsProvider = { emptyList() },
+            preferredWidth = 400.0,
+            preferredHeight = 300.0,
+            contentHeight = { 0.0 },
+            actions = emptyList(),
+            onClose = {},
+            renderContent = { _, _ -> renderCount++ },
+            mode = MapViewerDialogMode.FLOATING,
+        )
+
+        window.show(800, 600)
+        title = "Edit Unit - Alpha"
+        window.refreshTitle()
+
+        assertThat(renderCount, equalTo(1))
+    }
+
+    @Test
     fun `tabbed title minimum width uses fixed equal tab widths`() {
         val tabWidth = MapViewerDialogTitleTabLayoutBuilder.tabWidth(listOf("Turns", "Much Longer Settings"))
         val minimumWidth = MapViewerDialogTitleTabLayoutBuilder.minimumShellWidth(listOf("Turns", "Much Longer Settings"))
@@ -181,5 +208,27 @@ class MapViewerDialogWindowTest {
     @Test
     fun `dialog title text is rendered in uppercase`() {
         assertThat(MapViewerDialogChrome.dialogTitleText("Edit Unit - Alpha"), equalTo("EDIT UNIT - ALPHA"))
+    }
+
+    @Test
+    fun `refreshing a title bar displays the latest title`() {
+        val layout = MapViewerDialogLayoutBuilder.build(
+            bounds = MapViewerDialogBounds(left = 0.0, top = 0.0, width = 400.0, height = 300.0),
+        )
+        val titleBar = MapViewerDialogChrome.renderTitleBar(
+            parent = Container(),
+            layout = layout,
+            title = "Edit Unit - A",
+            onBeginMove = {},
+        )
+
+        MapViewerDialogChrome.refreshTitleBar(
+            titleBar = titleBar,
+            layout = layout,
+            title = "Edit Unit - Alpha",
+            onBeginMove = {},
+        )
+
+        assertThat(titleBar.children.filterIsInstance<Text>().single().text, equalTo("EDIT UNIT - ALPHA"))
     }
 }

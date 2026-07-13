@@ -51,6 +51,8 @@ internal class MapViewerDialogWindow(
     private var scrollDragState: ScrollDragState? = null
     private var contentContainer: Container? = null
     private var scrollbarContainer: Container? = null
+    private var titleBar: Container? = null
+    private var renderedTitle: String? = null
     private var dragState: DialogDragState? = null
     private var isOpen = false
 
@@ -111,6 +113,12 @@ internal class MapViewerDialogWindow(
         }
     }
 
+    fun refreshTitle() {
+        if (isOpen) {
+            refreshTitle(titleProvider())
+        }
+    }
+
     private fun installInputHandlers() {
         layer.onStageResized { width, height ->
             viewportWidth = width
@@ -132,6 +140,7 @@ internal class MapViewerDialogWindow(
         layer.addUpdater {
             val pointer = layer.stage?.views?.input?.mousePos ?: return@addUpdater
             val leftHeld = layer.stage?.views?.input?.mouseButtonPressed(korlibs.event.MouseButton.LEFT) ?: false
+            refreshTitleIfChanged()
             val focusTargetBounds = focusTargetBoundsProvider()
             if (focusTargetBounds != lastFocusTargetBounds) {
                 renderShadow(focusTargetBounds)
@@ -197,6 +206,7 @@ internal class MapViewerDialogWindow(
 
         contentContainer = null
         scrollbarContainer = null
+        titleBar = null
         panelLayer.removeChildren()
         renderShadow(focusTargetBounds)
 
@@ -208,15 +218,17 @@ internal class MapViewerDialogWindow(
                 // Consume clicks within the dialog frame so they don't reach the map.
             }
         }
-        MapViewerDialogChrome.render(
+        val resolvedTitle = titleProvider()
+        titleBar = MapViewerDialogChrome.render(
             parent = panel,
             layout = layout,
-            title = titleProvider(),
+            title = resolvedTitle,
             titleTabs = titleTabs(),
             onClose = onClose,
             onBeginMove = { beginDrag(DialogDragMode.MOVE) },
             onBeginResize = { beginDrag(DialogDragMode.RESIZE) },
         )
+        renderedTitle = resolvedTitle
 
         panel.clipContainer(Size2D(layout.contentViewport.width, layout.contentViewport.height)) {
             xy(layout.contentViewport.left, layout.contentViewport.top)
@@ -283,6 +295,27 @@ internal class MapViewerDialogWindow(
             ),
         )
         updateScrollPosition()
+    }
+
+    private fun refreshTitleIfChanged() {
+        val nextTitle = titleProvider()
+        if (nextTitle != renderedTitle) {
+            refreshTitle(nextTitle)
+        }
+    }
+
+    private fun refreshTitle(title: String) {
+        val currentBounds = bounds ?: return
+        titleBar?.let {
+            MapViewerDialogChrome.refreshTitleBar(
+                titleBar = it,
+                layout = MapViewerDialogLayoutBuilder.build(currentBounds, actions.size),
+                title = title,
+                titleTabs = titleTabs(),
+                onBeginMove = { beginDrag(DialogDragMode.MOVE) },
+            )
+        }
+        renderedTitle = title
     }
 
     private fun updateScrollPosition() {

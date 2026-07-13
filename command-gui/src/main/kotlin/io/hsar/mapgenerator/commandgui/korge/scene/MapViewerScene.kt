@@ -750,6 +750,7 @@ internal class MapViewerScene(
                                 )
                                 unitManager.replaceUnitTemplate(after)
                             },
+                            onTransientNotice = { message -> transientNotice?.show(message) },
                             canStartUnitDrag = { effectiveTool() == MapViewerTool.SELECT },
                             initialUnitTemplates = emptyList(),
                         )

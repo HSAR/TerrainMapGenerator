@@ -61,7 +61,7 @@ internal class MapViewerCustomPropertiesEditor(
     fun propertyCount(): Int = rows.size
 
     fun bodyHeight(): Double =
-        MapViewerDialogSpacing.LABEL_TO_FIELD_GAP + (rows.size * ROW_HEIGHT) + BUTTON_HEIGHT
+        MapViewerDialogSpacing.LABEL_TO_FIELD_GAP + (rows.size * ROW_HEIGHT) + ACTION_BUTTON_HEIGHT
 
     private fun renderInternal(parent: Container, width: Double) {
         renderedParent = parent
@@ -76,17 +76,17 @@ internal class MapViewerCustomPropertiesEditor(
 
         val addButton = parent.container()
         addButton.xy(0.0, addButtonTop())
-        renderButton(addButton, ADD_BUTTON_WIDTH, "Add Property") {
+        renderButton(addButton, ACTION_BUTTON_WIDTH, "Add Property") {
             syncRowsFromInputs()
             rows += CustomPropertyRow("", "", isInherited = false)
             onRowsChanged()
             rerender()
         }
-        trailingAction?.invoke(parent, ADD_BUTTON_WIDTH + MapViewerDialogSpacing.FIELD_GAP, addButtonTop())
+        trailingAction?.invoke(parent, ACTION_BUTTON_WIDTH + MapViewerDialogSpacing.FIELD_GAP, addButtonTop())
     }
 
     fun height(): Double =
-        addButtonTop() + BUTTON_HEIGHT
+        addButtonTop() + ACTION_BUTTON_HEIGHT
 
     fun minimumWidth(): Double =
         (MIN_INPUT_WIDTH * 2.0) + REMOVE_BUTTON_WIDTH + (MapViewerDialogSpacing.FIELD_GAP * 2.0)
@@ -170,8 +170,8 @@ internal class MapViewerCustomPropertiesEditor(
     }
 
     private fun renderButton(parent: Container, width: Double, label: String, onClick: () -> Unit) {
-        MapViewerUiBoxes.button(parent, width, BUTTON_HEIGHT)
-        MapViewerTextViews.box(parent, label, width, BUTTON_HEIGHT, color = Palette.Colours.WHITE)
+        MapViewerUiBoxes.button(parent, width, ACTION_BUTTON_HEIGHT)
+        MapViewerTextViews.box(parent, label, width, ACTION_BUTTON_HEIGHT, color = Palette.Colours.WHITE)
         parent.mouse {
             onClick { onClick() }
         }
@@ -267,10 +267,10 @@ internal class MapViewerCustomPropertiesEditor(
         val removeLeft: Double,
     )
 
-    private companion object {
+    companion object {
         const val ROW_HEIGHT = 44.0
-        const val BUTTON_HEIGHT = 32.0
-        const val ADD_BUTTON_WIDTH = 130.0
+        const val ACTION_BUTTON_HEIGHT = 32.0
+        const val ACTION_BUTTON_WIDTH = 130.0
         const val REMOVE_BUTTON_WIDTH = 36.0
         const val MIN_INPUT_WIDTH = 120.0
         const val KEY_WIDTH_RATIO = 0.36

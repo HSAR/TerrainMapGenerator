@@ -17,7 +17,7 @@ internal object MapViewerDialogChrome {
         onClose: () -> Unit,
         onBeginMove: () -> Unit,
         onBeginResize: () -> Unit,
-    ) {
+    ): Container {
         MapViewerUiBoxes.box(
             parent = parent,
             width = layout.bounds.width,
@@ -25,39 +25,7 @@ internal object MapViewerDialogChrome {
             style = ::dialogPanelStyle,
         )
 
-        val titleBar = parent.container()
-        titleBar.xy(layout.titleBar.left, layout.titleBar.top)
-        titleBar.solidRect(layout.titleBar.width, layout.titleBar.height, MapViewerUiBoxes.toRgba(Palette.Colours.DARK, TITLE_BAR_ALPHA))
-        val titleWidth = (layout.titleBar.width - layout.closeButton.width - TITLE_TEXT_RIGHT_GAP - TITLE_TEXT_LEFT).coerceAtLeast(0.0)
-        if (titleTabs.isEmpty()) {
-            val fittedTitle = MapViewerTextViews.ellipsize(
-                text = dialogTitleText(title),
-                maxWidth = titleWidth,
-                role = MapViewerFontRole.MAIN,
-                size = MapViewerTextViews.DEFAULT_TEXT_SIZE,
-            )
-            MapViewerTextViews.titleBox(
-                parent = titleBar,
-                text = fittedTitle,
-                width = titleWidth,
-                height = layout.titleBar.height,
-                color = Palette.Colours.WHITE,
-                alignment = TextAlignment.MIDDLE_LEFT,
-            ) { x = TITLE_TEXT_LEFT }
-        } else {
-            renderTitleTabs(
-                parent = titleBar,
-                tabs = titleTabs,
-                width = titleWidth,
-                height = layout.titleBar.height,
-                onBeginMove = onBeginMove,
-            )
-        }
-        titleBar.mouse {
-            onDown {
-                onBeginMove()
-            }
-        }
+        val titleBar = renderTitleBar(parent, layout, title, titleTabs, onBeginMove)
 
         parent.solidRect(layout.body.width, MapViewerDialogLayoutBuilder.BORDER_INSET, MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, MapViewerUiStateStyle.ACTIVE_ALPHA)) {
             x = layout.body.left
@@ -88,6 +56,59 @@ internal object MapViewerDialogChrome {
             onDown {
                 onBeginResize()
             }
+        }
+        return titleBar
+    }
+
+    fun renderTitleBar(
+        parent: Container,
+        layout: MapViewerDialogLayout,
+        title: String,
+        titleTabs: List<MapViewerDialogTitleTab> = emptyList(),
+        onBeginMove: () -> Unit,
+    ): Container = parent.container().also { titleBar ->
+        titleBar.xy(layout.titleBar.left, layout.titleBar.top)
+        refreshTitleBar(titleBar, layout, title, titleTabs, onBeginMove)
+        titleBar.mouse {
+            onDown {
+                onBeginMove()
+            }
+        }
+    }
+
+    fun refreshTitleBar(
+        titleBar: Container,
+        layout: MapViewerDialogLayout,
+        title: String,
+        titleTabs: List<MapViewerDialogTitleTab> = emptyList(),
+        onBeginMove: () -> Unit,
+    ) {
+        titleBar.removeChildren()
+        titleBar.solidRect(layout.titleBar.width, layout.titleBar.height, MapViewerUiBoxes.toRgba(Palette.Colours.DARK, TITLE_BAR_ALPHA))
+        val titleWidth = (layout.titleBar.width - layout.closeButton.width - TITLE_TEXT_RIGHT_GAP - TITLE_TEXT_LEFT).coerceAtLeast(0.0)
+        if (titleTabs.isEmpty()) {
+            val fittedTitle = MapViewerTextViews.ellipsize(
+                text = dialogTitleText(title),
+                maxWidth = titleWidth,
+                role = MapViewerFontRole.MAIN,
+                size = MapViewerTextViews.DEFAULT_TEXT_SIZE,
+            )
+            MapViewerTextViews.titleBox(
+                parent = titleBar,
+                text = fittedTitle,
+                width = titleWidth,
+                height = layout.titleBar.height,
+                color = Palette.Colours.WHITE,
+                alignment = TextAlignment.MIDDLE_LEFT,
+            ) { x = TITLE_TEXT_LEFT }
+        } else {
+            renderTitleTabs(
+                parent = titleBar,
+                tabs = titleTabs,
+                width = titleWidth,
+                height = layout.titleBar.height,
+                onBeginMove = onBeginMove,
+            )
         }
     }
 
