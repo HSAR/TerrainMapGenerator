@@ -998,6 +998,7 @@ internal class MapViewerScene(
                         }
                         sidebar.restoreUnitTemplates(replayedLedger.unitTemplates)
                         objectController.restoreAll(replayedLedger.objects)
+                        replayedLedger.unitTemplates.forEach(unitManager::replaceUnitTemplate)
                         replayedLedger.notes.forEach(noteStore::upsert)
                         (loadedOperation?.ledgerEntries ?: initialLedgerEntries).forEach(actionHistory::record)
                         completeStartupReplay()

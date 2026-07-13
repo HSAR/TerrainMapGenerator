@@ -254,7 +254,7 @@ internal class MapSelectionController(
         state.originalSnapshots
             .mapNotNull { objectController.snapshot(it.id) }
             .map { it.moveBy(incrementalDelta) }
-            .forEach(objectController::updateObject)
+            .forEach(objectController::previewObject)
         state.lastDelta = delta
         updateMovePreview(state)
         publish()
@@ -297,7 +297,7 @@ internal class MapSelectionController(
             coordinateSpace = coordinateSpace,
             shiftHeld = shiftHeld,
         )
-            .forEach(objectController::updateObject)
+            .forEach(objectController::previewObject)
     }
 
     private fun applyResize(state: ResizeState, pointer: Vector2D) {
@@ -310,7 +310,7 @@ internal class MapSelectionController(
             originalFixedCorner = state.originalFixedCorner,
             aspectRatio = coordinateSpace.aspectRatio,
         )
-            .forEach(objectController::updateObject)
+            .forEach(objectController::previewObject)
     }
 
     private fun commitPivot(state: PivotState) {

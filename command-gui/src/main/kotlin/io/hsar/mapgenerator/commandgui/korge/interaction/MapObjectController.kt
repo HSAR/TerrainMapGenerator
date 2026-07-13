@@ -61,6 +61,16 @@ internal class MapObjectController(
         clearTransientState()
     }
 
+    fun previewObject(snapshot: MapPlacedObjectSnapshot) {
+        when (snapshot) {
+            is UnitSnapshot -> unitManager.preview(snapshot)
+            is DrawingSnapshot -> {
+                drawingStore.upsert(snapshot)
+                onDrawingsChanged(drawingStore.state)
+            }
+        }
+    }
+
     fun applyObjectEdit(id: MapPlacedObjectId, changes: Map<String, JsonNode?>) {
         snapshot(id)
             ?.let { MapPlacedObjectPatch.apply(it, changes) }

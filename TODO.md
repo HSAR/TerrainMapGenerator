@@ -3,7 +3,6 @@
 # Features
 
 - FINISH: Optional Olympiad Dawn game logic for friendly and enemy detection narration
-    - Ships on active sensors are detected by anything they detect
 - Improve autosave performance
 - Measure tool should lock to the midpoint of a unit when starting and ending, unless shift key is held
 - Dialogs minimise, which remembers their position and size and adds them to a taskbar at top of screen

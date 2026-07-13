@@ -73,6 +73,108 @@ class MapPlacedUnitManagerTest {
     }
 
     @Test
+    fun `replacing a unit template supplies ship properties without replacing instance damage`() {
+        val manager = unitManager(unitLayer = Container(), destroyedUnitsDisplay = DestroyedUnitsDisplay.Full)
+        val templateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000013"))
+        val unitId = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000014"))
+        val initialTemplate = MapViewerUnitTemplate(
+            id = templateId,
+            name = "Unit",
+            bitmap = Bitmap32(4, 4) { _, _ -> RGBA(255, 0, 0, 255) },
+            affiliation = UnitAffiliation.Friend,
+        )
+        val damage = "{\"destroyedHull\":[1]}"
+
+        manager.upsert(
+            manager.buildSnapshot(
+                id = unitId,
+                unitTemplateId = templateId,
+                template = initialTemplate,
+                instanceName = "Unit",
+                mapCoordinate = MapCoordinate(0.5, 0.5),
+                customProperties = mapOf(OlympiadDawnShip.DAMAGE_KEY to damage),
+            ),
+        )
+        manager.replaceUnitTemplate(
+            UnitTemplateSnapshot(
+                id = templateId,
+                template = initialTemplate.copy(
+                    affiliation = UnitAffiliation.Hostile,
+                    customProperties = mapOf(OlympiadDawnShip.DEFINITION_KEY to "ship-definition"),
+                ),
+                index = 0,
+            ),
+        )
+
+        val updated = manager.snapshot(unitId)!!
+        assertThat(updated.template.affiliation, equalTo(UnitAffiliation.Hostile))
+        assertThat(updated.template.customProperties[OlympiadDawnShip.DEFINITION_KEY], equalTo("ship-definition"))
+        assertThat(updated.customProperties[OlympiadDawnShip.DAMAGE_KEY], equalTo(damage))
+    }
+
+    @Test
+    fun `restored units receive missing damage state from their current imported type`() {
+        val manager = unitManager(unitLayer = Container(), destroyedUnitsDisplay = DestroyedUnitsDisplay.Full)
+        val templateId = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000019"))
+        val originalTemplate = MapViewerUnitTemplate(
+            id = templateId,
+            name = "Ship",
+            bitmap = Bitmap32(4, 4) { _, _ -> RGBA(255, 0, 0, 255) },
+        )
+        val definition = OlympiadDawnShip.parse(
+            """{"name":"Ship","class":"Heavy Cruiser","hull":{"points":1,"rows":1},"armour":[[1]],"systems":[]}""",
+        )
+        val importedTemplate = originalTemplate.copy(
+            customProperties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),
+        )
+        val unitId = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000020"))
+
+        manager.restoreAll(
+            listOf(
+                manager.buildSnapshot(unitId, templateId, originalTemplate, "Ship", MapCoordinate(0.5, 0.5)),
+            ),
+        )
+        manager.replaceUnitTemplate(UnitTemplateSnapshot(templateId, importedTemplate, 0))
+
+        assertThat(manager.snapshot(unitId)?.customProperties?.containsKey(OlympiadDawnShip.DAMAGE_KEY), equalTo(true))
+    }
+
+    @Test
+    fun `changing a selected template affiliation refreshes filtered fire arcs`() {
+        val manager = unitManager(unitLayer = Container(), destroyedUnitsDisplay = DestroyedUnitsDisplay.Full)
+        val selectedTemplate = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000015")),
+            name = "Selected",
+            bitmap = Bitmap32(4, 4) { _, _ -> RGBA(255, 0, 0, 255) },
+            affiliation = UnitAffiliation.Friend,
+        )
+        val otherTemplate = selectedTemplate.copy(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000016")),
+            name = "Other",
+        )
+        val selectedId = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000017"))
+
+        manager.upsert(manager.buildSnapshot(selectedId, selectedTemplate.id, selectedTemplate, "Selected", MapCoordinate(0.4, 0.5), facingDegrees = 0))
+        manager.upsert(
+            manager.buildSnapshot(
+                MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000018")),
+                otherTemplate.id,
+                otherTemplate,
+                "Other",
+                MapCoordinate(0.6, 0.5),
+                facingDegrees = 0
+            )
+        )
+        manager.updateFireArcDisplayMode(FireArcDisplayMode.FriendliesOfSelected)
+        manager.updateSelectedUnits(setOf(selectedId))
+        manager.resetVisualUpdateStats()
+
+        manager.replaceUnitTemplate(UnitTemplateSnapshot(selectedTemplate.id, selectedTemplate.copy(affiliation = UnitAffiliation.Hostile), 0))
+
+        assertThat(manager.visualUpdateStats().facingGeometryRebuilds, equalTo(3))
+    }
+
+    @Test
     fun `placed unit icons enable smoothing on the map`() {
         val root = Container()
         val unitLayer = root.container()
@@ -349,6 +451,86 @@ class MapPlacedUnitManagerTest {
         manager.updateDestroyedUnitsDisplay(DestroyedUnitsDisplay.Hide)
 
         assertThat(image.parent?.visible, equalTo(false))
+    }
+
+    @Test
+    fun `facing previews reuse the unit visual`() {
+        val unitLayer = Container()
+        val manager = unitManager(unitLayer = unitLayer, destroyedUnitsDisplay = DestroyedUnitsDisplay.Full)
+        val template = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000061")),
+            name = "Facing",
+            bitmap = Bitmap32(64, 64) { _, _ -> RGBA(255, 0, 0, 255) },
+        )
+        val snapshot = manager.buildSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000062")),
+            unitTemplateId = template.id,
+            template = template,
+            instanceName = "Facing",
+            mapCoordinate = MapCoordinate(0.5, 0.5),
+            facingDegrees = 0,
+        )
+
+        manager.upsert(snapshot)
+        manager.updateSelectedUnits(setOf(snapshot.id))
+        manager.resetVisualUpdateStats()
+
+        manager.preview(snapshot.copy(facingDegrees = 90))
+        manager.preview(snapshot.copy(facingDegrees = 180))
+        manager.updateSelectedUnits(setOf(snapshot.id))
+
+        assertThat(manager.visualUpdateStats(), equalTo(UnitVisualUpdateStats(0, 2)))
+        assertThat(unitLayer.images().size, equalTo(1))
+    }
+
+    @Test
+    fun `unit ship data changes refresh facing geometry without rebuilding the icon`() {
+        val manager = unitManager(unitLayer = Container(), destroyedUnitsDisplay = DestroyedUnitsDisplay.Full)
+        val template = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000065")),
+            name = "Ship",
+            bitmap = Bitmap32(64, 64) { _, _ -> RGBA(255, 0, 0, 255) },
+        )
+        val snapshot = manager.buildSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000066")),
+            unitTemplateId = template.id,
+            template = template,
+            instanceName = "Ship",
+            mapCoordinate = MapCoordinate(0.5, 0.5),
+            facingDegrees = 0,
+        )
+
+        manager.upsert(snapshot)
+        manager.resetVisualUpdateStats()
+        manager.preview(snapshot.copy(customProperties = mapOf(OlympiadDawnShip.DEFINITION_KEY to "ship-definition")))
+
+        assertThat(manager.visualUpdateStats(), equalTo(UnitVisualUpdateStats(0, 1)))
+    }
+
+    @Test
+    fun `template changes invalidate cached unit visuals`() {
+        val unitLayer = Container()
+        val manager = unitManager(unitLayer = unitLayer, destroyedUnitsDisplay = DestroyedUnitsDisplay.Full)
+        val template = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000063")),
+            name = "Template",
+            bitmap = Bitmap32(64, 64) { _, _ -> RGBA(255, 0, 0, 255) },
+        )
+        val snapshot = manager.buildSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000064")),
+            unitTemplateId = template.id,
+            template = template,
+            instanceName = "Template",
+            mapCoordinate = MapCoordinate(0.5, 0.5),
+            facingDegrees = 0,
+        )
+
+        manager.upsert(snapshot)
+        manager.resetVisualUpdateStats()
+        manager.upsert(snapshot.copy(template = template.copy(affiliation = UnitAffiliation.Hostile)))
+
+        assertThat(manager.visualUpdateStats().fullVisualRebuilds, equalTo(1))
+        assertThat(manager.visualUpdateStats().facingGeometryRebuilds, equalTo(1))
     }
 
     private fun Container.images(): List<Image> =

@@ -72,6 +72,8 @@ internal class MapPlacedUnitManager(
     private var lastAppliedViewportZoom: Double? = null
     private var dragState: DragState? = null
     private val editSessions = mutableMapOf<MapPlacedObjectId, UnitEditSession>()
+    private var fullVisualRebuildCount = 0
+    private var facingGeometryRebuildCount = 0
 
     fun install() {
         dragPreviewLayer.zIndex = DRAG_PREVIEW_Z_INDEX
@@ -94,8 +96,19 @@ internal class MapPlacedUnitManager(
         get() = dialogManager.hasOpenDialogs()
 
     fun updateSelectedUnits(selectedIds: Set<MapPlacedObjectId>) {
+        if (selectedUnitIds == selectedIds) return
+
+        val previousIds = selectedUnitIds
+        val previousAffiliations = selectionAffiliations(previousIds)
         selectedUnitIds = selectedIds
-        units.forEach { it.updateFacingOverlay() }
+        val affectedUnits = when (fireArcDisplayMode) {
+            FireArcDisplayMode.FriendliesOfSelected,
+            FireArcDisplayMode.HostilesOfSelected,
+                -> if (previousAffiliations != selectionAffiliations(selectedIds)) units else units.filter { it.id in previousIds || it.id in selectedIds }
+
+            else -> units.filter { it.id in previousIds || it.id in selectedIds }
+        }
+        affectedUnits.forEach { it.updateFacingOverlay() }
     }
 
     fun updateDestroyedUnitsDisplay(display: DestroyedUnitsDisplay) {
@@ -131,12 +144,14 @@ internal class MapPlacedUnitManager(
         lastAppliedViewportZoom = viewportZoom
         units.forEach { unit ->
             val unitSize = worldUnitSize(unit.template.bitmap, viewportZoom)
+            val scaleChanged = unit.view.scaleX != unitSize.worldScale
             unit.worldWidth = unitSize.worldWidth
             unit.worldHeight = unitSize.worldHeight
             unit.normalizedWidth = unitSize.normalizedWidth
             unit.normalizedHeight = unitSize.normalizedHeight
             unit.view.scale = unitSize.worldScale
             positionView(unit)
+            if (scaleChanged) unit.updateFacingOverlay()
         }
         dragState?.let { state ->
             val unitSize = worldUnitSize(state.unit.template.bitmap, viewportZoom)
@@ -148,14 +163,17 @@ internal class MapPlacedUnitManager(
     }
 
     fun replaceUnitTemplate(snapshot: UnitTemplateSnapshot) {
-        units
-            .filter { it.unitTemplateId == snapshot.id }
-            .forEach { unit ->
+        val affectedUnits = units.filter { it.unitTemplateId == snapshot.id }
+        val affiliationChanged = affectedUnits.any { it.template.affiliation != snapshot.template.affiliation }
+        affectedUnits.forEach { unit ->
                 if (OlympiadDawnShip.DAMAGE_KEY !in unit.customProperties) {
                     unit.customProperties += OlympiadDawnShip.instanceProperties(snapshot.template)
                 }
                 unit.updateTemplate(snapshot.template)
             }
+        if (affiliationChanged && fireArcDisplayMode in setOf(FireArcDisplayMode.FriendliesOfSelected, FireArcDisplayMode.HostilesOfSelected)) {
+            units.forEach { it.updateFacingOverlay() }
+        }
     }
 
     private fun interactionsEnabled(): Boolean =
@@ -278,6 +296,16 @@ internal class MapPlacedUnitManager(
 
     fun upsert(snapshot: UnitSnapshot) = upsert(snapshot, notify = true)
 
+    fun preview(snapshot: UnitSnapshot) = upsert(snapshot, notify = false, syncDialog = false)
+
+    internal fun visualUpdateStats(): UnitVisualUpdateStats =
+        UnitVisualUpdateStats(fullVisualRebuildCount, facingGeometryRebuildCount)
+
+    internal fun resetVisualUpdateStats() {
+        fullVisualRebuildCount = 0
+        facingGeometryRebuildCount = 0
+    }
+
     fun restoreAll(snapshots: List<UnitSnapshot>) {
         units.forEach { it.view.removeFromParent() }
         units.clear()
@@ -285,10 +313,19 @@ internal class MapPlacedUnitManager(
         onUnitsChanged()
     }
 
-    private fun upsert(snapshot: UnitSnapshot, notify: Boolean) {
+    private fun upsert(snapshot: UnitSnapshot, notify: Boolean, syncDialog: Boolean = notify) {
         val unitSize = worldUnitSize(snapshot.template.bitmap)
         val existing = units.firstOrNull { it.id == snapshot.id }
         if (existing != null) {
+            val visualChanged = existing.unitTemplateId != snapshot.unitTemplateId || existing.template != snapshot.template
+            val facingChanged = existing.facingDegrees != snapshot.facingDegrees
+            val destroyedChanged = existing.destroyed != snapshot.destroyed
+            val positionChanged = existing.mapCoordinate != snapshot.mapCoordinate
+            val shipDefinitionChanged = existing.customProperties[OlympiadDawnShip.DEFINITION_KEY] !=
+                    snapshot.customProperties[OlympiadDawnShip.DEFINITION_KEY]
+            val sizeChanged = existing.worldWidth != unitSize.worldWidth ||
+                    existing.worldHeight != unitSize.worldHeight ||
+                    existing.view.scaleX != unitSize.worldScale
             existing.unitTemplateId = snapshot.unitTemplateId
             existing.template = snapshot.template
             existing.instanceName = snapshot.instanceName
@@ -300,11 +337,17 @@ internal class MapPlacedUnitManager(
             existing.customProperties = snapshot.customProperties
             existing.worldWidth = unitSize.worldWidth
             existing.worldHeight = unitSize.worldHeight
-            existing.rebuildVisual(snapshot.template.bitmap)
             existing.view.scale = unitSize.worldScale
+            when {
+                visualChanged -> existing.rebuildVisual(snapshot.template.bitmap)
+                else -> {
+                    if (facingChanged || sizeChanged || shipDefinitionChanged) existing.updateFacingOverlay()
+                    if (destroyedChanged) existing.updateStateOverlay()
+                }
+            }
             existing.applyDestroyedUnitsDisplay()
-            positionView(existing)
-            syncEditDialog(existing)
+            if (positionChanged || sizeChanged) positionView(existing)
+            if (syncDialog) syncEditDialog(existing)
             if (notify) onUnitsChanged()
             return
         }
@@ -788,6 +831,7 @@ internal class MapPlacedUnitManager(
         }
 
         fun rebuildVisual(bitmap: Bitmap32) {
+            fullVisualRebuildCount++
             view.removeChildren()
             facingLayer = view.container().also { it.zIndex = 0.0 }
             iconView = MapViewerImageViews.icon(view, bitmap).also { it.zIndex = 1.0 }
@@ -811,30 +855,40 @@ internal class MapPlacedUnitManager(
         }
 
         fun updateFacingOverlay(forceActive: Boolean = false) {
+            val degrees = facingDegrees ?: run {
+                facingLayer.visible = false
+                return
+            }
+            val width = iconView.bitmap.width.toDouble()
+            val height = iconView.bitmap.height.toDouble()
+            val fireArcsEnabled = MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL in MapViewerFeatureFlags.enabled && shouldDrawFireArcs(this)
+            val definition = if (fireArcsEnabled) {
+                OlympiadDawnShip.definition(customProperties) ?: OlympiadDawnShip.definition(template.customProperties)
+            } else {
+                null
+            }
+            facingLayer.visible = true
+            facingLayer.alpha = facingOverlayAlpha(forceActive || id in selectedUnitIds || dragState?.unit?.id == id)
             facingLayer.removeChildren()
-            facingDegrees?.let { degrees ->
-                facingLayer.alpha = facingOverlayAlpha(forceActive || id in selectedUnitIds || dragState?.unit?.id == id)
-                if (MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL in MapViewerFeatureFlags.enabled && shouldDrawFireArcs(this)) {
-                    OlympiadDawnShip.definition(template.customProperties)?.let { definition ->
-                        drawBeamFireArcs(
-                            parent = facingLayer,
-                            width = iconView.bitmap.width.toDouble(),
-                            height = iconView.bitmap.height.toDouble(),
-                            facingDegrees = degrees,
-                            color = template.affiliation.overlayColor(),
-                            localPixelsPerUnit = 1.0 / (mapUnitsPerPixel * view.scaleX),
-                            weapons = definition.weapons,
-                        )
-                    }
-                }
-                drawFacingIndicator(
+            definition?.let {
+                drawBeamFireArcs(
                     parent = facingLayer,
-                    width = iconView.bitmap.width.toDouble(),
-                    height = iconView.bitmap.height.toDouble(),
+                    width = width,
+                    height = height,
                     facingDegrees = degrees,
                     color = template.affiliation.overlayColor(),
+                    localPixelsPerUnit = 1.0 / (mapUnitsPerPixel * view.scaleX),
+                    weapons = it.weapons,
                 )
             }
+            drawFacingIndicator(
+                parent = facingLayer,
+                width = width,
+                height = height,
+                facingDegrees = degrees,
+                color = template.affiliation.overlayColor(),
+            )
+            facingGeometryRebuildCount++
         }
 
         fun updateStateOverlay() {
@@ -873,6 +927,9 @@ internal class MapPlacedUnitManager(
             targetId = unit.id,
             targetAffiliation = unit.template.affiliation,
         )
+
+    private fun selectionAffiliations(ids: Set<MapPlacedObjectId>): Set<UnitAffiliation?> =
+        units.filter { it.id in ids }.mapTo(linkedSetOf()) { it.template.affiliation }
 
     private data class DragState(
         val unit: PlacedUnit,
