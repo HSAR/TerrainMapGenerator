@@ -265,6 +265,7 @@ internal class MapViewerScene(
                         var notesPanel: MapViewerNotesPanel? = null
                         val actionHistory = MapActionHistory()
                         val sitrepContactPersistence = additionalData.sitrepContacts
+                        val tacticalFirePersistence = additionalData.tacticalFire
                         val noteStore = MapNoteStore()
                         val operationId = loadedOperation?.operationId ?: UUID.randomUUID()
                         val operationCreatedAt = loadedOperation?.createdAt ?: Instant.now()
@@ -609,6 +610,11 @@ internal class MapViewerScene(
                                 }
                             },
                             sitrepTurnNumberProvider = ::currentTurnNumber,
+                            tacticalTurnNumberProvider = ::currentTurnNumber,
+                            tacticalFireUsageProvider = { key -> tacticalFirePersistence.usage(key) },
+                            onTacticalFireUsageChanged = { key, usage ->
+                                tacticalFirePersistence.replace(key, usage)
+                            },
                             sitrepContactStateProvider = { turnNumber, observerId ->
                                 sitrepContactPersistence.stateFor(SitrepContactKey(turnNumber, observerId))
                             },
@@ -998,6 +1004,9 @@ internal class MapViewerScene(
                             restoredUiState.dialogs
                                 .filter { it.type == "unit-edit" }
                                 .forEach(unitManager::restoreUnitEditDialog)
+                            restoredUiState.dialogs
+                                .filter { it.type == "tactical" }
+                                .forEach(unitManager::restoreTacticalDialog)
                             loadingLayer.parent?.removeChild(loadingLayer)
                         }
                         sidebar.restoreUnitTemplates(replayedLedger.unitTemplates)

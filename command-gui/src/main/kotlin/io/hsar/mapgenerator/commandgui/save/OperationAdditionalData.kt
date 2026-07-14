@@ -17,6 +17,7 @@ internal data class UiSessionState(
 /** Owns the complete additive additionalData.json document. */
 internal class OperationAdditionalData private constructor(private val root: ObjectNode) {
     val sitrepContacts: SitrepContactPersistence = SitrepContactPersistence.fromRoot(root)
+    val tacticalFire: TacticalFirePersistence = TacticalFirePersistence.fromRoot(root)
 
     fun uiState(): UiSessionState {
         val state = root.path(UI_STATE_FIELD).takeIf { it.isObject } ?: return UiSessionState()
@@ -38,7 +39,9 @@ internal class OperationAdditionalData private constructor(private val root: Obj
     }
 
     fun toJsonOrNull(): ByteArray? =
-        root.takeIf { it.size() > 0 }?.let(OperationSaveJson.objectMapper::writeValueAsBytes)
+        sitrepContacts.toJson()
+            .also { tacticalFire.toJson() }
+            .takeIf { root.size() > 0 }
 
     companion object {
         const val UI_STATE_FIELD = "uiState"

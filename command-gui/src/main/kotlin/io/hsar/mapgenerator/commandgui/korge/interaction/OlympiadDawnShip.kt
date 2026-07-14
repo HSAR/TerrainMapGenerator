@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.io.File
 import kotlin.math.floor
+import kotlin.random.Random
 
 internal data class OlympiadDawnShipDefinition(
     val name: String,
@@ -22,6 +23,7 @@ internal data class OlympiadDawnShipSystem(
     val id: String,
     val name: String,
     val fighterSquadronIds: Set<String> = emptySet(),
+    val capacity: Int? = null,
 )
 
 internal data class OlympiadDawnShipWeapon(
@@ -29,6 +31,10 @@ internal data class OlympiadDawnShipWeapon(
     val name: String,
     val arcs: List<String> = emptyList(),
     val beamClass: Int? = null,
+    val magazineId: String? = null,
+    val pointDefense: Boolean = false,
+    val submunition: Boolean = false,
+    val salvoRack: Boolean = false,
 )
 
 internal data class OlympiadDawnFighterSquadron(
@@ -87,6 +93,9 @@ internal object OlympiadDawnShip {
     const val UNIT_CLASS_KEY = "unitClass"
     const val FIGHTER_UNIT_ID_KEY = "unitId"
     const val MASS_KEY = "mass"
+    const val MAGAZINE_PROPERTY_PREFIX = "olympiadDawn.magazine."
+    const val FIGHTER_LINK_PROPERTY_PREFIX = "olympiadDawn.fighterLink."
+    private const val RANDOM_ID_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
 
     private val mapper = jacksonObjectMapper()
 
@@ -143,6 +152,12 @@ internal object OlympiadDawnShip {
         val systems = root.path("systems").takeIf(JsonNode::isArray)
             ?.flatMap { system ->
                 val id = system.requiredText("id")
+                val rawSystemName = system.requiredText("name")
+                val capacity = system.path("capacity").takeIf { !it.isMissingNode && !it.isNull }
+                    ?.takeIf(JsonNode::isIntegralNumber)?.intValue()?.takeIf { it >= 0 }
+                if (rawSystemName == "magazine" && capacity == null) {
+                    throw IllegalArgumentException("Magazine capacity must be a non-negative integer")
+                }
                 val name = system.friendlySystemName(fighterNamesByHangar[id])
                 val count = if (system.path("name").textValue() == "drive") {
                     system.path("thrust").intValue().coerceAtLeast(1)
@@ -152,6 +167,7 @@ internal object OlympiadDawnShip {
                         id = if (count == 1) id else "$id-$index",
                         name = name,
                         fighterSquadronIds = fighterIdsByHangar[id].orEmpty(),
+                        capacity = capacity.takeIf { rawSystemName == "magazine" },
                     )
                 }
             }
@@ -159,9 +175,9 @@ internal object OlympiadDawnShip {
         if (systems.map(OlympiadDawnShipSystem::id).toSet().size != systems.size) {
             throw IllegalArgumentException("Ship systems must have unique IDs")
         }
-        val weapons = root.path("weapons").takeIf(JsonNode::isArray)
-            ?.map { it.parseWeapon() }
-            .orEmpty()
+        val magazineIds = systems.filter { it.name.startsWith("Magazine - ") }.map(OlympiadDawnShipSystem::id).toSet()
+        val weapons = root.path("weapons").takeIf(JsonNode::isArray)?.map { it.parseWeapon(magazineIds) }.orEmpty()
+        val ordnance = root.path("ordnance").takeIf(JsonNode::isArray)?.map { it.parseWeapon(magazineIds) }.orEmpty()
         return OlympiadDawnShipDefinition(
             name = name,
             shipClass = shipClass,
@@ -170,7 +186,7 @@ internal object OlympiadDawnShip {
             hullRows = hullRows,
             armourPoints = armourPoints,
             systems = systems,
-            weapons = weapons,
+            weapons = weapons + ordnance,
             fighters = fighters,
             sourceJson = mapper.writeValueAsString(root),
         )
@@ -199,6 +215,9 @@ internal object OlympiadDawnShip {
         ) + buildMap {
             unitClassFor(definition.shipClass)?.let { put(UNIT_CLASS_KEY, it) }
             definition.mass?.let { put(MASS_KEY, it.toString()) }
+            definition.systems.filter { it.capacity != null }.forEach { system ->
+                put(magazinePropertyKey(system.id), system.capacity.toString())
+            }
         }
 
     private fun unitClassFor(shipClass: String): String? {
@@ -215,8 +234,33 @@ internal object OlympiadDawnShip {
     fun instanceProperties(template: MapViewerUnitTemplate): Map<String, String> =
         template.customProperties
             .let(::definition)
-            ?.let { definition -> mapOf(DAMAGE_KEY to encodeDamage(defaultDamage(template.customProperties) ?: intactDamage())) }
+            ?.let { definition ->
+                mapOf(DAMAGE_KEY to encodeDamage(defaultDamage(template.customProperties) ?: intactDamage())) +
+                        definition.systems.filter { it.capacity != null }.associate { it.magazineKey() to it.capacity.toString() } +
+                        definition.weapons.mapIndexedNotNull { index, weapon ->
+                            weapon.takeIf { it.submunition }?.let { magazinePropertyKey(weaponKey(definition, index)) to "1" }
+                        } + definition.fighters.associate { fighter -> fighterLinkPropertyKey(fighter.id) to randomLinkId() }
+            }
             .orEmpty()
+
+    fun magazinePropertyKey(id: String): String = "$MAGAZINE_PROPERTY_PREFIX$id"
+
+    fun fighterLinkPropertyKey(id: String): String = "$FIGHTER_LINK_PROPERTY_PREFIX$id"
+
+    fun fighterLinkId(properties: Map<String, String>, fighterId: String): String =
+        properties[fighterLinkPropertyKey(fighterId)]?.takeIf(String::isNotBlank) ?: fighterId
+
+    private fun randomLinkId(): String = buildString(4) {
+        repeat(4) { append(RANDOM_ID_CHARACTERS[Random.nextInt(RANDOM_ID_CHARACTERS.length)]) }
+    }
+
+    fun magazineRemaining(properties: Map<String, String>, system: OlympiadDawnShipSystem): Int =
+        system.capacity?.let { capacityRemaining(properties, system.id, it) } ?: 0
+
+    fun capacityRemaining(properties: Map<String, String>, id: String, capacity: Int): Int =
+        properties[magazinePropertyKey(id)]?.toIntOrNull()?.coerceIn(0, capacity) ?: capacity
+
+    private fun OlympiadDawnShipSystem.magazineKey(): String = magazinePropertyKey(id)
 
     fun encodeDamage(damage: OlympiadDawnShipDamage): String =
         mapper.writeValueAsString(
@@ -273,6 +317,9 @@ internal object OlympiadDawnShip {
             "pds" -> "Point Defence System"
             "screen" -> "Shields"
             "hangar" -> hangarFighterName?.let { "Hangar - $it" } ?: "Hangar"
+            "ecm" -> "Electronic Countermeasures"
+            "sensors" -> "Advanced Sensors"
+            "magazine" -> "Magazine - ${path("capacity").intValue()}"
             else -> requiredText("name")
         }
 
@@ -311,7 +358,8 @@ internal object OlympiadDawnShip {
         return snapshots.asSequence()
             .filter { it.unitClassLabel() == "F" }
             .mapNotNull { fighter ->
-                fighter.customProperties[FIGHTER_UNIT_ID_KEY]?.trim()?.takeIf { it in squadronIds }
+                fighter.customProperties[FIGHTER_UNIT_ID_KEY]?.trim()
+                    ?.takeIf { requested -> squadronIds.any { id -> requested == id || requested == fighterLinkId(carrier.customProperties, id) } }
                     ?.takeIf { linkedCarrier(fighter, snapshots)?.id == carrier.id }
                     ?.let { it to fighter.destroyed }
             }
@@ -341,7 +389,8 @@ internal object OlympiadDawnShip {
         val snapshots = units.toList()
         val carrier = linkedCarrier(fighter, snapshots) ?: return null
         val definition = definitionFor(carrier) ?: return null
-        val squadronId = fighter.customProperties[FIGHTER_UNIT_ID_KEY]?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val requestedId = fighter.customProperties[FIGHTER_UNIT_ID_KEY]?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val squadronId = definition.fighters.firstOrNull { requestedId == it.id || requestedId == fighterLinkId(carrier.customProperties, it.id) }?.id ?: return null
         val index = definition.fighters.indexOfFirst { it.id == squadronId }.takeIf { it >= 0 } ?: return null
         val squadron = definition.fighters[index]
         return OlympiadDawnSquadronStatus(
@@ -380,34 +429,49 @@ internal object OlympiadDawnShip {
     ): UnitSnapshot? {
         if (fighter.unitClassLabel() != "F") return null
         val squadronId = fighter.customProperties[FIGHTER_UNIT_ID_KEY]?.trim()?.takeIf(String::isNotEmpty) ?: return null
-        return units.filter { candidate -> squadronId in definitionFor(candidate)?.fighters.orEmpty().map(OlympiadDawnFighterSquadron::id) }
+        return units.filter { candidate ->
+            definitionFor(candidate)?.fighters.orEmpty().any { squadron ->
+                squadronId == squadron.id || squadronId == fighterLinkId(candidate.customProperties, squadron.id)
+            }
+        }
             .singleOrNull()
     }
 
     private fun definitionFor(unit: UnitSnapshot): OlympiadDawnShipDefinition? =
         definition(unit.customProperties) ?: definition(unit.template.customProperties)
 
-    private fun JsonNode.parseWeapon(): OlympiadDawnShipWeapon {
+    private fun JsonNode.parseWeapon(magazineIds: Set<String>): OlympiadDawnShipWeapon {
         val rawName = requiredText("name")
+        val magazineId = path("magazine").textValue()?.trim()?.takeIf(String::isNotEmpty)
+        if (rawName == "salvoLauncher" && magazineId !in magazineIds) {
+            throw IllegalArgumentException("Salvo launcher magazine must reference a valid magazine")
+        }
         return OlympiadDawnShipWeapon(
             id = path("id").textValue()?.trim()?.takeIf(String::isNotEmpty),
             name = when (rawName) {
                 "pds" -> "Point Defence System"
-                "beam" -> "Beam Turret Class ${path("class").intValue()}"
+                "beam" -> "Class ${path("class").intValue()} Beam Turret"
+                "salvoLauncher" -> "Salvo Missile Launcher"
+                "salvo" -> "Salvo Missile Rack"
+                "submunition" -> "Submunition Rack"
                 else -> rawName
             },
-            arcs = parseArcs(),
+            arcs = if (rawName == "pds") ARC_ORDER else parseArcs(),
             beamClass = if (rawName == "beam") {
                 path("class").intValue().takeIf { it > 0 }
                     ?: throw IllegalArgumentException("Beam weapon class must be positive")
             } else null,
+            magazineId = magazineId,
+            pointDefense = rawName == "pds",
+            submunition = rawName == "submunition",
+            salvoRack = rawName == "salvo",
         )
     }
 
     private fun fighterProfile(type: String): OlympiadDawnFighterProfile =
         when (type) {
-            "standard" -> OlympiadDawnFighterProfile("Fighter", "Fighters", 6, listOf(OlympiadDawnShipWeapon(null, "Beam Turret Class 1", beamClass = 1)))
-            "interceptor" -> OlympiadDawnFighterProfile("Interceptor", "Interceptors", 6, listOf(OlympiadDawnShipWeapon(null, "Interception Beam Class 1", beamClass = 1)))
+            "standard" -> OlympiadDawnFighterProfile("Fighter", "Fighters", 6, listOf(OlympiadDawnShipWeapon(null, "Light Multirole Beam", ARC_ORDER, 1)))
+            "interceptor" -> OlympiadDawnFighterProfile("Interceptor", "Interceptors", 6, listOf(OlympiadDawnShipWeapon(null, "Light Multirole Beam", ARC_ORDER, 1)))
             "torpedo" -> OlympiadDawnFighterProfile("Torpedo Fighter", "Torpedo Fighters", 6, listOf(OlympiadDawnShipWeapon(null, "Torpedo Launcher")))
             "assault" -> OlympiadDawnFighterProfile("Assault Shuttle", "Assault Shuttles", 3, emptyList())
             else -> throw IllegalArgumentException("Unknown fighter type: $type")

@@ -403,11 +403,18 @@ internal object SensorDetection {
             if (sensorReportMode == SensorReportMode.NAVREP && observer.customProperties.booleanProperty("activeWarp")) add(2)
             if (sensorReportMode == SensorReportMode.NAVREP && observer.customProperties.booleanProperty("inNebula")) add(-1)
         }.sum()
-        return (base * observerModifier) * 2.0.pow(bandOffset + observerSensorModifier)
+        val advancedSensors = observer.advancedSensorsBonus()
+        return (base * observerModifier) * 2.0.pow(bandOffset + observerSensorModifier) + advancedSensors
     }
 
     private fun UnitSnapshot.transmissionInScope(): Boolean =
         customProperties.booleanProperty("transmissionInScope") || customProperties.booleanProperty("transmittingInScope")
+
+    private fun UnitSnapshot.advancedSensorsBonus(): Double {
+        val definition = OlympiadDawnShip.definition(customProperties) ?: OlympiadDawnShip.definition(template.customProperties) ?: return 0.0
+        val damage = OlympiadDawnShip.instanceDamage(customProperties, definition)
+        return if (definition.systems.any { it.name == "Advanced Sensors" && it.id !in damage.destroyedSystems }) 1.0 else 0.0
+    }
 
     private fun UnitSnapshot.distanceTo(
         other: UnitSnapshot,

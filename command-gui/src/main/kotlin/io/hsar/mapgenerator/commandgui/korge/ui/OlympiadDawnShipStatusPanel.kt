@@ -154,8 +154,15 @@ internal object OlympiadDawnShipStatusPanel {
                     {}
                 },
             )
-            val arcs = weapon.arcs.takeIf(List<String>::isNotEmpty)?.joinToString(", ")?.let { " [$it]" }.orEmpty()
-            MapViewerTextViews.leftBox(row, weapon.name + arcs, width - TEXT_INSET, SYSTEM_HEIGHT, color = if (destroyed) Palette.Colours.RED else Palette.Colours.WHITE) {
+            val arcIconWidth = 42.0
+            MapViewerFireArcSegments.render(
+                row.container().xy(width - arcIconWidth, 0.0),
+                arcIconWidth,
+                SYSTEM_HEIGHT,
+                weapon.arcs,
+                MapViewerUiBoxes.toRgba(if (destroyed) Palette.Colours.RED else Palette.Colours.WHITE)
+            )
+            MapViewerTextViews.leftBox(row, weapon.name, width - TEXT_INSET - arcIconWidth, SYSTEM_HEIGHT, color = if (destroyed) Palette.Colours.RED else Palette.Colours.WHITE) {
                 x = TEXT_INSET
             }
         }
@@ -194,11 +201,18 @@ internal object OlympiadDawnShipStatusPanel {
         OlympiadDawnShip.fighterWeaponTotals(definition, damage).forEach { weapon ->
             val row = section.container().also { it.xy(0.0, fighterTop) }
             MapViewerUiBoxes.box(row, width, SYSTEM_HEIGHT, active = weapon.count > 0)
-            val arcs = weapon.arcs.takeIf(List<String>::isNotEmpty)?.joinToString(", ")?.let { " [$it]" }.orEmpty()
+            val arcIconWidth = 42.0
+            MapViewerFireArcSegments.render(
+                row.container().xy(width - arcIconWidth, 0.0),
+                arcIconWidth,
+                SYSTEM_HEIGHT,
+                weapon.arcs,
+                MapViewerUiBoxes.toRgba(if (weapon.count == 0) Palette.Colours.RED else Palette.Colours.WHITE)
+            )
             MapViewerTextViews.leftBox(
                 row,
-                "${weapon.count} ${weapon.name}$arcs",
-                width - CHECKBOX_INSET,
+                "${weapon.count} ${weapon.name}",
+                width - CHECKBOX_INSET - arcIconWidth,
                 SYSTEM_HEIGHT,
                 color = if (weapon.count == 0) Palette.Colours.RED else Palette.Colours.WHITE
             ) {

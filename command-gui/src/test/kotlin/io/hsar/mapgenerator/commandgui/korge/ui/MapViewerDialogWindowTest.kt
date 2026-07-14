@@ -16,7 +16,7 @@ class MapViewerDialogWindowTest {
         )
 
         assertThat(layout.closeButton.width, equalTo(layout.closeButton.height))
-        assertThat(layout.closeButton.height, equalTo(layout.titleBar.height + MapViewerDialogLayoutBuilder.BORDER_INSET))
+        assertThat(layout.closeButton.height, equalTo(layout.titleBar.height + MapViewerDialogLayoutBuilder.BORDER_INSET * 2.0))
         assertThat(layout.closeButton.top, equalTo(layout.titleBar.top - MapViewerDialogLayoutBuilder.BORDER_INSET))
         assertThat(
             layout.closeButton.top + layout.closeButton.height,

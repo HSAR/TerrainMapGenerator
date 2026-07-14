@@ -99,7 +99,7 @@ internal class MapViewerUnitCreateDialog(
             contentHeight = { width -> contentHeightFor(width) },
             actions = listOf(
                 MapViewerDialogAction(confirmLabel, enabled = { canConfirm() }) { confirm() },
-            ),
+            ) + if (initialTemplate != null) listOf(MapViewerDialogAction("Cancel") { close() }) else emptyList(),
             onClose = { close() },
             renderContent = { content, contentWidth ->
                 renderContent(content, contentWidth)

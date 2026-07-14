@@ -18,7 +18,7 @@ class OlympiadDawnShipStatusPanelTest {
             name = "Fighter",
             count = 6,
             remaining = 4,
-            weapons = listOf(OlympiadDawnShipWeapon(null, "Beam Turret Class 1")),
+            weapons = listOf(OlympiadDawnShipWeapon(null, "Class 1 Beam Turret")),
         )
 
         assertThat(OlympiadDawnSquadronStatusPanel.height(status, collapsed = true), equalTo(34.0))

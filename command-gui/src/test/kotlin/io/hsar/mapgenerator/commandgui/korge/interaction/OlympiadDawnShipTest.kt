@@ -6,6 +6,18 @@ import org.junit.jupiter.api.Test
 
 class OlympiadDawnShipTest {
     @Test
+    fun `parses magazines ordnance friendly names and fighter beam arcs`() {
+        val definition = OlympiadDawnShip.parse(
+            """{"hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"fireControl","id":"fc"},{"name":"magazine","id":"mag-1","capacity":3},{"name":"ecm","id":"ecm-1"}],"ordnance":[{"name":"salvoLauncher","id":"salvo-1","leftArc":"F","numArcs":2,"magazine":"mag-1"}],"fighters":[{"type":"standard","id":"fighters"}],"class":"Frigate","name":"Test"}""",
+        )
+        assertThat(definition.systems.map { it.name }, equalTo(listOf("Gunnery Fire Control System", "Magazine - 3", "Electronic Countermeasures")))
+        assertThat(definition.systems[1].capacity, equalTo(3))
+        assertThat(definition.weapons.single().name, equalTo("Salvo Missile Launcher"))
+        assertThat(definition.weapons.single().magazineId, equalTo("mag-1"))
+        assertThat(definition.fighters.single().weapons.single().arcs, equalTo(listOf("F", "FS", "AS", "A", "AP", "FP")))
+    }
+
+    @Test
     fun `parses a ship definition and preserves untracked source sections`() {
         val definition = OlympiadDawnShip.parse(
             """{"hull":{"points":24,"rows":4},"armour":[[5,0]],"systems":[{"name":"drive","thrust":2,"id":"drive-1"},{"name":"fireControl","id":"fc-1"},{"name":"hangar","id":"hangar-1"}],"weapons":[{"name":"beam","class":2,"leftArc":"FS","numArcs":2}],"fighters":[{"name":"fighters","type":"standard","id":"squadron-1","mods":[],"hangar":"hangar-1"}],"mass":55,"class":"Heavy Cruiser","name":"Vandenburg"}""",
@@ -17,7 +29,7 @@ class OlympiadDawnShipTest {
         assertThat(definition.armourPoints, equalTo(5))
         assertThat(definition.systems.map { it.name }, equalTo(listOf("Impulse Drive", "Impulse Drive", "Gunnery Fire Control System", "Hangar - Fighters [squadron-1]")))
         assertThat(definition.systems.last().fighterSquadronIds, equalTo(setOf("squadron-1")))
-        assertThat(definition.weapons.single().name, equalTo("Beam Turret Class 2"))
+        assertThat(definition.weapons.single().name, equalTo("Class 2 Beam Turret"))
         assertThat(definition.weapons.single().arcs, equalTo(listOf("FS", "AS")))
         assertThat(definition.sourceJson.contains("weapons"), equalTo(true))
 
@@ -58,9 +70,9 @@ class OlympiadDawnShipTest {
         assertThat(
             OlympiadDawnShip.totalBeamFirepowerAtRange(
                 listOf(
-                    OlympiadDawnShipWeapon("beam-1", "Beam Turret Class 1", beamClass = 1),
-                    OlympiadDawnShipWeapon("beam-2", "Beam Turret Class 1", beamClass = 1),
-                    OlympiadDawnShipWeapon("beam-3", "Beam Turret Class 3", beamClass = 3),
+                    OlympiadDawnShipWeapon("beam-1", "Class 1 Beam Turret", beamClass = 1),
+                    OlympiadDawnShipWeapon("beam-2", "Class 1 Beam Turret", beamClass = 1),
+                    OlympiadDawnShipWeapon("beam-3", "Class 3 Beam Turret", beamClass = 3),
                 ),
                 3.0,
             ),
@@ -109,7 +121,7 @@ class OlympiadDawnShipTest {
         assertThat(definition.systems.single().name, equalTo("Hangar - Interceptors [interceptors]"))
         assertThat(
             OlympiadDawnShip.fighterWeaponTotals(definition, damage).map { Triple(it.name, it.arcs, it.count) },
-            equalTo(listOf(Triple("Interception Beam Class 1", emptyList(), 1), Triple("Torpedo Launcher", emptyList(), 0))),
+            equalTo(listOf(Triple("Light Multirole Beam", listOf("F", "FS", "AS", "A", "AP", "FP"), 1), Triple("Torpedo Launcher", emptyList(), 0))),
         )
     }
 
@@ -184,7 +196,7 @@ class OlympiadDawnShipTest {
         assertThat(statuses["squadron-1"]?.destroyed, equalTo(false))
         assertThat(OlympiadDawnShip.fighterLaunchStatuses(carrier, listOf(carrier)), equalTo(emptyMap()))
         assertThat(squadronStatus.remaining, equalTo(6))
-        assertThat(squadronStatus.weapons.single().name, equalTo("Beam Turret Class 1"))
+        assertThat(squadronStatus.weapons.single().name, equalTo("Light Multirole Beam"))
         assertThat(OlympiadDawnShip.squadronStatus(fighter, listOf(damagedCarrier, fighter))?.remaining, equalTo(3))
         assertThat(OlympiadDawnShip.hasUniqueFighterLink(fighter, listOf(carrier, fighter)), equalTo(true))
         assertThat(OlympiadDawnShip.hasUniqueFighterLink(fighter, listOf(fighter)), equalTo(false))
@@ -197,5 +209,23 @@ class OlympiadDawnShipTest {
             OlympiadDawnShip.fighterLaunchStatuses(carrier, listOf(carrier, fighter.copy(destroyed = true)))["squadron-1"]?.destroyed,
             equalTo(true),
         )
+    }
+
+    @Test
+    fun `generates four character uppercase fighter link IDs`() {
+        val definition = OlympiadDawnShip.parse(
+            """{"hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"hangar","id":"hangar-1"}],"class":"Carrier","name":"Carrier","fighters":[{"type":"standard","id":"squadron-1","hangar":"hangar-1"}]}""",
+        )
+        val template = MapViewerUnitTemplate(
+            id = UnitTemplateId(java.util.UUID.randomUUID()),
+            name = "Carrier",
+            bitmap = korlibs.image.bitmap.Bitmap32(2, 2),
+            customProperties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),
+        )
+        val properties = OlympiadDawnShip.instanceProperties(template)
+        val link = OlympiadDawnShip.fighterLinkId(properties, "squadron-1")
+        assertThat(link.length, equalTo(4))
+        assertThat(link.matches(Regex("[A-Z0-9_]{4}")), equalTo(true))
+        assertThat(OlympiadDawnShip.fighterLinkId(properties, "squadron-1"), equalTo(link))
     }
 }

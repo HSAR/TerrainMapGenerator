@@ -8,10 +8,13 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogPositionSync
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerImageViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSitrepDialog
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTacticalDialog
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitEditDialog
 import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
 import io.hsar.mapgenerator.commandgui.korge.ui.focusTargetBounds
+import io.hsar.mapgenerator.commandgui.save.TacticalFireKey
+import io.hsar.mapgenerator.commandgui.save.TacticalFireUsage
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
@@ -61,6 +64,9 @@ internal class MapPlacedUnitManager(
     private val sitrepContactStateProvider: (Int, MapPlacedObjectId) -> SitrepContactState = { _, _ -> SitrepContactState() },
     private val sitrepPreviousContactStateProvider: (Int, MapPlacedObjectId) -> SitrepContactState = { _, _ -> SitrepContactState() },
     private val onSitrepContactStateChanged: (Int, MapPlacedObjectId, SitrepContactState) -> Unit = { _, _, _ -> },
+    private val tacticalTurnNumberProvider: () -> Int = { 1 },
+    private val tacticalFireUsageProvider: (TacticalFireKey) -> TacticalFireUsage = { TacticalFireUsage() },
+    private val onTacticalFireUsageChanged: (TacticalFireKey, TacticalFireUsage) -> Unit = { _, _ -> },
 ) {
     private val coordinateSpace = MapCoordinateSpace(geometry, mapWidth, mapHeight)
     private val units = mutableListOf<PlacedUnit>()
@@ -72,6 +78,8 @@ internal class MapPlacedUnitManager(
     private var lastAppliedViewportZoom: Double? = null
     private var dragState: DragState? = null
     private val editSessions = mutableMapOf<MapPlacedObjectId, UnitEditSession>()
+    private val tacticalDialogs = mutableMapOf<MapPlacedObjectId, MapViewerTacticalDialog>()
+    private val tacticalSelectedTargetIds = mutableMapOf<MapPlacedObjectId, MapPlacedObjectId>()
     private val openUnitEditDialogs = mutableMapOf<MapPlacedObjectId, MapViewerUnitEditDialog>()
     private var fullVisualRebuildCount = 0
     private var facingGeometryRebuildCount = 0
@@ -175,6 +183,7 @@ internal class MapPlacedUnitManager(
         if (affiliationChanged && fireArcDisplayMode in setOf(FireArcDisplayMode.FriendliesOfSelected, FireArcDisplayMode.HostilesOfSelected)) {
             units.forEach { it.updateFacingOverlay() }
         }
+        notifyUnitStateChanged()
     }
 
     private fun interactionsEnabled(): Boolean =
@@ -311,10 +320,11 @@ internal class MapPlacedUnitManager(
         units.forEach { it.view.removeFromParent() }
         units.clear()
         snapshots.forEach { upsert(it, notify = false) }
-        onUnitsChanged()
+        notifyUnitStateChanged()
     }
 
-    private fun upsert(snapshot: UnitSnapshot, notify: Boolean, syncDialog: Boolean = notify) {
+    private fun upsert(inputSnapshot: UnitSnapshot, notify: Boolean, syncDialog: Boolean = notify) {
+        val snapshot = normalizeFighterLink(inputSnapshot)
         val unitSize = worldUnitSize(snapshot.template.bitmap)
         val existing = units.firstOrNull { it.id == snapshot.id }
         if (existing != null) {
@@ -389,6 +399,7 @@ internal class MapPlacedUnitManager(
                     editSessions.remove(removed.id)
                     openUnitEditDialogs.remove(removed.id)
                     dialogManager.closeTarget(removed.id)
+                    dialogManager.closeTarget(TacticalDialogKey(removed.id))
                     notifyUnitStateChanged()
                 }.snapshot()
             }
@@ -412,6 +423,17 @@ internal class MapPlacedUnitManager(
             ?.let { id -> units.firstOrNull { it.id == id } }
             ?.let { unit -> openEditDialog(unit, dialog); true }
             ?: false
+
+    fun restoreTacticalDialog(dialog: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog): Boolean =
+        dialog.targetId
+            ?.let { value -> runCatching { MapPlacedObjectId(java.util.UUID.fromString(value)) }.getOrNull() }
+            ?.let { id -> units.firstOrNull { it.id == id } }
+            ?.let { unit -> unit.openTacticalDialog(unit, dialog.bounds); true }
+            ?: false
+
+    /** Future Fire-button hook: consume a selected solution for the current turn. */
+    fun consumeTacticalSolution(unitId: MapPlacedObjectId, targetId: MapPlacedObjectId): Boolean =
+        units.firstOrNull { it.id == unitId }?.consumeTacticalSolution(unitId, targetId) == true
 
     fun cancelTransientState(targetId: MapPlacedObjectId? = null) {
         if (targetId == null || dragState?.unit?.id == targetId) {
@@ -507,7 +529,7 @@ internal class MapPlacedUnitManager(
 
         state.unit.mapCoordinate = mapCoordinate
         positionView(state.unit)
-        onUnitsChanged()
+        notifyUnitStateChanged()
         state.preview.container.x = worldPoint.x - state.unit.worldWidth * 0.5
         state.preview.container.y = worldPoint.y - state.unit.worldHeight * 0.5
         onMovePreviewChanged(
@@ -591,7 +613,7 @@ internal class MapPlacedUnitManager(
                 if (updatedCoordinate != null) {
                     unit.mapCoordinate = updatedCoordinate
                     positionView(unit)
-                    onUnitsChanged()
+                    notifyUnitStateChanged()
                     onMovePreviewChanged(
                         MapObjectMovePreview(
                             origin = session.baselineSnapshot.mapCoordinate,
@@ -602,7 +624,6 @@ internal class MapPlacedUnitManager(
                     )
                 } else {
                     upsert(session.baselineSnapshot)
-                    onUnitsChanged()
                     onMovePreviewChanged(null)
                 }
             },
@@ -702,13 +723,30 @@ internal class MapPlacedUnitManager(
         }
     }
 
+    private fun normalizeFighterLink(snapshot: UnitSnapshot): UnitSnapshot {
+        if (snapshot.unitClassLabel() != "F") return snapshot
+        val requested = snapshot.customProperties[OlympiadDawnShip.FIGHTER_UNIT_ID_KEY]?.trim()?.takeIf(String::isNotEmpty) ?: return snapshot
+        val matches = units.map { it.snapshot() }.mapNotNull { carrier ->
+            val definition = OlympiadDawnShip.definition(carrier.customProperties) ?: OlympiadDawnShip.definition(carrier.template.customProperties)
+            definition?.fighters?.firstOrNull { requested == it.id }?.let { fighter ->
+                requested to OlympiadDawnShip.fighterLinkId(carrier.customProperties, fighter.id)
+            }
+        }.distinctBy { it.second }
+        val replacement = matches.singleOrNull()?.second ?: return snapshot
+        return snapshot.copy(customProperties = snapshot.customProperties + (OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to replacement))
+    }
+
     private fun notifyUnitStateChanged() {
         refreshOpenShipStatusPanels()
+        refreshTacticalDialogs()
         onUnitsChanged()
     }
 
     private fun refreshOpenShipStatusPanels() =
         openUnitEditDialogs.values.forEach(MapViewerUnitEditDialog::refreshShipStatus)
+
+    private fun refreshTacticalDialogs() =
+        tacticalDialogs.values.toList().forEach(MapViewerTacticalDialog::refresh)
 
     private fun updateLinkedSquadronHealth(fighter: PlacedUnit, remaining: Int) {
         val status = OlympiadDawnShip.squadronStatus(fighter.snapshot(), units.map { it.snapshot() }) ?: return
@@ -853,7 +891,23 @@ internal class MapPlacedUnitManager(
                     ),
                 )
                 add(sitrepMenuAction())
+                tacticalMenuAction()?.let(::add)
             }
+
+        private fun tacticalMenuAction(): MapPlacedObjectMenuAction? =
+            (shipDefinition()?.let { definition ->
+                definition.weapons.any { it.arcs.isNotEmpty() } || definition.fighters.any { fighter -> fighter.weapons.any { it.arcs.isNotEmpty() } }
+            } ?: OlympiadDawnShip.squadronStatus(snapshot(), units.map { it.snapshot() })?.weapons?.any { it.arcs.isNotEmpty() })
+                .takeIf { it == true }
+                ?.let {
+                    MapPlacedObjectMenuAction(
+                        label = "TACTICAL",
+                        onSelected = { deferredActionRunner.launch { openTacticalDialog(this@PlacedUnit) } },
+                    ).withRequiredFeatureFlags(MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL)
+                }
+
+        private fun shipDefinition(): OlympiadDawnShipDefinition? =
+            OlympiadDawnShip.definition(customProperties) ?: OlympiadDawnShip.definition(template.customProperties)
 
         private fun sitrepMenuAction(): MapPlacedObjectMenuAction {
             val validationError = snapshot().sitrepValidationError()
@@ -890,13 +944,100 @@ internal class MapPlacedUnitManager(
                 onObserverCustomPropertiesChanged = { before, after ->
                     unit.customProperties = after.customProperties
                     unit.updateStateOverlay()
-                    onUnitsChanged()
+                    notifyUnitStateChanged()
                     onUnitEdited(before, after)
                     dialogManager.broadcast(after)
                 },
                 onTransientNotice = onTransientNotice,
                 restoredBounds = restoredBounds,
             ).open()
+        }
+
+        fun openTacticalDialog(
+            unit: PlacedUnit,
+            restoredBounds: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogBounds? = null,
+        ) {
+            val key = TacticalDialogKey(unit.id)
+            if (dialogManager.hasTarget(key)) return
+            val dialog = MapViewerTacticalDialog(
+                root = root,
+                dialogManager = dialogManager,
+                dialogKey = key,
+                unitName = unit.snapshot().displayName(),
+                reportProvider = {
+                    units.firstOrNull { it.id == unit.id }
+                        ?.snapshot()
+                        ?.let { source ->
+                            val usage = tacticalFireUsageProvider(TacticalFireKey(tacticalTurnNumberProvider(), source.id))
+                            TacticalTargetingResolver.resolve(
+                                source = source,
+                                candidates = units.map { it.snapshot() },
+                                mapWidth = mapWidth,
+                                mapHeight = mapHeight,
+                                mapUnitsPerPixel = mapUnitsPerPixel,
+                                firedWeaponKeys = usage.firedWeapons,
+                                fireControlUsed = usage.fireControlUsed,
+                            )
+                        }
+                },
+                restoredBounds = restoredBounds,
+                persistenceTargetId = unit.id.value.toString(),
+                focusTargetBoundsProvider = { listOf(unit.snapshot().focusTargetBounds(coordinateSpace, viewportProvider())) },
+                onDismiss = {
+                    tacticalDialogs.remove(unit.id)
+                    tacticalSelectedTargetIds.remove(unit.id)
+                    unit.updateFacingOverlay()
+                },
+                onSolutionSelected = { targetId ->
+                    if (targetId == null) tacticalSelectedTargetIds.remove(unit.id)
+                    else tacticalSelectedTargetIds[unit.id] = targetId
+                    unit.updateFacingOverlay()
+                },
+            )
+            tacticalDialogs[unit.id] = dialog
+            if (dialog.open()) {
+                unit.updateFacingOverlay()
+            } else {
+                tacticalDialogs.remove(unit.id)
+                tacticalSelectedTargetIds.remove(unit.id)
+            }
+        }
+
+        /** Future Fire-button hook: consume a selected solution for the current turn. */
+        fun consumeTacticalSolution(unitId: MapPlacedObjectId, targetId: MapPlacedObjectId): Boolean {
+            val unit = units.firstOrNull { it.id == unitId } ?: return false
+            val usageKey = TacticalFireKey(tacticalTurnNumberProvider(), unitId)
+            val usage = tacticalFireUsageProvider(usageKey)
+            val report =
+                TacticalTargetingResolver.resolve(unit.snapshot(), units.map { it.snapshot() }, mapWidth, mapHeight, mapUnitsPerPixel, usage.firedWeapons, usage.fireControlUsed)
+            val target = report.targets.firstOrNull { it.targetId == targetId } ?: return false
+            val weaponKeys = target.contributions.map { it.weaponKey }.toSet()
+            val consumesFireControl = report.weapons.any { it.key in weaponKeys && it.requiresFireControl }
+            if (consumesFireControl && usage.fireControlUsed >= report.fireControlCapacity) return false
+            val definition = unit.shipDefinition() ?: return false
+            val consumables = target.contributions.mapNotNull { contribution ->
+                definition.weapons.mapIndexedNotNull { index, weapon ->
+                    weapon.takeIf { OlympiadDawnShip.weaponKey(definition, index) == contribution.weaponKey }
+                }.firstOrNull()
+            }
+            if (consumables.isNotEmpty()) {
+                val updated = unit.customProperties.toMutableMap()
+                consumables.forEach { weapon ->
+                    val magazine = weapon.magazineId?.let { id -> definition.systems.firstOrNull { it.id == id } }
+                    val capacityId = magazine?.id ?: weapon.takeIf { it.submunition }?.let { OlympiadDawnShip.weaponKey(definition, definition.weapons.indexOf(it)) }
+                    val capacity = magazine?.capacity ?: weapon.takeIf { it.submunition }?.let { 1 } ?: return@forEach
+                    val remaining = OlympiadDawnShip.capacityRemaining(updated, capacityId!!, capacity)
+                    if (remaining <= 0) return false
+                    updated[OlympiadDawnShip.magazinePropertyKey(capacityId)] = (remaining - 1).toString()
+                }
+                unit.customProperties = updated
+            }
+            onTacticalFireUsageChanged(
+                usageKey,
+                usage.copy(firedWeapons = usage.firedWeapons + weaponKeys, fireControlUsed = usage.fireControlUsed + if (consumesFireControl) 1 else 0)
+            )
+            notifyUnitStateChanged()
+            return true
         }
 
         override fun moveBy(mapDelta: MapCoordinateDelta) {
@@ -938,16 +1079,18 @@ internal class MapPlacedUnitManager(
             }
             val width = iconView.bitmap.width.toDouble()
             val height = iconView.bitmap.height.toDouble()
-            val fireArcsEnabled = MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL in MapViewerFeatureFlags.enabled && shouldDrawFireArcs(this)
+            val fireArcsEnabled = MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL in MapViewerFeatureFlags.enabled &&
+                    (id in tacticalDialogs || shouldDrawFireArcs(this))
             val definition = if (fireArcsEnabled) {
                 OlympiadDawnShip.definition(customProperties) ?: OlympiadDawnShip.definition(template.customProperties)
             } else {
                 null
             }
+            val squadron = if (fireArcsEnabled && definition == null) OlympiadDawnShip.squadronStatus(snapshot(), units.map { it.snapshot() }) else null
             facingLayer.visible = true
             facingLayer.alpha = facingOverlayAlpha(forceActive || id in selectedUnitIds || dragState?.unit?.id == id)
             facingLayer.removeChildren()
-            definition?.let {
+            (definition?.weapons ?: squadron?.weapons)?.let { weapons ->
                 drawBeamFireArcs(
                     parent = facingLayer,
                     width = width,
@@ -955,7 +1098,9 @@ internal class MapPlacedUnitManager(
                     facingDegrees = degrees,
                     color = template.affiliation.overlayColor(),
                     localPixelsPerUnit = 1.0 / (mapUnitsPerPixel * view.scaleX),
-                    weapons = it.weapons,
+                    weapons = if (definition != null) weapons + definition.fighters.flatMap { fighter -> fighter.weapons } else weapons,
+                    originMapCoordinate = mapCoordinate,
+                    highlightTarget = tacticalSelectedTargetIds[id]?.let { targetId -> units.firstOrNull { candidate -> candidate.id == targetId }?.mapCoordinate },
                 )
             }
             drawFacingIndicator(
@@ -1024,6 +1169,8 @@ internal class MapPlacedUnitManager(
             baselinePosition = position
         }
     }
+
+    private data class TacticalDialogKey(val unitId: MapPlacedObjectId)
 
     private fun positionView(unit: PlacedUnit) {
         val worldPoint = coordinateSpace.toWorld(unit.mapCoordinate)
@@ -1147,15 +1294,22 @@ internal class MapPlacedUnitManager(
         color: Color,
         localPixelsPerUnit: Double,
         weapons: List<OlympiadDawnShipWeapon>,
+        originMapCoordinate: MapCoordinate,
+        highlightTarget: MapCoordinate? = null,
     ) {
         val center = Point(width * 0.5, height * 0.5)
         val borderColor = toRgba(color)
         val rangeBandColor = toRgba(color, (color.alpha * BEAM_RANGE_BAND_ALPHA).toInt())
 
+        highlightTarget?.let { target ->
+            drawHighlightedFireArcSegment(parent, center, facingDegrees, originMapCoordinate, target, localPixelsPerUnit, color)
+        }
+
         data class ArcRange(val arcIndex: Int, val band: Int)
 
         val beamWeapons = weapons.mapNotNull { weapon ->
-            val beamClass = weapon.beamClass ?: return@mapNotNull null
+            val beamClass = weapon.beamClass ?: weapon.magazineId?.let { 2 } ?: weapon.salvoRack.takeIf { it }?.let { 2 } ?: weapon.pointDefense.takeIf { it }?.let { 1 }
+            ?: weapon.submunition.takeIf { it }?.let { 1 } ?: return@mapNotNull null
             val arcIndices = weapon.arcs.mapNotNull { BEAM_ARC_ORDER.indexOf(it).takeIf { index -> index >= 0 } }.distinct()
             arcIndices.takeIf { it.isNotEmpty() }?.let { beamClass to it }
         }
@@ -1251,6 +1405,34 @@ internal class MapPlacedUnitManager(
             stroke(color) {
                 moveTo(center.x, center.y)
                 lineTo(end.x, end.y)
+            }
+        }
+    }
+
+    private fun drawHighlightedFireArcSegment(
+        parent: Container,
+        center: Point,
+        facingDegrees: Int,
+        origin: MapCoordinate,
+        target: MapCoordinate,
+        localPixelsPerUnit: Double,
+        color: Color,
+    ) {
+        val dx = (target.x - origin.x) * mapWidth
+        val dy = (target.y - origin.y) * mapHeight
+        val range = hypot(dx, dy) * mapUnitsPerPixel
+        if (range <= 0.0) return
+        val band = kotlin.math.floor(range / OlympiadDawnBeamRules.RANGE_BAND_SIZE_U).toInt() + 1
+        val bearing = Math.toDegrees(kotlin.math.atan2(dx, -dy))
+        val arcIndex = kotlin.math.floor(((bearing - facingDegrees).mod(360.0) + 30.0) / 60.0).toInt().mod(BEAM_ARC_ORDER.size)
+        val start = facingDegrees + arcIndex * BEAM_ARC_WIDTH_DEGREES - BEAM_ARC_WIDTH_DEGREES * 0.5
+        val outer = sectorPoints(center, band * OlympiadDawnBeamRules.RANGE_BAND_SIZE_U * localPixelsPerUnit, start, start + BEAM_ARC_WIDTH_DEGREES)
+        val inner = sectorPoints(center, (band - 1) * OlympiadDawnBeamRules.RANGE_BAND_SIZE_U * localPixelsPerUnit, start, start + BEAM_ARC_WIDTH_DEGREES).reversed()
+        parent.graphics {
+            fill(toRgba(color, (color.alpha * 0.3).toInt())) {
+                outer.forEachIndexed { index, point -> if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y) }
+                inner.forEach { point -> lineTo(point.x, point.y) }
+                close()
             }
         }
     }

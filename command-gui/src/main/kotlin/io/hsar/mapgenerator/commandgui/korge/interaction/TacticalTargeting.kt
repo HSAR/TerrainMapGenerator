@@ -1,0 +1,177 @@
+package io.hsar.mapgenerator.commandgui.korge.interaction
+
+import kotlin.math.atan2
+import kotlin.math.floor
+import kotlin.math.hypot
+
+internal data class TacticalWeaponStatus(
+    val key: String,
+    val name: String,
+    val beamClass: Int?,
+    val salvo: Boolean = false,
+    val magazineId: String? = null,
+    val magazineRemaining: Int? = null,
+    val quantity: Int = 1,
+    val pointDefense: Boolean = false,
+    val submunition: Boolean = false,
+    val salvoRack: Boolean = false,
+    val requiresFireControl: Boolean = false,
+    val arcs: List<String>,
+    val destroyed: Boolean,
+    val fired: Boolean,
+)
+
+internal data class TacticalWeaponContribution(
+    val weaponKey: String,
+    val weaponName: String,
+    val arc: String,
+    val firepower: Int,
+)
+
+internal data class TacticalTarget(
+    val targetId: MapPlacedObjectId,
+    val targetName: String,
+    val rangeU: Double,
+    val arcs: List<String>,
+    val firepower: Int,
+    val contributions: List<TacticalWeaponContribution>,
+)
+
+internal data class TacticalTargetingReport(
+    val weapons: List<TacticalWeaponStatus>,
+    val targets: List<TacticalTarget>,
+    val fireControlCapacity: Int = 0,
+    val fireControlUsed: Int = 0,
+)
+
+internal object TacticalTargetingResolver {
+    private val arcOrder = listOf("F", "FS", "AS", "A", "AP", "FP")
+
+    fun resolve(
+        source: UnitSnapshot,
+        candidates: List<UnitSnapshot>,
+        mapWidth: Int,
+        mapHeight: Int,
+        mapUnitsPerPixel: Double,
+        firedWeaponKeys: Set<String> = emptySet(),
+        fireControlUsed: Int = 0,
+    ): TacticalTargetingReport {
+        val definition = source.shipDefinition()
+        val squadron = if (definition == null) OlympiadDawnShip.squadronStatus(source, candidates) else null
+        if (definition == null && squadron == null) return TacticalTargetingReport(emptyList(), emptyList())
+        val damage = definition?.let { OlympiadDawnShip.instanceDamage(source.customProperties, it) }
+        val fireControlCapacity = definition?.systems?.count { it.name == "Gunnery Fire Control System" && it.id !in damage!!.destroyedSystems } ?: 1
+        val shipWeapons = definition?.weapons.orEmpty().mapIndexedNotNull { index, weapon ->
+            weapon.takeIf { it.arcs.isNotEmpty() }?.let {
+                val key = OlympiadDawnShip.weaponKey(definition!!, index)
+                val magazine = weapon.magazineId?.let { id -> definition!!.systems.firstOrNull { it.id == id } }
+                TacticalWeaponStatus(
+                    key, weapon.name, weapon.beamClass, weapon.magazineId != null, weapon.magazineId,
+                    when {
+                        magazine != null -> OlympiadDawnShip.magazineRemaining(source.customProperties, magazine)
+                        weapon.submunition -> OlympiadDawnShip.capacityRemaining(source.customProperties, key, 1)
+                        else -> null
+                    }, 1, weapon.pointDefense, weapon.submunition, weapon.salvoRack, !weapon.pointDefense && !weapon.submunition, weapon.arcs,
+                    key in damage!!.destroyedWeapons, key in firedWeaponKeys
+                )
+            }
+        }
+        val fighterWeapons = definition?.fighters?.flatMapIndexed { fighterIndex, fighter ->
+            val quantity = OlympiadDawnShip.remainingFighters(definition, damage!!, fighterIndex)
+            fighter.weapons.mapIndexedNotNull { weaponIndex, weapon ->
+                weapon.takeIf { it.arcs.isNotEmpty() }?.let {
+                    TacticalWeaponStatus(
+                        "fighter-${fighter.id}-$weaponIndex", weapon.name, weapon.beamClass, false, null, null, quantity,
+                        false, false, false, false, weapon.arcs, quantity <= 0, "fighter-${fighter.id}-$weaponIndex" in firedWeaponKeys,
+                    )
+                }
+            }
+        }.orEmpty() + squadron?.let { status ->
+            status.weapons.mapIndexedNotNull { weaponIndex, weapon ->
+                weapon.takeIf { it.arcs.isNotEmpty() }?.let {
+                    TacticalWeaponStatus(
+                        "fighter-${status.squadronId}-$weaponIndex", it.name, it.beamClass, false, null, null,
+                        status.remaining, false, false, false, false, it.arcs, status.remaining <= 0, "fighter-${status.squadronId}-$weaponIndex" in firedWeaponKeys
+                    )
+                }
+            }
+        }.orEmpty()
+        val weapons = shipWeapons + fighterWeapons
+        val facing = source.facingDegrees ?: return TacticalTargetingReport(weapons, emptyList())
+        val remainingFireControl = (fireControlCapacity - fireControlUsed).coerceAtLeast(0)
+        val intactWeapons = weapons.filter {
+            !it.destroyed && !it.fired && (!it.requiresFireControl || remainingFireControl > 0) && (it.pointDefense || it.beamClass != null || it.salvoRack || (it.salvo && (it.magazineRemaining
+                ?: 0) > 0) || (it.submunition && (it.magazineRemaining ?: 0) > 0))
+        }
+        val targets = candidates.asSequence()
+            .filter { it.id != source.id && !it.destroyed && (it.shipDefinition() != null || it.unitClassLabel() == "F") && it.template.affiliation != source.template.affiliation }
+            .mapNotNull { target -> targetFor(source, target, facing, intactWeapons, mapWidth, mapHeight, mapUnitsPerPixel) }
+            .sortedWith(
+                compareByDescending<TacticalTarget>(TacticalTarget::firepower)
+                    .thenBy(TacticalTarget::rangeU)
+                    .thenBy(String.CASE_INSENSITIVE_ORDER, TacticalTarget::targetName)
+                    .thenBy { it.targetId.value },
+            )
+            .toList()
+        return TacticalTargetingReport(weapons, targets, fireControlCapacity, fireControlUsed)
+    }
+
+    private fun targetFor(
+        source: UnitSnapshot,
+        target: UnitSnapshot,
+        facing: Int,
+        weapons: List<TacticalWeaponStatus>,
+        mapWidth: Int,
+        mapHeight: Int,
+        mapUnitsPerPixel: Double,
+    ): TacticalTarget? {
+        val range = hypot(
+            (target.mapCoordinate.x - source.mapCoordinate.x) * mapWidth,
+            (target.mapCoordinate.y - source.mapCoordinate.y) * mapHeight,
+        ) * mapUnitsPerPixel
+        val arc = targetArc(source, target, facing)
+        val contributions = weapons
+            .filter { arc in it.arcs && weaponEffectiveAgainst(it, target) }
+            .mapNotNull { weapon ->
+                weaponFirepower(weapon, range)
+                    .takeIf { it > 0 }
+                    ?.let { TacticalWeaponContribution(weapon.key, weapon.name, arc, it) }
+            }
+        return contributions.takeIf(List<TacticalWeaponContribution>::isNotEmpty)?.let {
+            TacticalTarget(
+                targetId = target.id,
+                targetName = target.displayName(),
+                rangeU = range,
+                arcs = it.map(TacticalWeaponContribution::arc).distinct(),
+                firepower = it.sumOf(TacticalWeaponContribution::firepower),
+                contributions = it,
+            )
+        }
+    }
+
+    private fun weaponFirepower(weapon: TacticalWeaponStatus, range: Double): Int = when {
+        weapon.pointDefense -> if (range < OlympiadDawnBeamRules.RANGE_BAND_SIZE_U) 1 else 0
+        weapon.submunition && range <= 3.0 -> 3
+        weapon.beamClass != null -> OlympiadDawnBeamRules.firepowerAtRange(weapon.beamClass, range) * weapon.quantity
+        (weapon.salvo || weapon.salvoRack) && range <= 12.0 -> 1
+        else -> 0
+    }
+
+    private fun weaponEffectiveAgainst(weapon: TacticalWeaponStatus, target: UnitSnapshot): Boolean =
+        if (target.unitClassLabel() == "F") weapon.pointDefense || weapon.beamClass == 1
+        else !weapon.pointDefense
+
+    private fun targetArc(source: UnitSnapshot, target: UnitSnapshot, facing: Int): String {
+        val bearing = Math.toDegrees(
+            atan2(
+                (target.mapCoordinate.x - source.mapCoordinate.x),
+                -(target.mapCoordinate.y - source.mapCoordinate.y),
+            ),
+        )
+        val relative = (bearing - facing).mod(360.0)
+        return arcOrder[floor((relative + 30.0) / 60.0).toInt().mod(arcOrder.size)]
+    }
+
+    private fun UnitSnapshot.shipDefinition(): OlympiadDawnShipDefinition? =
+        OlympiadDawnShip.definition(customProperties) ?: OlympiadDawnShip.definition(template.customProperties)
+}
