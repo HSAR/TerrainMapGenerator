@@ -990,7 +990,7 @@ internal class MapPlacedUnitManager(
                     else tacticalSelectedTargetIds[unit.id] = targetId
                     unit.updateFacingOverlay()
                 },
-                onFire = { targetId -> fireTacticalSolution(unit.id, targetId) },
+                onFire = { targetId, weaponKeys -> fireTacticalSolution(unit.id, targetId, weaponKeys) },
                 onFireResolved = { resolution ->
                     MapViewerGunrepDialog(root, dialogManager, "gunrep-${java.util.UUID.randomUUID()}", resolution).open()
                 },
@@ -1004,20 +1004,28 @@ internal class MapPlacedUnitManager(
             }
         }
 
-        fun fireTacticalSolution(unitId: MapPlacedObjectId, targetId: MapPlacedObjectId): TacticalFireResolution? {
+        fun fireTacticalSolution(
+            unitId: MapPlacedObjectId,
+            targetId: MapPlacedObjectId,
+            selectedWeaponKeys: Set<String>? = null,
+        ): TacticalFireResolution? {
             val unit = units.firstOrNull { it.id == unitId } ?: return null
             val usageKey = TacticalFireKey(tacticalTurnNumberProvider(), unitId)
             val usage = tacticalFireUsageProvider(usageKey)
             val report = TacticalTargetingResolver.resolve(unit.snapshot(), unitQueryService, usage.firedWeapons, usage.fireControlUsed)
             val target = report.targets.firstOrNull { it.targetId == targetId } ?: return null
-            val weaponKeys = target.contributions.map { it.weaponKey }.toSet()
-            val consumesFireControl = report.weapons.any { it.key in weaponKeys && it.requiresFireControl }
+            val contributions = target.contributions.filter { contribution -> selectedWeaponKeys == null || contribution.weaponKey in selectedWeaponKeys }
+            val weaponKeys = contributions.mapTo(linkedSetOf(), TacticalWeaponContribution::weaponKey)
+            if (weaponKeys.isEmpty()) return null
+            val consumesFireControl = report.weapons.any {
+                it.key in weaponKeys && it.requiresFireControl && !(resolutionTargetIsFighter(targetId) && it.beamClass == 1)
+            }
             if (consumesFireControl && usage.fireControlUsed >= report.fireControlCapacity) return null
             val resolutionTarget = units.firstOrNull { it.id == targetId } ?: return null
-            val resolution = TacticalCombatResolver.resolve(resolutionTarget.snapshot(), report.weapons, target.contributions)
+            val resolution = TacticalCombatResolver.resolve(resolutionTarget.snapshot(), report.weapons, contributions)
             val definition = unit.shipDefinition()
             val consumables = definition?.let { sourceDefinition ->
-                target.contributions.mapNotNull { contribution ->
+                contributions.mapNotNull { contribution ->
                     sourceDefinition.weapons.firstOrNull { weapon ->
                         OlympiadDawnShip.weaponKey(sourceDefinition, sourceDefinition.weapons.indexOf(weapon)) == contribution.weaponKey
                     }
@@ -1070,6 +1078,9 @@ internal class MapPlacedUnitManager(
             if (destroyed) markDestroyed(target)
             return TacticalDamageOutcome(status.remaining - remaining, destroyed)
         }
+
+        private fun resolutionTargetIsFighter(targetId: MapPlacedObjectId): Boolean =
+            units.firstOrNull { it.id == targetId }?.snapshot()?.unitClassLabel() == "F"
 
         private fun markDestroyed(unit: PlacedUnit) {
             if (unit.destroyed) return

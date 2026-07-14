@@ -89,6 +89,71 @@ class TacticalTargetingResolverTest {
         assertThat(report.targets.map { it.targetId }, equalTo(listOf(alphaLowId.id, alphaHighId.id, zulu.id, farther.id)))
     }
 
+    @Test
+    fun `class one beams can target fighters after fire control is spent`() {
+        val source = ship(
+            id = 1,
+            name = "Source",
+            x = 0.5,
+            y = 0.5,
+            affiliation = UnitAffiliation.Friend,
+            weapons = """[{"id":"beam","name":"beam","class":1,"leftArc":"F","numArcs":1}]""",
+        )
+        val fighterProperties = mapOf("unitClass" to "F")
+        val fighter = ship(2, "Fighter", 0.5, 0.495, affiliation = UnitAffiliation.Hostile).copy(
+            template = template(2, fighterProperties, UnitAffiliation.Hostile),
+            customProperties = fighterProperties,
+        )
+
+        val report = TacticalTargetingResolver.resolve(
+            source,
+            UnitQueryService(listOf(source, fighter), mapWidth = 1000, mapHeight = 1000, mapUnitsPerPixel = 1.0),
+            fireControlUsed = 1,
+        )
+
+        assertThat(report.targets.map(TacticalTarget::targetName), equalTo(listOf("Fighter")))
+        assertThat(report.targets.single().contributions.single().weaponKey, equalTo("beam"))
+    }
+
+    @Test
+    fun `unfaced fighter squadrons can target ships and fighters within one unit`() {
+        val definition = OlympiadDawnShip.parse(
+            """{"name":"Carrier","class":"Carrier","hull":{"points":1,"rows":1},"armour":[],"systems":[],"fighters":[{"type":"standard","id":"squadron"}]}""",
+        )
+        val carrier = ship(1, "Carrier", 0.5, 0.5, affiliation = UnitAffiliation.Friend, definition = definition)
+        val sourceProperties = mapOf("unitClass" to "F", OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to "squadron")
+        val source = UnitSnapshot(
+            objectId(2),
+            UnitTemplateId(uuid(102)),
+            template(2, sourceProperties, UnitAffiliation.Friend),
+            "Fighters",
+            false,
+            null,
+            MapCoordinate(0.5, 0.5),
+            0.01,
+            0.01,
+            sourceProperties,
+        )
+        val hostileShip = ship(3, "Hostile Ship", 0.5, 0.499, affiliation = UnitAffiliation.Hostile)
+        val fighterProperties = mapOf("unitClass" to "F")
+        val hostileFighter = UnitSnapshot(
+            objectId(4),
+            UnitTemplateId(uuid(104)),
+            template(4, fighterProperties, UnitAffiliation.Hostile),
+            "Hostile Fighters",
+            false,
+            null,
+            MapCoordinate(0.5, 0.4995),
+            0.01,
+            0.01,
+            fighterProperties,
+        )
+
+        val report = resolve(source, listOf(carrier, source, hostileShip, hostileFighter))
+
+        assertThat(report.targets.map(TacticalTarget::targetName), equalTo(listOf("Hostile Fighters", "Hostile Ship")))
+    }
+
     private fun resolve(source: UnitSnapshot, candidates: List<UnitSnapshot>) =
         TacticalTargetingResolver.resolve(source, UnitQueryService(candidates, mapWidth = 1000, mapHeight = 1000, mapUnitsPerPixel = 1.0))
 

@@ -20,6 +20,7 @@ internal data class TacticalWeaponStatus(
     val arcs: List<String>,
     val destroyed: Boolean,
     val fired: Boolean,
+    val fighterWeapon: Boolean = false,
 )
 
 internal data class TacticalWeaponContribution(
@@ -58,7 +59,7 @@ internal object TacticalTargetingResolver {
         val squadron = if (definition == null) OlympiadDawnShip.squadronStatus(source, unitQueryService.allUnits()) else null
         if (definition == null && squadron == null) return TacticalTargetingReport(emptyList(), emptyList())
         val damage = definition?.let { OlympiadDawnShip.instanceDamage(source.customProperties, it) }
-        val fireControlCapacity = definition?.systems?.count { it.name == "Gunnery Fire Control System" && it.id !in damage!!.destroyedSystems } ?: 1
+        val fireControlCapacity = definition?.systems?.count { it.name == "Gunnery Fire Control System" && it.id !in damage!!.destroyedSystems } ?: 0
         val shipWeapons = definition?.weapons.orEmpty().mapIndexedNotNull { index, weapon ->
             weapon.takeIf { it.arcs.isNotEmpty() }?.let {
                 val key = OlympiadDawnShip.weaponKey(definition!!, index)
@@ -81,6 +82,7 @@ internal object TacticalTargetingResolver {
                     TacticalWeaponStatus(
                         "fighter-${fighter.id}-$weaponIndex", weapon.name, weapon.beamClass, false, null, null, quantity,
                         false, false, false, weapon.torpedo, weapon.interceptor, false, weapon.arcs, quantity <= 0, "fighter-${fighter.id}-$weaponIndex" in firedWeaponKeys,
+                        fighterWeapon = true,
                     )
                 }
             }
@@ -98,21 +100,22 @@ internal object TacticalTargetingResolver {
                         false,
                         it.arcs,
                         status.remaining <= 0,
-                        "fighter-${status.squadronId}-$weaponIndex" in firedWeaponKeys
+                        "fighter-${status.squadronId}-$weaponIndex" in firedWeaponKeys,
+                        fighterWeapon = true,
                     )
                 }
             }
         }.orEmpty()
         val weapons = shipWeapons + fighterWeapons
-        val facing = source.facingDegrees ?: return TacticalTargetingReport(weapons, emptyList())
+        val facing = source.facingDegrees ?: squadron?.let { 0 } ?: return TacticalTargetingReport(weapons, emptyList())
         val remainingFireControl = (fireControlCapacity - fireControlUsed).coerceAtLeast(0)
         val intactWeapons = weapons.filter {
-            !it.destroyed && !it.fired && (!it.requiresFireControl || remainingFireControl > 0) && (it.pointDefense || it.beamClass != null || it.torpedo || it.salvoRack || (it.salvo && (it.magazineRemaining
+            !it.destroyed && !it.fired && (it.pointDefense || it.beamClass != null || it.torpedo || it.salvoRack || (it.salvo && (it.magazineRemaining
                 ?: 0) > 0) || (it.submunition && (it.magazineRemaining ?: 0) > 0))
         }
         val targets = unitQueryService.allUnits().asSequence()
             .filter { it.id != source.id && !it.destroyed && (it.shipDefinition() != null || it.unitClassLabel() == "F") && it.template.affiliation != source.template.affiliation }
-            .mapNotNull { target -> targetFor(source, target, facing, intactWeapons, unitQueryService) }
+            .mapNotNull { target -> targetFor(source, target, facing, intactWeapons, remainingFireControl, unitQueryService) }
             .sortedWith(
                 compareByDescending<TacticalTarget>(TacticalTarget::firepower)
                     .thenBy(TacticalTarget::rangeU)
@@ -139,12 +142,13 @@ internal object TacticalTargetingResolver {
         target: UnitSnapshot,
         facing: Int,
         weapons: List<TacticalWeaponStatus>,
+        remainingFireControl: Int,
         unitQueryService: UnitQueryService,
     ): TacticalTarget? {
         val range = unitQueryService.distanceBetween(source, target)
         val arc = targetArc(source, target, facing)
         val contributions = weapons
-            .filter { arc in it.arcs && weaponEffectiveAgainst(it, target) }
+            .filter { arc in it.arcs && weaponEffectiveAgainst(it, target) && fireControlAvailableFor(it, target, remainingFireControl) }
             .mapNotNull { weapon ->
                 weaponFirepower(weapon, range)
                     .takeIf { it > 0 }
@@ -163,6 +167,7 @@ internal object TacticalTargetingResolver {
     }
 
     private fun weaponFirepower(weapon: TacticalWeaponStatus, range: Double): Int = when {
+        weapon.fighterWeapon && range > FIGHTER_WEAPON_RANGE_U + RANGE_EPSILON -> 0
         weapon.pointDefense -> if (range < OlympiadDawnBeamRules.RANGE_BAND_SIZE_U) 1 else 0
         weapon.submunition -> OlympiadDawnBeamRules.firepowerAtRange(3, range)
         weapon.beamClass != null -> OlympiadDawnBeamRules.firepowerAtRange(weapon.beamClass, range) * weapon.quantity
@@ -172,8 +177,15 @@ internal object TacticalTargetingResolver {
     }
 
     private fun weaponEffectiveAgainst(weapon: TacticalWeaponStatus, target: UnitSnapshot): Boolean =
-        if (target.unitClassLabel() == "F") weapon.pointDefense || weapon.beamClass == 1
-        else !weapon.pointDefense
+        when {
+            weapon.fighterWeapon && weapon.torpedo -> target.unitClassLabel() != "F"
+            weapon.fighterWeapon && weapon.beamClass == 1 -> true
+            target.unitClassLabel() == "F" -> weapon.pointDefense || weapon.beamClass == 1
+            else -> !weapon.pointDefense
+        }
+
+    private fun fireControlAvailableFor(weapon: TacticalWeaponStatus, target: UnitSnapshot, remainingFireControl: Int): Boolean =
+        !weapon.requiresFireControl || remainingFireControl > 0 || (target.unitClassLabel() == "F" && weapon.beamClass == 1)
 
     private fun targetArc(source: UnitSnapshot, target: UnitSnapshot, facing: Int): String {
         val bearing = Math.toDegrees(
@@ -188,4 +200,7 @@ internal object TacticalTargetingResolver {
 
     private fun UnitSnapshot.shipDefinition(): OlympiadDawnShipDefinition? =
         OlympiadDawnShip.definition(customProperties) ?: OlympiadDawnShip.definition(template.customProperties)
+
+    private const val FIGHTER_WEAPON_RANGE_U = 1.0
+    private const val RANGE_EPSILON = 0.000001
 }
