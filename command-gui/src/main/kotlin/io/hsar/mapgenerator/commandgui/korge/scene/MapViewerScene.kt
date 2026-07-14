@@ -44,6 +44,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.ReplayedLedger
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.turnOriginFor
 import io.hsar.mapgenerator.commandgui.korge.launch.LaunchBackgroundProgression
 import io.hsar.mapgenerator.commandgui.korge.launch.LaunchTopographyBackground
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchFlow
@@ -683,6 +684,7 @@ internal class MapViewerScene(
                                     selectionController.refresh()
                                 }
                             },
+                            turnOriginProvider = actionHistory::turnOriginFor,
                             sitrepTurnNumberProvider = ::currentTurnNumber,
                             tacticalTurnNumberProvider = ::currentTurnNumber,
                             tacticalFireUsageProvider = { key -> tacticalFirePersistence.usage(key) },
@@ -789,6 +791,7 @@ internal class MapViewerScene(
                             },
                             onMovePreviewChanged = { preview -> objectMovePreview = preview },
                             onLedgerEntry = ::recordLedgerEntry,
+                            constrainUnitMove = unitManager::constrainMove,
                         )
                         selectionControllerReady = true
 

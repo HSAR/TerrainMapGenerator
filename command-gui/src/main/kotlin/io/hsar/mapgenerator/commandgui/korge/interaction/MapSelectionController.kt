@@ -14,6 +14,7 @@ internal class MapSelectionController(
     private val onStateChanged: (MapSelectionState) -> Unit,
     private val onMovePreviewChanged: (MapObjectMovePreview?) -> Unit = {},
     private val onLedgerEntry: (LedgerEntry) -> Unit,
+    private val constrainUnitMove: (UnitSnapshot) -> UnitSnapshot = { it },
 ) {
     private val selectedIds = linkedSetOf<MapPlacedObjectId>()
     private var boxState: BoxSelectionState? = null
@@ -221,7 +222,6 @@ internal class MapSelectionController(
         val startCoordinate = coordinateSpace.screenToMap(screenPoint, viewportProvider())
         moveState = GroupMoveState(
             startCoordinate = startCoordinate,
-            lastDelta = MapCoordinateDelta(0.0, 0.0),
             originalSnapshots = snapshots,
         )
         boxState = null
@@ -247,15 +247,10 @@ internal class MapSelectionController(
             x = currentCoordinate.x - state.startCoordinate.x,
             y = currentCoordinate.y - state.startCoordinate.y,
         )
-        val incrementalDelta = MapCoordinateDelta(
-            x = delta.x - state.lastDelta.x,
-            y = delta.y - state.lastDelta.y,
-        )
         state.originalSnapshots
-            .mapNotNull { objectController.snapshot(it.id) }
-            .map { it.moveBy(incrementalDelta) }
+            .map { it.moveBy(delta) }
+            .map { snapshot -> if (snapshot is UnitSnapshot) constrainUnitMove(snapshot) else snapshot }
             .forEach(objectController::previewObject)
-        state.lastDelta = delta
         updateMovePreview(state)
         publish()
     }
@@ -481,7 +476,6 @@ internal class MapSelectionController(
 
     private data class GroupMoveState(
         val startCoordinate: MapCoordinate,
-        var lastDelta: MapCoordinateDelta,
         val originalSnapshots: List<MapPlacedObjectSnapshot>,
     )
 

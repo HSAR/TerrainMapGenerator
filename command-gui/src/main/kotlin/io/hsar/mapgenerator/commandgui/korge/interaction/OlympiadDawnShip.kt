@@ -224,6 +224,9 @@ internal object OlympiadDawnShip {
             }
         }
 
+    fun importedMoveLimit(definition: OlympiadDawnShipDefinition): Double =
+        definition.systems.count { it.name == "Impulse Drive" } / 2.0
+
     private fun unitClassFor(shipClass: String): String? {
         val normalized = shipClass.trim().lowercase()
         return when {

@@ -61,6 +61,7 @@ internal class MapPlacedUnitManager(
     private val onObjectDeleted: (MapPlacedObjectSnapshot) -> Unit = {},
     private val onUnitEdited: (UnitSnapshot, UnitSnapshot) -> Unit = { _, _ -> },
     private val onUnitsChanged: () -> Unit = {},
+    private val turnOriginProvider: (MapPlacedObjectId) -> MapCoordinate? = { null },
     private val sitrepTurnNumberProvider: () -> Int = { 1 },
     private val sitrepContactStateProvider: (Int, MapPlacedObjectId) -> SitrepContactState = { _, _ -> SitrepContactState() },
     private val sitrepPreviousContactStateProvider: (Int, MapPlacedObjectId) -> SitrepContactState = { _, _ -> SitrepContactState() },
@@ -526,9 +527,10 @@ internal class MapPlacedUnitManager(
             viewport = viewportProvider(),
             bounds = coordinateSpace.backgroundBounds,
         )
-        val worldPoint = coordinateSpace.toWorld(mapCoordinate)
+        val constrainedCoordinate = constrainMove(state.unit, mapCoordinate)
+        val worldPoint = coordinateSpace.toWorld(constrainedCoordinate)
 
-        state.unit.mapCoordinate = mapCoordinate
+        state.unit.mapCoordinate = constrainedCoordinate
         positionView(state.unit)
         notifyUnitStateChanged()
         state.preview.container.x = worldPoint.x - state.unit.worldWidth * 0.5
@@ -536,7 +538,7 @@ internal class MapPlacedUnitManager(
         onMovePreviewChanged(
             MapObjectMovePreview(
                 origin = state.originalSnapshot.mapCoordinate,
-                destination = mapCoordinate,
+                destination = constrainedCoordinate,
                 color = state.unit.snapshot().measureTextColor(),
             ),
         )
@@ -612,13 +614,15 @@ internal class MapPlacedUnitManager(
                     newPositionY = previewPositionY,
                 ) { easting, northing -> referenceToMapCoordinate(easting, northing, viewportWidth, viewportHeight) }
                 if (updatedCoordinate != null) {
-                    unit.mapCoordinate = updatedCoordinate
+                    val constrainedCoordinate = constrainMove(unit, updatedCoordinate)
+                    unit.mapCoordinate = constrainedCoordinate
                     positionView(unit)
                     notifyUnitStateChanged()
+                    if (constrainedCoordinate != updatedCoordinate) syncEditDialogPosition(unit)
                     onMovePreviewChanged(
                         MapObjectMovePreview(
                             origin = session.baselineSnapshot.mapCoordinate,
-                            destination = updatedCoordinate,
+                            destination = constrainedCoordinate,
                             referenceText = "${previewPositionX.trim()} ${previewPositionY.trim()}",
                             color = unit.snapshot().measureTextColor(),
                         ),
@@ -673,7 +677,8 @@ internal class MapPlacedUnitManager(
                 ) { easting, northing ->
                     referenceToMapCoordinate(easting, northing, viewportWidth, viewportHeight)
                 } ?: return@save false
-                val positionChanged = updatedCoordinate != session.baselineSnapshot.mapCoordinate
+                val constrainedCoordinate = constrainMove(unit, updatedCoordinate)
+                val positionChanged = constrainedCoordinate != session.baselineSnapshot.mapCoordinate
                 val parsedFacing = UnitFacingResolver.parseValid(newFacingText) ?: return@save false
                 val updatedFacing = parsedFacing.degrees
                 val destroyedChanged = newDestroyed != session.baselineSnapshot.destroyed
@@ -692,7 +697,7 @@ internal class MapPlacedUnitManager(
                 if (nameChanged || positionChanged || destroyedChanged || facingChanged || affiliationChanged || customPropertiesChanged) {
                     saveRequested = true
                     unit.instanceName = newName
-                    unit.mapCoordinate = updatedCoordinate
+                    unit.mapCoordinate = constrainedCoordinate
                     unit.destroyed = newDestroyed
                     unit.facingDegrees = updatedFacing
                     unit.template = unit.template.copy(affiliation = newAffiliation)
@@ -1353,9 +1358,32 @@ internal class MapPlacedUnitManager(
         unit.view.y = worldPoint.y - unit.worldHeight * 0.5
     }
 
+    internal fun constrainMove(snapshot: UnitSnapshot): UnitSnapshot =
+        snapshot.copy(mapCoordinate = constrainMove(snapshot, snapshot.mapCoordinate))
+
+    private fun constrainMove(unit: PlacedUnit, requested: MapCoordinate): MapCoordinate =
+        constrainMove(unit.snapshot(), requested)
+
+    private fun constrainMove(snapshot: UnitSnapshot, requested: MapCoordinate): MapCoordinate =
+        MoveLimit.parse(snapshot.template.customProperties)
+            ?.let { limit ->
+                turnOriginProvider(snapshot.id)?.let { origin ->
+                    MoveLimit.constrain(origin, requested, limit, mapWidth, mapHeight, mapUnitsPerPixel)
+                }
+            }
+            ?: requested
+
     private fun syncEditDialog(unit: PlacedUnit) {
         val position = initialReferenceFields(unit)
         editSessions[unit.id]?.rebase(unit.snapshot(), position)
+        dialogManager.updateTarget(
+            unit.id,
+            MapViewerDialogPositionSync(positionX = position.easting, positionY = position.northing),
+        )
+    }
+
+    private fun syncEditDialogPosition(unit: PlacedUnit) {
+        val position = initialReferenceFields(unit)
         dialogManager.updateTarget(
             unit.id,
             MapViewerDialogPositionSync(positionX = position.easting, positionY = position.northing),

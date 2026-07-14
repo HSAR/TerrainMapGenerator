@@ -10,12 +10,11 @@
 - Main menu background improvements
     - Scrolling
     - Generated as tiles using threads, pixelating in when finished
-- Unit types additional semantic properties
-    - Move limits
 - Non-standard named save files are re-serialised using the non-standard save name
 - Universal UI model and switch to corner-only white borders for better aesthetics
 - When zooming out, tokens should gather appropriately (eg. platoons to companies)
 - Support arbitrary states which are independently toggleable instead of mutually exclusive
+- Other unit type additional semantic properties?
 
 ## Bugs/Minor
 

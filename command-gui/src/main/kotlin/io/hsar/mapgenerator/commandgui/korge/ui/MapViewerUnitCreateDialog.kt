@@ -4,6 +4,7 @@ import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.MoveLimit
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDamage
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDefinition
@@ -296,13 +297,18 @@ internal class MapViewerUnitCreateDialog(
                 return null
             }
         }
+        val properties = templateProperties()
+        val sanitizedProperties = MoveLimit.sanitize(properties)
+        if (sanitizedProperties != properties) {
+            onTransientNotice("moveLimit must be a finite, non-negative number and was removed.")
+        }
         return MapViewerUnitTemplate(
             id = initialTemplate?.id ?: UnitTemplateId(UUID.randomUUID()),
             name = name,
             bitmap = bitmap,
             assetSource = selectedAssetSource,
             affiliation = selectedAffiliation,
-            customProperties = templateProperties(),
+            customProperties = sanitizedProperties,
         )
     }
 
@@ -500,7 +506,10 @@ internal class MapViewerUnitCreateDialog(
 
     private fun templateProperties(): Map<String, String> =
         if (shipImportEnabled) {
-            shipDefinition?.let { OlympiadDawnShip.importedTemplateProperties(customPropertiesEditor.properties(), it) }
+            shipDefinition?.let { definition ->
+                OlympiadDawnShip.importedTemplateProperties(customPropertiesEditor.properties(), definition) +
+                        (MoveLimit.PROPERTY_KEY to OlympiadDawnShip.importedMoveLimit(definition).toString())
+            }
                 ?: customPropertiesEditor.properties() + initialShipProperties
         } else {
             customPropertiesEditor.properties() + initialShipProperties
