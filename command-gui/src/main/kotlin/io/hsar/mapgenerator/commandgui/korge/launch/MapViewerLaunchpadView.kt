@@ -10,13 +10,11 @@ import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.commandgui.save.SavedOperationSummary
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
-import korlibs.image.color.Colors
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
 import korlibs.korge.view.onStageResized
-import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -83,9 +81,6 @@ internal class MapViewerLaunchpadView(
         layout = MapViewerLaunchpadLayoutBuilder.build(viewportWidth, viewportHeight)
         scrollState = scrollState.withContent(layout.saveListBounds.height, totalContentHeight())
         layer.removeChildren()
-        layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), Colors.BLACK)
-        MapViewerLaunchpadTemplate.renderHeader(layer, layout.headerBounds)
-
         when (mode) {
             LaunchpadMode.HOME -> renderHome(
                 MapViewerLaunchpadTemplate.renderScreenShell(layer, layout.homePanelBounds, screenTitle()),
@@ -279,8 +274,6 @@ internal data class MapViewerLaunchpadLayout(
 
 internal object MapViewerLaunchpadLayoutBuilder {
     fun build(viewportWidth: Int, viewportHeight: Int): MapViewerLaunchpadLayout {
-        val headerWidth = 540.0
-        val headerHeight = 78.0
         val homePanelWidth = 420.0
         val homePanelHeight = 320.0
         val savePanelWidth = 760.0
@@ -292,12 +285,7 @@ internal object MapViewerLaunchpadLayoutBuilder {
         val saveListWidth = savePanelWidth - saveListLeft * 2.0 - scrollbarWidth - 12.0
         val saveListHeight = savePanelHeight - saveListTop - saveListBottomPadding - 24.0
         return MapViewerLaunchpadLayout(
-            headerBounds = ScreenBounds(
-                left = (viewportWidth - headerWidth) * 0.5,
-                top = 20.0,
-                width = headerWidth,
-                height = headerHeight,
-            ),
+            headerBounds = MapViewerLaunchShellLayoutBuilder.build(viewportWidth).headerBounds,
             homePanelBounds = ScreenBounds(
                 left = (viewportWidth - homePanelWidth) * 0.5,
                 top = (viewportHeight - homePanelHeight) * 0.5,

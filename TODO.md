@@ -9,10 +9,9 @@
 - Improve autosave performance
 - Measure tool should lock to the midpoint of a unit when starting and ending, unless shift key is held
 - Dialogs minimise, which remembers their position and size and adds them to a taskbar at top of screen
-- Main menu background is a generated, scrolling map ref
-    - https://openprocessing.org/@u137792/668106
-    - https://thingonitsown.blogspot.com/2019/02/finding-perlin-contours.html
-        - Avoid using Perlin noise https://noiseposti.ng/posts/2022-01-16-The-Perlin-Problem-Breaking-The-Cycle.html
+- Main menu background improvements
+    - Scrolling
+    - Generated as tiles using threads, pixelating in when finished
 - Unit types additional semantic properties
     - Move limits
 - Non-standard named save files are re-serialised using the non-standard save name

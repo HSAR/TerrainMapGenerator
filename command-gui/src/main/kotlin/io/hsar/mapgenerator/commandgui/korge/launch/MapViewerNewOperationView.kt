@@ -212,8 +212,6 @@ internal class MapViewerNewOperationView(
         layout = MapViewerNewOperationLayoutBuilder.build(viewportWidth, viewportHeight, panelFocus)
         layer.removeChildren()
         coordinateInputFields.clear()
-        layer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 255))
-
         renderHeader()
         renderMapSection()
         renderUnitTypes()
@@ -223,7 +221,6 @@ internal class MapViewerNewOperationView(
     }
 
     private fun renderHeader() {
-        MapViewerLaunchpadTemplate.renderHeader(layer, layout.headerBounds)
         MapViewerLaunchpadTemplate.renderScreenShell(layer, layout.screenHeaderBounds, screenTitle(), onBack)
     }
 
@@ -1549,12 +1546,10 @@ internal object MapViewerNewOperationLayoutBuilder {
             MapViewerNewOperationPanelFocus.OPERATIONAL_DETAILS -> detailsLeft + detailsWidth + (columnGap - PANEL_FOCUS_BUTTON_WIDTH) * 0.5
             MapViewerNewOperationPanelFocus.UNIT_TYPES -> unitsBounds.left - (columnGap + PANEL_FOCUS_BUTTON_WIDTH) * 0.5
         }
-        val headerWidth = 540.0
-
         return MapViewerNewOperationLayout(
             viewportWidth = viewportWidth,
             viewportHeight = viewportHeight,
-            headerBounds = ScreenBounds((viewportWidth - headerWidth) * 0.5, top, headerWidth, 78.0),
+            headerBounds = MapViewerLaunchShellLayoutBuilder.build(viewportWidth).headerBounds,
             screenHeaderBounds = ScreenBounds(shellLeft, shellTop, shellWidth, shellHeight),
             titleBounds = ScreenBounds(shellLeft, shellTop, shellWidth, 56.0),
             operationNameBounds = ScreenBounds(20.0, 62.0, detailsWidth - 40.0, 38.0),

@@ -17,6 +17,16 @@ class MapViewerLaunchLayoutTest {
     }
 
     @Test
+    fun `launch dialogs share the persistent shell header`() {
+        val shell = MapViewerLaunchShellLayoutBuilder.build(1600)
+        val launchpad = MapViewerLaunchpadLayoutBuilder.build(1600, 900)
+        val newOperation = MapViewerNewOperationLayoutBuilder.build(1600, 900)
+
+        assertThat(launchpad.headerBounds, equalTo(shell.headerBounds))
+        assertThat(newOperation.headerBounds, equalTo(shell.headerBounds))
+    }
+
+    @Test
     fun `save browser expands vertically`() {
         val layout = MapViewerLaunchpadLayoutBuilder.build(1600, 900)
 

@@ -1,6 +1,9 @@
 package io.hsar.mapgenerator
 
 import com.raylabz.opensimplex.Range
+import io.hsar.mapgenerator.contourgenerator.TopographyGenerator
+import io.hsar.mapgenerator.contourgenerator.TopographyRenderer
+import io.hsar.mapgenerator.contourgenerator.TopographyRequest
 import io.hsar.mapgenerator.graph.Cell
 import io.hsar.mapgenerator.graph.GraphUtils
 import io.hsar.mapgenerator.graph.GraphUtils.relax
@@ -13,9 +16,7 @@ import io.hsar.mapgenerator.graph.toPointD
 import io.hsar.mapgenerator.grid.Coord
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.GridLayerBuilder
-import io.hsar.mapgenerator.image.ImageUtils.toBufferedImage
 import io.hsar.mapgenerator.image.PathRenderer
-import io.hsar.mapgenerator.image.TerrainGenerator
 import io.hsar.mapgenerator.random.PointGenerator
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
@@ -25,8 +26,8 @@ import java.awt.Color
 import java.awt.image.BufferedImage
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.floor
 import kotlin.math.roundToInt
-
 
 class TerrainMapGenerator(
     val metresPerPixel: Double,
@@ -47,10 +48,15 @@ class TerrainMapGenerator(
     private val facilitySeed = seedSource.nextLong()
     private val gridSeed = seedSource.nextLong()
 
-    val heightData = TerrainGenerator.generateTerrain(
-        width = width,
-        height = height,
-        metresPerPixel = metresPerPixel,
+    private val topography = TopographyGenerator.generate(
+        TopographyRequest(
+            width = width,
+            height = height,
+            seed = seed,
+            worldUnitsPerPixel = metresPerPixel,
+            noiseScale = TERRAIN_NOISE_SCALE_METRES,
+            contourLevels = contourLevels(metresPerContour),
+        ),
     )
     private val graphData by lazy { graphCache.getOrPut(cacheKey) { buildGraphData() } }
 
@@ -76,19 +82,9 @@ class TerrainMapGenerator(
         return graphImage
     }
 
-    fun generateHeightImage(): BufferedImage {
-//        val sampleWidth = (metresPerPixel * width * SAMPLE_SIZE).roundToInt()
-//        val sampleHeight = (metresPerPixel * height * SAMPLE_SIZE).roundToInt()
-//        val heightData = NoiseGenerator().generate2DArray(width = sampleWidth, height = sampleHeight)
-//            .toBufferedImage()
-//            .let { originalImage -> Scalr.resize(originalImage, width); }
-//            .let { resizedImage -> resizedImage.getIntData() }
-        return heightData.toBufferedImage()
-    }
+    fun generateHeightImage(): BufferedImage = TopographyRenderer.renderHeight(topography)
 
-    fun generateContourImage(): BufferedImage {
-        return io.hsar.mapgenerator.image.ContourRenderer.createImage(heightData = heightData, contourHeight = 0.025)
-    }
+    fun generateContourImage(): BufferedImage = TopographyRenderer.render(topography)
 
     fun generateGridImage(colour: Color = io.hsar.mapgenerator.grid.GridPalettes.DEFAULT.lineColour): BufferedImage {
         val imageBuilder = io.hsar.mapgenerator.image.ImageBuilder(width = width, height = height)
@@ -127,6 +123,7 @@ class TerrainMapGenerator(
         private val logger: Logger = LogManager.getLogger(TerrainMapGenerator::class.java)
 
         private const val POINTS_PER_MAP_HEIGHT_METRE = 90.0 // Roughly 25 points at 1920x1080 with 2m/px.
+        private const val TERRAIN_NOISE_SCALE_METRES = 1_750.0
         val SAMPLE_SIZE = 0.02
         private val graphCache = ConcurrentHashMap<GraphCacheKey, GraphData>()
     }
@@ -191,3 +188,11 @@ class TerrainMapGenerator(
 
     internal fun graphPointCount(): Int = (graphMapHeightMetres / POINTS_PER_MAP_HEIGHT_METRE).roundToInt().coerceAtLeast(3) + 1
 }
+
+private fun contourLevels(metresPerContour: Double): List<Double> =
+    (metresPerContour / TERRAIN_ELEVATION_RANGE_METRES)
+        .coerceIn(MINIMUM_NORMALIZED_CONTOUR_INTERVAL, 0.25)
+        .let { interval -> (1 until floor(1.0 / interval).toInt()).map { it * interval } }
+
+private const val TERRAIN_ELEVATION_RANGE_METRES = 400.0
+private const val MINIMUM_NORMALIZED_CONTOUR_INTERVAL = 0.025

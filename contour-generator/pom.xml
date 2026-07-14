@@ -21,16 +21,8 @@
         </dependency>
 
         <dependency>
-            <groupId>uk.yetanother</groupId>
-            <artifactId>ConRec</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.kynosarges</groupId>
-            <artifactId>tektosyne</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.raylabz</groupId>
-            <artifactId>opensimplex</artifactId>
+            <groupId>com.personthecat</groupId>
+            <artifactId>fastnoise</artifactId>
         </dependency>
 
         <dependency>
@@ -44,6 +36,22 @@
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
             <artifactId>log4j-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-test-junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.hamcrest</groupId>
+            <artifactId>hamcrest-all</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

@@ -20,6 +20,10 @@
             <artifactId>library</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.hsar.mapgenerator</groupId>
+            <artifactId>contour-generator</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.soywiz.korge</groupId>
             <artifactId>korge-jvm</artifactId>
         </dependency>

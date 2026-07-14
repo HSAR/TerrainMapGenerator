@@ -44,7 +44,10 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.ReplayedLedger
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
+import io.hsar.mapgenerator.commandgui.korge.launch.LaunchBackgroundProgression
+import io.hsar.mapgenerator.commandgui.korge.launch.LaunchTopographyBackground
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchFlow
+import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchShell
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchpadView
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerNewOperationView
 import io.hsar.mapgenerator.commandgui.korge.launch.NewOperationDraft
@@ -153,8 +156,13 @@ internal class MapViewerScene(
                     }
 
                     val launchFlow = MapViewerLaunchFlow()
+                    val launchBackgroundSeed = Random().nextLong()
+                    var launchBackground = LaunchTopographyBackground.empty(launchBackgroundSeed)
+                    var launchBackgroundLoading = false
+                    var launchBackgroundGenerationCompleted = false
                     var launchpadView: MapViewerLaunchpadView? = null
                     var newOperationView: MapViewerNewOperationView? = null
+                    var launchShell: MapViewerLaunchShell? = null
                     var saveCatalogueLoadGeneration = 0
                     lateinit var showLaunchpad: () -> Unit
                     lateinit var showNewOperation: () -> Unit
@@ -170,6 +178,49 @@ internal class MapViewerScene(
                     ) -> Unit
                     val exitProgram = {
                         gameWindow.exit(0)
+                    }
+
+                    fun loadLaunchBackground() {
+                        if (launchBackgroundLoading || launchBackgroundGenerationCompleted) return
+                        launchBackgroundLoading = true
+                        val viewportWidth = gameWindow.width
+                        val viewportHeight = gameWindow.height
+                        thread(name = "command-gui-launch-topography", isDaemon = true) {
+                            LaunchBackgroundProgression.generate(
+                                viewportWidth = viewportWidth,
+                                viewportHeight = viewportHeight,
+                                seed = launchBackgroundSeed,
+                                onStage = { generated, elapsedMilliseconds ->
+                                    logger.info(
+                                        "Launch topography stage {}/4 rendered at {}x{} in {}ms",
+                                        generated.quality + 1,
+                                        generated.stage?.width,
+                                        generated.stage?.height,
+                                        elapsedMilliseconds,
+                                    )
+                                    runOnUiThread {
+                                        if (generated.quality > launchBackground.quality) {
+                                            launchBackground = generated
+                                            launchShell?.updateBackground(generated)
+                                        }
+                                    }
+                                },
+                                onFailure = { stage, error, elapsedMilliseconds ->
+                                    logger.warn(
+                                        "Unable to generate launch topography stage {}/4 at {}x{} after {}ms; continuing with remaining stages.",
+                                        stage.index + 1,
+                                        stage.width,
+                                        stage.height,
+                                        elapsedMilliseconds,
+                                        error,
+                                    )
+                                },
+                            )
+                            runOnUiThread {
+                                launchBackgroundLoading = false
+                                launchBackgroundGenerationCompleted = true
+                            }
+                        }
                     }
 
                     fun showViewer(
@@ -1203,6 +1254,8 @@ internal class MapViewerScene(
                             ?: return
                         launchpadView?.close()
                         launchpadView = null
+                        launchShell?.close()
+                        launchShell = null
                         showViewer(
                             settings = loaded.settings,
                             initialLedgerEntries = emptyList(),
@@ -1254,6 +1307,8 @@ internal class MapViewerScene(
                         val launchConfiguration = OperationLaunchConfigurationFactory.create(draft, initialSettings)
                         newOperationView?.close()
                         newOperationView = null
+                        launchShell?.close()
+                        launchShell = null
                         showViewer(
                             settings = launchConfiguration.settings,
                             initialLedgerEntries = launchConfiguration.initialLedgerEntries,
@@ -1265,6 +1320,15 @@ internal class MapViewerScene(
                         launchFlow.createNewOperation()
                         launchpadView?.close()
                         launchpadView = null
+                        launchShell ?: run {
+                            launchShell = MapViewerLaunchShell(
+                                root = views.stage,
+                                viewportWidth = gameWindow.width,
+                                viewportHeight = gameWindow.height,
+                                background = launchBackground,
+                            )
+                            loadLaunchBackground()
+                        }
                         gameWindow.title = MapViewerWindowTitle.format("New Operation")
                         newOperationView = MapViewerNewOperationView(
                             root = views.stage,
@@ -1283,6 +1347,15 @@ internal class MapViewerScene(
                         launchFlow.returnToLaunchpad()
                         newOperationView?.close()
                         newOperationView = null
+                        launchShell ?: run {
+                            launchShell = MapViewerLaunchShell(
+                                root = views.stage,
+                                viewportWidth = gameWindow.width,
+                                viewportHeight = gameWindow.height,
+                                background = launchBackground,
+                            )
+                            loadLaunchBackground()
+                        }
                         saveCatalogueLoadGeneration++
                         gameWindow.title = MapViewerWindowTitle.format("Launchpad")
                         launchpadView = MapViewerLaunchpadView(
