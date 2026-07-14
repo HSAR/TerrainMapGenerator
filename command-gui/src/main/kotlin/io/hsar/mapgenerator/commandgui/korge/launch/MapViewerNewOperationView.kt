@@ -44,6 +44,7 @@ import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.grid.CoordAxis
+import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.GridLayerBuilder
 import io.hsar.mapgenerator.grid.ReferenceSystem
 import io.hsar.mapgenerator.image.Palette
@@ -65,6 +66,8 @@ import korlibs.math.geom.Size2D
 import korlibs.math.geom.Vector2D
 import korlibs.render.awt.AwtGameWindow
 import java.awt.Component
+import java.awt.EventQueue
+import java.awt.RenderingHints
 import java.awt.datatransfer.DataFlavor
 import java.awt.dnd.DnDConstants
 import java.awt.dnd.DropTarget
@@ -122,7 +125,6 @@ internal class MapViewerNewOperationView(
     private val coordinateInputFields = mutableMapOf<CoordinateSystemSelection, CoordinateInputFields>()
     private var mapPreviewContainer: Container? = null
     private var mapPreviewBounds: ScreenBounds? = null
-    private var mapPreviewSignature: String? = null
     private var mapPreviewDirty = true
     private var mapImage: MapImageRow? = initialSetupInputs.mapImagePath?.let { path ->
         val image = initialSetupInputs.mapImage
@@ -133,7 +135,6 @@ internal class MapViewerNewOperationView(
                 name = File(path).nameWithoutExtension.ifBlank { File(path).name },
                 imagePath = path,
                 image = image,
-                previewBitmap = image.toBMP32().premultipliedIfRequired(),
                 assetSource = AssetSource.fromFile(File(path)),
             )
         }
@@ -157,6 +158,9 @@ internal class MapViewerNewOperationView(
     private var unitIconDropTargetBounds: ScreenBounds? = null
     private var nativeDropTargetComponent: Component? = null
     private var pendingDroppedUnitIconFiles: List<File> = emptyList()
+    private val pendingMapImageLoads = ConcurrentLinkedQueue<Result<MapImageRow>>()
+    private val pendingMapPreviews = ConcurrentLinkedQueue<Result<MapPreview>>()
+    private val pendingUnitIconLoads = ConcurrentLinkedQueue<List<UnitIconLoad>>()
     private val pendingUnitTypeImports = ConcurrentLinkedQueue<Result<List<UnitTemplateSnapshot>>>()
     private val pendingUnitTypeSnapshots = ArrayDeque<UnitTemplateSnapshot>()
     private var importedUnitTypeCount = 0
@@ -165,7 +169,11 @@ internal class MapViewerNewOperationView(
     private var nextRowId = 1L
     private var operationNameWasValid = MapViewerTextInputValidation.isPresent(operationName)
     private var pendingOperationNameFocus = false
-    private var nativeDropTargetInstallPending = true
+    private val mapPreviewRevision = MapViewerAsyncRevision()
+    private var requestedMapPreviewSignature: String? = null
+    private var preparedMapPreview: MapPreview? = null
+    private var nativeDropTargetInstallScheduled = false
+    private var closed = false
 
     init {
         layer.zIndex = Z_INDEX
@@ -179,13 +187,12 @@ internal class MapViewerNewOperationView(
             if (layer.stage?.views?.input?.mouseButtonPressed(MouseButton.LEFT) != true) unitScrollDragState = null
             pointer?.let(::updateUnitScrollDrag)
             consumePendingDroppedUnitIconFiles()
+            consumePendingMapImageLoads()
+            consumePendingMapPreviews()
+            consumePendingUnitIconLoads()
             consumePendingUnitTypeImports()
             transientNotice.update()
             updatePreviewIfNeeded()
-            if (nativeDropTargetInstallPending) {
-                nativeDropTargetInstallPending = false
-                installNativeFileDropTarget()
-            }
         }
         layer.mouse {
             onScrollAnywhere {
@@ -195,13 +202,21 @@ internal class MapViewerNewOperationView(
             }
         }
         render(viewportWidth, viewportHeight)
+        scheduleNativeFileDropTargetInstall()
     }
 
     fun close() {
+        closed = true
         nativeDropTargetComponent?.dropTarget = null
         referenceSystemDropdown.close()
         transientNotice.dispose()
         layer.removeFromParent()
+    }
+
+    fun reconcileViewport(viewportWidth: Int, viewportHeight: Int) {
+        if (viewportWidth != layout.viewportWidth || viewportHeight != layout.viewportHeight) {
+            render(viewportWidth, viewportHeight)
+        }
     }
 
     private fun render(viewportWidth: Int, viewportHeight: Int) {
@@ -219,6 +234,7 @@ internal class MapViewerNewOperationView(
         renderButtons()
         onTitleChanged(screenTitle())
     }
+
 
     private fun renderHeader() {
         MapViewerLaunchpadTemplate.renderScreenShell(layer, layout.screenHeaderBounds, screenTitle(), onBack)
@@ -339,7 +355,6 @@ internal class MapViewerNewOperationView(
             it.xy(mapPreviewBounds!!.left, mapPreviewBounds!!.top)
         }
         renderMapPreview(mapPreviewContainer!!, mapPreviewBounds!!, mapImage)
-        mapPreviewSignature = previewSignature()
         mapPreviewDirty = false
     }
 
@@ -404,7 +419,6 @@ internal class MapViewerNewOperationView(
         )
         mapPreviewContainer = panel.container().also { it.xy(mapPreviewBounds!!.left, mapPreviewBounds!!.top) }
         renderMapPreview(mapPreviewContainer!!, mapPreviewBounds!!, mapImage)
-        mapPreviewSignature = previewSignature()
         mapPreviewDirty = false
     }
 
@@ -738,16 +752,18 @@ internal class MapViewerNewOperationView(
 
     private fun chooseMapImage() {
         val file = chooseRasterImageFile() ?: return
-        val image = ImageIO.read(file) ?: return showStatus("Could not load map image")
-        mapImage = MapImageRow(
-            name = file.nameWithoutExtension,
-            imagePath = file.absolutePath,
-            image = image,
-            previewBitmap = image.toBMP32().premultipliedIfRequired(),
-            assetSource = AssetSource.fromFile(file),
-        )
-        mapPreviewDirty = true
-        render(layout.viewportWidth, layout.viewportHeight)
+        showStatus("Loading map image...")
+        thread(name = "command-gui-map-image-load", isDaemon = true) {
+            pendingMapImageLoads += runCatching {
+                val image = ImageIO.read(file) ?: error("Could not load map image")
+                MapImageRow(
+                    name = file.nameWithoutExtension,
+                    imagePath = file.absolutePath,
+                    image = image,
+                    assetSource = AssetSource.fromFile(file),
+                )
+            }
+        }
     }
 
     private fun addUnitType() {
@@ -757,25 +773,11 @@ internal class MapViewerNewOperationView(
     }
 
     private fun addUnitTypesFromFiles(files: List<File>) {
-        val loaded = files.mapNotNull { file ->
-            MapViewerIconLoader.load(file)
-                ?.let { bitmap ->
-                    lastUnitIconDirectory = file.parentFile
-                    UnitRow(
-                        id = nextRowId++,
-                        name = file.nameWithoutExtension,
-                        bitmap = bitmap,
-                        assetSource = AssetSource.fromFile(file),
-                    )
-                }
-                ?: run {
-                    showStatus("Could not load ${file.name}")
-                    null
-                }
-        }
-        loaded.forEach(::upsertUnitRow)
-        if (loaded.isNotEmpty()) {
-            showStatus("${loaded.size} unit type${if (loaded.size == 1) "" else "s"} added")
+        showStatus("Loading unit types...")
+        thread(name = "command-gui-unit-icon-load", isDaemon = true) {
+            pendingUnitIconLoads += files.map { file ->
+                UnitIconLoad(file, MapViewerIconLoader.load(file))
+            }
         }
     }
 
@@ -913,73 +915,115 @@ internal class MapViewerNewOperationView(
         parent.removeChildren()
         MapViewerUiBoxes.box(parent, bounds.width, bounds.height)
 
-        val bitmap = mapImage?.previewBitmap
-        if (bitmap == null) {
+        if (mapImage == null) {
             MapViewerLaunchUi.label(parent, "Map preview appears here", color = Palette.Colours.LIGHT)
                 .xy(16.0, (bounds.height - 18.0) * 0.5)
             return
         }
 
-        val fittedIcon = MapViewerIconFit.inside(bitmap, bounds.width - 16.0, bounds.height - 16.0)
-        val previewWidth = fittedIcon.width.roundToInt().coerceAtLeast(1)
-        val previewHeight = fittedIcon.height.roundToInt().coerceAtLeast(1)
-        val imageContainer = parent.container().also {
-            it.xy(8.0 + fittedIcon.x, 8.0 + fittedIcon.y)
-        }
-        MapViewerImageViews.icon(imageContainer, bitmap) {
-            scale = fittedIcon.scale
-        }
+        val signature = previewSignature(bounds)
+        preparedMapPreview
+            ?.takeIf { it.signature == signature }
+            ?.let { preview ->
+                renderPreparedMapPreview(parent, bounds, preview)
+                return
+            }
+        MapViewerLaunchUi.label(parent, "Loading map preview...", color = Palette.Colours.LIGHT)
+            .xy(16.0, (bounds.height - 18.0) * 0.5)
+        requestMapPreview(mapImage, bounds, signature)
+    }
 
-        val gridConfiguration = resolvedGridConfiguration() ?: return
-        val gridLayer = GridLayerBuilder.build(
-            width = previewWidth,
-            height = previewHeight,
-            gridScale = gridConfiguration.referenceSystem.gridScale,
-            unitsPerPixel = previewUnitsPerPixel(
-                unitsPerPixel = currentUnitsPerPixel() ?: initialScaleInputAsUnitsPerPixel(),
-                previewScale = fittedIcon.scale,
-            ),
-            mapId = gridConfiguration.mapId,
-            referenceSystem = gridConfiguration.referenceSystem,
-            verticalLineNumberStart = gridConfiguration.startX,
-            horizontalLineNumberStart = gridConfiguration.startY,
-            colour = GridColourSelector.bestPresetFor(mapImage.image),
-        )
-        val lineOverlay = GridOverlayLinesView(gridLayer)
-        val labelOverlay = GridOverlayView(gridLayer)
+    private fun renderPreparedMapPreview(parent: Container, bounds: ScreenBounds, preview: MapPreview) {
+        val imageContainer = parent.container().also { it.xy(8.0 + preview.left, 8.0 + preview.top) }
+        MapViewerImageViews.icon(imageContainer, preview.bitmap)
+
+        val lineOverlay = GridOverlayLinesView(preview.gridLayer)
+        val labelOverlay = GridOverlayView(preview.gridLayer)
         imageContainer.addChild(lineOverlay)
         imageContainer.addChild(labelOverlay)
         val state = GridOverlayState(
-            viewport = Rectangle(Point.ORIGIN, Point(previewWidth.toDouble(), previewHeight.toDouble())),
+            viewport = Rectangle(Point.ORIGIN, Point(preview.width.toDouble(), preview.height.toDouble())),
             mapWorldX = 0.0,
             mapWorldY = 0.0,
             mapOffsetX = 0.0,
             mapOffsetY = 0.0,
             scale = 1.0,
-            pixelWidth = previewWidth,
-            pixelHeight = previewHeight,
-            backgroundWidth = previewWidth,
-            backgroundHeight = previewHeight,
+            pixelWidth = preview.width,
+            pixelHeight = preview.height,
+            backgroundWidth = preview.width,
+            backgroundHeight = preview.height,
             visibleCanvasLeft = 0.0,
             visibleCanvasTop = 0.0,
-            visibleCanvasRight = previewWidth.toDouble(),
-            visibleCanvasBottom = previewHeight.toDouble(),
+            visibleCanvasRight = preview.width.toDouble(),
+            visibleCanvasBottom = preview.height.toDouble(),
             activeReference = null,
             measurement = null,
-            gridLayer = gridLayer,
+            gridLayer = preview.gridLayer,
         )
         lineOverlay.update(state)
         labelOverlay.update(state)
     }
 
-    private fun resolvedGridConfiguration(): GridConfiguration? {
-        parseGridConfiguration()?.let { return it }
-        val image = mapImage ?: return null
-        return defaultGridConfiguration(
-            mapImage = image.image,
-            unitsPerPixel = currentUnitsPerPixel() ?: initialScaleInputAsUnitsPerPixel(),
-            seed = initialSeed,
-            referenceSystem = referenceSystem(),
+    private fun requestMapPreview(mapImage: MapImageRow, bounds: ScreenBounds, signature: String) {
+        if (requestedMapPreviewSignature == signature) return
+        requestedMapPreviewSignature = signature
+        val revision = mapPreviewRevision.next()
+        val configuration = parseGridConfiguration()
+        val unitsPerPixel = currentUnitsPerPixel() ?: initialScaleInputAsUnitsPerPixel()
+        val referenceSystem = referenceSystem()
+        thread(name = "command-gui-map-preview", isDaemon = true) {
+            pendingMapPreviews += runCatching {
+                prepareMapPreview(revision, signature, mapImage, bounds, configuration, unitsPerPixel, referenceSystem)
+            }
+        }
+    }
+
+    private fun prepareMapPreview(
+        revision: Long,
+        signature: String,
+        mapImage: MapImageRow,
+        bounds: ScreenBounds,
+        configuration: GridConfiguration?,
+        unitsPerPixel: Double,
+        referenceSystem: ReferenceSystem,
+    ): MapPreview {
+        val scale = minOf((bounds.width - 16.0) / mapImage.image.width, (bounds.height - 16.0) / mapImage.image.height, 1.0)
+        val fittedIcon = MapPreviewFit(
+            scale = scale,
+            width = mapImage.image.width * scale,
+            height = mapImage.image.height * scale,
+            x = ((bounds.width - 16.0) - mapImage.image.width * scale) * 0.5,
+            y = ((bounds.height - 16.0) - mapImage.image.height * scale) * 0.5,
+        )
+        val width = fittedIcon.width.roundToInt().coerceAtLeast(1)
+        val height = fittedIcon.height.roundToInt().coerceAtLeast(1)
+        val scaledImage = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { target ->
+            target.createGraphics().let { graphics ->
+                graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+                graphics.drawImage(mapImage.image, 0, 0, width, height, null)
+                graphics.dispose()
+            }
+        }
+        val gridConfiguration = configuration ?: defaultGridConfiguration(mapImage.image, unitsPerPixel, initialSeed, referenceSystem)
+        return MapPreview(
+            revision = revision,
+            signature = signature,
+            bitmap = scaledImage.toBMP32().premultipliedIfRequired(),
+            left = fittedIcon.x,
+            top = fittedIcon.y,
+            width = width,
+            height = height,
+            gridLayer = GridLayerBuilder.build(
+                width = width,
+                height = height,
+                gridScale = gridConfiguration.referenceSystem.gridScale,
+                unitsPerPixel = previewUnitsPerPixel(unitsPerPixel, fittedIcon.scale),
+                mapId = gridConfiguration.mapId,
+                referenceSystem = gridConfiguration.referenceSystem,
+                verticalLineNumberStart = gridConfiguration.startX,
+                horizontalLineNumberStart = gridConfiguration.startY,
+                colour = GridColourSelector.bestPresetFor(mapImage.image),
+            ),
         )
     }
 
@@ -989,12 +1033,7 @@ internal class MapViewerNewOperationView(
         }
         val preview = mapPreviewContainer ?: return
         val bounds = mapPreviewBounds ?: return
-        val signature = previewSignature()
-        if (signature == mapPreviewSignature) {
-            mapPreviewDirty = false
-            return
-        }
-        mapPreviewSignature = signature
+        val signature = previewSignature(bounds)
         mapPreviewDirty = false
         renderMapPreview(preview, bounds, mapImage)
     }
@@ -1041,7 +1080,7 @@ internal class MapViewerNewOperationView(
                 referenceSystem = referenceSystem(),
             )
 
-    private fun previewSignature(): String =
+    private fun previewSignature(bounds: ScreenBounds? = mapPreviewBounds): String =
         currentCoordinateInputs().let { inputs ->
             buildString {
                 append(mapImage?.imagePath.orEmpty()).append('|')
@@ -1050,6 +1089,7 @@ internal class MapViewerNewOperationView(
                 append(inputs.mapIdText).append('|')
                 append(inputs.gridStartXText).append('|')
                 append(inputs.gridStartYText)
+                bounds?.let { append('|').append(it.width).append('|').append(it.height) }
             }
         }
 
@@ -1107,6 +1147,72 @@ internal class MapViewerNewOperationView(
                 event.dropComplete(pendingDroppedUnitIconFiles.isNotEmpty())
             }
         })
+    }
+
+    private fun scheduleNativeFileDropTargetInstall() {
+        if (nativeDropTargetInstallScheduled) return
+        nativeDropTargetInstallScheduled = true
+        EventQueue.invokeLater {
+            if (!closed) installNativeFileDropTarget()
+        }
+    }
+
+    private fun consumePendingMapImageLoads() {
+        pendingMapImageLoads.poll()?.fold(
+            onSuccess = { image ->
+                mapImage = image
+                preparedMapPreview = null
+                requestedMapPreviewSignature = null
+                mapPreviewDirty = true
+                render(layout.viewportWidth, layout.viewportHeight)
+            },
+            onFailure = {
+                showStatus("Could not load map image")
+            },
+        )
+    }
+
+    private fun consumePendingMapPreviews() {
+        pendingMapPreviews.poll()?.fold(
+            onSuccess = { preview ->
+                if (mapPreviewRevision.accepts(preview.revision) && preview.signature == previewSignature()) {
+                    preparedMapPreview = preview
+                    requestedMapPreviewSignature = null
+                    mapPreviewContainer?.let { container ->
+                        mapPreviewBounds?.let { bounds -> renderMapPreview(container, bounds, mapImage) }
+                    }
+                }
+            },
+            onFailure = {
+                if (requestedMapPreviewSignature == previewSignature()) {
+                    requestedMapPreviewSignature = null
+                    showStatus("Could not prepare map preview")
+                }
+            },
+        )
+    }
+
+    private fun consumePendingUnitIconLoads() {
+        pendingUnitIconLoads.poll()?.let { loads ->
+            val rows = loads.mapNotNull { load ->
+                load.bitmap?.let { bitmap ->
+                    lastUnitIconDirectory = load.file.parentFile
+                    UnitRow(
+                        id = nextRowId++,
+                        name = load.file.nameWithoutExtension,
+                        bitmap = bitmap,
+                        assetSource = AssetSource.fromFile(load.file),
+                    )
+                }
+            }
+            rows.forEach(::upsertUnitRow)
+            val failures = loads.count { it.bitmap == null }
+            when {
+                rows.isNotEmpty() -> showStatus("${rows.size} unit type${if (rows.size == 1) "" else "s"} added")
+                failures > 0 -> showStatus("Could not load unit type${if (failures == 1) "" else "s"}")
+            }
+            if (rows.isNotEmpty()) render(layout.viewportWidth, layout.viewportHeight)
+        }
     }
 
     private fun consumePendingDroppedUnitIconFiles() {
@@ -1362,8 +1468,31 @@ internal class MapViewerNewOperationView(
         val name: String,
         val imagePath: String,
         val image: BufferedImage,
-        val previewBitmap: Bitmap32,
         val assetSource: AssetSource?,
+    )
+
+    private data class MapPreviewFit(
+        val scale: Double,
+        val x: Double,
+        val y: Double,
+        val width: Double,
+        val height: Double,
+    )
+
+    private data class MapPreview(
+        val revision: Long,
+        val signature: String,
+        val bitmap: Bitmap32,
+        val left: Double,
+        val top: Double,
+        val width: Int,
+        val height: Int,
+        val gridLayer: GridLayer,
+    )
+
+    private data class UnitIconLoad(
+        val file: File,
+        val bitmap: Bitmap32?,
     )
 
     private data class UnitRow(
@@ -1497,6 +1626,14 @@ private fun GridConfiguration.formatStartX(): String =
 
 private fun GridConfiguration.formatStartY(): String =
     referenceSystem.formatCoord(startY, CoordAxis.Y, referenceSystem.gridScale)
+
+internal class MapViewerAsyncRevision {
+    private var current = 0L
+
+    fun next(): Long = ++current
+
+    fun accepts(revision: Long): Boolean = revision == current
+}
 
 internal data class MapViewerNewOperationLayout(
     val viewportWidth: Int,

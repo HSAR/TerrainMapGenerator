@@ -77,6 +77,12 @@ internal class MapViewerLaunchpadView(
         layer.removeFromParent()
     }
 
+    fun reconcileViewport(viewportWidth: Int, viewportHeight: Int) {
+        if (viewportWidth != layout.viewportWidth.toInt() || viewportHeight != layout.viewportHeight.toInt()) {
+            render(viewportWidth, viewportHeight)
+        }
+    }
+
     private fun render(viewportWidth: Int, viewportHeight: Int) {
         layout = MapViewerLaunchpadLayoutBuilder.build(viewportWidth, viewportHeight)
         scrollState = scrollState.withContent(layout.saveListBounds.height, totalContentHeight())
@@ -232,6 +238,7 @@ internal class MapViewerLaunchpadView(
             layer.stage?.views?.gameWindow?.height ?: layout.viewportHeight.toInt(),
         )
     }
+
 
     private fun screenTitle(): String =
         when (mode) {

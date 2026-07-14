@@ -107,6 +107,8 @@ import java.awt.Component
 import java.awt.Rectangle
 import java.awt.Robot
 import java.awt.Toolkit
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import java.awt.image.BufferedImage
 import java.nio.file.Path
 import java.time.Instant
@@ -142,10 +144,6 @@ internal class MapViewerScene(
                     title = MapViewerWindowTitle.format("Launchpad"),
                     displayMode = KorgeDisplayMode.TOP_LEFT_NO_CLIP,
                 ) {
-                    (gameWindow as? AwtGameWindow)?.frame?.also { frame ->
-                        frame.extendedState = JFrame.MAXIMIZED_BOTH
-                        frame.disableDropTargets()
-                    }
                     val pendingUiActions = ConcurrentLinkedQueue<() -> Unit>()
                     views.stage.addUpdater {
                         generateSequence { pendingUiActions.poll() }
@@ -153,6 +151,23 @@ internal class MapViewerScene(
                     }
                     fun runOnUiThread(action: () -> Unit) {
                         pendingUiActions.add(action)
+                    }
+
+                    val initialViewportGate = InitialLaunchViewportGate()
+                    lateinit var showInitialLaunch: () -> Unit
+                    views.stage.addUpdater {
+                        if (initialViewportGate.releaseInitialLaunch()) {
+                            showInitialLaunch()
+                        }
+                    }
+                    (gameWindow as? AwtGameWindow)?.frame?.also { frame ->
+                        frame.addComponentListener(object : ComponentAdapter() {
+                            override fun componentResized(event: ComponentEvent) {
+                                initialViewportGate.onViewportResized()
+                            }
+                        })
+                        frame.extendedState = JFrame.MAXIMIZED_BOTH
+                        frame.disableDropTargets()
                     }
 
                     val launchFlow = MapViewerLaunchFlow()
@@ -1340,7 +1355,9 @@ internal class MapViewerScene(
                             onLaunch = ::launchDraft,
                             onBack = { showLaunchpad() },
                             onTitleChanged = { title -> gameWindow.title = MapViewerWindowTitle.format(title) },
-                        )
+                        ).also { view ->
+                            view.reconcileViewport(gameWindow.width, gameWindow.height)
+                        }
                     }
 
                     showLaunchpad = {
@@ -1368,13 +1385,17 @@ internal class MapViewerScene(
                             onExitProgram = exitProgram,
                             onOngoingOperationsEntered = { loadSavedOperationsForLaunchpad() },
                             onTitleChanged = { title -> gameWindow.title = MapViewerWindowTitle.format(title) },
-                        )
+                        ).also { view ->
+                            view.reconcileViewport(gameWindow.width, gameWindow.height)
+                        }
                     }
 
-                    if (initialSetupInputs.mapImagePath != null) {
-                        showNewOperation()
-                    } else {
-                        showLaunchpad()
+                    showInitialLaunch = {
+                        if (initialSetupInputs.mapImagePath != null) {
+                            showNewOperation()
+                        } else {
+                            showLaunchpad()
+                        }
                     }
                 }
             }
@@ -1392,6 +1413,26 @@ private fun java.awt.image.BufferedImage.toBitmap32(): Bitmap32 =
             (argb ushr 24) and 0xFF,
         )
     }.premultipliedIfRequired()
+
+internal class InitialLaunchViewportGate(
+    private val fallbackFrameCount: Int = 2,
+) {
+    private var resized = false
+    private var elapsedFrames = 0
+    private var released = false
+
+    fun onViewportResized() {
+        resized = true
+    }
+
+    fun releaseInitialLaunch(): Boolean {
+        if (released) return false
+        elapsedFrames++
+        if (!resized && elapsedFrames < fallbackFrameCount) return false
+        released = true
+        return true
+    }
+}
 
 private fun Component.disableDropTargets() {
     setDropTarget(null)

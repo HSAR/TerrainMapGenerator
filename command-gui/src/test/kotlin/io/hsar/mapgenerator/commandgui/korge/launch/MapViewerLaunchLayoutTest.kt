@@ -35,6 +35,14 @@ class MapViewerLaunchLayoutTest {
     }
 
     @Test
+    fun `launchpad dialogs centre for the current viewport`() {
+        val layout = MapViewerLaunchpadLayoutBuilder.build(1920, 1080)
+
+        assertThat(layout.homePanelBounds.left + layout.homePanelBounds.width / 2, equalTo(960.0))
+        assertThat(layout.savePanelBounds.left + layout.savePanelBounds.width / 2, equalTo(960.0))
+    }
+
+    @Test
     fun `new operation layout places layers left and units right`() {
         val layout = MapViewerNewOperationLayoutBuilder.build(1600, 900)
 
