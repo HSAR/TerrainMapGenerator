@@ -14,6 +14,8 @@ internal data class TacticalWeaponStatus(
     val pointDefense: Boolean = false,
     val submunition: Boolean = false,
     val salvoRack: Boolean = false,
+    val torpedo: Boolean = false,
+    val interceptor: Boolean = false,
     val requiresFireControl: Boolean = false,
     val arcs: List<String>,
     val destroyed: Boolean,
@@ -67,7 +69,7 @@ internal object TacticalTargetingResolver {
                         magazine != null -> OlympiadDawnShip.magazineRemaining(source.customProperties, magazine)
                         weapon.submunition || weapon.salvoRack -> if (key in firedWeaponKeys) 0 else 1
                         else -> null
-                    }, 1, weapon.pointDefense, weapon.submunition, weapon.salvoRack, !weapon.pointDefense && !weapon.submunition, weapon.arcs,
+                    }, 1, weapon.pointDefense, weapon.submunition, weapon.salvoRack, weapon.torpedo, weapon.interceptor, !weapon.pointDefense && !weapon.submunition, weapon.arcs,
                     key in damage!!.destroyedWeapons, key in firedWeaponKeys
                 )
             }
@@ -78,7 +80,7 @@ internal object TacticalTargetingResolver {
                 weapon.takeIf { it.arcs.isNotEmpty() }?.let {
                     TacticalWeaponStatus(
                         "fighter-${fighter.id}-$weaponIndex", weapon.name, weapon.beamClass, false, null, null, quantity,
-                        false, false, false, false, weapon.arcs, quantity <= 0, "fighter-${fighter.id}-$weaponIndex" in firedWeaponKeys,
+                        false, false, false, weapon.torpedo, weapon.interceptor, false, weapon.arcs, quantity <= 0, "fighter-${fighter.id}-$weaponIndex" in firedWeaponKeys,
                     )
                 }
             }
@@ -87,7 +89,16 @@ internal object TacticalTargetingResolver {
                 weapon.takeIf { it.arcs.isNotEmpty() }?.let {
                     TacticalWeaponStatus(
                         "fighter-${status.squadronId}-$weaponIndex", it.name, it.beamClass, false, null, null,
-                        status.remaining, false, false, false, false, it.arcs, status.remaining <= 0, "fighter-${status.squadronId}-$weaponIndex" in firedWeaponKeys
+                        status.remaining,
+                        false,
+                        false,
+                        false,
+                        it.torpedo,
+                        it.interceptor,
+                        false,
+                        it.arcs,
+                        status.remaining <= 0,
+                        "fighter-${status.squadronId}-$weaponIndex" in firedWeaponKeys
                     )
                 }
             }
@@ -96,7 +107,7 @@ internal object TacticalTargetingResolver {
         val facing = source.facingDegrees ?: return TacticalTargetingReport(weapons, emptyList())
         val remainingFireControl = (fireControlCapacity - fireControlUsed).coerceAtLeast(0)
         val intactWeapons = weapons.filter {
-            !it.destroyed && !it.fired && (!it.requiresFireControl || remainingFireControl > 0) && (it.pointDefense || it.beamClass != null || it.salvoRack || (it.salvo && (it.magazineRemaining
+            !it.destroyed && !it.fired && (!it.requiresFireControl || remainingFireControl > 0) && (it.pointDefense || it.beamClass != null || it.torpedo || it.salvoRack || (it.salvo && (it.magazineRemaining
                 ?: 0) > 0) || (it.submunition && (it.magazineRemaining ?: 0) > 0))
         }
         val targets = unitQueryService.allUnits().asSequence()
@@ -153,9 +164,10 @@ internal object TacticalTargetingResolver {
 
     private fun weaponFirepower(weapon: TacticalWeaponStatus, range: Double): Int = when {
         weapon.pointDefense -> if (range < OlympiadDawnBeamRules.RANGE_BAND_SIZE_U) 1 else 0
-        weapon.submunition && range <= 3.0 -> 3
+        weapon.submunition -> OlympiadDawnBeamRules.firepowerAtRange(3, range)
         weapon.beamClass != null -> OlympiadDawnBeamRules.firepowerAtRange(weapon.beamClass, range) * weapon.quantity
-        (weapon.salvo || weapon.salvoRack) && range <= 12.0 -> 1
+        weapon.torpedo && range <= 12.0 -> 1
+        (weapon.salvo || weapon.salvoRack) && range <= 12.0 -> 6
         else -> 0
     }
 

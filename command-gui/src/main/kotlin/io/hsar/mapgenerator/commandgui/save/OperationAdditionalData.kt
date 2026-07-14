@@ -40,7 +40,7 @@ internal class OperationAdditionalData private constructor(private val root: Obj
 
     fun toJsonOrNull(): ByteArray? =
         sitrepContacts.toJson()
-            .also { tacticalFire.toJson() }
+            .let { tacticalFire.toJson() }
             .takeIf { root.size() > 0 }
 
     companion object {

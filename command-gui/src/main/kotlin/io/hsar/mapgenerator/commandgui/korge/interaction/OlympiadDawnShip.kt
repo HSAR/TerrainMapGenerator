@@ -36,6 +36,8 @@ internal data class OlympiadDawnShipWeapon(
     val pointDefense: Boolean = false,
     val submunition: Boolean = false,
     val salvoRack: Boolean = false,
+    val torpedo: Boolean = false,
+    val interceptor: Boolean = false,
 )
 
 internal data class OlympiadDawnFighterSquadron(
@@ -491,8 +493,19 @@ internal object OlympiadDawnShip {
     private fun fighterProfile(type: String): OlympiadDawnFighterProfile =
         when (type) {
             "standard" -> OlympiadDawnFighterProfile("Fighter", "Fighters", 6, listOf(OlympiadDawnShipWeapon(null, "Light Multirole Beam", ARC_ORDER, 1)))
-            "interceptor" -> OlympiadDawnFighterProfile("Interceptor", "Interceptors", 6, listOf(OlympiadDawnShipWeapon(null, "Light Interceptor Beam", ARC_ORDER, 1)))
-            "torpedo" -> OlympiadDawnFighterProfile("Torpedo Fighter", "Torpedo Fighters", 6, listOf(OlympiadDawnShipWeapon(null, "Light Torpedo Launcher", ARC_ORDER)))
+            "interceptor" -> OlympiadDawnFighterProfile(
+                "Interceptor",
+                "Interceptors",
+                6,
+                listOf(OlympiadDawnShipWeapon(null, "Light Interceptor Beam", ARC_ORDER, 1, interceptor = true))
+            )
+
+            "torpedo" -> OlympiadDawnFighterProfile(
+                "Torpedo Fighter",
+                "Torpedo Fighters",
+                6,
+                listOf(OlympiadDawnShipWeapon(null, "Light Torpedo Launcher", ARC_ORDER, torpedo = true))
+            )
             "assault" -> OlympiadDawnFighterProfile("Assault Shuttle", "Assault Shuttles", 3, emptyList())
             else -> throw IllegalArgumentException("Unknown fighter type: $type")
         }

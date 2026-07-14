@@ -11,6 +11,18 @@ import java.util.*
 
 class OperationAdditionalDataTest {
     @Test
+    fun `tactical fire usage is included in the additional-data save payload`() {
+        val unit = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000003"))
+        val data = OperationAdditionalData.fromJson(null)
+        val key = TacticalFireKey(4, unit)
+        data.tacticalFire.replace(key, TacticalFireUsage(setOf("beam-1"), 1))
+
+        val restored = OperationAdditionalData.fromJson(data.toJsonOrNull())
+
+        assertThat(restored.tacticalFire.usage(key), equalTo(TacticalFireUsage(setOf("beam-1"), 1)))
+    }
+
+    @Test
     fun `ui state is additive and preserves unrelated additional data`() {
         val objectId = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
         val data = OperationAdditionalData.fromJson("""{"custom":"keep","sitrepContacts":[]}""".toByteArray())

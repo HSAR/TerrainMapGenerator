@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
+import io.hsar.mapgenerator.commandgui.korge.interaction.TacticalFireResolution
 import io.hsar.mapgenerator.commandgui.korge.interaction.TacticalTargetingReport
 import io.hsar.mapgenerator.commandgui.korge.interaction.TacticalWeaponStatus
 import io.hsar.mapgenerator.image.Palette
@@ -20,6 +21,8 @@ internal class MapViewerTacticalDialog(
     private val persistenceTargetId: String,
     private val focusTargetBoundsProvider: () -> List<ScreenBounds> = { emptyList() },
     private val onSolutionSelected: (MapPlacedObjectId?) -> Unit = {},
+    private val onFire: (MapPlacedObjectId) -> TacticalFireResolution? = { null },
+    private val onFireResolved: (TacticalFireResolution) -> Unit = {},
 ) {
     private var window: MapViewerDialogWindow? = null
     private var report = TacticalTargetingReport(emptyList(), emptyList())
@@ -37,7 +40,12 @@ internal class MapViewerTacticalDialog(
             contentMinimumWidth = { MINIMUM_CONTENT_WIDTH },
             contentHeight = { contentHeight() },
             actions = listOf(
-                MapViewerDialogAction("Fire") { },
+                MapViewerDialogAction("Fire", enabled = { expandedTargetId != null }) {
+                    expandedTargetId?.let(onFire)?.let { resolution ->
+                        close()
+                        onFireResolved(resolution)
+                    }
+                },
                 MapViewerDialogAction("Cancel") { close() },
             ),
             onClose = ::close,
