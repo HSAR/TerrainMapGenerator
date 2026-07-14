@@ -50,6 +50,7 @@ import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchFlow
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchShell
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchpadView
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerNewOperationView
+import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerViewportResolver
 import io.hsar.mapgenerator.commandgui.korge.launch.NewOperationDraft
 import io.hsar.mapgenerator.commandgui.korge.launch.OperationLaunchConfigurationFactory
 import io.hsar.mapgenerator.commandgui.korge.launch.OperationMapImage
@@ -194,16 +195,21 @@ internal class MapViewerScene(
                     val exitProgram = {
                         gameWindow.exit(0)
                     }
+                    fun displayViewport() = MapViewerViewportResolver.resolve(
+                        actualWidth = views.actualVirtualWidth,
+                        actualHeight = views.actualVirtualHeight,
+                        fallbackWidth = gameWindow.width,
+                        fallbackHeight = gameWindow.height,
+                    )
 
                     fun loadLaunchBackground() {
                         if (launchBackgroundLoading || launchBackgroundGenerationCompleted) return
                         launchBackgroundLoading = true
-                        val viewportWidth = gameWindow.width
-                        val viewportHeight = gameWindow.height
+                        val viewport = displayViewport()
                         thread(name = "command-gui-launch-topography", isDaemon = true) {
                             LaunchBackgroundProgression.generate(
-                                viewportWidth = viewportWidth,
-                                viewportHeight = viewportHeight,
+                                viewportWidth = viewport.width,
+                                viewportHeight = viewport.height,
                                 seed = launchBackgroundSeed,
                                 onStage = { generated, elapsedMilliseconds ->
                                     logger.info(
@@ -244,14 +250,15 @@ internal class MapViewerScene(
                         operationMapImage: OperationMapImage? = null,
                         loadedOperation: LoadedOperation? = null,
                     ) {
+                        val viewport = displayViewport()
                         val loadingLayer = views.stage.container().also { layer ->
                             layer.zIndex = 50_000.0
-                            layer.solidRect(gameWindow.width, gameWindow.height, Colors.BLACK)
+                            layer.solidRect(viewport.width, viewport.height, Colors.BLACK)
                             MapViewerTextViews.box(
                                 layer,
                                 "RENDERING MAP...",
-                                gameWindow.width.toDouble(),
-                                gameWindow.height.toDouble(),
+                                viewport.width.toDouble(),
+                                viewport.height.toDouble(),
                                 color = io.hsar.mapgenerator.image.Palette.Colours.WHITE,
                             )
                         }
@@ -283,25 +290,26 @@ internal class MapViewerScene(
                     }
 
                     showPreparedViewer = { settings, initialLedgerEntries, operationMapImage, loadedOperation, replayedLedger, renderData, renderedMap, loadingLayer ->
+                        val viewport = displayViewport()
                         var currentViewport = loadedOperation?.camera?.let { camera ->
                             camera.toViewport(
                                 geometry = renderedMap.geometry,
                                 mapWidth = renderedMap.bitmap.width,
                                 mapHeight = renderedMap.bitmap.height,
-                                viewportWidth = gameWindow.width,
-                                viewportHeight = gameWindow.height,
+                                viewportWidth = viewport.width,
+                                viewportHeight = viewport.height,
                             )
                         } ?: CameraViewport.centeredOnMap(
                             geometry = renderedMap.geometry,
                             mapWidth = renderedMap.bitmap.width,
                             mapHeight = renderedMap.bitmap.height,
-                            viewportWidth = gameWindow.width,
-                            viewportHeight = gameWindow.height,
+                            viewportWidth = viewport.width,
+                            viewportHeight = viewport.height,
                             zoom = CameraViewport.fitZoomToViewport(
                                 mapWidth = renderedMap.bitmap.width,
                                 mapHeight = renderedMap.bitmap.height,
-                                viewportWidth = gameWindow.width,
-                                viewportHeight = gameWindow.height,
+                                viewportWidth = viewport.width,
+                                viewportHeight = viewport.height,
                             ),
                         )
                         gameWindow.title = settings.windowTitle()
@@ -537,7 +545,7 @@ internal class MapViewerScene(
                             val width = bounds.width + 48.0
                             val height = bounds.height + 20.0
                             banner.visible = true
-                            banner.xy((gameWindow.width - width) * 0.5, 76.0)
+                            banner.xy((displayViewport().width - width) * 0.5, 76.0)
                             banner.solidRect(width, height, korlibs.image.color.RGBA(140, 20, 20, 240))
                             banner.solidRect(width - 4.0, height - 4.0, korlibs.image.color.RGBA(60, 0, 0, 240)) {
                                 x = 2.0
@@ -577,9 +585,9 @@ internal class MapViewerScene(
                             refreshHistoryUi()
                         }
 
-                        sceneLayers = MapViewerSceneLayers.create(views.stage, gameWindow.width, gameWindow.height)
+                        sceneLayers = MapViewerSceneLayers.create(views.stage, viewport.width, viewport.height)
 
-                        val mapViewport = sceneLayers.map.clipContainer(Size2D(gameWindow.width, gameWindow.height)) {
+                        val mapViewport = sceneLayers.map.clipContainer(Size2D(viewport.width, viewport.height)) {
                             world = camera {
                                 image(renderedMap.bitmap) {
                                     x = renderedMap.geometry.mapOffsetX.toDouble()
@@ -623,7 +631,7 @@ internal class MapViewerScene(
                             ledgerPanel?.refresh()
                             notesPanel?.refresh()
                         }
-                        resizeSceneViewport(gameWindow.width, gameWindow.height)
+                        resizeSceneViewport(viewport.width, viewport.height)
 
                         contextMenuManager = ContextMenuManager(sceneLayers.ui)
                         val deferredContextMenuActions = ContextMenuDeferredActionRunner(sceneLayers.ui)
@@ -791,8 +799,8 @@ internal class MapViewerScene(
                         }
                         sidebar = MapViewerSidebar(
                             root = sceneLayers.ui,
-                            viewportWidth = gameWindow.width,
-                            viewportHeight = gameWindow.height,
+                            viewportWidth = viewport.width,
+                            viewportHeight = viewport.height,
                             onUnitDropped = { template, screenPoint ->
                                 unitManager.resolvePlacement(screenPoint)
                                     ?.let { mapCoordinate ->
@@ -901,8 +909,8 @@ internal class MapViewerScene(
 
                         ledgerPanel = MapViewerLedgerPanel(
                             root = sceneLayers.ui,
-                            viewportWidth = gameWindow.width,
-                            viewportHeight = gameWindow.height,
+                            viewportWidth = viewport.width,
+                            viewportHeight = viewport.height,
                             canUndo = { actionHistory.canUndo },
                             canRedo = { actionHistory.canRedo },
                             turnPanelState = { actionHistory.turnPanelState(turnMode) },
@@ -974,8 +982,8 @@ internal class MapViewerScene(
                         )
                         notesPanel = MapViewerNotesPanel(
                             root = sceneLayers.ui,
-                            viewportWidth = gameWindow.width,
-                            viewportHeight = gameWindow.height,
+                            viewportWidth = viewport.width,
+                            viewportHeight = viewport.height,
                             noteStore = noteStore,
                             dialogManager = dialogManager,
                             viewportProvider = { currentViewport },
@@ -986,8 +994,8 @@ internal class MapViewerScene(
                         )
                         toolbar = MapViewerToolbar(
                             root = sceneLayers.ui,
-                            viewportWidth = gameWindow.width,
-                            viewportHeight = gameWindow.height,
+                            viewportWidth = viewport.width,
+                            viewportHeight = viewport.height,
                             selectedTool = { effectiveTool() },
                             selectedDrawingMode = { currentDrawingMode },
                             selectedDrawingColour = { currentDrawingColour },
@@ -1008,7 +1016,7 @@ internal class MapViewerScene(
                         )
                         transientNotice = MapViewerTransientNotice(
                             root = sceneLayers.ui,
-                            viewportHeightProvider = { gameWindow.height },
+                            viewportHeightProvider = { displayViewport().height },
                         )
                         readOnlyBannerLayer = sceneLayers.ui.container().also {
                             it.mouseEnabled = false
@@ -1023,8 +1031,8 @@ internal class MapViewerScene(
                         }
                         escapeMenu = MapViewerEscapeMenu(
                             root = sceneLayers.ui,
-                            viewportWidth = { gameWindow.width },
-                            viewportHeight = { gameWindow.height },
+                            viewportWidth = { displayViewport().width },
+                            viewportHeight = { displayViewport().height },
                             onOpen = { escapeMenuThumbnailImage = captureWindowThumbnail() },
                             onClosed = { escapeMenuThumbnailImage = null },
                             onReturnToLaunchpad = {
@@ -1167,8 +1175,8 @@ internal class MapViewerScene(
                             root = sceneLayers.ui,
                             camera = world,
                             geometry = renderedMap.geometry,
-                            viewportWidth = gameWindow.width,
-                            viewportHeight = gameWindow.height,
+                            viewportWidth = viewport.width,
+                            viewportHeight = viewport.height,
                             mapWidth = renderedMap.bitmap.width,
                             mapHeight = renderedMap.bitmap.height,
                             gridLayer = renderData.gridLayer,
@@ -1335,11 +1343,12 @@ internal class MapViewerScene(
                         launchFlow.createNewOperation()
                         launchpadView?.close()
                         launchpadView = null
+                        val viewport = displayViewport()
                         launchShell ?: run {
                             launchShell = MapViewerLaunchShell(
                                 root = views.stage,
-                                viewportWidth = gameWindow.width,
-                                viewportHeight = gameWindow.height,
+                                viewportWidth = viewport.width,
+                                viewportHeight = viewport.height,
                                 background = launchBackground,
                             )
                             loadLaunchBackground()
@@ -1347,8 +1356,8 @@ internal class MapViewerScene(
                         gameWindow.title = MapViewerWindowTitle.format("New Operation")
                         newOperationView = MapViewerNewOperationView(
                             root = views.stage,
-                            viewportWidth = gameWindow.width,
-                            viewportHeight = gameWindow.height,
+                            viewportWidth = viewport.width,
+                            viewportHeight = viewport.height,
                             initialSetupInputs = initialSetupInputs,
                             initialUnitsPerPixel = initialSettings.unitsPerPixel,
                             initialSeed = initialSettings.seed,
@@ -1356,7 +1365,7 @@ internal class MapViewerScene(
                             onBack = { showLaunchpad() },
                             onTitleChanged = { title -> gameWindow.title = MapViewerWindowTitle.format(title) },
                         ).also { view ->
-                            view.reconcileViewport(gameWindow.width, gameWindow.height)
+                            view.reconcileViewport(viewport.width, viewport.height)
                         }
                     }
 
@@ -1364,11 +1373,12 @@ internal class MapViewerScene(
                         launchFlow.returnToLaunchpad()
                         newOperationView?.close()
                         newOperationView = null
+                        val viewport = displayViewport()
                         launchShell ?: run {
                             launchShell = MapViewerLaunchShell(
                                 root = views.stage,
-                                viewportWidth = gameWindow.width,
-                                viewportHeight = gameWindow.height,
+                                viewportWidth = viewport.width,
+                                viewportHeight = viewport.height,
                                 background = launchBackground,
                             )
                             loadLaunchBackground()
@@ -1377,8 +1387,8 @@ internal class MapViewerScene(
                         gameWindow.title = MapViewerWindowTitle.format("Launchpad")
                         launchpadView = MapViewerLaunchpadView(
                             root = views.stage,
-                            viewportWidth = gameWindow.width,
-                            viewportHeight = gameWindow.height,
+                            viewportWidth = viewport.width,
+                            viewportHeight = viewport.height,
                             onCreateNewOperation = { showNewOperation() },
                             onLoadSavedOperation = { summary -> loadExistingOperation(summary.path) },
                             onOpenSavePicker = { browseForExistingOperation() },
@@ -1386,7 +1396,7 @@ internal class MapViewerScene(
                             onOngoingOperationsEntered = { loadSavedOperationsForLaunchpad() },
                             onTitleChanged = { title -> gameWindow.title = MapViewerWindowTitle.format(title) },
                         ).also { view ->
-                            view.reconcileViewport(gameWindow.width, gameWindow.height)
+                            view.reconcileViewport(viewport.width, viewport.height)
                         }
                     }
 

@@ -10,6 +10,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.commandgui.save.SavedOperationSummary
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
+import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.addUpdater
@@ -20,6 +21,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
+@OptIn(KorgeExperimental::class)
 internal class MapViewerLaunchpadView(
     private val root: Container,
     viewportWidth: Int,
@@ -62,10 +64,7 @@ internal class MapViewerLaunchpadView(
                 if (mode == LaunchpadMode.EXISTING_OPERATIONS && layout.savePanelBounds.contains(views.input.mousePos)) {
                     if (scrollState.needsScrolling) {
                         scrollState = scrollState.scrolledBy(scrollDeltaYLines * MapViewerScrollbar.SCROLL_STEP_PX)
-                        render(
-                            layer.stage?.views?.gameWindow?.width ?: layout.viewportWidth.toInt(),
-                            layer.stage?.views?.gameWindow?.height ?: layout.viewportHeight.toInt(),
-                        )
+                        rerender()
                     }
                 }
             }
@@ -233,12 +232,18 @@ internal class MapViewerLaunchpadView(
     }
 
     private fun rerender() {
-        render(
-            layer.stage?.views?.gameWindow?.width ?: layout.viewportWidth.toInt(),
-            layer.stage?.views?.gameWindow?.height ?: layout.viewportHeight.toInt(),
-        )
+        currentViewport().let { viewport -> render(viewport.width, viewport.height) }
     }
 
+    private fun currentViewport(): MapViewerViewport =
+        layer.stage?.views?.let { views ->
+            MapViewerViewportResolver.resolve(
+                actualWidth = views.actualVirtualWidth,
+                actualHeight = views.actualVirtualHeight,
+                fallbackWidth = views.gameWindow.width,
+                fallbackHeight = views.gameWindow.height,
+            )
+        } ?: MapViewerViewport(layout.viewportWidth.toInt(), layout.viewportHeight.toInt())
 
     private fun screenTitle(): String =
         when (mode) {

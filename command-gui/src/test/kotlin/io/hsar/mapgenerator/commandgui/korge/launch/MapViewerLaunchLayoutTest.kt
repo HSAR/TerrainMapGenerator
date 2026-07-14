@@ -8,6 +8,30 @@ import org.junit.jupiter.api.Test
 class MapViewerLaunchLayoutTest {
 
     @Test
+    fun `launch viewport uses the resized stage dimensions`() {
+        val viewport = MapViewerViewportResolver.resolve(
+            actualWidth = 2048,
+            actualHeight = 1080,
+            fallbackWidth = 1944,
+            fallbackHeight = 1056,
+        )
+
+        assertThat(viewport, equalTo(MapViewerViewport(2048, 1080)))
+    }
+
+    @Test
+    fun `launch viewport falls back before stage dimensions are available`() {
+        val viewport = MapViewerViewportResolver.resolve(
+            actualWidth = 0,
+            actualHeight = 0,
+            fallbackWidth = 1944,
+            fallbackHeight = 1056,
+        )
+
+        assertThat(viewport, equalTo(MapViewerViewport(1944, 1056)))
+    }
+
+    @Test
     fun `launchpad panel is centered`() {
         val layout = MapViewerLaunchpadLayoutBuilder.build(1600, 900)
 
@@ -40,6 +64,15 @@ class MapViewerLaunchLayoutTest {
 
         assertThat(layout.homePanelBounds.left + layout.homePanelBounds.width / 2, equalTo(960.0))
         assertThat(layout.savePanelBounds.left + layout.savePanelBounds.width / 2, equalTo(960.0))
+    }
+
+    @Test
+    fun `ongoing operations and persistent header share the live viewport centre`() {
+        val shell = MapViewerLaunchShellLayoutBuilder.build(2048)
+        val launchpad = MapViewerLaunchpadLayoutBuilder.build(2048, 1080)
+
+        assertThat(shell.headerBounds.left + shell.headerBounds.width / 2, equalTo(1024.0))
+        assertThat(launchpad.savePanelBounds.left + launchpad.savePanelBounds.width / 2, equalTo(1024.0))
     }
 
     @Test

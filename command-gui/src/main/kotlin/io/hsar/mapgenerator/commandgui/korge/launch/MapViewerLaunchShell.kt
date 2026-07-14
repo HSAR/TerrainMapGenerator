@@ -122,6 +122,20 @@ internal data class MapViewerLaunchShellLayout(
     val headerBounds: ScreenBounds,
 )
 
+internal data class MapViewerViewport(
+    val width: Int,
+    val height: Int,
+)
+
+internal object MapViewerViewportResolver {
+    fun resolve(actualWidth: Int, actualHeight: Int, fallbackWidth: Int, fallbackHeight: Int): MapViewerViewport =
+        if (actualWidth > 0 && actualHeight > 0) {
+            MapViewerViewport(actualWidth, actualHeight)
+        } else {
+            MapViewerViewport(fallbackWidth, fallbackHeight)
+        }
+}
+
 internal object MapViewerLaunchShellLayoutBuilder {
     fun build(viewportWidth: Int): MapViewerLaunchShellLayout {
         val headerWidth = 540.0

@@ -24,4 +24,3 @@
 - `java.lang.IllegalStateException: Epsilon X square index 100 is outside supported designators.`
     - Input boxes should clamp to min/max permitted values when user input would violate them.
 - Generic perf pass on all dynamically sized panels, these should not rebuild trees or force redraw per frame when scrolling
-- Launchpad dialogs are not centred at launch
