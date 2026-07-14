@@ -12,6 +12,7 @@ internal class MapViewerGunrepDialog(
     private val dialogManager: MapViewerDialogManager,
     private val dialogKey: Any,
     private val resolution: TacticalFireResolution,
+    private val onDismiss: () -> Unit = {},
 ) {
     private var window: MapViewerDialogWindow? = null
 
@@ -69,6 +70,7 @@ internal class MapViewerGunrepDialog(
         dialogManager.unregister(this)
         window?.close()
         window = null
+        onDismiss()
     }
 
     private fun weaponSummary(): String = resolution.weaponNames

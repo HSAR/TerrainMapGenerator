@@ -33,6 +33,24 @@ class TacticalCombatResolverTest {
     }
 
     @Test
+    fun `interception removes incoming weapons before their attack resolves`() {
+        val salvo = weapon(salvo = true).copy(key = "salvo")
+        val beam = weapon().copy(key = "beam")
+
+        val surviving = TacticalCombatResolver.removeInterceptedAttackers(
+            listOf(salvo, beam),
+            listOf(
+                TacticalWeaponContribution(salvo.key, salvo.name, "F", 6),
+                TacticalWeaponContribution(beam.key, beam.name, "F", 3),
+            ),
+            intercepted = 2,
+        )
+
+        assertThat(surviving.map(TacticalWeaponContribution::weaponKey), equalTo(listOf("salvo", "beam")))
+        assertThat(surviving.map(TacticalWeaponContribution::firepower), equalTo(listOf(4, 3)))
+    }
+
+    @Test
     fun `interceptor modifiers and multiple PDS hits apply per die`() {
         val interceptor = weapon(beamClass = 1).copy(interceptor = true)
         val pds = weapon().copy(pointDefense = true)
@@ -63,7 +81,15 @@ class TacticalCombatResolverTest {
         return TacticalCombatResolver.resolve(
             target,
             listOf(weapon),
-            listOf(TacticalWeaponContribution(weapon.key, weapon.name, "F", if (weapon.submunition) 1 else 3))
+            listOf(
+                TacticalWeaponContribution(
+                    weapon.key, weapon.name, "F", when {
+                        weapon.submunition -> 1
+                        weapon.salvo || weapon.salvoRack -> 6
+                        else -> 3
+                    }
+                )
+            )
         ) { rolls.next() }
     }
 

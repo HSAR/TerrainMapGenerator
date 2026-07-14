@@ -1022,7 +1022,6 @@ internal class MapPlacedUnitManager(
             }
             if (consumesFireControl && usage.fireControlUsed >= report.fireControlCapacity) return null
             val resolutionTarget = units.firstOrNull { it.id == targetId } ?: return null
-            val resolution = TacticalCombatResolver.resolve(resolutionTarget.snapshot(), report.weapons, contributions)
             val definition = unit.shipDefinition()
             val consumables = definition?.let { sourceDefinition ->
                 contributions.mapNotNull { contribution ->
@@ -1048,6 +1047,18 @@ internal class MapPlacedUnitManager(
                 usageKey,
                 usage.copy(firedWeapons = usage.firedWeapons + weaponKeys, fireControlUsed = usage.fireControlUsed + if (consumesFireControl) 1 else 0)
             )
+            pendingIntercept(unit, resolutionTarget, report.weapons, contributions, target.rangeU)?.let { pending ->
+                openIntercept(pending)
+                notifyUnitStateChanged()
+                return TacticalFireResolution(
+                    targetName = resolutionTarget.snapshot().displayName(),
+                    weaponNames = contributions.map(TacticalWeaponContribution::weaponName),
+                    diceRolled = 0,
+                    damage = 0,
+                    interceptPending = true
+                )
+            }
+            val resolution = TacticalCombatResolver.resolve(resolutionTarget.snapshot(), report.weapons, contributions)
             val outcome = applyTacticalDamage(resolutionTarget, resolution.damage)
             notifyUnitStateChanged()
             return resolution.copy(
@@ -1081,6 +1092,105 @@ internal class MapPlacedUnitManager(
 
         private fun resolutionTargetIsFighter(targetId: MapPlacedObjectId): Boolean =
             units.firstOrNull { it.id == targetId }?.snapshot()?.unitClassLabel() == "F"
+
+        private fun pendingIntercept(
+            attacker: PlacedUnit,
+            defender: PlacedUnit,
+            weapons: List<TacticalWeaponStatus>,
+            incoming: List<TacticalWeaponContribution>,
+            rangeU: Double
+        ): PendingIntercept? {
+            if (incoming.none { contribution ->
+                    weapons.firstOrNull { it.key == contribution.weaponKey }?.let { it.salvo || it.salvoRack || it.torpedo || it.fighterWeapon } == true
+                }) return null
+            val key = TacticalFireKey(tacticalTurnNumberProvider(), defender.id)
+            val defensiveWeapons = TacticalTargetingResolver.resolve(
+                defender.snapshot(),
+                unitQueryService,
+                tacticalFireUsageProvider(key).firedWeapons,
+                tacticalFireUsageProvider(key).fireControlUsed
+            )
+                .weapons.filter { !it.destroyed && !it.fired && (it.pointDefense || it.beamClass == 1) }
+            val defensiveContributions = defensiveWeapons.mapNotNull { weapon ->
+                (if (weapon.pointDefense) 1 else OlympiadDawnBeamRules.firepowerAtRange(1, rangeU))
+                    .takeIf { it > 0 }?.let { TacticalWeaponContribution(weapon.key, weapon.name, "F", it) }
+            }
+            return defensiveContributions.takeIf(List<TacticalWeaponContribution>::isNotEmpty)
+                ?.let { PendingIntercept(attacker.id, defender.id, weapons, incoming, defensiveWeapons, it) }
+        }
+
+        private fun openIntercept(pending: PendingIntercept) {
+            val defender = units.firstOrNull { it.id == pending.defenderId } ?: return
+            MapViewerTacticalDialog(
+                root = root,
+                dialogManager = dialogManager,
+                dialogKey = "intercept-" + defender.id.value,
+                unitName = defender.snapshot().displayName(),
+                reportProvider = {
+                    TacticalTargetingReport(
+                        pending.defensiveWeapons,
+                        listOf(
+                            TacticalTarget(
+                                pending.attackerId,
+                                "Incoming attack",
+                                0.0,
+                                listOf("F"),
+                                pending.defensiveContributions.sumOf(TacticalWeaponContribution::firepower),
+                                pending.defensiveContributions
+                            )
+                        ),
+                    )
+                },
+                dialogName = "Intercept",
+                fireActionLabel = "Intercept",
+                persistenceTargetId = defender.id.value.toString(),
+                onFire = { _, selected -> resolvePendingIntercept(pending, selected) },
+                onFireResolved = { resolution ->
+                    MapViewerGunrepDialog(
+                        root,
+                        dialogManager,
+                        "gunrep-" + java.util.UUID.randomUUID(),
+                        resolution,
+                        onDismiss = { resolveIncomingAttack(pending)?.openGunrep() },
+                    ).open()
+                },
+                onDismiss = {
+                    if (!pending.defensiveFireResolved) resolveIncomingAttack(pending)?.openGunrep()
+                },
+            ).open()
+        }
+
+        private fun resolvePendingIntercept(pending: PendingIntercept, selected: Set<String>): TacticalFireResolution? {
+            if (pending.defensiveFireResolved) return null
+            pending.defensiveFireResolved = true
+            val defender = units.firstOrNull { it.id == pending.defenderId } ?: return null
+            val attacker = units.firstOrNull { it.id == pending.attackerId }?.snapshot() ?: return null
+            val chosen = pending.defensiveContributions.filter { it.weaponKey in selected }
+            val defenceTarget = attacker.copy(customProperties = emptyMap(), template = attacker.template.copy(customProperties = emptyMap()))
+            val defence = TacticalCombatResolver.resolve(defenceTarget, pending.defensiveWeapons, chosen)
+            val key = TacticalFireKey(tacticalTurnNumberProvider(), defender.id)
+            val usage = tacticalFireUsageProvider(key)
+            onTacticalFireUsageChanged(key, usage.copy(firedWeapons = usage.firedWeapons + chosen.mapTo(linkedSetOf(), TacticalWeaponContribution::weaponKey)))
+            pending.interceptedDamage = defence.damage
+            notifyUnitStateChanged()
+            return defence.copy(attackerName = defender.snapshot().displayName())
+        }
+
+        private fun resolveIncomingAttack(pending: PendingIntercept): TacticalFireResolution? {
+            if (pending.incomingResolved) return null
+            pending.incomingResolved = true
+            val defender = units.firstOrNull { it.id == pending.defenderId } ?: return null
+            val attacker = units.firstOrNull { it.id == pending.attackerId }?.snapshot() ?: return null
+            val reduced = TacticalCombatResolver.removeInterceptedAttackers(pending.incomingWeapons, pending.incomingContributions, pending.interceptedDamage)
+            val attack = TacticalCombatResolver.resolve(defender.snapshot(), pending.incomingWeapons, reduced)
+            val outcome = applyTacticalDamage(defender, attack.damage)
+            notifyUnitStateChanged()
+            return attack.copy(attackerName = attacker.displayName(), fightersDestroyed = outcome.fightersDestroyed, targetDestroyed = outcome.targetDestroyed)
+        }
+
+        private fun TacticalFireResolution.openGunrep() {
+            MapViewerGunrepDialog(root, dialogManager, "gunrep-" + java.util.UUID.randomUUID(), this).open()
+        }
 
         private fun markDestroyed(unit: PlacedUnit) {
             if (unit.destroyed) return
@@ -1224,6 +1334,18 @@ internal class MapPlacedUnitManager(
     private data class TacticalDialogKey(val unitId: MapPlacedObjectId)
 
     private data class TacticalDamageOutcome(val fightersDestroyed: Int = 0, val targetDestroyed: Boolean = false)
+
+    private data class PendingIntercept(
+        val attackerId: MapPlacedObjectId,
+        val defenderId: MapPlacedObjectId,
+        val incomingWeapons: List<TacticalWeaponStatus>,
+        val incomingContributions: List<TacticalWeaponContribution>,
+        val defensiveWeapons: List<TacticalWeaponStatus>,
+        val defensiveContributions: List<TacticalWeaponContribution>,
+        var defensiveFireResolved: Boolean = false,
+        var interceptedDamage: Int = 0,
+        var incomingResolved: Boolean = false,
+    )
 
     private fun positionView(unit: PlacedUnit) {
         val worldPoint = coordinateSpace.toWorld(unit.mapCoordinate)

@@ -18,6 +18,8 @@ internal class MapViewerTacticalDialog(
     private val dialogKey: Any,
     private val unitName: String,
     private val reportProvider: () -> TacticalTargetingReport?,
+    private val dialogName: String = "Tactical",
+    private val fireActionLabel: String = "Fire",
     private val onDismiss: () -> Unit = {},
     private val restoredBounds: MapViewerDialogBounds? = null,
     private val persistenceTargetId: String,
@@ -35,18 +37,22 @@ internal class MapViewerTacticalDialog(
         if (dialogManager.hasTarget(dialogKey)) return false
         val stage = root.stage ?: return false
         report = reportProvider() ?: return false
+        if (report.targets.size == 1) {
+            expandedTargetId = report.targets.single().targetId
+            selectedWeaponKeys = report.targets.single().contributions.mapTo(linkedSetOf(), TacticalWeaponContribution::weaponKey)
+        }
         window = MapViewerDialogWindow(
             root = root,
-            title = MapViewerDialogTitles.unit("Tactical", unitName),
+            title = MapViewerDialogTitles.unit(dialogName, unitName),
             preferredWidth = PREFERRED_WIDTH,
             preferredHeight = PREFERRED_HEIGHT,
             contentMinimumWidth = { MINIMUM_CONTENT_WIDTH },
             contentHeight = { contentHeight() },
             actions = listOf(
-                MapViewerDialogAction("Fire", enabled = { expandedTargetId != null && selectedWeaponKeys.isNotEmpty() }) {
+                MapViewerDialogAction(fireActionLabel, enabled = { expandedTargetId != null && selectedWeaponKeys.isNotEmpty() }) {
                     expandedTargetId?.let { targetId -> onFire(targetId, selectedWeaponKeys) }?.let { resolution ->
                         close()
-                        onFireResolved(resolution)
+                        if (!resolution.interceptPending) onFireResolved(resolution)
                     }
                 },
                 MapViewerDialogAction("Cancel") { close() },

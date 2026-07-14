@@ -21,9 +21,28 @@ internal data class TacticalFireResolution(
     val dieResults: List<TacticalDieResult> = emptyList(),
     val fightersDestroyed: Int = 0,
     val targetDestroyed: Boolean = false,
+    val interceptPending: Boolean = false,
 )
 
 internal object TacticalCombatResolver {
+    fun removeInterceptedAttackers(
+        weapons: List<TacticalWeaponStatus>,
+        contributions: List<TacticalWeaponContribution>,
+        intercepted: Int,
+    ): List<TacticalWeaponContribution> {
+        val weaponsByKey = weapons.associateBy(TacticalWeaponStatus::key)
+        var remainingInterceptions = intercepted.coerceAtLeast(0)
+        return contributions.mapNotNull { contribution ->
+            val weapon = weaponsByKey[contribution.weaponKey]
+            val interceptable = weapon?.salvo == true || weapon?.salvoRack == true || weapon?.torpedo == true || weapon?.fighterWeapon == true
+            val survivingFirepower = if (interceptable) {
+                (contribution.firepower - remainingInterceptions).coerceAtLeast(0)
+                    .also { remainingInterceptions = (remainingInterceptions - contribution.firepower).coerceAtLeast(0) }
+            } else contribution.firepower
+            contribution.copy(firepower = survivingFirepower).takeIf { it.firepower > 0 }
+        }
+    }
+
     fun resolve(
         target: UnitSnapshot,
         weapons: List<TacticalWeaponStatus>,
@@ -37,7 +56,7 @@ internal object TacticalCombatResolver {
             val weapon = weaponByKey[contribution.weaponKey] ?: return@forEach
             when {
                 weapon.salvo || weapon.salvoRack -> roll().also { value ->
-                    dieResults += TacticalDieResult(weapon.name, value, damage = value)
+                    dieResults += TacticalDieResult(weapon.name, value, damage = value.coerceAtMost(contribution.firepower))
                 }
 
                 weapon.torpedo -> roll().let { value ->
