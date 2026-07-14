@@ -137,10 +137,7 @@ class SensorDetectionTest {
 
         val check = SensorDetection.visibilityChecks(
             observer = observer,
-            candidates = listOf(observer, target),
-            mapWidth = 1_000,
-            mapHeight = 1_000,
-            mapUnitsPerPixel = 1.0,
+            unitQueryService = UnitQueryService(listOf(observer, target), mapWidth = 1_000, mapHeight = 1_000, mapUnitsPerPixel = 1.0),
         ).single()
 
         assertThat(check.identificationRangeUnits, equalTo(36.0))

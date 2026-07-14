@@ -7,6 +7,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepContactState
 import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepLostContact
 import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepVisibilityReport
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitQueryService
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.unitClassLabel
 import io.hsar.mapgenerator.grid.GridLayer
@@ -20,7 +21,6 @@ import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.concurrent.thread
-import kotlin.math.hypot
 
 internal class MapViewerSitrepDialog(
     private val root: Container,
@@ -28,14 +28,11 @@ internal class MapViewerSitrepDialog(
     private val dialogKey: Any,
     private val unitName: String,
     private var observer: UnitSnapshot,
-    private var candidates: List<UnitSnapshot>,
+    private var unitQueryService: UnitQueryService,
     private val initialContactState: SitrepContactState = SitrepContactState(),
     private val previousContactState: SitrepContactState = SitrepContactState(),
     private val onContactStateChanged: (SitrepContactState) -> Unit = {},
     private val onObserverCustomPropertiesChanged: (UnitSnapshot, UnitSnapshot) -> Unit = { _, _ -> },
-    private val mapWidth: Int,
-    private val mapHeight: Int,
-    private val mapUnitsPerPixel: Double,
     private val gridLayer: GridLayer? = null,
     private val onTransientNotice: (String) -> Unit = {},
     private val preferredWidth: Double = PREFERRED_WIDTH,
@@ -214,7 +211,7 @@ internal class MapViewerSitrepDialog(
             val after = before.copy(customProperties = before.customProperties + (key to enabled.toString()))
             onObserverCustomPropertiesChanged(before, after)
             observer = after
-            candidates = candidates.map { candidate -> if (candidate.id == after.id) after else candidate }
+            unitQueryService = unitQueryService.replacing(after)
         }
         requestReportRefresh()
     }
@@ -222,16 +219,10 @@ internal class MapViewerSitrepDialog(
     private fun updateObserver(updatedObserver: UnitSnapshot) {
         synchronized(reportLock) {
             val previousNaturalReport = initialReportFor(reportMode)
-            val updatedCandidates = candidates.map { candidate ->
-                if (candidate.id == updatedObserver.id) updatedObserver else candidate
-            }
             val updatedObserverSnapshot = if (updatedObserver.id == observer.id) updatedObserver else observer
             val updatedNaturalReport = SensorDetection.visibilityReport(
                 observer = updatedObserverSnapshot,
-                candidates = updatedCandidates,
-                mapWidth = mapWidth,
-                mapHeight = mapHeight,
-                mapUnitsPerPixel = mapUnitsPerPixel,
+                unitQueryService = unitQueryService.replacing(updatedObserver),
                 gridLayer = gridLayer,
                 includedIds = null,
                 candidateFilter = reportMode.candidateFilter(updatedObserverSnapshot.template.affiliation),
@@ -239,7 +230,7 @@ internal class MapViewerSitrepDialog(
                 sensorReportMode = reportMode.sensorReportMode,
             )
             if (updatedObserver.id == observer.id) observer = updatedObserver
-            candidates = updatedCandidates
+            unitQueryService = unitQueryService.replacing(updatedObserver)
             val naturalReport = initialReportFor(reportMode)
             val reportState = currentReportState()
             val previousDetectedIds = previousNaturalReport.detectedChecks.mapTo(mutableSetOf()) { it.unit.id }
@@ -534,10 +525,7 @@ internal class MapViewerSitrepDialog(
     private fun initialReportFor(mode: ReportMode): SitrepVisibilityReport =
         SensorDetection.visibilityReport(
             observer = observer,
-            candidates = candidates,
-            mapWidth = mapWidth,
-            mapHeight = mapHeight,
-            mapUnitsPerPixel = mapUnitsPerPixel,
+            unitQueryService = unitQueryService,
             gridLayer = gridLayer,
             includedIds = null,
             candidateFilter = mode.candidateFilter(observer.template.affiliation),
@@ -595,10 +583,7 @@ internal class MapViewerSitrepDialog(
         val unidentifiedIds = reportState.sensorContactIds - identifiedIds
         val report = SensorDetection.visibilityReport(
             observer = observer,
-            candidates = candidates,
-            mapWidth = mapWidth,
-            mapHeight = mapHeight,
-            mapUnitsPerPixel = mapUnitsPerPixel,
+            unitQueryService = unitQueryService,
             gridLayer = gridLayer,
             includedIds = identifiedIds,
             unidentifiedIds = unidentifiedIds,
@@ -619,8 +604,8 @@ internal class MapViewerSitrepDialog(
                 val matchingLost = (previousContactState.lostContacts + reportState.lostContacts)
                     .asSequence()
                     .filter { it.contactId !in matchedLostContactIds }
-                    .filter { distanceTo(it.lastSeenPosition) <= LOW_CONFIDENCE_DISTANCE_UNITS }
-                    .minByOrNull { distanceTo(it.lastSeenPosition) }
+                    .filter { unitQueryService.distanceBetween(observer.mapCoordinate, it.lastSeenPosition) <= LOW_CONFIDENCE_DISTANCE_UNITS }
+                    .minByOrNull { unitQueryService.distanceBetween(observer.mapCoordinate, it.lastSeenPosition) }
                 if (matchingLost != null) {
                     sierraContactNumbers[check.unit.id] = matchingLost.sierraNumber
                     matchedLostContactIds += matchingLost.contactId
@@ -683,8 +668,8 @@ internal class MapViewerSitrepDialog(
             checks = scirepChecks,
             identifiedIds = report.visibleChecks.map { it.unit.id }.toSet(),
             contactNumbers = sierraContactNumbers,
-            mapWidth = mapWidth,
-            mapHeight = mapHeight,
+            mapWidth = unitQueryService.mapWidth,
+            mapHeight = unitQueryService.mapHeight,
             gridLayer = gridLayer,
             emptySummaryText = reportMode.emptySummaryText,
             identificationAnnouncements = report.visibleChecks.filter { it.unit.id !in previousContactState.identifiedIds },
@@ -699,19 +684,13 @@ internal class MapViewerSitrepDialog(
         SensorDetection.hiddenContactLabel(
             observer = observer,
             check = check,
-            mapWidth = mapWidth,
-            mapHeight = mapHeight,
+            mapWidth = unitQueryService.mapWidth,
+            mapHeight = unitQueryService.mapHeight,
             gridLayer = gridLayer,
         )
 
     private fun reportModeInputMinimumWidth(): Double =
         MapViewerDropdownLayoutBuilder.minimumMenuWidth(ReportMode.entries.map { it.label }, hasIcons = false)
-
-    private fun distanceTo(position: io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate): Double =
-        hypot(
-            (observer.mapCoordinate.x - position.x) * mapWidth,
-            (observer.mapCoordinate.y - position.y) * mapHeight,
-        ) * mapUnitsPerPixel
 
     private fun title(): String =
         "${reportMode.label} - $unitName"

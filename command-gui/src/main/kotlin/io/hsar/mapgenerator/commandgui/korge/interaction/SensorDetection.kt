@@ -1,7 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.grid.GridLayer
-import kotlin.math.hypot
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
@@ -149,7 +148,16 @@ internal object SensorDetection {
         candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
         sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
     ): List<SensorContact> =
-        visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer, candidateFilter, sensorReportMode)
+        visibleContacts(observer, UnitQueryService(candidates, mapWidth, mapHeight, mapUnitsPerPixel), gridLayer, candidateFilter, sensorReportMode)
+
+    fun visibleContacts(
+        observer: UnitSnapshot,
+        unitQueryService: UnitQueryService,
+        gridLayer: GridLayer? = null,
+        candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
+        sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
+    ): List<SensorContact> =
+        visibilityChecks(observer, unitQueryService, gridLayer, candidateFilter, sensorReportMode)
             .filter { it.detected }
             .map {
                 SensorContact(
@@ -162,19 +170,16 @@ internal object SensorDetection {
 
     fun visibilityChecks(
         observer: UnitSnapshot,
-        candidates: List<UnitSnapshot>,
-        mapWidth: Int,
-        mapHeight: Int,
-        mapUnitsPerPixel: Double,
+        unitQueryService: UnitQueryService,
         gridLayer: GridLayer? = null,
         candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
         sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
     ): List<SensorVisibilityCheck> =
-        candidates.asSequence()
+        unitQueryService.allUnits().asSequence()
             .filter { it.id != observer.id }
             .filter(candidateFilter)
             .mapNotNull { candidate ->
-                val distanceUnits = observer.distanceTo(candidate, mapWidth, mapHeight, mapUnitsPerPixel)
+                val distanceUnits = unitQueryService.distanceBetween(observer, candidate)
                 val identification = candidate.identificationRangeUnits(observer, sensorReportMode)
                 val detection = identification?.let { it * DETECTION_RANGE_BAND_MULTIPLIER }
                 val baseDetectionRangeUnits = candidate.unitClassLabel().baseDetectionRangeUnits()
@@ -215,6 +220,47 @@ internal object SensorDetection {
             )
             .toList()
 
+    fun visibilityChecks(
+        observer: UnitSnapshot,
+        candidates: List<UnitSnapshot>,
+        mapWidth: Int,
+        mapHeight: Int,
+        mapUnitsPerPixel: Double,
+        gridLayer: GridLayer? = null,
+        candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
+        sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
+    ): List<SensorVisibilityCheck> =
+        visibilityChecks(observer, UnitQueryService(candidates, mapWidth, mapHeight, mapUnitsPerPixel), gridLayer, candidateFilter, sensorReportMode)
+
+    fun visibilityReport(
+        observer: UnitSnapshot,
+        unitQueryService: UnitQueryService,
+        gridLayer: GridLayer? = null,
+        includedIds: Set<MapPlacedObjectId>? = null,
+        unidentifiedIds: Set<MapPlacedObjectId> = emptySet(),
+        candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
+        emptySummaryText: String = "No allied contacts to report.",
+        sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
+    ): SitrepVisibilityReport {
+        val checks = visibilityChecks(observer, unitQueryService, gridLayer, candidateFilter, sensorReportMode)
+        val effectiveIncludedIds = includedIds ?: checks.filter { it.visible }.mapTo(mutableSetOf()) { it.unit.id }
+        val visibleChecks = checks.filter { it.unit.id in effectiveIncludedIds }
+        val unidentifiedChecks = checks.filter { it.unit.id in unidentifiedIds && it.unit.id !in effectiveIncludedIds }
+        val hiddenChecks = checks.filterNot { it.unit.id in effectiveIncludedIds || it.unit.id in unidentifiedIds }
+        val lines = buildList {
+            add(buildPositionSummary(observer, visibleChecks, unitQueryService.mapWidth, unitQueryService.mapHeight, gridLayer, emptySummaryText))
+        }
+        val displayText = lines.joinToString("\n")
+        return SitrepVisibilityReport(
+            displayText = displayText,
+            copyText = displayText,
+            visibleChecks = visibleChecks,
+            detectedChecks = checks.filter { it.detected },
+            unidentifiedChecks = unidentifiedChecks,
+            hiddenChecks = hiddenChecks,
+        )
+    }
+
     fun visibilityReport(
         observer: UnitSnapshot,
         candidates: List<UnitSnapshot>,
@@ -227,25 +273,17 @@ internal object SensorDetection {
         candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
         emptySummaryText: String = "No allied contacts to report.",
         sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
-    ): SitrepVisibilityReport {
-        val checks = visibilityChecks(observer, candidates, mapWidth, mapHeight, mapUnitsPerPixel, gridLayer, candidateFilter, sensorReportMode)
-        val effectiveIncludedIds = includedIds ?: checks.filter { it.visible }.mapTo(mutableSetOf()) { it.unit.id }
-        val visibleChecks = checks.filter { it.unit.id in effectiveIncludedIds }
-        val unidentifiedChecks = checks.filter { it.unit.id in unidentifiedIds && it.unit.id !in effectiveIncludedIds }
-        val hiddenChecks = checks.filterNot { it.unit.id in effectiveIncludedIds || it.unit.id in unidentifiedIds }
-        val lines = buildList {
-            add(buildPositionSummary(observer, visibleChecks, mapWidth, mapHeight, gridLayer, emptySummaryText))
-        }
-        val displayText = lines.joinToString("\n")
-        return SitrepVisibilityReport(
-            displayText = displayText,
-            copyText = displayText,
-            visibleChecks = visibleChecks,
-            detectedChecks = checks.filter { it.detected },
-            unidentifiedChecks = unidentifiedChecks,
-            hiddenChecks = hiddenChecks,
+    ): SitrepVisibilityReport =
+        visibilityReport(
+            observer,
+            UnitQueryService(candidates, mapWidth, mapHeight, mapUnitsPerPixel),
+            gridLayer,
+            includedIds,
+            unidentifiedIds,
+            candidateFilter,
+            emptySummaryText,
+            sensorReportMode,
         )
-    }
 
     fun hiddenContactLabel(
         observer: UnitSnapshot,
@@ -415,17 +453,6 @@ internal object SensorDetection {
         val damage = OlympiadDawnShip.instanceDamage(customProperties, definition)
         return if (definition.systems.any { it.name == "Advanced Sensors" && it.id !in damage.destroyedSystems }) 1.0 else 0.0
     }
-
-    private fun UnitSnapshot.distanceTo(
-        other: UnitSnapshot,
-        mapWidth: Int,
-        mapHeight: Int,
-        mapUnitsPerPixel: Double,
-    ): Double =
-        hypot(
-            (mapCoordinate.x - other.mapCoordinate.x) * mapWidth,
-            (mapCoordinate.y - other.mapCoordinate.y) * mapHeight,
-        ) * mapUnitsPerPixel
 
     private fun UnitSnapshot.visibilityNotes(sensorReportMode: SensorReportMode): List<String> =
         buildList {

@@ -90,7 +90,7 @@ class TacticalTargetingResolverTest {
     }
 
     private fun resolve(source: UnitSnapshot, candidates: List<UnitSnapshot>) =
-        TacticalTargetingResolver.resolve(source, candidates, mapWidth = 1000, mapHeight = 1000, mapUnitsPerPixel = 1.0)
+        TacticalTargetingResolver.resolve(source, UnitQueryService(candidates, mapWidth = 1000, mapHeight = 1000, mapUnitsPerPixel = 1.0))
 
     private fun ship(
         id: Int,

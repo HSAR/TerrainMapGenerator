@@ -70,6 +70,7 @@ internal class MapPlacedUnitManager(
 ) {
     private val coordinateSpace = MapCoordinateSpace(geometry, mapWidth, mapHeight)
     private val units = mutableListOf<PlacedUnit>()
+    private var unitQueryService = UnitQueryService(emptyList(), mapWidth, mapHeight, mapUnitsPerPixel)
     private val dragPreviewLayer = unitLayer.container()
     private var selectedUnitIds = emptySet<MapPlacedObjectId>()
     private var destroyedUnitsDisplay = initialDestroyedUnitsDisplay
@@ -737,6 +738,7 @@ internal class MapPlacedUnitManager(
     }
 
     private fun notifyUnitStateChanged() {
+        unitQueryService = UnitQueryService(units.map { it.snapshot() }, mapWidth, mapHeight, mapUnitsPerPixel)
         refreshOpenShipStatusPanels()
         refreshTacticalDialogs()
         onUnitsChanged()
@@ -931,10 +933,7 @@ internal class MapPlacedUnitManager(
                 dialogKey = "navrep-report-${unit.id.value}",
                 unitName = snapshot.displayName(),
                 observer = snapshot,
-                candidates = units.map { it.snapshot() },
-                mapWidth = mapWidth,
-                mapHeight = mapHeight,
-                mapUnitsPerPixel = mapUnitsPerPixel,
+                unitQueryService = unitQueryService,
                 gridLayer = gridLayer,
                 initialContactState = sitrepContactStateProvider(turnNumber, snapshot.id),
                 previousContactState = sitrepPreviousContactStateProvider(turnNumber, snapshot.id),
@@ -971,10 +970,7 @@ internal class MapPlacedUnitManager(
                             val usage = tacticalFireUsageProvider(TacticalFireKey(tacticalTurnNumberProvider(), source.id))
                             TacticalTargetingResolver.resolve(
                                 source = source,
-                                candidates = units.map { it.snapshot() },
-                                mapWidth = mapWidth,
-                                mapHeight = mapHeight,
-                                mapUnitsPerPixel = mapUnitsPerPixel,
+                                unitQueryService = unitQueryService,
                                 firedWeaponKeys = usage.firedWeapons,
                                 fireControlUsed = usage.fireControlUsed,
                             )
@@ -1008,8 +1004,7 @@ internal class MapPlacedUnitManager(
             val unit = units.firstOrNull { it.id == unitId } ?: return false
             val usageKey = TacticalFireKey(tacticalTurnNumberProvider(), unitId)
             val usage = tacticalFireUsageProvider(usageKey)
-            val report =
-                TacticalTargetingResolver.resolve(unit.snapshot(), units.map { it.snapshot() }, mapWidth, mapHeight, mapUnitsPerPixel, usage.firedWeapons, usage.fireControlUsed)
+            val report = TacticalTargetingResolver.resolve(unit.snapshot(), unitQueryService, usage.firedWeapons, usage.fireControlUsed)
             val target = report.targets.firstOrNull { it.targetId == targetId } ?: return false
             val weaponKeys = target.contributions.map { it.weaponKey }.toSet()
             val consumesFireControl = report.weapons.any { it.key in weaponKeys && it.requiresFireControl }

@@ -2,7 +2,6 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import kotlin.math.atan2
 import kotlin.math.floor
-import kotlin.math.hypot
 
 internal data class TacticalWeaponStatus(
     val key: String,
@@ -49,15 +48,12 @@ internal object TacticalTargetingResolver {
 
     fun resolve(
         source: UnitSnapshot,
-        candidates: List<UnitSnapshot>,
-        mapWidth: Int,
-        mapHeight: Int,
-        mapUnitsPerPixel: Double,
+        unitQueryService: UnitQueryService,
         firedWeaponKeys: Set<String> = emptySet(),
         fireControlUsed: Int = 0,
     ): TacticalTargetingReport {
         val definition = source.shipDefinition()
-        val squadron = if (definition == null) OlympiadDawnShip.squadronStatus(source, candidates) else null
+        val squadron = if (definition == null) OlympiadDawnShip.squadronStatus(source, unitQueryService.allUnits()) else null
         if (definition == null && squadron == null) return TacticalTargetingReport(emptyList(), emptyList())
         val damage = definition?.let { OlympiadDawnShip.instanceDamage(source.customProperties, it) }
         val fireControlCapacity = definition?.systems?.count { it.name == "Gunnery Fire Control System" && it.id !in damage!!.destroyedSystems } ?: 1
@@ -103,9 +99,9 @@ internal object TacticalTargetingResolver {
             !it.destroyed && !it.fired && (!it.requiresFireControl || remainingFireControl > 0) && (it.pointDefense || it.beamClass != null || it.salvoRack || (it.salvo && (it.magazineRemaining
                 ?: 0) > 0) || (it.submunition && (it.magazineRemaining ?: 0) > 0))
         }
-        val targets = candidates.asSequence()
+        val targets = unitQueryService.allUnits().asSequence()
             .filter { it.id != source.id && !it.destroyed && (it.shipDefinition() != null || it.unitClassLabel() == "F") && it.template.affiliation != source.template.affiliation }
-            .mapNotNull { target -> targetFor(source, target, facing, intactWeapons, mapWidth, mapHeight, mapUnitsPerPixel) }
+            .mapNotNull { target -> targetFor(source, target, facing, intactWeapons, unitQueryService) }
             .sortedWith(
                 compareByDescending<TacticalTarget>(TacticalTarget::firepower)
                     .thenBy(TacticalTarget::rangeU)
@@ -116,19 +112,25 @@ internal object TacticalTargetingResolver {
         return TacticalTargetingReport(weapons, targets, fireControlCapacity, fireControlUsed)
     }
 
+    fun resolve(
+        source: UnitSnapshot,
+        candidates: List<UnitSnapshot>,
+        mapWidth: Int,
+        mapHeight: Int,
+        mapUnitsPerPixel: Double,
+        firedWeaponKeys: Set<String> = emptySet(),
+        fireControlUsed: Int = 0,
+    ): TacticalTargetingReport =
+        resolve(source, UnitQueryService(candidates, mapWidth, mapHeight, mapUnitsPerPixel), firedWeaponKeys, fireControlUsed)
+
     private fun targetFor(
         source: UnitSnapshot,
         target: UnitSnapshot,
         facing: Int,
         weapons: List<TacticalWeaponStatus>,
-        mapWidth: Int,
-        mapHeight: Int,
-        mapUnitsPerPixel: Double,
+        unitQueryService: UnitQueryService,
     ): TacticalTarget? {
-        val range = hypot(
-            (target.mapCoordinate.x - source.mapCoordinate.x) * mapWidth,
-            (target.mapCoordinate.y - source.mapCoordinate.y) * mapHeight,
-        ) * mapUnitsPerPixel
+        val range = unitQueryService.distanceBetween(source, target)
         val arc = targetArc(source, target, facing)
         val contributions = weapons
             .filter { arc in it.arcs && weaponEffectiveAgainst(it, target) }
