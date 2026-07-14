@@ -491,8 +491,8 @@ internal object OlympiadDawnShip {
     private fun fighterProfile(type: String): OlympiadDawnFighterProfile =
         when (type) {
             "standard" -> OlympiadDawnFighterProfile("Fighter", "Fighters", 6, listOf(OlympiadDawnShipWeapon(null, "Light Multirole Beam", ARC_ORDER, 1)))
-            "interceptor" -> OlympiadDawnFighterProfile("Interceptor", "Interceptors", 6, listOf(OlympiadDawnShipWeapon(null, "Light Multirole Beam", ARC_ORDER, 1)))
-            "torpedo" -> OlympiadDawnFighterProfile("Torpedo Fighter", "Torpedo Fighters", 6, listOf(OlympiadDawnShipWeapon(null, "Torpedo Launcher")))
+            "interceptor" -> OlympiadDawnFighterProfile("Interceptor", "Interceptors", 6, listOf(OlympiadDawnShipWeapon(null, "Light Interceptor Beam", ARC_ORDER, 1)))
+            "torpedo" -> OlympiadDawnFighterProfile("Torpedo Fighter", "Torpedo Fighters", 6, listOf(OlympiadDawnShipWeapon(null, "Light Torpedo Launcher", ARC_ORDER)))
             "assault" -> OlympiadDawnFighterProfile("Assault Shuttle", "Assault Shuttles", 3, emptyList())
             else -> throw IllegalArgumentException("Unknown fighter type: $type")
         }

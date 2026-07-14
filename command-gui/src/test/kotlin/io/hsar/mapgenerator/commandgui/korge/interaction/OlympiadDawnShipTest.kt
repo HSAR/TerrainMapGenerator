@@ -132,7 +132,12 @@ class OlympiadDawnShipTest {
         assertThat(definition.systems.single().name, equalTo("Hangar - Interceptors [interceptors]"))
         assertThat(
             OlympiadDawnShip.fighterWeaponTotals(definition, damage).map { Triple(it.name, it.arcs, it.count) },
-            equalTo(listOf(Triple("Light Multirole Beam", listOf("F", "FS", "AS", "A", "AP", "FP"), 1), Triple("Torpedo Launcher", emptyList(), 0))),
+            equalTo(
+                listOf(
+                    Triple("Light Interceptor Beam", listOf("F", "FS", "AS", "A", "AP", "FP"), 1),
+                    Triple("Light Torpedo Launcher", listOf("F", "FS", "AS", "A", "AP", "FP"), 0)
+                )
+            ),
         )
     }
 
