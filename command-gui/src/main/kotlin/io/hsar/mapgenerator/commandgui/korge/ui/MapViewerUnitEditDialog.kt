@@ -70,7 +70,7 @@ internal class MapViewerUnitEditDialog(
     private var positionWasValid = isPositionValid(positionXValue, positionYValue)
     private var facingWasValid = isFacingValid(facingValue)
     private var pendingNameFocus = false
-    private val shipDefinition = OlympiadDawnShip.definition(unitType.customProperties)
+    private val shipDefinition = OlympiadDawnShip.definition(initialCustomProperties) ?: OlympiadDawnShip.definition(unitType.customProperties)
     private var shipDamage = shipDefinition?.let { OlympiadDawnShip.instanceDamage(initialCustomProperties, it) }
     private var shipPanelCollapsed = true
     private var shipComponentsCollapsed = true

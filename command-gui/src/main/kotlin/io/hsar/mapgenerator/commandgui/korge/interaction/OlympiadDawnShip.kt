@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.io.File
 import kotlin.math.floor
@@ -94,9 +95,7 @@ internal object OlympiadDawnShip {
     const val FIGHTER_UNIT_ID_KEY = "unitId"
     const val MASS_KEY = "mass"
     const val MAGAZINE_PROPERTY_PREFIX = "olympiadDawn.magazine."
-    const val FIGHTER_LINK_PROPERTY_PREFIX = "olympiadDawn.fighterLink."
-    private const val RANDOM_ID_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
-
+    private const val RANDOM_FIGHTER_ID_CHARACTERS = "ABCDEFGHIJKLMNPQRSTUVWXYZ0123456789_"
     private val mapper = jacksonObjectMapper()
 
     fun import(file: File): OlympiadDawnShipDefinition =
@@ -142,6 +141,9 @@ internal object OlympiadDawnShip {
             .orEmpty()
         if (fighters.map(OlympiadDawnFighterSquadron::id).toSet().size != fighters.size) {
             throw IllegalArgumentException("Fighter squadrons must have unique IDs")
+        }
+        if (fighters.mapNotNull(OlympiadDawnFighterSquadron::hangar).toSet().size != fighters.count { it.hangar != null }) {
+            throw IllegalArgumentException("Only one fighter squadron may be assigned to each hangar")
         }
         val fighterNamesByHangar = fighters.mapNotNull { fighter -> fighter.hangar?.let { it to "${fighter.hangarName} [${fighter.id}]" } }
             .groupBy({ it.first }, { it.second })
@@ -235,24 +237,26 @@ internal object OlympiadDawnShip {
         template.customProperties
             .let(::definition)
             ?.let { definition ->
-                mapOf(DAMAGE_KEY to encodeDamage(defaultDamage(template.customProperties) ?: intactDamage())) +
+                val instanceDefinition = parse(instanceDefinitionJson(definition))
+                val instanceDamage = (defaultDamage(template.customProperties) ?: intactDamage()).let { damage ->
+                    damage.copy(
+                        remainingFighters = definition.fighters.mapIndexedNotNull { index, fighter ->
+                            damage.remainingFighters[fighter.id]?.let { remaining -> instanceDefinition.fighters[index].id to remaining }
+                        }.toMap(),
+                    )
+                }
+                mapOf(
+                    DEFINITION_KEY to instanceDefinition.sourceJson,
+                    DAMAGE_KEY to encodeDamage(instanceDamage),
+                ) +
                         definition.systems.filter { it.capacity != null }.associate { it.magazineKey() to it.capacity.toString() } +
                         definition.weapons.mapIndexedNotNull { index, weapon ->
                             weapon.takeIf { it.submunition }?.let { magazinePropertyKey(weaponKey(definition, index)) to "1" }
-                        } + definition.fighters.associate { fighter -> fighterLinkPropertyKey(fighter.id) to randomLinkId() }
+                        }
             }
             .orEmpty()
 
     fun magazinePropertyKey(id: String): String = "$MAGAZINE_PROPERTY_PREFIX$id"
-
-    fun fighterLinkPropertyKey(id: String): String = "$FIGHTER_LINK_PROPERTY_PREFIX$id"
-
-    fun fighterLinkId(properties: Map<String, String>, fighterId: String): String =
-        properties[fighterLinkPropertyKey(fighterId)]?.takeIf(String::isNotBlank) ?: fighterId
-
-    private fun randomLinkId(): String = buildString(4) {
-        repeat(4) { append(RANDOM_ID_CHARACTERS[Random.nextInt(RANDOM_ID_CHARACTERS.length)]) }
-    }
 
     fun magazineRemaining(properties: Map<String, String>, system: OlympiadDawnShipSystem): Int =
         system.capacity?.let { capacityRemaining(properties, system.id, it) } ?: 0
@@ -359,7 +363,7 @@ internal object OlympiadDawnShip {
             .filter { it.unitClassLabel() == "F" }
             .mapNotNull { fighter ->
                 fighter.customProperties[FIGHTER_UNIT_ID_KEY]?.trim()
-                    ?.takeIf { requested -> squadronIds.any { id -> requested == id || requested == fighterLinkId(carrier.customProperties, id) } }
+                    ?.takeIf { requested -> requested in squadronIds }
                     ?.takeIf { linkedCarrier(fighter, snapshots)?.id == carrier.id }
                     ?.let { it to fighter.destroyed }
             }
@@ -390,7 +394,7 @@ internal object OlympiadDawnShip {
         val carrier = linkedCarrier(fighter, snapshots) ?: return null
         val definition = definitionFor(carrier) ?: return null
         val requestedId = fighter.customProperties[FIGHTER_UNIT_ID_KEY]?.trim()?.takeIf(String::isNotEmpty) ?: return null
-        val squadronId = definition.fighters.firstOrNull { requestedId == it.id || requestedId == fighterLinkId(carrier.customProperties, it.id) }?.id ?: return null
+        val squadronId = definition.fighters.firstOrNull { requestedId == it.id }?.id ?: return null
         val index = definition.fighters.indexOfFirst { it.id == squadronId }.takeIf { it >= 0 } ?: return null
         val squadron = definition.fighters[index]
         return OlympiadDawnSquadronStatus(
@@ -431,10 +435,26 @@ internal object OlympiadDawnShip {
         val squadronId = fighter.customProperties[FIGHTER_UNIT_ID_KEY]?.trim()?.takeIf(String::isNotEmpty) ?: return null
         return units.filter { candidate ->
             definitionFor(candidate)?.fighters.orEmpty().any { squadron ->
-                squadronId == squadron.id || squadronId == fighterLinkId(candidate.customProperties, squadron.id)
+                squadronId == squadron.id
             }
         }
             .singleOrNull()
+    }
+
+    private fun instanceDefinitionJson(definition: OlympiadDawnShipDefinition): String {
+        val root = mapper.readTree(definition.sourceJson)
+        root.path("fighters")
+            .takeIf(JsonNode::isArray)
+            ?.forEach { fighter ->
+                fighter.path("hangar").textValue()?.trim()?.takeIf(String::isNotEmpty)
+                    ?.let { (fighter as ObjectNode).put("id", randomFighterId()) }
+            }
+        return mapper.writeValueAsString(root)
+    }
+
+    // Persisted fighter IDs deliberately use a compact four-character token without O, never a placement UUID.
+    private fun randomFighterId(): String = buildString(4) {
+        repeat(4) { append(RANDOM_FIGHTER_ID_CHARACTERS[Random.nextInt(RANDOM_FIGHTER_ID_CHARACTERS.length)]) }
     }
 
     private fun definitionFor(unit: UnitSnapshot): OlympiadDawnShipDefinition? =

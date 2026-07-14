@@ -92,6 +92,17 @@ class OlympiadDawnShipTest {
     }
 
     @Test
+    fun `rejects multiple fighter squadrons assigned to the same hangar`() {
+        val result = runCatching {
+            OlympiadDawnShip.parse(
+                """{"hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"hangar","id":"hangar-1"}],"class":"Carrier","name":"Test","fighters":[{"type":"standard","id":"fighters","hangar":"hangar-1"},{"type":"interceptor","id":"interceptors","hangar":"hangar-1"}]}""",
+            )
+        }
+
+        assertThat(result.exceptionOrNull()?.message, equalTo("Only one fighter squadron may be assigned to each hangar"))
+    }
+
+    @Test
     fun `creates independent default state for a placed unit`() {
         val definition = OlympiadDawnShip.parse(
             """{"hull":{"points":2,"rows":1},"armour":[[1,0]],"systems":[{"name":"drive","id":"drive"}],"class":"Scout","name":"Test"}""",
@@ -153,8 +164,11 @@ class OlympiadDawnShipTest {
             bitmap = korlibs.image.bitmap.Bitmap32(2, 2),
             customProperties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),
         )
+        val carrierId = MapPlacedObjectId(java.util.UUID.randomUUID())
+        val carrierProperties = OlympiadDawnShip.instanceProperties(carrierTemplate)
+        val squadronId = OlympiadDawnShip.definition(carrierProperties)!!.fighters.single().id
         val carrier = UnitSnapshot(
-            id = MapPlacedObjectId(java.util.UUID.randomUUID()),
+            id = carrierId,
             unitTemplateId = carrierTemplate.id,
             template = carrierTemplate,
             instanceName = "Carrier",
@@ -163,6 +177,7 @@ class OlympiadDawnShipTest {
             mapCoordinate = MapCoordinate(0.0, 0.0),
             normalizedWidth = 1.0,
             normalizedHeight = 1.0,
+            customProperties = carrierProperties,
         )
         val fighterTemplate = MapViewerUnitTemplate(
             id = UnitTemplateId(java.util.UUID.randomUUID()),
@@ -180,11 +195,11 @@ class OlympiadDawnShipTest {
             mapCoordinate = MapCoordinate(0.0, 0.0),
             normalizedWidth = 1.0,
             normalizedHeight = 1.0,
-            customProperties = mapOf(OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to "squadron-1"),
+            customProperties = mapOf(OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to squadronId),
         )
         val unrelated = fighter.copy(
             id = MapPlacedObjectId(java.util.UUID.randomUUID()),
-            customProperties = mapOf("unitClass" to "DD", OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to "squadron-1"),
+            customProperties = mapOf("unitClass" to "DD", OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to squadronId),
         )
         val statuses = OlympiadDawnShip.fighterLaunchStatuses(carrier, listOf(carrier, fighter, unrelated))
         val duplicateCarrier = carrier.copy(id = MapPlacedObjectId(java.util.UUID.randomUUID()))
@@ -193,7 +208,7 @@ class OlympiadDawnShipTest {
             customProperties = OlympiadDawnShip.updatedSquadronProperties(carrier, squadronStatus.squadronId, 3)!!,
         )
 
-        assertThat(statuses["squadron-1"]?.destroyed, equalTo(false))
+        assertThat(statuses[squadronId]?.destroyed, equalTo(false))
         assertThat(OlympiadDawnShip.fighterLaunchStatuses(carrier, listOf(carrier)), equalTo(emptyMap()))
         assertThat(squadronStatus.remaining, equalTo(6))
         assertThat(squadronStatus.weapons.single().name, equalTo("Light Multirole Beam"))
@@ -206,13 +221,13 @@ class OlympiadDawnShipTest {
             equalTo(emptyMap()),
         )
         assertThat(
-            OlympiadDawnShip.fighterLaunchStatuses(carrier, listOf(carrier, fighter.copy(destroyed = true)))["squadron-1"]?.destroyed,
+            OlympiadDawnShip.fighterLaunchStatuses(carrier, listOf(carrier, fighter.copy(destroyed = true)))[squadronId]?.destroyed,
             equalTo(true),
         )
     }
 
     @Test
-    fun `generates four character uppercase fighter link IDs`() {
+    fun `writes four character fighter IDs into placed ship definitions`() {
         val definition = OlympiadDawnShip.parse(
             """{"hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"hangar","id":"hangar-1"}],"class":"Carrier","name":"Carrier","fighters":[{"type":"standard","id":"squadron-1","hangar":"hangar-1"}]}""",
         )
@@ -222,10 +237,13 @@ class OlympiadDawnShipTest {
             bitmap = korlibs.image.bitmap.Bitmap32(2, 2),
             customProperties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),
         )
-        val properties = OlympiadDawnShip.instanceProperties(template)
-        val link = OlympiadDawnShip.fighterLinkId(properties, "squadron-1")
-        assertThat(link.length, equalTo(4))
-        assertThat(link.matches(Regex("[A-Z0-9_]{4}")), equalTo(true))
-        assertThat(OlympiadDawnShip.fighterLinkId(properties, "squadron-1"), equalTo(link))
+        val firstProperties = OlympiadDawnShip.instanceProperties(template)
+        val secondProperties = OlympiadDawnShip.instanceProperties(template)
+        val firstFighterId = OlympiadDawnShip.definition(firstProperties)!!.fighters.single().id
+        val secondFighterId = OlympiadDawnShip.definition(secondProperties)!!.fighters.single().id
+
+        assertThat(firstFighterId.matches(Regex("[A-NP-Z0-9_]{4}")), equalTo(true))
+        assertThat(secondFighterId.matches(Regex("[A-NP-Z0-9_]{4}")), equalTo(true))
+        assertThat(firstProperties.keys.any { it.startsWith("olympiadDawn.fighterLink.") }, equalTo(false))
     }
 }

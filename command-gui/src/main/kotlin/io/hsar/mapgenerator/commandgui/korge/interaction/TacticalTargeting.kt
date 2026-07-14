@@ -65,7 +65,7 @@ internal object TacticalTargetingResolver {
                     key, weapon.name, weapon.beamClass, weapon.magazineId != null, weapon.magazineId,
                     when {
                         magazine != null -> OlympiadDawnShip.magazineRemaining(source.customProperties, magazine)
-                        weapon.submunition -> OlympiadDawnShip.capacityRemaining(source.customProperties, key, 1)
+                        weapon.submunition || weapon.salvoRack -> if (key in firedWeaponKeys) 0 else 1
                         else -> null
                     }, 1, weapon.pointDefense, weapon.submunition, weapon.salvoRack, !weapon.pointDefense && !weapon.submunition, weapon.arcs,
                     key in damage!!.destroyedWeapons, key in firedWeaponKeys

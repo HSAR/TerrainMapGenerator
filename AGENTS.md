@@ -32,3 +32,4 @@ This repo contains a Kotlin-based program built using multiple Maven modules.
 
 - Always prefer highly functional Kotlin, with single-lambda declarations, implied return and function chains to using braces.
 - Always make the smallest change possible to fulfil a given request, unless explicitly told to carry out a wider refactor.
+- Persisted Olympiad Dawn fighter IDs are randomly generated four-character `[A-NP-Z0-9_]` tokens; never derive or display them from placement UUIDs.

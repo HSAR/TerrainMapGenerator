@@ -728,12 +728,13 @@ internal class MapPlacedUnitManager(
         if (snapshot.unitClassLabel() != "F") return snapshot
         val requested = snapshot.customProperties[OlympiadDawnShip.FIGHTER_UNIT_ID_KEY]?.trim()?.takeIf(String::isNotEmpty) ?: return snapshot
         val matches = units.map { it.snapshot() }.mapNotNull { carrier ->
-            val definition = OlympiadDawnShip.definition(carrier.customProperties) ?: OlympiadDawnShip.definition(carrier.template.customProperties)
-            definition?.fighters?.firstOrNull { requested == it.id }?.let { fighter ->
-                requested to OlympiadDawnShip.fighterLinkId(carrier.customProperties, fighter.id)
-            }
-        }.distinctBy { it.second }
-        val replacement = matches.singleOrNull()?.second ?: return snapshot
+            OlympiadDawnShip.definition(carrier.template.customProperties)
+                ?.fighters
+                ?.indexOfFirst { requested == it.id }
+                ?.takeIf { it >= 0 }
+                ?.let { index -> OlympiadDawnShip.definition(carrier.customProperties)?.fighters?.getOrNull(index)?.id }
+        }.distinct()
+        val replacement = matches.singleOrNull() ?: return snapshot
         return snapshot.copy(customProperties = snapshot.customProperties + (OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to replacement))
     }
 

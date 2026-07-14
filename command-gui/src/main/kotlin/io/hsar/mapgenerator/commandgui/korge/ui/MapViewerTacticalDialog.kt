@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.TacticalTargetingReport
+import io.hsar.mapgenerator.commandgui.korge.interaction.TacticalWeaponStatus
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
@@ -98,7 +99,7 @@ internal class MapViewerTacticalDialog(
             }
             MapViewerTextViews.leftBox(
                 row,
-                "${weapon.name}${(weapon.magazineId ?: weapon.takeIf { it.submunition }?.key)?.let { " | Magazine ${weapon.magazineRemaining ?: 0}" } ?: ""}$status",
+                weapon.displayName() + status,
                 width - ARC_ICON_WIDTH - TEXT_INSET * 2.0,
                 ROW_HEIGHT,
                 color = if (weapon.destroyed || weapon.fired) Palette.Colours.RED else Palette.Colours.WHITE,
@@ -108,7 +109,8 @@ internal class MapViewerTacticalDialog(
         top += SECTION_GAP
         top = renderSectionHeader(parent, "Firing Solutions", top, width)
         if (report.targets.isEmpty()) {
-            MapViewerTextViews.leftBox(parent, "No eligible targets.", width, ROW_HEIGHT)
+            val emptyState = parent.container().xy(0.0, top)
+            MapViewerTextViews.leftBox(emptyState, "No available targets", width, ROW_HEIGHT) { x = TEXT_INSET }
             return
         }
         report.targets.forEachIndexed { index, target ->
@@ -151,7 +153,7 @@ internal class MapViewerTacticalDialog(
                 HEADER_HEIGHT + HEADER_GAP + if (report.targets.isEmpty()) {
             ROW_HEIGHT
         } else {
-            report.targets.sumOf { ROW_HEIGHT + if (it.targetId == expandedTargetId) it.contributions.size * DETAIL_ROW_HEIGHT else 0.0 + ROW_GAP }
+            report.targets.sumOf { ROW_HEIGHT + (if (it.targetId == expandedTargetId) it.contributions.size * DETAIL_ROW_HEIGHT else 0.0) + ROW_GAP }
         }
 
     private fun close() {
@@ -164,6 +166,12 @@ internal class MapViewerTacticalDialog(
 
     private fun formatRange(range: Double): String =
         ((range * 10.0).roundToInt() / 10.0).toString().trimEnd('0').trimEnd('.')
+
+    private fun TacticalWeaponStatus.displayName(): String =
+        if (magazineId != null || salvoRack || submunition) {
+            val rounds = magazineRemaining ?: 0
+            "$name - $rounds ${if (rounds == 1) "Round" else "Rounds"} Remaining"
+        } else name
 
     private companion object {
         const val PREFERRED_WIDTH = 720.0
