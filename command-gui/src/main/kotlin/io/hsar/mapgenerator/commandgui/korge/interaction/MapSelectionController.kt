@@ -65,7 +65,7 @@ internal class MapSelectionController(
         moveState = null
         pivotState?.originalSnapshots?.forEach(objectController::updateObject)
         pivotState = null
-        resizeState?.originalSnapshots?.filterIsInstance<DrawingSnapshot>()?.forEach(objectController::updateObject)
+        resizeState?.originalSnapshots?.filter { it is DrawingSnapshot || it is GraphicSnapshot }?.forEach(objectController::updateObject)
         resizeState = null
         publish()
     }
@@ -122,7 +122,7 @@ internal class MapSelectionController(
         val selectedSnapshots = selectedIds.mapNotNull(objectController::snapshot)
         val handle = selectedSnapshots.resizeHandleAt(screenPoint) ?: return false
         val bounds = selectedSnapshots.combinedSelectionBounds(coordinateSpace) ?: return false
-        val resizeableSnapshots = selectedSnapshots.filterIsInstance<DrawingSnapshot>()
+        val resizeableSnapshots = selectedSnapshots.filter { it is DrawingSnapshot || it is GraphicSnapshot }
         if (resizeableSnapshots.isEmpty()) {
             return false
         }
@@ -456,7 +456,7 @@ internal class MapSelectionController(
         pivotHandleForSelection(this, coordinateSpace, viewportProvider(), groupFrame)
 
     private fun List<MapPlacedObjectSnapshot>.resizeHandleAt(screenPoint: Vector2D): ScreenCornerBracket? =
-        takeIf { it.any { snapshot -> snapshot is DrawingSnapshot } }
+        takeIf { it.any { snapshot -> snapshot is DrawingSnapshot || snapshot is GraphicSnapshot } }
             ?.resizeFrame()
             ?.cornerBrackets(SELECTION_BRACKET_LENGTH_PX, SELECTION_BRACKET_THICKNESS_PX)
             ?.firstOrNull { it.contains(screenPoint) }
@@ -513,6 +513,10 @@ private fun MapPlacedObjectSnapshot.moveBy(delta: MapCoordinateDelta): MapPlaced
                 x = mapCoordinate.x + delta.x,
                 y = mapCoordinate.y + delta.y,
             ),
+        )
+
+        is GraphicSnapshot -> copy(
+            mapCoordinate = MapCoordinate(mapCoordinate.x + delta.x, mapCoordinate.y + delta.y),
         )
 
         is DrawingSnapshot -> copy(drawing = MapDrawingTranslator.translate(drawing, delta))

@@ -19,6 +19,7 @@ internal object MapPlacedObjectPatch {
         return when {
             before is UnitSnapshot && after is UnitSnapshot -> unitDiff(before, after)
             before is DrawingSnapshot && after is DrawingSnapshot -> drawingDiff(before, after)
+            before is GraphicSnapshot && after is GraphicSnapshot -> graphicDiff(before, after)
             else -> error("Cannot diff different object types")
         }
     }
@@ -27,6 +28,7 @@ internal object MapPlacedObjectPatch {
         when (snapshot) {
             is UnitSnapshot -> applyUnit(snapshot, changes)
             is DrawingSnapshot -> applyDrawing(snapshot, changes)
+            is GraphicSnapshot -> applyGraphic(snapshot, changes)
         }
 
     private fun unitDiff(before: UnitSnapshot, after: UnitSnapshot) = buildMap<String, JsonNode?> {
@@ -79,6 +81,15 @@ internal object MapPlacedObjectPatch {
         }
     }
 
+    private fun graphicDiff(before: GraphicSnapshot, after: GraphicSnapshot) = buildMap<String, JsonNode?> {
+        if (before.graphicTemplateId != after.graphicTemplateId) put("graphicTemplateId", TextNode(after.graphicTemplateId.value.toString()))
+        putIfChanged("instanceName", before.instanceName, after.instanceName)
+        putIfChanged("mapCoordinate", before.mapCoordinate, after.mapCoordinate)
+        putIfChanged("normalizedWidth", before.normalizedWidth, after.normalizedWidth)
+        putIfChanged("normalizedHeight", before.normalizedHeight, after.normalizedHeight)
+        putAll(CustomPropertyJson.diff(before.customProperties, after.customProperties, GRAPHIC_PATCH_FIELDS))
+    }
+
     private fun applyUnit(snapshot: UnitSnapshot, changes: Map<String, JsonNode?>) =
         changes.entries.fold(snapshot) { current, (key, value) ->
             when (key) {
@@ -115,6 +126,18 @@ internal object MapPlacedObjectPatch {
                 else -> current
             }
         })
+
+    private fun applyGraphic(snapshot: GraphicSnapshot, changes: Map<String, JsonNode?>) =
+        changes.entries.fold(snapshot) { current, (key, value) ->
+            when (key) {
+                "instanceName" -> current.copy(instanceName = value.requireValue().asText())
+                "graphicTemplateId" -> current.copy(graphicTemplateId = GraphicTemplateId(UUID.fromString(value.requireValue().asText())))
+                "mapCoordinate" -> current.copy(mapCoordinate = fromNode(value.requireValue()))
+                "normalizedWidth" -> current.copy(normalizedWidth = value.requireValue().asDouble())
+                "normalizedHeight" -> current.copy(normalizedHeight = value.requireValue().asDouble())
+                else -> current.copy(customProperties = current.customProperties.applyCustomPropertyPatch(key, value))
+            }
+        }
 
     private fun <T> MutableMap<String, JsonNode?>.putIfChanged(key: String, before: T, after: T) {
         if (before != after) {
@@ -164,4 +187,6 @@ internal object MapPlacedObjectPatch {
         "normalizedWidth",
         "normalizedHeight",
     )
+
+    private val GRAPHIC_PATCH_FIELDS = setOf("graphicTemplateId", "instanceName", "mapCoordinate", "normalizedWidth", "normalizedHeight")
 }

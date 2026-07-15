@@ -45,6 +45,13 @@ internal fun MapPlacedObjectSnapshot.selectionBounds(coordinateSpace: MapCoordin
             bottom = mapCoordinate.y + normalizedHeight * 0.5,
         )
 
+        is GraphicSnapshot -> MapSelectionBounds(
+            left = mapCoordinate.x - normalizedWidth * 0.5,
+            top = mapCoordinate.y - normalizedHeight * 0.5,
+            right = mapCoordinate.x + normalizedWidth * 0.5,
+            bottom = mapCoordinate.y + normalizedHeight * 0.5,
+        )
+
         is DrawingSnapshot -> drawing.selectionBounds(coordinateSpace)
     }
 
@@ -100,6 +107,9 @@ internal fun MapPlacedObjectSnapshot.selectionFrame(
     when (this) {
         is UnitSnapshot -> selectionBounds(coordinateSpace)
             .let { ScreenSelectionFrame.fromBounds(it, coordinateSpace, viewport) }
+
+        is GraphicSnapshot -> selectionBounds(coordinateSpace)
+            .let { ScreenSelectionFrame.fromBounds(it, coordinateSpace, viewport) }
             .expanded(screenPadding)
 
         is DrawingSnapshot -> drawing.selectionFrame(coordinateSpace, viewport, screenPadding)
@@ -111,6 +121,7 @@ internal fun MapPlacedObjectSnapshot.overlapsSelectionBox(
 ): Boolean =
     when (this) {
         is UnitSnapshot -> selectionBounds(coordinateSpace).overlaps(box)
+        is GraphicSnapshot -> selectionBounds(coordinateSpace).overlaps(box)
         is DrawingSnapshot -> drawing.overlapsSelectionBox(box, coordinateSpace)
     }
 

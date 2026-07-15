@@ -39,6 +39,11 @@ internal object MapSelectionPivot {
             when (original) {
                 is UnitSnapshot -> original.rotateUnit(pivotCenterWorld, deltaRadians, coordinateSpace, shiftHeld)
                 is DrawingSnapshot -> original.rotateDrawing(pivotCenterWorld, deltaRadians, coordinateSpace, shiftHeld)
+                is GraphicSnapshot -> original.copy(
+                    mapCoordinate = coordinateSpace.toMapCoordinate(
+                        rotateWorldPoint(coordinateSpace.toWorld(original.mapCoordinate), pivotCenterWorld, deltaRadians),
+                    ),
+                )
             }
         }
 

@@ -69,6 +69,14 @@ internal object MapSelectionResize {
         return originalSnapshots.map { snapshot ->
             when (snapshot) {
                 is UnitSnapshot -> snapshot
+                is GraphicSnapshot -> snapshot.copy(
+                    mapCoordinate = MapCoordinate(
+                        anchor.x + (snapshot.mapCoordinate.x - anchor.x) * scaleX,
+                        anchor.y + (snapshot.mapCoordinate.y - anchor.y) * scaleY,
+                    ),
+                    normalizedWidth = (snapshot.normalizedWidth * abs(scaleX)).coerceAtLeast(MIN_LOCAL_RADIUS),
+                    normalizedHeight = (snapshot.normalizedHeight * abs(scaleY)).coerceAtLeast(MIN_LOCAL_RADIUS),
+                )
                 is DrawingSnapshot -> snapshot.copy(
                     drawing = snapshot.drawing.resize(
                         bounds = bounds,

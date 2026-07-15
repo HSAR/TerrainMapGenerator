@@ -5,6 +5,7 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingOutlineBuilder
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.GraphicSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
@@ -90,6 +91,7 @@ internal class MapThumbnailRenderer {
                 gridLayer?.let { drawGrid(it, mapImage, geometry, viewport) }
                 snapshots.filterIsInstance<DrawingSnapshot>().forEach { drawDrawing(it, mapImage, geometry, viewport) }
                 snapshots.filterIsInstance<UnitSnapshot>().forEach { drawUnit(it, mapImage, geometry, viewport) }
+                snapshots.filterIsInstance<GraphicSnapshot>().forEach { drawGraphic(it, mapImage, geometry, viewport) }
             }
         }
 
@@ -195,6 +197,25 @@ internal class MapThumbnailRenderer {
         if (snapshot.destroyed) {
             drawDestroyedOverlay(x, y, width, height)
         }
+    }
+
+    private fun Graphics2D.drawGraphic(
+        snapshot: GraphicSnapshot,
+        mapImage: BufferedImage,
+        geometry: ViewerGeometry,
+        viewport: CameraViewport,
+    ) {
+        val center = snapshot.mapCoordinate.toScreen(mapImage, geometry, viewport)
+        val width = snapshot.normalizedWidth * mapImage.width * viewport.zoom
+        val height = snapshot.normalizedHeight * mapImage.height * viewport.zoom
+        drawImage(
+            snapshot.template.bitmap.toBufferedImage(),
+            (center.x - width / 2).roundToInt(),
+            (center.y - height / 2).roundToInt(),
+            width.roundToInt(),
+            height.roundToInt(),
+            null
+        )
     }
 
     private fun Graphics2D.drawLine(

@@ -8,6 +8,7 @@ import java.util.*
 
 internal class MapObjectController(
     private val unitManager: MapPlacedUnitManager,
+    private val graphicManager: MapPlacedGraphicManager? = null,
     private val drawingStore: MapDrawingStore,
     private val onDrawingsChanged: (MapDrawingState) -> Unit = {},
     private val clearTransientState: () -> Unit = {},
@@ -32,6 +33,20 @@ internal class MapObjectController(
         drawing = drawing,
     ).also(::createObject)
 
+    fun createGraphic(template: GraphicTemplateSnapshot, mapCoordinate: MapCoordinate): GraphicSnapshot {
+        val bitmap = template.template.bitmap
+        val width = DEFAULT_GRAPHIC_WIDTH
+        return GraphicSnapshot(
+            id = MapPlacedObjectId(uuidGenerator()),
+            graphicTemplateId = template.id,
+            template = template.template,
+            instanceName = template.template.name,
+            mapCoordinate = mapCoordinate,
+            normalizedWidth = width,
+            normalizedHeight = width * bitmap.height.toDouble() / bitmap.width.toDouble(),
+        ).also(::createObject)
+    }
+
     fun createObject(snapshot: MapPlacedObjectSnapshot) {
         when (snapshot) {
             is UnitSnapshot -> unitManager.upsert(snapshot)
@@ -39,6 +54,7 @@ internal class MapObjectController(
                 drawingStore.upsert(snapshot)
                 onDrawingsChanged(drawingStore.state)
             }
+            is GraphicSnapshot -> graphicManager?.upsert(snapshot)
         }
         clearTransientState()
     }
@@ -46,6 +62,7 @@ internal class MapObjectController(
     fun restoreAll(snapshots: List<MapPlacedObjectSnapshot>) {
         unitManager.restoreAll(snapshots.filterIsInstance<UnitSnapshot>())
         drawingStore.replaceAll(snapshots.filterIsInstance<DrawingSnapshot>())
+        graphicManager?.restoreAll(snapshots.filterIsInstance<GraphicSnapshot>())
         onDrawingsChanged(drawingStore.state)
         clearTransientState()
     }
@@ -57,6 +74,7 @@ internal class MapObjectController(
                 drawingStore.upsert(snapshot)
                 onDrawingsChanged(drawingStore.state)
             }
+            is GraphicSnapshot -> graphicManager?.upsert(snapshot)
         }
         clearTransientState()
     }
@@ -68,6 +86,7 @@ internal class MapObjectController(
                 drawingStore.upsert(snapshot)
                 onDrawingsChanged(drawingStore.state)
             }
+            is GraphicSnapshot -> graphicManager?.preview(snapshot)
         }
     }
 
@@ -78,7 +97,7 @@ internal class MapObjectController(
     }
 
     fun deleteObject(id: MapPlacedObjectId): MapPlacedObjectSnapshot? {
-        val removed = unitManager.remove(id) ?: drawingStore.remove(id)?.also {
+        val removed = unitManager.remove(id) ?: graphicManager?.remove(id) ?: drawingStore.remove(id)?.also {
             onDrawingsChanged(drawingStore.state)
         }
         clearTransientState()
@@ -86,11 +105,13 @@ internal class MapObjectController(
     }
 
     fun snapshot(id: MapPlacedObjectId): MapPlacedObjectSnapshot? =
-        unitManager.snapshot(id) ?: drawingStore.snapshot(id)
+        unitManager.snapshot(id) ?: graphicManager?.snapshot(id) ?: drawingStore.snapshot(id)
 
     fun snapshots(): List<MapPlacedObjectSnapshot> =
-        unitManager.snapshots() + drawingStore.snapshots()
+        unitManager.snapshots() + (graphicManager?.snapshots().orEmpty()) + drawingStore.snapshots()
 
     private fun nextUnitInstanceName(baseName: String): String =
         "$baseName ${nextUnitInstanceNumber++}"
 }
+
+private const val DEFAULT_GRAPHIC_WIDTH = 0.032

@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 
 internal enum class MapPlacedObjectSelectionKind {
     UNIT,
+    GRAPHIC,
     DRAWING,
 }
 
@@ -23,6 +24,7 @@ internal object MapPlacedObjectSelectionResolver {
     private val MapPlacedObjectSelectionKind.priority: Int
         get() = when (this) {
             MapPlacedObjectSelectionKind.UNIT -> 0
-            MapPlacedObjectSelectionKind.DRAWING -> 1
+            MapPlacedObjectSelectionKind.GRAPHIC -> 1
+            MapPlacedObjectSelectionKind.DRAWING -> 2
         }
 }

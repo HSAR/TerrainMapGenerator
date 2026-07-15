@@ -13,22 +13,30 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
+import io.hsar.mapgenerator.commandgui.korge.interaction.CreateGraphicTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteGraphicTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.EditGraphicTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.GraphicSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.GraphicTemplateId
+import io.hsar.mapgenerator.commandgui.korge.interaction.GraphicTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerGraphicTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerGraphicTemplatePatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplatePatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
@@ -226,6 +234,7 @@ private class RuntimeLedgerReplayer(
     private val zip: ZipFile,
 ) {
     private val templatesById = mutableMapOf<UUID, MapViewerUnitTemplate>()
+    private val graphicTemplatesById = mutableMapOf<UUID, MapViewerGraphicTemplate>()
     private val templateOrder = mutableListOf<UUID>()
     private val templateAssetsByAssetId = mutableMapOf<String, LoadedTemplateAsset>()
 
@@ -274,6 +283,21 @@ private class RuntimeLedgerReplayer(
                 )
             }
 
+            is CreateGraphicTemplateEntrySaveDto -> entry.graphicTemplate.toRuntimeSnapshot(entry.graphicTemplate.id)
+                .also { graphicTemplatesById[it.id.value] = it.template }
+                .let(::CreateGraphicTemplateAction)
+
+            is DeleteGraphicTemplateEntrySaveDto -> entry.graphicTemplate.toRuntimeSnapshot(entry.graphicTemplate.id)
+                .also { graphicTemplatesById.remove(it.id.value) }
+                .let(::DeleteGraphicTemplateAction)
+
+            is EditGraphicTemplateEntrySaveDto -> {
+                val before = graphicTemplatesById[entry.id]?.let { template -> GraphicTemplateSnapshot(GraphicTemplateId(entry.id), template, 0) }
+                val after = before?.let { MapViewerGraphicTemplatePatch.apply(it, entry.forward) { assetId -> loadGraphicTemplate(assetId.toString()) } }
+                after?.let { graphicTemplatesById[entry.id] = it.template }
+                EditGraphicTemplateAction(entry.id.let(::GraphicTemplateId), entry.forward, entry.backward, before, after)
+            }
+
             is CreateNoteEntrySaveDto -> CreateNoteAction(entry.note.toRuntimeSnapshot())
 
             is EditNoteEntrySaveDto -> EditNoteAction(
@@ -316,6 +340,39 @@ private class RuntimeLedgerReplayer(
                 id = MapPlacedObjectId(id),
                 drawing = drawing.toRuntimeDrawing(),
             )
+            is SavedGraphicObjectDto -> {
+                val template = graphicTemplatesById[graphicTemplateId]
+                    ?: error("Missing graphic template for id $graphicTemplateId")
+                GraphicSnapshot(
+                    id = MapPlacedObjectId(id),
+                    graphicTemplateId = GraphicTemplateId(graphicTemplateId),
+                    template = template,
+                    instanceName = instanceName,
+                    mapCoordinate = mapCoordinate.toRuntime(),
+                    normalizedWidth = normalizedWidth,
+                    normalizedHeight = normalizedHeight,
+                    customProperties = customProperties,
+                )
+            }
+        }
+
+    private fun GraphicTemplateSaveDto.toRuntimeSnapshot(id: UUID) = GraphicTemplateSnapshot(
+        id = GraphicTemplateId(id),
+        template = MapViewerGraphicTemplate(
+            id = GraphicTemplateId(id),
+            name = name,
+            bitmap = loadGraphicAsset(assetId).bitmap,
+            assetSource = loadGraphicAsset(assetId).assetSource,
+            customProperties = customProperties
+        ),
+        index = 0,
+    )
+
+    private fun loadGraphicAsset(assetId: String): LoadedTemplateAsset = loadTemplateAsset(assetId)
+
+    private fun loadGraphicTemplate(assetId: String): MapViewerGraphicTemplate =
+        loadGraphicAsset(assetId).let { loaded ->
+            MapViewerGraphicTemplate(GraphicTemplateId(UUID.fromString(assetId)), "", loaded.bitmap, loaded.assetSource)
         }
 
     private fun UnitTemplateSnapshotSaveDto.toRuntimeSnapshot() =

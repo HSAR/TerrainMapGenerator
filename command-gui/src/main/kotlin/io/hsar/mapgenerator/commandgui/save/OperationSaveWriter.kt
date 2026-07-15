@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.save
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.GridColourSelector
 import io.hsar.mapgenerator.commandgui.geometryFor
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerGraphicTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.launch.GridConfiguration
 import io.hsar.mapgenerator.commandgui.korge.launch.defaultGridConfiguration
@@ -173,6 +174,11 @@ internal class OperationAssetRegistry(
                 role = "unit-icon",
                 source = template.assetSource,
             )
+        }
+
+    fun registerGraphicTemplate(template: MapViewerGraphicTemplate): RegisteredAsset =
+        templateAssets.getOrPut("graphic:${template.assetSource?.path ?: template.bitmap.contentKey()}") {
+            registerBitmap(template.bitmap, "graphic-icon", template.assetSource)
         }
 
     private fun registerBitmap(bitmap: Bitmap32, role: String, source: AssetSource?): RegisteredAsset =

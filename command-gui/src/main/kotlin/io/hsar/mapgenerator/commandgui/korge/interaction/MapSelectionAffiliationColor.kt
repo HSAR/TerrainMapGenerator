@@ -9,6 +9,7 @@ internal fun MapPlacedObjectSnapshot.selectionAccentColor(): Color =
 internal fun MapPlacedObjectSnapshot.selectionAccentColor(gridColor: Color): Color =
     when (this) {
         is UnitSnapshot -> template.affiliation.overlayColor()
+        is GraphicSnapshot -> gridColor
         is DrawingSnapshot -> gridColor
     }
 
@@ -21,6 +22,7 @@ internal fun List<MapPlacedObjectSnapshot>.selectionAccentColor(gridColor: Color
 internal fun MapPlacedObjectSnapshot.measureTextColor(): Color =
     when (this) {
         is UnitSnapshot -> template.affiliation.overlayColor()
+        is GraphicSnapshot -> UnitAffiliationUi.unaffiliatedColor()
         is DrawingSnapshot -> UnitAffiliationUi.unaffiliatedColor()
     }
 

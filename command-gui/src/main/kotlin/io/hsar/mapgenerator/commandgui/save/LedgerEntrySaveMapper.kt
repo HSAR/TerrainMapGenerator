@@ -10,16 +10,21 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
+import io.hsar.mapgenerator.commandgui.korge.interaction.CreateGraphicTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteGraphicTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.EditGraphicTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.GraphicSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.GraphicTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
@@ -73,6 +78,10 @@ internal class LedgerEntrySaveMapper(
                 backward = entry.saveBackwardPatch(),
             )
 
+            is CreateGraphicTemplateAction -> CreateGraphicTemplateEntrySaveDto(entry.snapshot.toDto())
+            is DeleteGraphicTemplateAction -> DeleteGraphicTemplateEntrySaveDto(entry.snapshot.toDto())
+            is EditGraphicTemplateAction -> EditGraphicTemplateEntrySaveDto(entry.id.value, entry.saveForwardPatch(), entry.saveBackwardPatch())
+
             is CreateNoteAction -> CreateNoteEntrySaveDto(
                 note = entry.snapshot.toDto(),
             )
@@ -107,7 +116,22 @@ internal class LedgerEntrySaveMapper(
             is DrawingSnapshot -> SavedDrawingObjectDto(
                 drawing = drawing.toDto(),
             )
+            is GraphicSnapshot -> SavedGraphicObjectDto(
+                graphicTemplateId = graphicTemplateId.value,
+                instanceName = instanceName,
+                mapCoordinate = mapCoordinate.toDto(),
+                normalizedWidth = normalizedWidth,
+                normalizedHeight = normalizedHeight,
+                customProperties = customProperties,
+            )
         }
+
+    private fun GraphicTemplateSnapshot.toDto() = GraphicTemplateSaveDto(
+        id = id.value,
+        name = template.name,
+        assetId = assets.registerGraphicTemplate(template).id.toString(),
+        customProperties = template.customProperties,
+    )
 
     private fun UnitTemplateSnapshot.toDto() =
         UnitTemplateSnapshotSaveDto(
@@ -131,6 +155,12 @@ internal class LedgerEntrySaveMapper(
             affiliation = affiliation,
             customProperties = customProperties,
         )
+
+    private fun EditGraphicTemplateAction.saveForwardPatch(): Map<String, com.fasterxml.jackson.databind.JsonNode?> =
+        if (beforeSnapshot == null || afterSnapshot == null) forward else graphicPatch(beforeSnapshot, afterSnapshot, assets)
+
+    private fun EditGraphicTemplateAction.saveBackwardPatch(): Map<String, com.fasterxml.jackson.databind.JsonNode?> =
+        if (beforeSnapshot == null || afterSnapshot == null) backward else graphicPatch(afterSnapshot, beforeSnapshot, assets)
 
     private fun EditUnitTemplateAction.saveForwardPatch(): Map<String, com.fasterxml.jackson.databind.JsonNode?> =
         if (beforeSnapshot == null || afterSnapshot == null) {
@@ -232,4 +262,16 @@ internal class LedgerEntrySaveMapper(
     private companion object {
         val UNIT_TEMPLATE_PATCH_FIELDS = setOf("name", "affiliation", "assetId")
     }
+}
+
+private fun graphicPatch(
+    before: GraphicTemplateSnapshot,
+    after: GraphicTemplateSnapshot,
+    assets: OperationAssetRegistry,
+): Map<String, com.fasterxml.jackson.databind.JsonNode?> = buildMap {
+    if (before.template.name != after.template.name) put("name", TextNode(after.template.name))
+    val beforeAsset = assets.registerGraphicTemplate(before.template).id.toString()
+    val afterAsset = assets.registerGraphicTemplate(after.template).id.toString()
+    if (beforeAsset != afterAsset) put("assetId", TextNode(afterAsset))
+    putAll(CustomPropertyJson.diff(before.template.customProperties, after.template.customProperties, setOf("name", "assetId")))
 }

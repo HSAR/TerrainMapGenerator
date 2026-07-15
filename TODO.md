@@ -23,3 +23,4 @@
 - Generic perf pass on all dynamically sized panels, these should not rebuild trees or force redraw per frame when scrolling
 - Unit type list in map viewer should match unit type list in new operation unit type mode
 - Dialog shadows should not draw over other dialogs
+- Cannot select, resize or move graphics

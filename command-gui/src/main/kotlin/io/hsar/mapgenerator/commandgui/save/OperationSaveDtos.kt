@@ -56,6 +56,9 @@ internal data class MapSaveDto(
     JsonSubTypes.Type(value = CreateNoteEntrySaveDto::class, name = "create-note"),
     JsonSubTypes.Type(value = EditNoteEntrySaveDto::class, name = "edit-note"),
     JsonSubTypes.Type(value = DeleteNoteEntrySaveDto::class, name = "delete-note"),
+    JsonSubTypes.Type(value = CreateGraphicTemplateEntrySaveDto::class, name = "create-graphic-template"),
+    JsonSubTypes.Type(value = DeleteGraphicTemplateEntrySaveDto::class, name = "delete-graphic-template"),
+    JsonSubTypes.Type(value = EditGraphicTemplateEntrySaveDto::class, name = "edit-graphic-template"),
     JsonSubTypes.Type(value = AddTurnEntrySaveDto::class, name = "add-turn"),
 )
 internal sealed interface LedgerEntrySaveDto
@@ -101,6 +104,16 @@ internal data class EditUnitTemplateEntrySaveDto(
     val backward: Map<String, JsonNode?>,
 ) : LedgerEntrySaveDto
 
+internal data class CreateGraphicTemplateEntrySaveDto(val graphicTemplate: GraphicTemplateSaveDto) : LedgerEntrySaveDto
+internal data class DeleteGraphicTemplateEntrySaveDto(val graphicTemplate: GraphicTemplateSaveDto) : LedgerEntrySaveDto
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
+internal data class EditGraphicTemplateEntrySaveDto(
+    val id: UUID,
+    val forward: Map<String, JsonNode?>,
+    val backward: Map<String, JsonNode?>,
+) : LedgerEntrySaveDto
+
 internal data class CreateNoteEntrySaveDto(
     val note: NoteSaveDto,
 ) : LedgerEntrySaveDto
@@ -127,6 +140,7 @@ internal data class NoteSaveDto(
 @JsonSubTypes(
     JsonSubTypes.Type(value = SavedUnitObjectDto::class, name = "unit"),
     JsonSubTypes.Type(value = SavedDrawingObjectDto::class, name = "drawing"),
+    JsonSubTypes.Type(value = SavedGraphicObjectDto::class, name = "graphic"),
 )
 internal sealed interface SavedMapObjectDto
 
@@ -198,6 +212,63 @@ internal class SavedUnitObjectDto(
 internal data class SavedDrawingObjectDto(
     val drawing: DrawingSaveDto,
 ) : SavedMapObjectDto
+
+internal class SavedGraphicObjectDto(
+    val graphicTemplateId: UUID,
+    val instanceName: String,
+    val mapCoordinate: MapCoordinateSaveDto,
+    val normalizedWidth: Double,
+    val normalizedHeight: Double,
+) : SavedMapObjectDto {
+    private val customPropertiesByKey = linkedMapOf<String, String>()
+
+    constructor(
+        graphicTemplateId: UUID,
+        instanceName: String,
+        mapCoordinate: MapCoordinateSaveDto,
+        normalizedWidth: Double,
+        normalizedHeight: Double,
+        customProperties: Map<String, String>,
+    ) : this(graphicTemplateId, instanceName, mapCoordinate, normalizedWidth, normalizedHeight) {
+        customPropertiesByKey.putAll(customProperties.filterKeys { it !in KNOWN_PROPERTIES })
+    }
+
+    @get:JsonIgnore
+    val customProperties: Map<String, String> get() = customPropertiesByKey
+    @JsonAnySetter
+    fun setCustomProperty(key: String, value: JsonNode?) {
+        if (key !in KNOWN_PROPERTIES) customPropertiesByKey[key] = CustomPropertyJson.toStringValue(value)
+    }
+
+    @JsonAnyGetter
+    fun customPropertiesForSerialization(): Map<String, String> = customProperties
+
+    private companion object {
+        val KNOWN_PROPERTIES = setOf("type", "graphicTemplateId", "instanceName", "mapCoordinate", "normalizedWidth", "normalizedHeight")
+    }
+}
+
+internal class GraphicTemplateSaveDto(
+    val id: UUID,
+    val name: String,
+    val assetId: String,
+) {
+    private val customPropertiesByKey = linkedMapOf<String, String>()
+
+    constructor(id: UUID, name: String, assetId: String, customProperties: Map<String, String>) : this(id, name, assetId) {
+        customPropertiesByKey.putAll(customProperties)
+    }
+
+    @get:JsonIgnore
+    val customProperties: Map<String, String> get() = customPropertiesByKey
+    @JsonAnySetter
+    fun setCustomProperty(key: String, value: JsonNode?) {
+        if (key !in setOf("id", "name", "assetId")) customPropertiesByKey[key] = CustomPropertyJson.toStringValue(value)
+    }
+
+    @JsonAnyGetter
+    fun customPropertiesForSerialization(): Map<String, String> = customProperties
+}
 
 internal data class UnitTemplateSnapshotSaveDto(
     val id: UUID,

@@ -14,10 +14,13 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.korge.interaction.ContextMenuDeferredActionRunner
 import io.hsar.mapgenerator.commandgui.korge.interaction.ContextMenuManager
+import io.hsar.mapgenerator.commandgui.korge.interaction.CreateGraphicTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteGraphicTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.EditGraphicTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.FireArcDisplayMode
@@ -30,12 +33,14 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteStore
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapObjectController
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedGraphicManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectPatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelectionResolver
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedUnitManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapSelectionController
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapSelectionOverlayView
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerGraphicTemplatePatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerInteraction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplatePatch
@@ -62,6 +67,7 @@ import io.hsar.mapgenerator.commandgui.korge.render.RenderedMap
 import io.hsar.mapgenerator.commandgui.korge.ui.DestroyedUnitsDisplay
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerGraphicSidebar
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerKorgeFonts
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerLedgerPanel
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerNotesPanel
@@ -331,6 +337,8 @@ internal class MapViewerScene(
                         lateinit var drawingView: MapDrawingView
                         lateinit var iconLayer: korlibs.korge.view.Container
                         lateinit var unitManager: MapPlacedUnitManager
+                        lateinit var graphicManager: MapPlacedGraphicManager
+                        lateinit var graphicSidebar: MapViewerGraphicSidebar
                         lateinit var objectController: MapObjectController
                         lateinit var selectionController: MapSelectionController
                         lateinit var dialogManager: MapViewerDialogManager
@@ -727,6 +735,34 @@ internal class MapViewerScene(
                         unitManagerReady = true
                         unitManager.install()
 
+                        graphicManager = MapPlacedGraphicManager(
+                            root = sceneLayers.ui,
+                            graphicLayer = iconLayer,
+                            geometry = renderedMap.geometry,
+                            mapWidth = renderedMap.bitmap.width,
+                            mapHeight = renderedMap.bitmap.height,
+                            viewportProvider = { currentViewport },
+                            contextMenuManager = contextMenuManager,
+                            canInteract = { effectiveTool() == MapViewerTool.SELECT },
+                            isHigherPriorityDragInProgress = { unitManager.isDragging || drawingManager.isDragging },
+                            noteReferenceMenuActionsProvider = { snapshot ->
+                                noteReferenceContextMenuActions(
+                                    referencedNotes = referencedNotesForObject(snapshot.id),
+                                    openNote = { noteId -> deferredContextMenuActions.launch { openNoteFromContextMenu(noteId) } },
+                                )
+                            },
+                            onObjectMoved = { before, after ->
+                                MapPlacedObjectPatch.diff(before, after)
+                                    .takeIf { it.isNotEmpty() }
+                                    ?.let { recordLedgerEntry(EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before))) }
+                            },
+                            onObjectDeleted = { snapshot ->
+                                objectController.deleteObject(snapshot.id)
+                                recordLedgerEntry(DeleteObjectAction(snapshot))
+                            },
+                        )
+                        graphicManager.install()
+
                         drawingManager = MapDrawingManager(
                             root = sceneLayers.ui,
                             geometry = renderedMap.geometry,
@@ -764,6 +800,7 @@ internal class MapViewerScene(
 
                         objectController = MapObjectController(
                             unitManager = unitManager,
+                            graphicManager = graphicManager,
                             drawingStore = drawingStore,
                             onDrawingsChanged = { state ->
                                 if (!startupReplayInProgress) {
@@ -793,6 +830,7 @@ internal class MapViewerScene(
                         fun objectSelectionAt(pointer: korlibs.math.geom.Vector2D) =
                             MapPlacedObjectSelectionResolver.choose(
                                 unitManager.selectionAt(pointer),
+                                graphicManager.selectionAt(pointer),
                                 drawingManager.selectionAt(pointer),
                             )
                         selectionController = MapSelectionController(
@@ -856,6 +894,24 @@ internal class MapViewerScene(
                             canStartUnitDrag = { effectiveTool() == MapViewerTool.SELECT },
                             initialUnitTemplates = emptyList(),
                         )
+                        graphicSidebar = MapViewerGraphicSidebar(
+                            root = sceneLayers.ui,
+                            contextMenuManager = contextMenuManager,
+                            onGraphicDropped = { template, screenPoint ->
+                                unitManager.resolvePlacement(screenPoint)?.let { coordinate ->
+                                    objectController.createGraphic(template, coordinate)
+                                        .also { recordLedgerEntry(CreateObjectAction(it)) }
+                                }
+                            },
+                            onTemplateCreated = { snapshot -> recordLedgerEntry(CreateGraphicTemplateAction(snapshot)) },
+                            onTemplateDeleted = { snapshot -> recordLedgerEntry(DeleteGraphicTemplateAction(snapshot)) },
+                            onTemplateEdited = { before, after ->
+                                val patch = MapViewerGraphicTemplatePatch.diff(before, after)
+                                recordLedgerEntry(EditGraphicTemplateAction(before.id, patch.forward, patch.backward, before, after))
+                                graphicManager.replaceTemplate(after)
+                            },
+                            onTransientNotice = { message -> transientNotice?.show(message) },
+                        )
                         val ledgerController = object : LedgerController {
                             override fun createObject(snapshot: io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot) {
                                 objectController.createObject(snapshot)
@@ -895,6 +951,29 @@ internal class MapViewerScene(
 
                             override fun deleteUnitTemplate(id: io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId): io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot? =
                                 sidebar.removeUnitTemplate(id, notify = false)
+
+                            override fun createGraphicTemplate(snapshot: io.hsar.mapgenerator.commandgui.korge.interaction.GraphicTemplateSnapshot) {
+                                graphicSidebar.addTemplate(snapshot, notify = false)
+                            }
+
+                            override fun replaceGraphicTemplate(snapshot: io.hsar.mapgenerator.commandgui.korge.interaction.GraphicTemplateSnapshot) {
+                                graphicSidebar.replaceTemplate(snapshot, notify = false)
+                                graphicManager.replaceTemplate(snapshot)
+                            }
+
+                            override fun applyGraphicTemplateEdit(
+                                id: io.hsar.mapgenerator.commandgui.korge.interaction.GraphicTemplateId,
+                                changes: Map<String, com.fasterxml.jackson.databind.JsonNode?>,
+                            ): io.hsar.mapgenerator.commandgui.korge.interaction.GraphicTemplateSnapshot? {
+                                val current = graphicSidebar.template(id) ?: return null
+                                return graphicSidebar.replaceTemplate(
+                                    MapViewerGraphicTemplatePatch.apply(current, changes),
+                                    notify = false,
+                                )?.also(graphicManager::replaceTemplate)
+                            }
+
+                            override fun deleteGraphicTemplate(id: io.hsar.mapgenerator.commandgui.korge.interaction.GraphicTemplateId): io.hsar.mapgenerator.commandgui.korge.interaction.GraphicTemplateSnapshot? =
+                                graphicSidebar.removeTemplate(id, notify = false)
 
                             override fun createNote(snapshot: MapNoteSnapshot) {
                                 noteStore.upsert(snapshot)
@@ -1108,6 +1187,7 @@ internal class MapViewerScene(
                             loadingLayer.parent?.removeChild(loadingLayer)
                         }
                         sidebar.restoreUnitTemplates(replayedLedger.unitTemplates)
+                        graphicSidebar.restoreTemplates(replayedLedger.graphicTemplates)
                         objectController.restoreAll(replayedLedger.objects)
                         replayedLedger.unitTemplates.forEach(unitManager::replaceUnitTemplate)
                         replayedLedger.notes.forEach(noteStore::upsert)
@@ -1124,11 +1204,13 @@ internal class MapViewerScene(
                             val pointer = input.mousePos
                             val leftHeld = input.mouseButtonPressed(korlibs.event.MouseButton.LEFT)
                             val rightHeld = input.mouseButtonPressed(korlibs.event.MouseButton.RIGHT)
+                            graphicSidebar.update(pointer, leftHeld)
                             val escapeMenuOpen = escapeMenu?.isOpen == true
                             val uiBlocksPointer = toolbar?.blocksScreenPoint(pointer) == true ||
                                     ledgerPanel?.blocksScreenPoint(pointer) == true ||
                                     notesPanel?.blocksScreenPoint(pointer) == true ||
                                     sidebar.blocksScreenPoint(pointer) ||
+                                    graphicSidebar.blocksScreenPoint(pointer) ||
                                     sidebar.isUnitDragging ||
                                     dialogManager.blocksScreenPoint(pointer) ||
                                     unitManager.blocksScreenPoint(pointer) ||
@@ -1150,7 +1232,7 @@ internal class MapViewerScene(
                                     if (!selectionController.openContextMenu(pointer) &&
                                         !unitManager.openContextMenuAt(pointer)
                                     ) {
-                                        drawingManager.openContextMenuAt(pointer)
+                                        if (!graphicManager.openContextMenuAt(pointer)) drawingManager.openContextMenuAt(pointer)
                                     }
                                 }
                             }
@@ -1255,6 +1337,7 @@ internal class MapViewerScene(
                                                 selectionController.hasPivotHandleAt(point) ||
                                                 MapPlacedObjectSelectionResolver.choose(
                                                     unitManager.selectionAt(point),
+                                                    graphicManager.selectionAt(point),
                                                     drawingManager.selectionAt(point),
                                                 ) != null)
                             },
@@ -1268,6 +1351,7 @@ internal class MapViewerScene(
                                         unitManager.blocksScreenPoint(point) ||
                                         unitManager.isContextMenuOpen ||
                                         drawingManager.blocksScreenPoint(point) ||
+                                        graphicManager.blocksScreenPoint(point) ||
                                         escapeMenu?.isOpen == true ||
                                         contextMenuManager.blocksScreenPoint(point) ||
                                         (effectiveTool() == MapViewerTool.SELECT && unitManager.hasEcmHandleAt(point)) ||
@@ -1276,13 +1360,15 @@ internal class MapViewerScene(
                                         (effectiveTool() == MapViewerTool.SELECT &&
                                                 MapPlacedObjectSelectionResolver.choose(
                                                     unitManager.selectionAt(point),
+                                                    graphicManager.selectionAt(point),
                                                     drawingManager.selectionAt(point),
                                                 ) != null)
                             },
-                            isMapPlacementDragging = { unitManager.isDragging || selectionController.isDragging },
+                            isMapPlacementDragging = { unitManager.isDragging || graphicManager.isDragging || selectionController.isDragging },
                             onViewportChanged = {
                                 currentViewport = it
                                 unitManager.refreshIconDisplay()
+                                graphicManager.refresh()
                                 drawingView.update(drawingStore.state, it.zoom)
                                 selectionController.refresh()
                             },

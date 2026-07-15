@@ -74,6 +74,33 @@ internal data class UnitTemplateId(
     val value: UUID,
 )
 
+internal data class GraphicTemplateId(
+    val value: UUID,
+)
+
+internal data class GraphicTemplateSnapshot(
+    val id: GraphicTemplateId,
+    val template: MapViewerGraphicTemplate,
+    val index: Int,
+)
+
+internal data class GraphicSnapshot(
+    override val id: MapPlacedObjectId,
+    val graphicTemplateId: GraphicTemplateId,
+    val template: MapViewerGraphicTemplate,
+    val instanceName: String,
+    val mapCoordinate: MapCoordinate,
+    val normalizedWidth: Double,
+    val normalizedHeight: Double,
+    val customProperties: Map<String, String> = emptyMap(),
+) : MapPlacedObjectSnapshot {
+    override val name: String
+        get() = instanceName
+
+    override val icon: Bitmap32
+        get() = template.bitmap
+}
+
 internal data class UnitTemplateSnapshot(
     val id: UnitTemplateId,
     val template: MapViewerUnitTemplate,
@@ -94,6 +121,14 @@ internal interface LedgerController {
     fun applyUnitTemplateEdit(id: UnitTemplateId, changes: Map<String, JsonNode?>): UnitTemplateSnapshot?
 
     fun deleteUnitTemplate(id: UnitTemplateId): UnitTemplateSnapshot?
+
+    fun createGraphicTemplate(snapshot: GraphicTemplateSnapshot) {}
+
+    fun replaceGraphicTemplate(snapshot: GraphicTemplateSnapshot) {}
+
+    fun applyGraphicTemplateEdit(id: GraphicTemplateId, changes: Map<String, JsonNode?>): GraphicTemplateSnapshot? = null
+
+    fun deleteGraphicTemplate(id: GraphicTemplateId): GraphicTemplateSnapshot? = null
 
     fun createNote(snapshot: MapNoteSnapshot)
 
@@ -206,6 +241,48 @@ internal data class EditUnitTemplateAction(
     override fun redo(controller: LedgerController) {
         afterSnapshot?.let(controller::replaceUnitTemplate)
             ?: controller.applyUnitTemplateEdit(id, forward)
+    }
+}
+
+internal data class CreateGraphicTemplateAction(
+    val snapshot: GraphicTemplateSnapshot,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) {
+        controller.deleteGraphicTemplate(snapshot.id)
+    }
+
+    override fun redo(controller: LedgerController) {
+        controller.createGraphicTemplate(snapshot)
+    }
+}
+
+internal data class DeleteGraphicTemplateAction(
+    val snapshot: GraphicTemplateSnapshot,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) {
+        controller.createGraphicTemplate(snapshot)
+    }
+
+    override fun redo(controller: LedgerController) {
+        controller.deleteGraphicTemplate(snapshot.id)
+    }
+}
+
+internal data class EditGraphicTemplateAction(
+    val id: GraphicTemplateId,
+    val forward: Map<String, JsonNode?>,
+    val backward: Map<String, JsonNode?>,
+    val beforeSnapshot: GraphicTemplateSnapshot? = null,
+    val afterSnapshot: GraphicTemplateSnapshot? = null,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) {
+        beforeSnapshot?.let(controller::replaceGraphicTemplate)
+            ?: controller.applyGraphicTemplateEdit(id, backward)
+    }
+
+    override fun redo(controller: LedgerController) {
+        afterSnapshot?.let(controller::replaceGraphicTemplate)
+            ?: controller.applyGraphicTemplateEdit(id, forward)
     }
 }
 
