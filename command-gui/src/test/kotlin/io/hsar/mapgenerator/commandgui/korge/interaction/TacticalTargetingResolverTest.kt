@@ -154,6 +154,23 @@ class TacticalTargetingResolverTest {
         assertThat(report.targets.map(TacticalTarget::targetName), equalTo(listOf("Hostile Fighters", "Hostile Ship")))
     }
 
+    @Test
+    fun `operational ECM modules provide automatic and manual targeting solutions`() {
+        val definition = OlympiadDawnShip.parse(
+            """{"name":"ECM Ship","class":"Frigate","hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"ecm","id":"ecm-1"},{"name":"ecm","id":"ecm-2"}]}""",
+        )
+        val source = ship(1, "Source", 0.5, 0.5, affiliation = UnitAffiliation.Friend, definition = definition)
+        val target = ship(2, "Target", 0.5, 0.49, affiliation = UnitAffiliation.Hostile)
+
+        val report = resolve(source, listOf(source, target))
+
+        assertThat(report.weapons.map(TacticalWeaponStatus::key), equalTo(listOf("ecm-ecm-1", "ecm-ecm-2")))
+        assertThat(report.weapons.all(TacticalWeaponStatus::ecm), equalTo(true))
+        assertThat(report.targets.map(TacticalTarget::targetName), equalTo(listOf("Target", "Manual Targeting")))
+        assertThat(report.targets.first().contributions.map(TacticalWeaponContribution::weaponKey), equalTo(listOf("ecm-ecm-1", "ecm-ecm-2")))
+        assertThat(report.targets.last().manualEcm, equalTo(true))
+    }
+
     private fun resolve(source: UnitSnapshot, candidates: List<UnitSnapshot>) =
         TacticalTargetingResolver.resolve(source, UnitQueryService(candidates, mapWidth = 1000, mapHeight = 1000, mapUnitsPerPixel = 1.0))
 

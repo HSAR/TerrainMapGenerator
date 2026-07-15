@@ -14,6 +14,7 @@ internal class TacticalFirePersistence private constructor(
     private val root: ObjectNode,
     private val fired: MutableMap<TacticalFireKey, TacticalFireUsage>,
 ) {
+    private var markedKeys = emptySet<TacticalFireKey>()
     fun usage(key: TacticalFireKey): TacticalFireUsage = fired[key] ?: TacticalFireUsage()
 
     fun markFired(key: TacticalFireKey, weaponKeys: Set<String>) {
@@ -27,6 +28,12 @@ internal class TacticalFirePersistence private constructor(
     }
 
     fun clearTurn(turnNumber: Int) = fired.keys.filter { it.turnNumber == turnNumber }.toList().forEach(fired::remove)
+
+    fun reconcileMarked(entries: Map<TacticalFireKey, TacticalFireUsage>) {
+        fired.keys.filter { it in markedKeys }.toList().forEach(fired::remove)
+        entries.forEach(::replace)
+        markedKeys = entries.keys
+    }
 
     fun toJson(): ByteArray {
         if (fired.isEmpty()) root.remove(FIELD_NAME) else {

@@ -61,6 +61,37 @@ class TacticalCombatResolverTest {
     }
 
     @Test
+    fun `ECM modifies attack rolls and each damaging die at levels three and four`() {
+        val beam = weapon(beamClass = 1)
+
+        assertThat(resolve(ship(), beam, listOf(6), ecmLevel = 3).damage, equalTo(1))
+        assertThat(resolve(ship(), beam, listOf(5), ecmLevel = 3).damage, equalTo(0))
+        assertThat(resolve(ship(), beam, listOf(6), ecmLevel = 4).damage, equalTo(1))
+        assertThat(resolve(ship(), weapon(torpedo = true), listOf(5), ecmLevel = 4).damage, equalTo(3))
+    }
+
+    @Test
+    fun `mixed solutions resolve each contribution at its own ECM severity`() {
+        val beam = weapon(beamClass = 1).copy(key = "beam", name = "Beam")
+        val torpedo = weapon(torpedo = true).copy(key = "torpedo", name = "Torpedo")
+        val rolls = listOf(5, 5).iterator()
+
+        val result = TacticalCombatResolver.resolve(
+            target = ship(),
+            weapons = listOf(beam, torpedo),
+            contributions = listOf(
+                TacticalWeaponContribution(beam.key, beam.name, "F", 1),
+                TacticalWeaponContribution(torpedo.key, torpedo.name, "F", 1),
+            ),
+            ecmLevelsByWeaponKey = mapOf(beam.key to 3, torpedo.key to 0),
+        ) { rolls.next() }
+
+        assertThat(result.dieResults.map(TacticalDieResult::damage), equalTo(listOf(0, 5)))
+        assertThat(result.damage, equalTo(5))
+        assertThat(result.effectiveEcmLevel, equalTo(3))
+    }
+
+    @Test
     fun `ship damage fills armour before hull in index order`() {
         val definition = definition(shields = 0, armour = 2, hull = 3)
 
@@ -76,7 +107,7 @@ class TacticalCombatResolverTest {
         assertThat(TacticalCombatResolver.remainingFightersAfterDamage(2, 5), equalTo(0))
     }
 
-    private fun resolve(target: UnitSnapshot, weapon: TacticalWeaponStatus, dice: List<Int>): TacticalFireResolution {
+    private fun resolve(target: UnitSnapshot, weapon: TacticalWeaponStatus, dice: List<Int>, ecmLevel: Int = 0): TacticalFireResolution {
         val rolls = dice.iterator()
         return TacticalCombatResolver.resolve(
             target,
@@ -86,10 +117,11 @@ class TacticalCombatResolverTest {
                     weapon.key, weapon.name, "F", when {
                         weapon.submunition -> 1
                         weapon.salvo || weapon.salvoRack -> 6
-                        else -> 3
+                        else -> dice.size
                     }
                 )
-            )
+            ),
+            ecmLevel,
         ) { rolls.next() }
     }
 

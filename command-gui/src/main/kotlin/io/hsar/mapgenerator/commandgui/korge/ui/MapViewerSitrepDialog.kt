@@ -33,6 +33,7 @@ internal class MapViewerSitrepDialog(
     private val previousContactState: SitrepContactState = SitrepContactState(),
     private val onContactStateChanged: (SitrepContactState) -> Unit = {},
     private val onObserverCustomPropertiesChanged: (UnitSnapshot, UnitSnapshot) -> Unit = { _, _ -> },
+    private val ecmIntensityProvider: (UnitSnapshot) -> Int = { 0 },
     private val gridLayer: GridLayer? = null,
     private val onTransientNotice: (String) -> Unit = {},
     private val preferredWidth: Double = PREFERRED_WIDTH,
@@ -228,18 +229,19 @@ internal class MapViewerSitrepDialog(
                 candidateFilter = reportMode.candidateFilter(updatedObserverSnapshot.template.affiliation),
                 emptySummaryText = reportMode.emptySummaryText,
                 sensorReportMode = reportMode.sensorReportMode,
+                ecmIntensity = ecmIntensityProvider(updatedObserverSnapshot),
             )
             if (updatedObserver.id == observer.id) observer = updatedObserver
             unitQueryService = unitQueryService.replacing(updatedObserver)
             val naturalReport = initialReportFor(reportMode)
             val reportState = currentReportState()
-            val previousDetectedIds = previousNaturalReport.detectedChecks.mapTo(mutableSetOf()) { it.unit.id }
-            val updatedDetectedIds = updatedNaturalReport.detectedChecks.mapTo(mutableSetOf()) { it.unit.id }
+            val previousDetectedIds = previousNaturalReport.trackableChecks().mapTo(mutableSetOf()) { it.unit.id }
+            val updatedDetectedIds = updatedNaturalReport.trackableChecks().mapTo(mutableSetOf()) { it.unit.id }
             val previousIdentifiedIds = previousNaturalReport.visibleChecks.mapTo(mutableSetOf()) { it.unit.id }
             val updatedIdentifiedIds = updatedNaturalReport.visibleChecks.mapTo(mutableSetOf()) { it.unit.id }
             reportState.sensorContactIds.removeAll(previousDetectedIds - updatedDetectedIds)
             reportState.identifiedIds.removeAll(previousIdentifiedIds - updatedIdentifiedIds)
-            reportState.sensorContactIds += naturalReport.detectedChecks.map { it.unit.id }
+            reportState.sensorContactIds += naturalReport.trackableChecks().map { it.unit.id }
             reportState.identifiedIds += naturalReport.visibleChecks.map { it.unit.id }
         }
         requestReportRefresh()
@@ -501,7 +503,7 @@ internal class MapViewerSitrepDialog(
     private fun initialReportState(mode: ReportMode): UnitReportState =
         if (mode == ReportMode.SCIREP && initialContactState.sensorContactIds.isNotEmpty()) {
             val naturalReport = initialReportFor(mode)
-            val sensorContactIds = initialContactState.sensorContactIds + naturalReport.detectedChecks.map { it.unit.id }
+            val sensorContactIds = initialContactState.sensorContactIds + naturalReport.trackableChecks().map { it.unit.id }
             UnitReportState(
                 sensorContactIds = sensorContactIds.toMutableSet(),
                 identifiedIds = (
@@ -510,13 +512,12 @@ internal class MapViewerSitrepDialog(
                 lostContacts = initialContactState.lostContacts.toMutableList(),
             )
         } else {
-            initialReportFor(mode).detectedChecks
-                .mapTo(mutableSetOf()) { it.unit.id }
+            val naturalReport = initialReportFor(mode)
+            naturalReport.trackableChecks().mapTo(mutableSetOf()) { it.unit.id }
                 .let { initiallyDetectedIds ->
                     UnitReportState(
                         sensorContactIds = initiallyDetectedIds.toMutableSet(),
-                        identifiedIds = initialReportFor(mode).visibleChecks
-                            .mapTo(mutableSetOf()) { it.unit.id },
+                        identifiedIds = naturalReport.visibleChecks.mapTo(mutableSetOf()) { it.unit.id },
                         lostContacts = mutableListOf(),
                     )
                 }
@@ -531,6 +532,7 @@ internal class MapViewerSitrepDialog(
             candidateFilter = mode.candidateFilter(observer.template.affiliation),
             emptySummaryText = mode.emptySummaryText,
             sensorReportMode = mode.sensorReportMode,
+            ecmIntensity = ecmIntensityProvider(observer),
         )
 
     private fun requestReportRefresh() {
@@ -573,8 +575,27 @@ internal class MapViewerSitrepDialog(
             hiddenChecks = emptyList(),
         )
 
+    private fun SitrepVisibilityReport.trackableChecks() =
+        (detectedChecks + ecmGhostChecks).distinctBy { it.unit.id }
+
     private fun buildReport(notifyContactState: Boolean = true): SitrepVisibilityReport {
         val reportState = currentReportState()
+        val ecmIntensity = ecmIntensityProvider(observer)
+        val assessment = SensorDetection.visibilityReport(
+            observer = observer,
+            unitQueryService = unitQueryService,
+            gridLayer = gridLayer,
+            includedIds = null,
+            candidateFilter = reportMode.candidateFilter(observer.template.affiliation),
+            emptySummaryText = reportMode.emptySummaryText,
+            sensorReportMode = reportMode.sensorReportMode,
+            ecmIntensity = ecmIntensity,
+        )
+        reportState.sensorContactIds += assessment.trackableChecks().map { it.unit.id }
+        reportState.identifiedIds.removeAll(
+            assessment.trackableChecks().filter { it.ecmContact != io.hsar.mapgenerator.commandgui.korge.interaction.EcmSensorContact.NONE }
+                .map { it.unit.id },
+        )
         val selectedIds = reportState.sensorContactIds union reportState.identifiedIds
         val identifiedIds = reportState.sensorContactIds intersect reportState.identifiedIds
         val detectedOnlyIds = selectedIds - identifiedIds
@@ -590,15 +611,16 @@ internal class MapViewerSitrepDialog(
             candidateFilter = reportMode.candidateFilter(observer.template.affiliation),
             emptySummaryText = reportMode.emptySummaryText,
             sensorReportMode = reportMode.sensorReportMode,
+            ecmIntensity = ecmIntensity,
         )
         if (reportMode != ReportMode.SCIREP) {
             return report
         }
 
-        val physicallyDetectedIds = report.detectedChecks.mapTo(mutableSetOf()) { it.unit.id }
+        val physicallyDetectedIds = report.trackableChecks().mapTo(mutableSetOf()) { it.unit.id }
         val matchedLostContactIds = mutableSetOf<MapPlacedObjectId>()
         val lowConfidenceContacts = mutableMapOf<MapPlacedObjectId, SitrepLostContact>()
-        report.detectedChecks
+        report.trackableChecks()
             .filter { it.unit.id !in sierraContactNumbers }
             .forEach { check ->
                 val matchingLost = (previousContactState.lostContacts + reportState.lostContacts)
@@ -638,7 +660,7 @@ internal class MapViewerSitrepDialog(
         val historicalLost = (previousContactState.lostContacts + reportState.lostContacts + newlyLost)
             .filterNot { it.contactId in matchedLostContactIds }
             .distinctBy { it.contactId }
-        val currentLastSeen = report.detectedChecks
+        val currentLastSeen = report.trackableChecks()
             .filter { it.unit.id in reportState.sensorContactIds }
             .associate { check ->
                 check.unit.id to SitrepLostContact(
@@ -676,6 +698,7 @@ internal class MapViewerSitrepDialog(
             lostContacts = newlyLost.filter { it.contactId !in matchedLostContactIds },
             lowConfidenceContacts = lowConfidenceContacts,
             sensorConditionsPoor = reportMode == ReportMode.SCIREP && observer.sensorOptionEnabled(IN_NEBULA_KEY),
+            electronicWarfare = ecmIntensity > 0,
         )
         return report.copy(displayText = scirepText, copyText = scirepText)
     }

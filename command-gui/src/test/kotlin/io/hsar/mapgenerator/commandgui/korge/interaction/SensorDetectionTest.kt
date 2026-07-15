@@ -209,6 +209,37 @@ class SensorDetectionTest {
     }
 
     @Test
+    fun `navrep reports nebular conditions before electronic warfare`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-0000000000c1",
+            instanceName = "Observer",
+            unitClass = "CA",
+            x = 0.5,
+            y = 0.5,
+            customProperties = mapOf("inNebula" to "true"),
+        )
+
+        val report = SensorDetection.visibilityReport(
+            observer = observer,
+            candidates = listOf(observer),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+            emptySummaryText = "No contacts.",
+            sensorReportMode = SensorReportMode.NAVREP,
+            ecmIntensity = 1,
+        )
+
+        assertThat(
+            report.displayText,
+            equalTo(
+                "Poor sensor conditions due to nebular interference. Poor sensor conditions due to electronic warfare. " +
+                        "Position 500 500 bearing unknown. No contacts.",
+            ),
+        )
+    }
+
+    @Test
     fun `scirep reports poor nebula conditions and active radiation`() {
         val observer = unit(
             id = "00000000-0000-0000-0000-00000000001b",
@@ -245,7 +276,83 @@ class SensorDetectionTest {
                 emptySummaryText = "No hostile contacts to report.",
                 sensorConditionsPoor = true,
             ),
-            equalTo("Sensor conditions poor. Contact actively radiating at extreme range as Sierra 1 at 510 500, range 10U has unknown midweight classification."),
+            equalTo("Poor sensor conditions due to nebular interference. Contact actively radiating at extreme range as Sierra 1 at 510 500, range 10U has unknown midweight classification."),
+        )
+    }
+
+    @Test
+    fun `ECM reduces passive sensors by two initial bands and active sensors by one`() {
+        val passive = unit("00000000-0000-0000-0000-0000000000b1", "Passive", "DD", 0.5, 0.5)
+        val active = unit(
+            "00000000-0000-0000-0000-0000000000b2", "Active", "DD", 0.5, 0.5,
+            customProperties = mapOf("activeSensors" to "true"),
+        )
+        val target = unit("00000000-0000-0000-0000-0000000000b3", "Target", "CL", 0.5, 0.5)
+
+        val passiveCheck = SensorDetection.visibilityCheck(passive, target, 1.0, ecmIntensity = 1)!!
+        val activeCheck = SensorDetection.visibilityCheck(active, target, 1.0, ecmIntensity = 1)!!
+
+        assertThat(passiveCheck.identificationRangeUnits, closeTo(3.0, 0.0001))
+        assertThat(passiveCheck.detectionRangeUnits, closeTo(6.0, 0.0001))
+        assertThat(activeCheck.identificationRangeUnits, closeTo(12.0, 0.0001))
+        assertThat(activeCheck.detectionRangeUnits, closeTo(24.0, 0.0001))
+    }
+
+    @Test
+    fun `ECM transitions consume levels before advancing legacy combat penalties`() {
+        val observer = unit("00000000-0000-0000-0000-0000000000b4", "Observer", "DD", 0.5, 0.5)
+        val target = unit("00000000-0000-0000-0000-0000000000b5", "Target", "CL", 0.5, 0.5)
+
+        val faint = SensorDetection.visibilityCheck(observer, target, 5.0, ecmIntensity = 1)!!
+        val ghost = SensorDetection.visibilityCheck(observer, target, 5.0, ecmIntensity = 3)!!
+
+        assertThat(faint.ecmContact, equalTo(EcmSensorContact.FAINT_TRACK))
+        assertThat(faint.ecmTransitionIntensity, equalTo(1))
+        assertThat(faint.legacyEcmLevel, equalTo(1))
+        assertThat(ghost.ecmContact, equalTo(EcmSensorContact.SENSOR_GHOST))
+        assertThat(ghost.ecmTransitionIntensity, equalTo(2))
+        assertThat(ghost.legacyEcmLevel, equalTo(3))
+    }
+
+    @Test
+    fun `ordnance seeker uses passive lowest fighter sensor profile`() {
+        val launcher = unit(
+            "00000000-0000-0000-0000-0000000000b6", "Launcher", "CA", 0.5, 0.5,
+            customProperties = mapOf("activeSensors" to "true"),
+        )
+        val target = unit("00000000-0000-0000-0000-0000000000b7", "Target", "CL", 0.5, 0.5)
+
+        val check = SensorDetection.visibilityCheck(
+            launcher, target, 10.0, ecmIntensity = 1,
+            observerProfile = SensorObserverProfile.LOWEST_FIGHTER_SEEKER,
+        )!!
+
+        assertThat(check.naturalVisible, equalTo(false))
+        assertThat(check.naturalDetected, equalTo(true))
+        assertThat(check.ecmContact, equalTo(EcmSensorContact.SENSOR_GHOST))
+        assertThat(check.legacyEcmLevel, equalTo(2))
+    }
+
+    @Test
+    fun `SCIREP reports electronic warfare faint tracks and ghosts exactly`() {
+        val faintUnit = unit("00000000-0000-0000-0000-0000000000b8", "Faint", "CL", 0.5, 0.5)
+        val ghostUnit = unit("00000000-0000-0000-0000-0000000000b9", "Ghost", "CL", 0.5, 0.5)
+        val faint = SensorVisibilityCheck(faintUnit, false, true, 5.0, 3.0, 6.0, 12.0, emptyList(), ecmContact = EcmSensorContact.FAINT_TRACK)
+        val ghost = SensorVisibilityCheck(ghostUnit, false, false, 7.0, 1.5, 3.0, 12.0, emptyList(), ecmContact = EcmSensorContact.SENSOR_GHOST)
+
+        val text = SensorDetection.scirepText(
+            listOf(faint, ghost), emptySet(), mapOf(faintUnit.id to 1, ghostUnit.id to 2),
+            1_000, 1_000, emptySummaryText = "No hostile contacts to report.",
+            sensorConditionsPoor = true, electronicWarfare = true,
+        )
+
+        assertThat(
+            text,
+            equalTo(
+                "Poor sensor conditions due to nebular interference. Poor sensor conditions due to electronic warfare. " +
+                        "Contact detected at extreme range as Sierra 1 at 500 500, range 5U is faint sensor track. " +
+                        "Contact detected at extreme range as Sierra 2 at 500 500, range 7U is sensor ghost.",
+            ),
         )
     }
 

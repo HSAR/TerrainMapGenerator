@@ -21,6 +21,7 @@ internal data class TacticalWeaponStatus(
     val destroyed: Boolean,
     val fired: Boolean,
     val fighterWeapon: Boolean = false,
+    val ecm: Boolean = false,
 )
 
 internal data class TacticalWeaponContribution(
@@ -37,6 +38,7 @@ internal data class TacticalTarget(
     val arcs: List<String>,
     val firepower: Int,
     val contributions: List<TacticalWeaponContribution>,
+    val manualEcm: Boolean = false,
 )
 
 internal data class TacticalTargetingReport(
@@ -48,6 +50,11 @@ internal data class TacticalTargetingReport(
 
 internal object TacticalTargetingResolver {
     private val arcOrder = listOf("F", "FS", "AS", "A", "AP", "FP")
+
+    fun arcForBearing(bearingDegrees: Double, facingDegrees: Int): String {
+        val relative = (bearingDegrees - facingDegrees).mod(360.0)
+        return arcOrder[floor((relative + 30.0) / 60.0).toInt().mod(arcOrder.size)]
+    }
 
     fun resolve(
         source: UnitSnapshot,
@@ -75,6 +82,20 @@ internal object TacticalTargetingResolver {
                 )
             }
         }
+        val ecmSystems = definition?.systems.orEmpty()
+            .filter { it.name == "Electronic Countermeasures" }
+            .map { system ->
+                val key = "ecm-${system.id}"
+                TacticalWeaponStatus(
+                    key = key,
+                    name = system.name,
+                    beamClass = null,
+                    arcs = arcOrder,
+                    destroyed = system.id in damage!!.destroyedSystems,
+                    fired = key in firedWeaponKeys,
+                    ecm = true,
+                )
+            }
         val fighterWeapons = definition?.fighters?.flatMapIndexed { fighterIndex, fighter ->
             val quantity = OlympiadDawnShip.remainingFighters(definition, damage!!, fighterIndex)
             fighter.weapons.mapIndexedNotNull { weaponIndex, weapon ->
@@ -106,14 +127,14 @@ internal object TacticalTargetingResolver {
                 }
             }
         }.orEmpty()
-        val weapons = shipWeapons + fighterWeapons
+        val weapons = shipWeapons + ecmSystems + fighterWeapons
         val facing = source.facingDegrees ?: squadron?.let { 0 } ?: return TacticalTargetingReport(weapons, emptyList())
         val remainingFireControl = (fireControlCapacity - fireControlUsed).coerceAtLeast(0)
         val intactWeapons = weapons.filter {
-            !it.destroyed && !it.fired && (it.pointDefense || it.beamClass != null || it.torpedo || it.salvoRack || (it.salvo && (it.magazineRemaining
+            !it.destroyed && !it.fired && (it.ecm || it.pointDefense || it.beamClass != null || it.torpedo || it.salvoRack || (it.salvo && (it.magazineRemaining
                 ?: 0) > 0) || (it.submunition && (it.magazineRemaining ?: 0) > 0))
         }
-        val targets = unitQueryService.allUnits().asSequence()
+        val unitTargets = unitQueryService.allUnits().asSequence()
             .filter { it.id != source.id && !it.destroyed && (it.shipDefinition() != null || it.unitClassLabel() == "F") && it.template.affiliation != source.template.affiliation }
             .mapNotNull { target -> targetFor(source, target, facing, intactWeapons, remainingFireControl, unitQueryService) }
             .sortedWith(
@@ -123,6 +144,20 @@ internal object TacticalTargetingResolver {
                     .thenBy { it.targetId.value },
             )
             .toList()
+        val readyEcm = intactWeapons.filter(TacticalWeaponStatus::ecm)
+        val manualTarget = readyEcm.takeIf(List<TacticalWeaponStatus>::isNotEmpty)?.let { modules ->
+            val shape = EcmRules.manual(modules.size)!!
+            TacticalTarget(
+                targetId = source.id,
+                targetName = "Manual Targeting",
+                rangeU = shape.rangeU,
+                arcs = arcOrder,
+                firepower = 0,
+                contributions = modules.map { TacticalWeaponContribution(it.key, it.name, "F", 0) },
+                manualEcm = true,
+            )
+        }
+        val targets = unitTargets + listOfNotNull(manualTarget)
         return TacticalTargetingReport(weapons, targets, fireControlCapacity, fireControlUsed)
     }
 
@@ -147,13 +182,20 @@ internal object TacticalTargetingResolver {
     ): TacticalTarget? {
         val range = unitQueryService.distanceBetween(source, target)
         val arc = targetArc(source, target, facing)
-        val contributions = weapons
+        val weaponContributions = weapons
+            .filterNot(TacticalWeaponStatus::ecm)
             .filter { arc in it.arcs && weaponEffectiveAgainst(it, target) && fireControlAvailableFor(it, target, remainingFireControl) }
             .mapNotNull { weapon ->
                 weaponFirepower(weapon, range)
                     .takeIf { it > 0 }
                     ?.let { TacticalWeaponContribution(weapon.key, weapon.name, arc, it) }
             }
+        val ecmModules = weapons.filter(TacticalWeaponStatus::ecm)
+        val ecmContributions = ecmModules
+            .takeIf { EcmRules.automatic(it.size, range) != null }
+            ?.map { TacticalWeaponContribution(it.key, it.name, arc, 0) }
+            .orEmpty()
+        val contributions = weaponContributions + ecmContributions
         return contributions.takeIf(List<TacticalWeaponContribution>::isNotEmpty)?.let {
             TacticalTarget(
                 targetId = target.id,
@@ -194,8 +236,7 @@ internal object TacticalTargetingResolver {
                 -(target.mapCoordinate.y - source.mapCoordinate.y),
             ),
         )
-        val relative = (bearing - facing).mod(360.0)
-        return arcOrder[floor((relative + 30.0) / 60.0).toInt().mod(arcOrder.size)]
+        return arcForBearing(bearing, facing)
     }
 
     private fun UnitSnapshot.shipDefinition(): OlympiadDawnShipDefinition? =

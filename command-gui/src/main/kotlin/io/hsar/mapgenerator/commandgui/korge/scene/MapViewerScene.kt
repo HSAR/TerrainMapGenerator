@@ -81,6 +81,7 @@ import io.hsar.mapgenerator.commandgui.save.OperationSaveRequest
 import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
 import io.hsar.mapgenerator.commandgui.save.OperationToolStorage
 import io.hsar.mapgenerator.commandgui.save.SitrepContactKey
+import io.hsar.mapgenerator.commandgui.save.TacticalTurnMarker
 import io.hsar.mapgenerator.commandgui.save.UiSessionState
 import io.hsar.mapgenerator.commandgui.save.toViewport
 import korlibs.event.Key
@@ -341,6 +342,7 @@ internal class MapViewerScene(
                         val actionHistory = MapActionHistory()
                         val sitrepContactPersistence = additionalData.sitrepContacts
                         val tacticalFirePersistence = additionalData.tacticalFire
+                        val ecmPersistence = additionalData.ecm
                         val noteStore = MapNoteStore()
                         val operationId = loadedOperation?.operationId ?: UUID.randomUUID()
                         val operationCreatedAt = loadedOperation?.createdAt ?: Instant.now()
@@ -571,6 +573,18 @@ internal class MapViewerScene(
                             selectionController.refresh()
                         }
 
+                        fun reconcileMarkedTacticalState() {
+                            val markedUnits = unitManager.snapshots().filter { TacticalTurnMarker.hasMarker(it.customProperties) }
+                            tacticalFirePersistence.reconcileMarked(
+                                markedUnits.flatMap { snapshot -> TacticalTurnMarker.usages(snapshot.customProperties, snapshot.id).entries }
+                                    .associate { it.toPair() },
+                            )
+                            ecmPersistence.reconcileMarked(
+                                markedUnits.flatMap { snapshot -> TacticalTurnMarker.activations(snapshot.customProperties, snapshot.id) },
+                            )
+                            unitManager.refreshEcmFields()
+                        }
+
                         fun recordLedgerEntry(entry: LedgerEntry) {
                             if (isReadOnly()) {
                                 return
@@ -578,10 +592,13 @@ internal class MapViewerScene(
                             actionHistory.record(entry)
                             if (entry is AddTurnLedgerEntry) {
                                 val newTurnNumber = currentTurnNumber()
+                                ecmPersistence.clearBefore(newTurnNumber)
+                                if (unitManagerReady) unitManager.refreshEcmFields()
                                 if (newTurnNumber > 1) {
                                     sitrepContactPersistence.copyTurnState(newTurnNumber - 1, newTurnNumber)
                                 }
                             }
+                            reconcileMarkedTacticalState()
                             autosaveController.enqueue(entry)
                             refreshHistoryUi()
                         }
@@ -691,6 +708,8 @@ internal class MapViewerScene(
                             onTacticalFireUsageChanged = { key, usage ->
                                 tacticalFirePersistence.replace(key, usage)
                             },
+                            ecmActivationsProvider = ecmPersistence::forTurn,
+                            onEcmActivation = ecmPersistence::add,
                             sitrepContactStateProvider = { turnNumber, observerId ->
                                 sitrepContactPersistence.stateFor(SitrepContactKey(turnNumber, observerId))
                             },
@@ -840,6 +859,7 @@ internal class MapViewerScene(
                         val ledgerController = object : LedgerController {
                             override fun createObject(snapshot: io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot) {
                                 objectController.createObject(snapshot)
+                                reconcileMarkedTacticalState()
                             }
 
                             override fun applyObjectEdit(
@@ -847,10 +867,11 @@ internal class MapViewerScene(
                                 changes: Map<String, com.fasterxml.jackson.databind.JsonNode?>,
                             ) {
                                 objectController.applyObjectEdit(id, changes)
+                                reconcileMarkedTacticalState()
                             }
 
                             override fun deleteObject(id: io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId): io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot? =
-                                objectController.deleteObject(id)
+                                objectController.deleteObject(id).also { reconcileMarkedTacticalState() }
 
                             override fun createUnitTemplate(snapshot: io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot) {
                                 sidebar.addUnitTemplate(snapshot, notify = false)
@@ -1090,6 +1111,7 @@ internal class MapViewerScene(
                         objectController.restoreAll(replayedLedger.objects)
                         replayedLedger.unitTemplates.forEach(unitManager::replaceUnitTemplate)
                         replayedLedger.notes.forEach(noteStore::upsert)
+                        reconcileMarkedTacticalState()
                         (loadedOperation?.ledgerEntries ?: initialLedgerEntries).forEach(actionHistory::record)
                         completeStartupReplay()
 
@@ -1116,11 +1138,13 @@ internal class MapViewerScene(
 
                             if (effectiveTool() == MapViewerTool.SELECT && !uiBlocksPointer) {
                                 if (leftHeld && !previousLeftHeld) {
-                                    selectionController.beginLeftDrag(
-                                        pointer,
-                                        altHeld = input.keys[Key.ALT],
-                                        shiftHeld = input.keys[Key.SHIFT],
-                                    )
+                                    if (!unitManager.beginEcmHandleDragAt(pointer)) {
+                                        selectionController.beginLeftDrag(
+                                            pointer,
+                                            altHeld = input.keys[Key.ALT],
+                                            shiftHeld = input.keys[Key.SHIFT],
+                                        )
+                                    }
                                 }
                                 if (rightHeld && !previousRightHeld) {
                                     if (!selectionController.openContextMenu(pointer) &&
@@ -1226,7 +1250,8 @@ internal class MapViewerScene(
                             },
                             isMovableObjectUnderPointer = { point ->
                                 effectiveTool() == MapViewerTool.SELECT &&
-                                        (selectionController.hasResizeHandleAt(point) ||
+                                        (unitManager.hasEcmHandleAt(point) ||
+                                                selectionController.hasResizeHandleAt(point) ||
                                                 selectionController.hasPivotHandleAt(point) ||
                                                 MapPlacedObjectSelectionResolver.choose(
                                                     unitManager.selectionAt(point),
@@ -1245,6 +1270,7 @@ internal class MapViewerScene(
                                         drawingManager.blocksScreenPoint(point) ||
                                         escapeMenu?.isOpen == true ||
                                         contextMenuManager.blocksScreenPoint(point) ||
+                                        (effectiveTool() == MapViewerTool.SELECT && unitManager.hasEcmHandleAt(point)) ||
                                         (effectiveTool() == MapViewerTool.SELECT && selectionController.hasResizeHandleAt(point)) ||
                                         (effectiveTool() == MapViewerTool.SELECT && selectionController.hasPivotHandleAt(point)) ||
                                         (effectiveTool() == MapViewerTool.SELECT &&

@@ -1,7 +1,9 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.EcmRules
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.TacticalFireResolution
+import io.hsar.mapgenerator.commandgui.korge.interaction.TacticalTarget
 import io.hsar.mapgenerator.commandgui.korge.interaction.TacticalTargetingReport
 import io.hsar.mapgenerator.commandgui.korge.interaction.TacticalWeaponContribution
 import io.hsar.mapgenerator.commandgui.korge.interaction.TacticalWeaponStatus
@@ -25,6 +27,9 @@ internal class MapViewerTacticalDialog(
     private val persistenceTargetId: String,
     private val focusTargetBoundsProvider: () -> List<ScreenBounds> = { emptyList() },
     private val onSolutionSelected: (MapPlacedObjectId?) -> Unit = {},
+    private val onSelectionChanged: (TacticalTarget?, Set<String>) -> Unit = { _, _ -> },
+    private val contributionArc: (TacticalTarget, TacticalWeaponContribution) -> String = { _, contribution -> contribution.arc },
+    private val canFire: (TacticalTarget, Set<String>) -> Boolean = { _, keys -> keys.isNotEmpty() },
     private val onFire: (MapPlacedObjectId, Set<String>) -> TacticalFireResolution? = { _, _ -> null },
     private val onFireResolved: (TacticalFireResolution) -> Unit = {},
 ) {
@@ -41,6 +46,7 @@ internal class MapViewerTacticalDialog(
             expandedTargetId = report.targets.single().targetId
             selectedWeaponKeys = report.targets.single().contributions.mapTo(linkedSetOf(), TacticalWeaponContribution::weaponKey)
         }
+        notifySelectionChanged()
         window = MapViewerDialogWindow(
             root = root,
             title = MapViewerDialogTitles.unit(dialogName, unitName),
@@ -49,7 +55,10 @@ internal class MapViewerTacticalDialog(
             contentMinimumWidth = { MINIMUM_CONTENT_WIDTH },
             contentHeight = { contentHeight() },
             actions = listOf(
-                MapViewerDialogAction(fireActionLabel, enabled = { expandedTargetId != null && selectedWeaponKeys.isNotEmpty() }) {
+                MapViewerDialogAction(fireActionLabel, enabled = {
+                    expandedTargetId?.let { id -> report.targets.firstOrNull { it.targetId == id } }
+                        ?.let { canFire(it, selectedWeaponKeys) } == true
+                }) {
                     expandedTargetId?.let { targetId -> onFire(targetId, selectedWeaponKeys) }?.let { resolution ->
                         close()
                         if (!resolution.interceptPending) onFireResolved(resolution)
@@ -92,8 +101,13 @@ internal class MapViewerTacticalDialog(
             val available = report.targets.firstOrNull { it.targetId == targetId }?.contributions?.mapTo(linkedSetOf(), TacticalWeaponContribution::weaponKey).orEmpty()
             selectedWeaponKeys = selectedWeaponKeys.intersect(available)
         }
+        notifySelectionChanged()
         window?.refresh()
         return true
+    }
+
+    fun refreshPresentation() {
+        window?.refresh()
     }
 
     private fun renderContent(parent: Container, width: Double) {
@@ -124,6 +138,7 @@ internal class MapViewerTacticalDialog(
                 row.mouse {
                     onClick {
                         selectedWeaponKeys = if (weaponKey in selectedWeaponKeys) selectedWeaponKeys - weaponKey else selectedWeaponKeys + weaponKey
+                        notifySelectionChanged()
                         window?.refresh()
                     }
                 }
@@ -142,11 +157,14 @@ internal class MapViewerTacticalDialog(
             val panel = parent.container().xy(0.0, top)
             MapViewerCollapsiblePanel.header(
                 panel, width, ROW_HEIGHT,
-                "${index + 1}. ${target.targetName} | ${formatRange(target.rangeU)}U | ${target.firepower} FP", expanded
+                if (target.manualEcm) "${index + 1}. ${target.targetName} | ECM" else
+                    "${index + 1}. ${target.targetName} | ${formatRange(target.rangeU)}U | ${target.firepower} FP",
+                expanded,
             ) {
                 expandedTargetId = if (expanded) null else target.targetId
                 selectedWeaponKeys = if (expanded) emptySet() else target.contributions.mapTo(linkedSetOf(), TacticalWeaponContribution::weaponKey)
                 onSolutionSelected(expandedTargetId)
+                notifySelectionChanged()
                 window?.refresh()
             }
             top += ROW_HEIGHT
@@ -156,10 +174,14 @@ internal class MapViewerTacticalDialog(
                     detail.container().xy(width - ARC_ICON_WIDTH - TEXT_INSET, 0.0),
                     ARC_ICON_WIDTH,
                     DETAIL_ROW_HEIGHT,
-                    listOf(contribution.arc),
+                    listOf(contributionArc(target, contribution)),
                     MapViewerUiBoxes.toRgba(Palette.Colours.WHITE)
                 )
-                MapViewerTextViews.leftBox(detail, "    ${contribution.weaponName}: ${contribution.firepower}", width - ARC_ICON_WIDTH - TEXT_INSET, DETAIL_ROW_HEIGHT) {
+                val contributionText = report.weapons.firstOrNull { it.key == contribution.weaponKey }
+                    ?.takeIf(TacticalWeaponStatus::ecm)
+                    ?.let { "    ${contribution.weaponName}: ${EcmRules.CAPABILITY_PER_MODULE.roundToInt()} U°" }
+                    ?: "    ${contribution.weaponName}: ${contribution.firepower}"
+                MapViewerTextViews.leftBox(detail, contributionText, width - ARC_ICON_WIDTH - TEXT_INSET, DETAIL_ROW_HEIGHT) {
                     x = TEXT_INSET
                 }
                 top += DETAIL_ROW_HEIGHT
@@ -186,6 +208,7 @@ internal class MapViewerTacticalDialog(
         dialogManager.unregister(this)
         window?.close()
         window = null
+        onSelectionChanged(null, emptySet())
         onDismiss()
     }
 
@@ -203,6 +226,13 @@ internal class MapViewerTacticalDialog(
         ?.contributions
         ?.mapTo(linkedSetOf(), TacticalWeaponContribution::weaponKey)
         .orEmpty()
+
+    private fun notifySelectionChanged() {
+        onSelectionChanged(
+            expandedTargetId?.let { targetId -> report.targets.firstOrNull { it.targetId == targetId } },
+            selectedWeaponKeys,
+        )
+    }
 
     private companion object {
         const val PREFERRED_WIDTH = 720.0

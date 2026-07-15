@@ -45,11 +45,23 @@ internal class MapViewerGunrepDialog(
                 }
                 val summaryTop = 120.0 + rollRows() * DIE_HEIGHT + 8.0
                 MapViewerTextViews.leftBox(parent, "Damage: ${resolution.damage}", width, 34.0) { y = summaryTop }
+                resolution.ecmActivations.firstOrNull()?.let { activation ->
+                    MapViewerTextViews.leftBox(
+                        parent,
+                        "ECM: ${format(activation.rangeU)}U × ${format(activation.widthDegrees)}° | Level ${activation.intensity} | ${activation.moduleKeys.size} module(s)",
+                        width,
+                        34.0,
+                    ) { y = summaryTop + 40.0 }
+                }
+                resolution.effectiveEcmLevel.takeIf { it > 0 && resolution.ecmActivations.isEmpty() }?.let { level ->
+                    MapViewerTextViews.leftBox(parent, "Affected by ECM level $level", width, 34.0) { y = summaryTop + 40.0 }
+                }
+                val outcomeOffset = if (resolution.ecmActivations.isNotEmpty() || resolution.effectiveEcmLevel > 0) 40.0 else 0.0
                 resolution.fightersDestroyed.takeIf { it > 0 }?.let { fighters ->
-                    MapViewerTextViews.leftBox(parent, "Fighters destroyed: $fighters", width, 34.0) { y = summaryTop + 40.0 }
+                    MapViewerTextViews.leftBox(parent, "Fighters destroyed: $fighters", width, 34.0) { y = summaryTop + 40.0 + outcomeOffset }
                 }
                 resolution.targetDestroyed.takeIf { it }?.let {
-                    MapViewerTextViews.leftBox(parent, "Target destroyed", width, 34.0) { y = summaryTop + 80.0 }
+                    MapViewerTextViews.leftBox(parent, "Target destroyed", width, 34.0) { y = summaryTop + 80.0 + outcomeOffset }
                 }
             },
             persistence = MapViewerDialogPersistence(type = "gunrep"),
@@ -82,7 +94,10 @@ internal class MapViewerGunrepDialog(
 
     private fun rollRows(): Int = ceil(resolution.dieResults.size / ROLLS_PER_ROW.toDouble()).toInt().coerceAtLeast(1)
 
-    private fun contentHeight(): Double = 120.0 + rollRows() * DIE_HEIGHT + 128.0
+    private fun contentHeight(): Double = 120.0 + rollRows() * DIE_HEIGHT + 128.0 +
+            if (resolution.ecmActivations.isNotEmpty() || resolution.effectiveEcmLevel > 0) 40.0 else 0.0
+
+    private fun format(value: Double): String = "%.1f".format(value).trimEnd('0').trimEnd('.')
 
     private companion object {
         const val ROLLS_PER_ROW = 8

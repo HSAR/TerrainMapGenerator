@@ -16,6 +16,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
 import io.hsar.mapgenerator.commandgui.korge.ui.focusTargetBounds
 import io.hsar.mapgenerator.commandgui.save.TacticalFireKey
 import io.hsar.mapgenerator.commandgui.save.TacticalFireUsage
+import io.hsar.mapgenerator.commandgui.save.TacticalTurnMarker
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
@@ -23,6 +24,7 @@ import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import korlibs.korge.internal.KorgeInternal
 import korlibs.korge.view.Container
+import korlibs.korge.view.GraphicsRenderer
 import korlibs.korge.view.Image
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
@@ -33,8 +35,10 @@ import korlibs.math.geom.Vector2D
 import java.awt.Color
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 @OptIn(KorgeInternal::class)
 internal class MapPlacedUnitManager(
@@ -69,17 +73,26 @@ internal class MapPlacedUnitManager(
     private val tacticalTurnNumberProvider: () -> Int = { 1 },
     private val tacticalFireUsageProvider: (TacticalFireKey) -> TacticalFireUsage = { TacticalFireUsage() },
     private val onTacticalFireUsageChanged: (TacticalFireKey, TacticalFireUsage) -> Unit = { _, _ -> },
+    private val ecmActivationsProvider: (Int) -> List<EcmActivation> = { emptyList() },
+    private val onEcmActivation: (EcmActivation) -> Unit = {},
 ) {
     private val coordinateSpace = MapCoordinateSpace(geometry, mapWidth, mapHeight)
     private val units = mutableListOf<PlacedUnit>()
     private var unitQueryService = UnitQueryService(emptyList(), mapWidth, mapHeight, mapUnitsPerPixel)
+    private val ecmLayer = unitLayer.container()
+    private val activeEcmLayer = ecmLayer.container()
+    private val previewEcmLayer = ecmLayer.container()
     private val dragPreviewLayer = unitLayer.container()
+    private var renderedEcmSignature: Int? = null
+    private var renderedEcmPreviewSignature: Int? = null
     private var selectedUnitIds = emptySet<MapPlacedObjectId>()
     private var destroyedUnitsDisplay = initialDestroyedUnitsDisplay
     private var unitIconSizePx = UnitIconDisplaySize.coerce(initialUnitIconSizePx)
     private var fireArcDisplayMode = initialFireArcDisplayMode
     private var lastAppliedViewportZoom: Double? = null
     private var dragState: DragState? = null
+    private var ecmPreview: EcmPreview? = null
+    private var ecmDragHandle: EcmHandle? = null
     private val editSessions = mutableMapOf<MapPlacedObjectId, UnitEditSession>()
     private val tacticalDialogs = mutableMapOf<MapPlacedObjectId, MapViewerTacticalDialog>()
     private val tacticalSelectedTargetIds = mutableMapOf<MapPlacedObjectId, MapPlacedObjectId>()
@@ -94,12 +107,45 @@ internal class MapPlacedUnitManager(
         root.addUpdater {
             val input = root.stage?.views?.input ?: return@addUpdater
             refreshIconDisplay()
+            refreshEcmFields()
+            updateEcmDrag(input.mousePos, input.mouseButtonPressed(MouseButton.LEFT))
             updateDrag(input.mousePos, input.mouseButtonPressed(MouseButton.LEFT))
         }
     }
 
+    fun refreshEcmFields() {
+        val activations = ecmActivationsProvider(tacticalTurnNumberProvider())
+        val activeSignature = (activations.map { activation ->
+            activation to units.firstOrNull { it.id == activation.emitterId }
+                ?.let { listOf(it.mapCoordinate, it.worldWidth, it.worldHeight) }
+        } + viewportProvider().zoom).hashCode()
+        if (activeSignature != renderedEcmSignature) {
+            renderedEcmSignature = activeSignature
+            activeEcmLayer.removeChildren()
+            activations.forEach { activation ->
+                units.firstOrNull { it.id == activation.emitterId }
+                    ?.let { emitter -> drawEcmField(activeEcmLayer, activation, emitter) }
+            }
+        }
+
+        val previewEmitterGeometry = ecmPreview?.emitterId?.let { emitterId ->
+            units.firstOrNull { it.id == emitterId }?.let { listOf(it.mapCoordinate, it.worldWidth, it.worldHeight) }
+        }
+        val previewSignature = listOf(ecmPreview, previewEmitterGeometry, viewportProvider().zoom).hashCode()
+        if (previewSignature != renderedEcmPreviewSignature) {
+            renderedEcmPreviewSignature = previewSignature
+            previewEcmLayer.removeChildren()
+            ecmPreview?.let { preview ->
+                units.firstOrNull { it.id == preview.emitterId }?.let { emitter ->
+                    drawEcmField(previewEcmLayer, preview.activation(tacticalTurnNumberProvider()), emitter, preview = true)
+                    drawEcmHandles(previewEcmLayer, preview, emitter.snapshot())
+                }
+            }
+        }
+    }
+
     val isDragging: Boolean
-        get() = dragState != null
+        get() = dragState != null || ecmDragHandle != null
 
     val isContextMenuOpen: Boolean
         get() = contextMenuManager.isOpen
@@ -200,6 +246,7 @@ internal class MapPlacedUnitManager(
             return false
         }
 
+        if (hasEcmHandleAt(point)) return true
         val viewport = viewportProvider()
         val mapCoordinate = coordinateSpace.screenToMap(point, viewport)
         return units.any { unit -> unit.canMove() && unit.containsMapCoordinate(mapCoordinate) }
@@ -245,6 +292,7 @@ internal class MapPlacedUnitManager(
             return false
         }
 
+        if (beginEcmHandleDragAt(screenPoint)) return true
         val viewport = viewportProvider()
         val mapCoordinate = coordinateSpace.screenToMap(screenPoint, viewport)
         val tolerance = coordinateSpace.screenToleranceToMapTolerance(HIT_TOLERANCE, viewport)
@@ -446,6 +494,11 @@ internal class MapPlacedUnitManager(
             }
             onMovePreviewChanged(null)
             dragState = null
+        }
+        if (targetId == null || ecmPreview?.emitterId == targetId) {
+            ecmPreview = null
+            ecmDragHandle = null
+            renderedEcmPreviewSignature = null
         }
     }
 
@@ -747,6 +800,9 @@ internal class MapPlacedUnitManager(
         unitQueryService = UnitQueryService(units.map { it.snapshot() }, mapWidth, mapHeight, mapUnitsPerPixel)
         refreshOpenShipStatusPanels()
         refreshTacticalDialogs()
+        renderedEcmSignature = null
+        renderedEcmPreviewSignature = null
+        refreshEcmFields()
         onUnitsChanged()
     }
 
@@ -953,6 +1009,7 @@ internal class MapPlacedUnitManager(
                     onUnitEdited(before, after)
                     dialogManager.broadcast(after)
                 },
+                ecmIntensityProvider = ::ecmIntensityAt,
                 onTransientNotice = onTransientNotice,
                 restoredBounds = restoredBounds,
             ).open()
@@ -973,7 +1030,10 @@ internal class MapPlacedUnitManager(
                     units.firstOrNull { it.id == unit.id }
                         ?.snapshot()
                         ?.let { source ->
-                            val usage = tacticalFireUsageProvider(TacticalFireKey(tacticalTurnNumberProvider(), source.id))
+                            val turnNumber = tacticalTurnNumberProvider()
+                            val usage = TacticalTurnMarker.usage(source.customProperties, turnNumber)
+                                ?: if (TacticalTurnMarker.hasMarker(source.customProperties)) TacticalFireUsage()
+                                else tacticalFireUsageProvider(TacticalFireKey(turnNumber, source.id))
                             TacticalTargetingResolver.resolve(
                                 source = source,
                                 unitQueryService = unitQueryService,
@@ -991,10 +1051,18 @@ internal class MapPlacedUnitManager(
                     unit.updateFacingOverlay()
                 },
                 onSolutionSelected = { targetId ->
-                    if (targetId == null) tacticalSelectedTargetIds.remove(unit.id)
+                    if (targetId == null || targetId == unit.id) tacticalSelectedTargetIds.remove(unit.id)
                     else tacticalSelectedTargetIds[unit.id] = targetId
                     unit.updateFacingOverlay()
                 },
+                onSelectionChanged = { target, weaponKeys -> updateEcmPreview(unit, target, weaponKeys) },
+                contributionArc = { target, contribution ->
+                    ecmPreview
+                        ?.takeIf { target.manualEcm && it.emitterId == unit.id && contribution.weaponKey in it.moduleKeys }
+                        ?.let { TacticalTargetingResolver.arcForBearing(it.relativeBearingDegrees, unit.facingDegrees ?: 0) }
+                        ?: contribution.arc
+                },
+                canFire = { target, weaponKeys -> canFireTacticalSelection(target, weaponKeys) },
                 onFire = { targetId, weaponKeys -> fireTacticalSolution(unit.id, targetId, weaponKeys) },
                 onFireResolved = { resolution ->
                     MapViewerGunrepDialog(root, dialogManager, "gunrep-${java.util.UUID.randomUUID()}", resolution).open()
@@ -1016,12 +1084,18 @@ internal class MapPlacedUnitManager(
         ): TacticalFireResolution? {
             val unit = units.firstOrNull { it.id == unitId } ?: return null
             val usageKey = TacticalFireKey(tacticalTurnNumberProvider(), unitId)
-            val usage = tacticalFireUsageProvider(usageKey)
+            val usage = tacticalUsage(unit)
             val report = TacticalTargetingResolver.resolve(unit.snapshot(), unitQueryService, usage.firedWeapons, usage.fireControlUsed)
             val target = report.targets.firstOrNull { it.targetId == targetId } ?: return null
             val contributions = target.contributions.filter { contribution -> selectedWeaponKeys == null || contribution.weaponKey in selectedWeaponKeys }
             val weaponKeys = contributions.mapTo(linkedSetOf(), TacticalWeaponContribution::weaponKey)
             if (weaponKeys.isEmpty()) return null
+            val selectedEcm = report.weapons.filter { it.ecm && it.key in weaponKeys }
+            val selectedPreview = ecmPreview?.takeIf { it.emitterId == unit.id && it.moduleKeys == selectedEcm.mapTo(linkedSetOf(), TacticalWeaponStatus::key) }
+            val ecmShape = selectedPreview?.shape ?: selectedEcm.takeIf(List<TacticalWeaponStatus>::isNotEmpty)?.let { modules ->
+                if (target.manualEcm) EcmRules.manual(modules.size) else EcmRules.automatic(modules.size, target.rangeU)
+            }
+            if (selectedEcm.isNotEmpty() && ecmShape == null) return null
             val consumesFireControl = report.weapons.any {
                 it.key in weaponKeys && it.requiresFireControl && !(resolutionTargetIsFighter(targetId) && it.beamClass == 1)
             }
@@ -1035,23 +1109,46 @@ internal class MapPlacedUnitManager(
                     }
                 }
             }.orEmpty()
+            val updatedProperties = unit.customProperties.toMutableMap()
             if (consumables.isNotEmpty()) {
-                val updated = unit.customProperties.toMutableMap()
                 consumables.forEach { weapon ->
                     val magazine = weapon.magazineId?.let { id -> definition?.systems?.firstOrNull { it.id == id } }
                     val capacityId = magazine?.id ?: weapon.takeIf { it.submunition }
                         ?.let { definition?.let { sourceDefinition -> OlympiadDawnShip.weaponKey(sourceDefinition, sourceDefinition.weapons.indexOf(it)) } }
                     val capacity = magazine?.capacity ?: weapon.takeIf { it.submunition }?.let { 1 } ?: return@forEach
-                    val remaining = OlympiadDawnShip.capacityRemaining(updated, capacityId!!, capacity)
+                    val remaining = OlympiadDawnShip.capacityRemaining(updatedProperties, capacityId!!, capacity)
                     if (remaining <= 0) return null
-                    updated[OlympiadDawnShip.magazinePropertyKey(capacityId)] = (remaining - 1).toString()
+                    updatedProperties[OlympiadDawnShip.magazinePropertyKey(capacityId)] = (remaining - 1).toString()
                 }
-                unit.customProperties = updated
             }
-            onTacticalFireUsageChanged(
-                usageKey,
-                usage.copy(firedWeapons = usage.firedWeapons + weaponKeys, fireControlUsed = usage.fireControlUsed + if (consumesFireControl) 1 else 0)
+            val updatedUsage = usage.copy(
+                firedWeapons = usage.firedWeapons + weaponKeys,
+                fireControlUsed = usage.fireControlUsed + if (consumesFireControl) 1 else 0,
             )
+            val activation = ecmShape?.let { shape ->
+                val bearing = selectedPreview?.relativeBearingDegrees
+                    ?: if (target.manualEcm) 0.0 else EcmRules.absoluteBearing(unit.snapshot(), resolutionTarget.snapshot().mapCoordinate, unitQueryService)
+                EcmActivation(
+                    tacticalTurnNumberProvider(), unit.id, selectedEcm.mapTo(linkedSetOf(), TacticalWeaponStatus::key),
+                    bearing, shape.rangeU, shape.widthDegrees, shape.intensity,
+                ).also(onEcmActivation)
+            }
+            val beforeFiring = unit.snapshot()
+            unit.customProperties = TacticalTurnMarker.update(updatedProperties, usageKey.turnNumber, updatedUsage, activation)
+            if (unit.customProperties != beforeFiring.customProperties) onUnitEdited(beforeFiring, unit.snapshot())
+            onTacticalFireUsageChanged(usageKey, updatedUsage)
+            if (target.manualEcm) {
+                notifyUnitStateChanged()
+                return TacticalFireResolution(
+                    attackerName = unit.snapshot().displayName(),
+                    targetName = "ECM Field",
+                    weaponNames = selectedEcm.map(TacticalWeaponStatus::name),
+                    diceRolled = 0,
+                    damage = 0,
+                    ecmActivations = listOfNotNull(activation),
+                    effectiveEcmLevel = activation?.intensity ?: 0,
+                )
+            }
             pendingIntercept(unit, resolutionTarget, report.weapons, contributions, target.rangeU)?.let { pending ->
                 openIntercept(pending)
                 notifyUnitStateChanged()
@@ -1063,13 +1160,17 @@ internal class MapPlacedUnitManager(
                     interceptPending = true
                 )
             }
-            val resolution = TacticalCombatResolver.resolve(resolutionTarget.snapshot(), report.weapons, contributions)
+            val resolution = TacticalCombatResolver.resolve(
+                resolutionTarget.snapshot(), report.weapons, contributions,
+                ecmLevelsByWeaponKey = ecmLevelsFor(unit.snapshot(), resolutionTarget.snapshot(), report.weapons, contributions),
+            )
             val outcome = applyTacticalDamage(resolutionTarget, resolution.damage)
             notifyUnitStateChanged()
             return resolution.copy(
                 attackerName = unit.snapshot().displayName(),
                 fightersDestroyed = outcome.fightersDestroyed,
                 targetDestroyed = outcome.targetDestroyed,
+                ecmActivations = listOfNotNull(activation),
             )
         }
 
@@ -1098,6 +1199,14 @@ internal class MapPlacedUnitManager(
         private fun resolutionTargetIsFighter(targetId: MapPlacedObjectId): Boolean =
             units.firstOrNull { it.id == targetId }?.snapshot()?.unitClassLabel() == "F"
 
+        private fun tacticalUsage(unit: PlacedUnit): TacticalFireUsage {
+            val turnNumber = tacticalTurnNumberProvider()
+            return TacticalTurnMarker.usage(unit.customProperties, turnNumber)
+                ?: TacticalTurnMarker.hasMarker(unit.customProperties).let { marked ->
+                    if (marked) TacticalFireUsage() else tacticalFireUsageProvider(TacticalFireKey(turnNumber, unit.id))
+                }
+        }
+
         private fun pendingIntercept(
             attacker: PlacedUnit,
             defender: PlacedUnit,
@@ -1112,13 +1221,14 @@ internal class MapPlacedUnitManager(
             val defensiveWeapons = TacticalTargetingResolver.resolve(
                 defender.snapshot(),
                 unitQueryService,
-                tacticalFireUsageProvider(key).firedWeapons,
-                tacticalFireUsageProvider(key).fireControlUsed
+                tacticalUsage(defender).firedWeapons,
+                tacticalUsage(defender).fireControlUsed
             )
-                .weapons.filter { !it.destroyed && !it.fired && (it.pointDefense || it.beamClass == 1) }
+                .weapons.filter { !it.destroyed && !it.fired && (it.pointDefense || it.beamClass == 1 || it.ecm) }
             val defensiveContributions = defensiveWeapons.mapNotNull { weapon ->
-                (if (weapon.pointDefense) 1 else OlympiadDawnBeamRules.firepowerAtRange(1, rangeU))
+                (if (weapon.ecm) 0 else if (weapon.pointDefense) 1 else OlympiadDawnBeamRules.firepowerAtRange(1, rangeU))
                     .takeIf { it > 0 }?.let { TacticalWeaponContribution(weapon.key, weapon.name, "F", it) }
+                    ?: weapon.takeIf(TacticalWeaponStatus::ecm)?.let { TacticalWeaponContribution(it.key, it.name, "F", 0) }
             }
             return defensiveContributions.takeIf(List<TacticalWeaponContribution>::isNotEmpty)
                 ?.let { PendingIntercept(attacker.id, defender.id, weapons, incoming, defensiveWeapons, it) }
@@ -1171,14 +1281,32 @@ internal class MapPlacedUnitManager(
             val defender = units.firstOrNull { it.id == pending.defenderId } ?: return null
             val attacker = units.firstOrNull { it.id == pending.attackerId }?.snapshot() ?: return null
             val chosen = pending.defensiveContributions.filter { it.weaponKey in selected }
-            val defenceTarget = attacker.copy(customProperties = emptyMap(), template = attacker.template.copy(customProperties = emptyMap()))
-            val defence = TacticalCombatResolver.resolve(defenceTarget, pending.defensiveWeapons, chosen)
+            val chosenEcm = pending.defensiveWeapons.filter { it.ecm && it.key in selected }
+            val defence = TacticalCombatResolver.resolve(attacker, pending.defensiveWeapons, chosen)
             val key = TacticalFireKey(tacticalTurnNumberProvider(), defender.id)
-            val usage = tacticalFireUsageProvider(key)
-            onTacticalFireUsageChanged(key, usage.copy(firedWeapons = usage.firedWeapons + chosen.mapTo(linkedSetOf(), TacticalWeaponContribution::weaponKey)))
+            val usage = tacticalUsage(defender)
+            val updatedUsage = usage.copy(firedWeapons = usage.firedWeapons + chosen.mapTo(linkedSetOf(), TacticalWeaponContribution::weaponKey))
+            val activation = chosenEcm.takeIf(List<TacticalWeaponStatus>::isNotEmpty)?.let { modules ->
+                EcmActivation(
+                    tacticalTurnNumberProvider(), defender.id, modules.mapTo(linkedSetOf(), TacticalWeaponStatus::key),
+                    EcmRules.absoluteBearing(defender.snapshot(), attacker.mapCoordinate, unitQueryService), 1.0,
+                    (EcmRules.CAPABILITY_PER_MODULE * modules.size).coerceAtMost(EcmRules.MAXIMUM_WIDTH_DEGREES), 1,
+                ).also(onEcmActivation)
+            }
+            val beforeFiring = defender.snapshot()
+            defender.customProperties = TacticalTurnMarker.update(defender.customProperties, key.turnNumber, updatedUsage, activation)
+            if (defender.customProperties != beforeFiring.customProperties) onUnitEdited(beforeFiring, defender.snapshot())
+            onTacticalFireUsageChanged(key, updatedUsage)
             pending.interceptedDamage = defence.damage
+            units.firstOrNull { it.id == pending.attackerId }
+                ?.takeIf { attackerUnit -> attackerUnit.snapshot().unitClassLabel() == "F" }
+                ?.let { attackerUnit -> applyTacticalDamage(attackerUnit, defence.damage) }
             notifyUnitStateChanged()
-            return defence.copy(attackerName = defender.snapshot().displayName())
+            return defence.copy(
+                attackerName = defender.snapshot().displayName(),
+                ecmActivations = listOfNotNull(activation),
+                effectiveEcmLevel = activation?.intensity ?: 0,
+            )
         }
 
         private fun resolveIncomingAttack(pending: PendingIntercept): TacticalFireResolution? {
@@ -1187,7 +1315,10 @@ internal class MapPlacedUnitManager(
             val defender = units.firstOrNull { it.id == pending.defenderId } ?: return null
             val attacker = units.firstOrNull { it.id == pending.attackerId }?.snapshot() ?: return null
             val reduced = TacticalCombatResolver.removeInterceptedAttackers(pending.incomingWeapons, pending.incomingContributions, pending.interceptedDamage)
-            val attack = TacticalCombatResolver.resolve(defender.snapshot(), pending.incomingWeapons, reduced)
+            val attack = TacticalCombatResolver.resolve(
+                defender.snapshot(), pending.incomingWeapons, reduced,
+                ecmLevelsByWeaponKey = ecmLevelsFor(attacker, defender.snapshot(), pending.incomingWeapons, reduced),
+            )
             val outcome = applyTacticalDamage(defender, attack.damage)
             notifyUnitStateChanged()
             return attack.copy(attackerName = attacker.displayName(), fightersDestroyed = outcome.fightersDestroyed, targetDestroyed = outcome.targetDestroyed)
@@ -1195,6 +1326,45 @@ internal class MapPlacedUnitManager(
 
         private fun TacticalFireResolution.openGunrep() {
             MapViewerGunrepDialog(root, dialogManager, "gunrep-" + java.util.UUID.randomUUID(), this).open()
+        }
+
+        private fun ecmLevelsFor(
+            attacker: UnitSnapshot,
+            target: UnitSnapshot,
+            weapons: List<TacticalWeaponStatus>,
+            contributions: List<TacticalWeaponContribution>,
+        ): Map<String, Int> {
+            val weaponsByKey = weapons.associateBy(TacticalWeaponStatus::key)
+            val activations = ecmActivationsProvider(tacticalTurnNumberProvider())
+            val distance = unitQueryService.distanceBetween(attacker, target)
+            return contributions.associate { contribution ->
+                val weapon = weaponsByKey[contribution.weaponKey]
+                val ordnance = weapon?.torpedo == true || weapon?.salvo == true || weapon?.salvoRack == true
+                val affecting = activations.filter { activation ->
+                    val emitter = units.firstOrNull { it.id == activation.emitterId }?.snapshot() ?: return@filter false
+                    val sourceAffected = activation.emitterId != attacker.id &&
+                            EcmRules.contains(activation, emitter, attacker.mapCoordinate, unitQueryService)
+                    val destinationAffected = ordnance && EcmRules.contains(activation, emitter, target.mapCoordinate, unitQueryService)
+                    sourceAffected || destinationAffected
+                }
+                val intensity = (affecting.sumOf(EcmActivation::intensity) +
+                        if (!ordnance && attacker.unitClassLabel() == "F" && affecting.isNotEmpty()) 1 else 0).coerceAtMost(4)
+                val profile = SensorObserverProfile.LOWEST_FIGHTER_SEEKER.takeIf { ordnance }
+                val severity = SensorDetection.visibilityCheck(
+                    attacker, target, distance, SensorReportMode.SCIREP, intensity, profile,
+                )?.legacyEcmLevel ?: 0
+                contribution.weaponKey to severity
+            }
+        }
+
+        private fun ecmIntensityAt(receiver: UnitSnapshot): Int {
+            val affecting = ecmActivationsProvider(tacticalTurnNumberProvider()).filter { activation ->
+                if (activation.emitterId == receiver.id) return@filter false
+                val emitter = units.firstOrNull { it.id == activation.emitterId }?.snapshot() ?: return@filter false
+                EcmRules.contains(activation, emitter, receiver.mapCoordinate, unitQueryService)
+            }
+            return (affecting.sumOf(EcmActivation::intensity) +
+                    if (receiver.unitClassLabel() == "F" && affecting.isNotEmpty()) 1 else 0).coerceAtMost(4)
         }
 
         private fun markDestroyed(unit: PlacedUnit) {
@@ -1307,6 +1477,161 @@ internal class MapPlacedUnitManager(
             !destroyed || destroyedUnitsDisplay != DestroyedUnitsDisplay.Hide
     }
 
+    private fun updateEcmPreview(unit: PlacedUnit, target: TacticalTarget?, selectedWeaponKeys: Set<String>) {
+        val moduleKeys = selectedWeaponKeys.filterTo(linkedSetOf()) { it.startsWith("ecm-") }
+        if (target == null || moduleKeys.isEmpty()) {
+            if (ecmPreview?.emitterId == unit.id) ecmPreview = null
+            renderedEcmPreviewSignature = null
+            return
+        }
+        val existing = ecmPreview?.takeIf { it.emitterId == unit.id && it.manual == target.manualEcm }
+        val shape = if (target.manualEcm) {
+            EcmRules.manual(moduleKeys.size, existing?.shape?.widthDegrees ?: 60.0, existing?.shape?.intensity ?: 1)
+        } else {
+            EcmRules.automatic(moduleKeys.size, target.rangeU)
+        } ?: run {
+            ecmPreview = null
+            renderedEcmPreviewSignature = null
+            return
+        }
+        val bearing = if (target.manualEcm) existing?.relativeBearingDegrees ?: 0.0 else {
+            units.firstOrNull { it.id == target.targetId }?.snapshot()
+                ?.let { EcmRules.absoluteBearing(unit.snapshot(), it.mapCoordinate, unitQueryService) }
+                ?: 0.0
+        }
+        ecmPreview = EcmPreview(unit.id, target.targetId, target.manualEcm, moduleKeys, bearing, shape)
+        renderedEcmPreviewSignature = null
+    }
+
+    private fun canFireTacticalSelection(target: TacticalTarget, selectedWeaponKeys: Set<String>): Boolean {
+        if (selectedWeaponKeys.isEmpty()) return false
+        val moduleCount = selectedWeaponKeys.count { it.startsWith("ecm-") }
+        if (target.manualEcm) return moduleCount > 0 && ecmPreview?.let { EcmRules.valid(moduleCount, it.shape.rangeU, it.shape.widthDegrees, it.shape.intensity) } == true
+        return moduleCount == 0 || EcmRules.automatic(moduleCount, target.rangeU) != null
+    }
+
+    fun hasEcmHandleAt(screenPoint: Vector2D): Boolean = ecmHandleAt(screenPoint) != null
+
+    fun beginEcmHandleDragAt(screenPoint: Vector2D): Boolean {
+        if (!interactionsEnabled() || contextMenuManager.isOpen || isHigherPriorityDragInProgress()) return false
+        val handle = ecmHandleAt(screenPoint) ?: return false
+        ecmDragHandle = handle
+        return true
+    }
+
+    private fun ecmHandleAt(screenPoint: Vector2D): EcmHandle? {
+        val preview = ecmPreview?.takeIf(EcmPreview::manual) ?: return null
+        val emitter = units.firstOrNull { it.id == preview.emitterId }?.snapshot() ?: return null
+        return ecmHandlePolygons(preview, emitter).entries.firstOrNull { (_, polygon) ->
+            polygon.containsPoint(screenPoint) || polygon.minOf { point -> hypot(point.x - screenPoint.x, point.y - screenPoint.y) } <= ECM_HANDLE_TOLERANCE
+        }?.key
+    }
+
+    private fun updateEcmDrag(pointer: Vector2D, leftHeld: Boolean) {
+        val handle = ecmDragHandle ?: return
+        if (!leftHeld) {
+            ecmDragHandle = null
+            return
+        }
+        val preview = ecmPreview ?: return
+        val emitter = units.firstOrNull { it.id == preview.emitterId }?.snapshot() ?: return
+        val point = coordinateSpace.screenToMap(pointer, viewportProvider())
+        val pointerBearing = EcmRules.absoluteBearing(emitter, point, unitQueryService)
+        val updated = when (handle) {
+            EcmHandle.ROTATE -> preview.copy(relativeBearingDegrees = pointerBearing)
+            EcmHandle.INTENSITY -> {
+                val desiredRange = unitQueryService.distanceBetween(emitter.mapCoordinate, point)
+                EcmRules.closestManualIntensity(preview.moduleKeys.size, preview.shape.widthDegrees, desiredRange)
+                    ?.let { preview.copy(shape = it) } ?: preview
+            }
+
+            EcmHandle.WIDTH_START, EcmHandle.WIDTH_END -> {
+                val delta = angularDistance(pointerBearing, preview.relativeBearingDegrees)
+                EcmRules.resizedManual(
+                    preview.moduleKeys.size,
+                    delta * 2.0,
+                    preview.shape.intensity,
+                )?.let { preview.copy(shape = it) } ?: preview
+            }
+        }
+        if (updated != preview) {
+            val previousArc = TacticalTargetingResolver.arcForBearing(preview.relativeBearingDegrees, emitter.facingDegrees ?: 0)
+            val updatedArc = TacticalTargetingResolver.arcForBearing(updated.relativeBearingDegrees, emitter.facingDegrees ?: 0)
+            ecmPreview = updated
+            renderedEcmPreviewSignature = null
+            if (updatedArc != previousArc) tacticalDialogs[preview.emitterId]?.refreshPresentation()
+        }
+    }
+
+    private fun EcmPreview.handlePoints(emitter: UnitSnapshot): Map<EcmHandle, MapCoordinate> {
+        val absoluteBearing = relativeBearingDegrees
+        val placed = units.firstOrNull { it.id == emitter.id }
+        val innerRange = placed?.let { ecmInnerRadius(it.worldWidth, it.worldHeight) * mapUnitsPerPixel } ?: 0.0
+        return mapOf(
+            EcmHandle.ROTATE to ecmPoint(emitter.mapCoordinate, absoluteBearing, (innerRange + shape.rangeU) * 0.5),
+            EcmHandle.INTENSITY to ecmPoint(emitter.mapCoordinate, absoluteBearing, shape.rangeU),
+            EcmHandle.WIDTH_START to ecmPoint(emitter.mapCoordinate, absoluteBearing - shape.widthDegrees * 0.5, (innerRange + shape.rangeU) * 0.5),
+            EcmHandle.WIDTH_END to ecmPoint(emitter.mapCoordinate, absoluteBearing + shape.widthDegrees * 0.5, (innerRange + shape.rangeU) * 0.5),
+        )
+    }
+
+    private fun ecmHandlePolygons(preview: EcmPreview, emitter: UnitSnapshot): Map<EcmHandle, List<Vector2D>> {
+        val viewport = viewportProvider()
+        val centers = preview.handlePoints(emitter).mapValues { (_, point) -> coordinateSpace.worldToScreen(coordinateSpace.toWorld(point), viewport) }
+        val bearing = Math.toRadians(preview.relativeBearingDegrees)
+        val tangent = Vector2D(cos(bearing), sin(bearing))
+        val radial = Vector2D(sin(bearing), -cos(bearing))
+        val intensityCenter = centers.getValue(EcmHandle.INTENSITY)
+        val rotateCenter = centers.getValue(EcmHandle.ROTATE)
+        fun offset(center: Vector2D, first: Vector2D, firstScale: Double, second: Vector2D, secondScale: Double) =
+            Vector2D(center.x + first.x * firstScale + second.x * secondScale, center.y + first.y * firstScale + second.y * secondScale)
+
+        val handles = mutableMapOf(
+            EcmHandle.INTENSITY to listOf(
+                offset(intensityCenter, tangent, -ECM_INTENSITY_HANDLE_LENGTH * 0.5, radial, -ECM_HANDLE_THICKNESS * 0.5),
+                offset(intensityCenter, tangent, ECM_INTENSITY_HANDLE_LENGTH * 0.5, radial, -ECM_HANDLE_THICKNESS * 0.5),
+                offset(intensityCenter, tangent, ECM_INTENSITY_HANDLE_LENGTH * 0.5, radial, ECM_HANDLE_THICKNESS * 0.5),
+                offset(intensityCenter, tangent, -ECM_INTENSITY_HANDLE_LENGTH * 0.5, radial, ECM_HANDLE_THICKNESS * 0.5),
+            ),
+            EcmHandle.ROTATE to listOf(
+                Vector2D(rotateCenter.x, rotateCenter.y - ECM_DIRECTION_HANDLE_RADIUS),
+                Vector2D(rotateCenter.x + ECM_DIRECTION_HANDLE_RADIUS, rotateCenter.y),
+                Vector2D(rotateCenter.x, rotateCenter.y + ECM_DIRECTION_HANDLE_RADIUS),
+                Vector2D(rotateCenter.x - ECM_DIRECTION_HANDLE_RADIUS, rotateCenter.y),
+            ),
+        )
+        listOf(EcmHandle.WIDTH_START to -preview.shape.widthDegrees * 0.5, EcmHandle.WIDTH_END to preview.shape.widthDegrees * 0.5)
+            .forEach { (handle, offsetDegrees) ->
+                val edgeBearing = Math.toRadians(preview.relativeBearingDegrees + offsetDegrees)
+                val edgeRadial = Vector2D(sin(edgeBearing), -cos(edgeBearing))
+                val edgeTangent = Vector2D(cos(edgeBearing), sin(edgeBearing))
+                val center = centers.getValue(handle)
+                handles[handle] = listOf(
+                    offset(center, edgeRadial, -ECM_WIDTH_HANDLE_LENGTH * 0.5, edgeTangent, -ECM_HANDLE_THICKNESS * 0.5),
+                    offset(center, edgeRadial, ECM_WIDTH_HANDLE_LENGTH * 0.5, edgeTangent, -ECM_HANDLE_THICKNESS * 0.5),
+                    offset(center, edgeRadial, ECM_WIDTH_HANDLE_LENGTH * 0.5, edgeTangent, ECM_HANDLE_THICKNESS * 0.5),
+                    offset(center, edgeRadial, -ECM_WIDTH_HANDLE_LENGTH * 0.5, edgeTangent, ECM_HANDLE_THICKNESS * 0.5),
+                )
+            }
+        return handles
+    }
+
+    private fun angularDistance(first: Double, second: Double): Double =
+        kotlin.math.abs(((first - second + 540.0).mod(360.0)) - 180.0)
+
+    private fun List<Vector2D>.containsPoint(point: Vector2D): Boolean = indices.count { index ->
+        val start = this[index]
+        val end = this[(index + 1) % size]
+        (start.y > point.y) != (end.y > point.y) &&
+                point.x < (end.x - start.x) * (point.y - start.y) / (end.y - start.y) + start.x
+    } % 2 == 1
+
+    private fun ecmPoint(origin: MapCoordinate, bearingDegrees: Double, rangeU: Double): MapCoordinate {
+        val radians = Math.toRadians(bearingDegrees)
+        val pixels = rangeU / mapUnitsPerPixel
+        return MapCoordinate(origin.x + sin(radians) * pixels / mapWidth, origin.y - cos(radians) * pixels / mapHeight)
+    }
+
     private fun shouldDrawFireArcs(unit: PlacedUnit): Boolean =
         FireArcSelectionResolver.shouldDraw(
             mode = fireArcDisplayMode,
@@ -1339,6 +1664,21 @@ internal class MapPlacedUnitManager(
     private data class TacticalDialogKey(val unitId: MapPlacedObjectId)
 
     private data class TacticalDamageOutcome(val fightersDestroyed: Int = 0, val targetDestroyed: Boolean = false)
+
+    private data class EcmPreview(
+        val emitterId: MapPlacedObjectId,
+        val targetId: MapPlacedObjectId,
+        val manual: Boolean,
+        val moduleKeys: Set<String>,
+        val relativeBearingDegrees: Double,
+        val shape: EcmShape,
+    ) {
+        fun activation(turnNumber: Int): EcmActivation = EcmActivation(
+            turnNumber, emitterId, moduleKeys, relativeBearingDegrees, shape.rangeU, shape.widthDegrees, shape.intensity,
+        )
+    }
+
+    private enum class EcmHandle { ROTATE, INTENSITY, WIDTH_START, WIDTH_END }
 
     private data class PendingIntercept(
         val attackerId: MapPlacedObjectId,
@@ -1432,9 +1772,8 @@ internal class MapPlacedUnitManager(
         color: Color,
     ) {
         val center = Point(width * 0.5, height * 0.5)
-        val baseRadius = minOf(width, height) * 0.72
-        val outerRadius = baseRadius
-        val innerRadius = baseRadius * 0.86
+        val outerRadius = bearingIndicatorOuterRadius(width, height)
+        val innerRadius = outerRadius * 0.86
         val ringColor = toRgba(color)
 
         val radians = Math.toRadians(facingDegrees.toDouble())
@@ -1590,6 +1929,138 @@ internal class MapPlacedUnitManager(
         }
     }
 
+    private fun bearingIndicatorOuterRadius(width: Double, height: Double): Double = minOf(width, height) * 0.72
+
+    private fun ecmInnerRadius(width: Double, height: Double): Double =
+        bearingIndicatorOuterRadius(width, height) * BEARING_INDICATOR_THIN_ARC_CENTER_RATIO
+
+    private fun drawEcmField(parent: Container, activation: EcmActivation, emitter: PlacedUnit, preview: Boolean = false) {
+        val snapshot = emitter.snapshot()
+        val center = coordinateSpace.toWorld(snapshot.mapCoordinate)
+        val radius = activation.rangeU / mapUnitsPerPixel
+        val innerRadius = ecmInnerRadius(emitter.worldWidth, emitter.worldHeight).coerceAtMost(radius)
+        val bearing = activation.relativeBearingDegrees
+        val start = bearing - activation.widthDegrees * 0.5
+        val end = start + activation.widthDegrees
+        val outerArc = sectorPoints(center, radius, start, end)
+        val innerArc = sectorPoints(center, innerRadius, start, end).reversed()
+        val color = UnitAffiliationUi.swatchColor(snapshot.template.affiliation)
+        val viewport = viewportProvider()
+        val viewportZoom = viewport.zoom.coerceAtLeast(MIN_VIEWPORT_ZOOM)
+        val pitch = ECM_HATCH_PITCH_PX / viewportZoom
+        val hatchSegments = ecmHatchSegments(
+            center, innerRadius, radius, bearing, activation.widthDegrees, outerArc + innerArc, pitch,
+            maxOf(center.x - radius, viewport.left - pitch), minOf(center.x + radius, viewport.right + pitch),
+            maxOf(center.y - radius, viewport.top - pitch), minOf(center.y + radius, viewport.bottom + pitch),
+        )
+        parent.graphics(GraphicsRenderer.GPU) {
+            lineWidth = pitch * 0.5
+            stroke(toRgba(color, if (preview) 145 else 100)) {
+                hatchSegments.forEach { (segmentStart, segmentEnd) ->
+                    moveTo(segmentStart.x, segmentStart.y)
+                    lineTo(segmentEnd.x, segmentEnd.y)
+                }
+            }
+            lineWidth = ECM_OUTLINE_WIDTH_PX / viewportZoom
+            stroke(toRgba(color, if (preview) 240 else 190)) {
+                outerArc.forEachIndexed { index, point -> if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y) }
+                innerArc.forEachIndexed { index, point -> if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y) }
+                if (activation.widthDegrees < EcmRules.MAXIMUM_WIDTH_DEGREES) {
+                    moveTo(outerArc.first().x, outerArc.first().y)
+                    lineTo(innerArc.last().x, innerArc.last().y)
+                    moveTo(outerArc.last().x, outerArc.last().y)
+                    lineTo(innerArc.first().x, innerArc.first().y)
+                }
+            }
+        }
+    }
+
+    private fun ecmHatchSegments(
+        center: Point,
+        innerRadius: Double,
+        outerRadius: Double,
+        bearingDegrees: Double,
+        widthDegrees: Double,
+        boundary: List<Point>,
+        pitch: Double,
+        minimumX: Double,
+        maximumX: Double,
+        minimumY: Double,
+        maximumY: Double,
+    ): List<Pair<Point, Point>> {
+        if (minimumX >= maximumX || minimumY >= maximumY) return emptyList()
+        val diagonalStep = pitch * sqrt(2.0)
+        val firstBand = floor((minimumY - maximumX) / diagonalStep).toInt() - 1
+        val lastBand = floor((maximumY - minimumX) / diagonalStep).toInt() + 1
+        val lineMinimumX = minimumX - pitch
+        val lineMaximumX = maximumX + pitch
+        return (firstBand..lastBand).flatMap { index ->
+            val intercept = index * diagonalStep
+            val intersections = buildList {
+                add(lineMinimumX)
+                boundary.indices.forEach { boundaryIndex ->
+                    val first = boundary[boundaryIndex]
+                    val second = boundary[(boundaryIndex + 1) % boundary.size]
+                    val firstOffset = first.y - first.x - intercept
+                    val secondOffset = second.y - second.x - intercept
+                    if (kotlin.math.abs(firstOffset) < ECM_GEOMETRY_EPSILON) add(first.x)
+                    if (firstOffset * secondOffset < 0.0) {
+                        val fraction = firstOffset / (firstOffset - secondOffset)
+                        val intersectionX = first.x + (second.x - first.x) * fraction
+                        if (intersectionX in lineMinimumX..lineMaximumX) add(intersectionX)
+                    }
+                }
+                add(lineMaximumX)
+            }
+                .sorted()
+                .fold(mutableListOf<Double>()) { unique, value ->
+                    if (unique.lastOrNull()?.let { kotlin.math.abs(it - value) > ECM_GEOMETRY_EPSILON } != false) unique.add(value)
+                    unique
+                }
+            intersections.zipWithNext().mapNotNull { (startX, endX) ->
+                val midpointX = (startX + endX) * 0.5
+                val midpoint = Point(midpointX, midpointX + intercept)
+                midpoint.takeIf {
+                    isInsideEcmSector(it, center, innerRadius, outerRadius, bearingDegrees, widthDegrees)
+                }?.let { Point(startX, startX + intercept) to Point(endX, endX + intercept) }
+            }
+        }
+    }
+
+    private fun isInsideEcmSector(
+        point: Point,
+        center: Point,
+        innerRadius: Double,
+        outerRadius: Double,
+        bearingDegrees: Double,
+        widthDegrees: Double,
+    ): Boolean {
+        val dx = point.x - center.x
+        val dy = point.y - center.y
+        val distance = hypot(dx, dy)
+        if (distance < innerRadius - ECM_GEOMETRY_EPSILON || distance > outerRadius + ECM_GEOMETRY_EPSILON) return false
+        if (widthDegrees >= EcmRules.MAXIMUM_WIDTH_DEGREES - ECM_GEOMETRY_EPSILON) return true
+        val pointBearing = Math.toDegrees(kotlin.math.atan2(dx, -dy)).mod(360.0)
+        val delta = ((pointBearing - bearingDegrees + 540.0).mod(360.0)) - 180.0
+        return kotlin.math.abs(delta) <= widthDegrees * 0.5 + ECM_GEOMETRY_EPSILON
+    }
+
+    private fun drawEcmHandles(parent: Container, preview: EcmPreview, emitter: UnitSnapshot) {
+        if (!preview.manual) return
+        val color = toRgba(UnitAffiliationUi.swatchColor(emitter.template.affiliation), 230)
+        val viewport = viewportProvider()
+        ecmHandlePolygons(preview, emitter).values.forEach { polygon ->
+            val worldPoints = polygon.map { point -> coordinateSpace.toWorld(coordinateSpace.screenToMap(point, viewport)) }
+            parent.graphics {
+                fill(color) {
+                    moveTo(worldPoints.first().x, worldPoints.first().y)
+                    worldPoints.drop(1).forEach { lineTo(it.x, it.y) }
+                    close()
+                }
+            }
+        }
+    }
+
     private fun drawSectorArc(parent: Container, center: Point, radius: Double, startDegrees: Double, endDegrees: Double, color: RGBA, width: Double) {
         parent.graphics {
             lineWidth = width
@@ -1732,6 +2203,15 @@ internal class MapPlacedUnitManager(
     private companion object {
         const val DRAG_PREVIEW_Z_INDEX = 15_000.0
         private const val HIT_TOLERANCE = 8.0
+        private const val ECM_HANDLE_TOLERANCE = 14.0
+        private const val ECM_INTENSITY_HANDLE_LENGTH = 24.0
+        private const val ECM_WIDTH_HANDLE_LENGTH = 24.0
+        private const val ECM_HANDLE_THICKNESS = 7.0
+        private const val ECM_DIRECTION_HANDLE_RADIUS = 13.0
+        private const val ECM_HATCH_PITCH_PX = 16.0
+        private const val ECM_OUTLINE_WIDTH_PX = 2.0
+        private const val ECM_GEOMETRY_EPSILON = 0.000001
+        private const val BEARING_INDICATOR_THIN_ARC_CENTER_RATIO = 0.93
         private const val DESTROYED_PARTIAL_ICON_ALPHA = 0.5
         private const val MIN_VIEWPORT_ZOOM = 0.0001
         private const val BEAM_ARC_WIDTH_DEGREES = 60.0

@@ -22,6 +22,8 @@ internal data class TacticalFireResolution(
     val fightersDestroyed: Int = 0,
     val targetDestroyed: Boolean = false,
     val interceptPending: Boolean = false,
+    val ecmActivations: List<EcmActivation> = emptyList(),
+    val effectiveEcmLevel: Int = 0,
 )
 
 internal object TacticalCombatResolver {
@@ -47,6 +49,8 @@ internal object TacticalCombatResolver {
         target: UnitSnapshot,
         weapons: List<TacticalWeaponStatus>,
         contributions: List<TacticalWeaponContribution>,
+        ecmLevel: Int = 0,
+        ecmLevelsByWeaponKey: Map<String, Int> = emptyMap(),
         rollD6: () -> Int = { Random.nextInt(1, 7) },
     ): TacticalFireResolution {
         val weaponByKey = weapons.associateBy(TacticalWeaponStatus::key)
@@ -54,21 +58,28 @@ internal object TacticalCombatResolver {
         fun roll(): Int = rollD6().also { require(it in 1..6) { "d6 rolls must be between 1 and 6" } }
         contributions.forEach { contribution ->
             val weapon = weaponByKey[contribution.weaponKey] ?: return@forEach
+            val contributionEcmLevel = (ecmLevelsByWeaponKey[contribution.weaponKey] ?: ecmLevel).coerceAtLeast(0)
+            val effectiveLevel = (target.operationalShieldCount() + contributionEcmLevel).coerceAtMost(4)
+            val attackModifier = if (effectiveLevel >= 3) -1 else 0
+            fun reducedDamage(damage: Int): Int = if (effectiveLevel >= 4 && damage > 0) (damage - 1).coerceAtLeast(1) else damage
             when {
                 weapon.salvo || weapon.salvoRack -> roll().also { value ->
-                    dieResults += TacticalDieResult(weapon.name, value, damage = value.coerceAtMost(contribution.firepower))
+                    val resolved = (value + attackModifier).coerceIn(1, 6)
+                    dieResults += TacticalDieResult(weapon.name, value, resolved, reducedDamage(resolved.coerceAtMost(contribution.firepower)))
                 }
 
                 weapon.torpedo -> roll().let { value ->
-                    val inflicted = value.takeIf { it >= 4 } ?: 0
-                    dieResults += TacticalDieResult(weapon.name, value, damage = inflicted)
+                    val resolved = (value + attackModifier).coerceIn(1, 6)
+                    val inflicted = resolved.takeIf { it >= 4 } ?: 0
+                    dieResults += TacticalDieResult(weapon.name, value, resolved, reducedDamage(inflicted))
                 }
 
-                weapon.submunition -> explodingSubmunitionDamage(contribution.firepower, weapon.name, ::roll, dieResults)
+                weapon.submunition -> explodingSubmunitionDamage(contribution.firepower, weapon.name, attackModifier, ::reducedDamage, ::roll, dieResults)
                 else -> standardDamage(
                     firepower = contribution.firepower,
-                    shieldCount = target.operationalShieldCount(),
-                    modifier = weapon.interceptorModifier(target),
+                    shieldCount = effectiveLevel.coerceAtMost(2),
+                    modifier = weapon.interceptorModifier(target) + attackModifier,
+                    reduceDamage = ::reducedDamage,
                     roll = ::roll,
                     weaponName = weapon.name,
                     dieResults = dieResults,
@@ -81,6 +92,7 @@ internal object TacticalCombatResolver {
             diceRolled = dieResults.size,
             damage = dieResults.sumOf(TacticalDieResult::damage),
             dieResults = dieResults,
+            effectiveEcmLevel = (ecmLevelsByWeaponKey.values + ecmLevel).maxOrNull()?.coerceAtMost(4) ?: 0,
         )
     }
 
@@ -105,17 +117,20 @@ internal object TacticalCombatResolver {
     private fun explodingSubmunitionDamage(
         firepower: Int,
         weaponName: String,
+        modifier: Int,
+        reduceDamage: (Int) -> Int,
         roll: () -> Int,
         dieResults: MutableList<TacticalDieResult>,
     ) {
         fun recordRoll(): Unit = roll().let { value ->
-            val damage = when (value) {
+            val resolved = (value + modifier).coerceIn(1, 6)
+            val damage = when (resolved) {
                 6 -> 2
                 4, 5 -> 1
                 else -> 0
             }
-            dieResults += TacticalDieResult(weaponName, value, damage = damage)
-            if (value == 6) recordRoll()
+            dieResults += TacticalDieResult(weaponName, value, resolved, reduceDamage(damage))
+            if (resolved == 6) recordRoll()
         }
         repeat(firepower.coerceAtLeast(0)) { recordRoll() }
     }
@@ -124,6 +139,7 @@ internal object TacticalCombatResolver {
         firepower: Int,
         shieldCount: Int,
         modifier: Int,
+        reduceDamage: (Int) -> Int,
         roll: () -> Int,
         weaponName: String,
         dieResults: MutableList<TacticalDieResult>,
@@ -137,7 +153,7 @@ internal object TacticalCombatResolver {
                 4 -> if (shieldCount >= 2) 0 else 1
                 else -> 0
             }
-            dieResults += TacticalDieResult(weaponName, rolledValue, resolvedValue, damage)
+            dieResults += TacticalDieResult(weaponName, rolledValue, resolvedValue, reduceDamage(damage))
         }
     }
 

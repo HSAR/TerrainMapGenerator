@@ -3,6 +3,9 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
 import io.hsar.mapgenerator.commandgui.korge.ui.DestroyedUnitsDisplay
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
+import io.hsar.mapgenerator.commandgui.save.TacticalFireKey
+import io.hsar.mapgenerator.commandgui.save.TacticalFireUsage
+import io.hsar.mapgenerator.commandgui.save.TacticalTurnMarker
 import io.hsar.mapgenerator.grid.EpsilonCoord
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.ReferenceSystem
@@ -19,6 +22,59 @@ import org.junit.jupiter.api.Test
 import java.util.*
 
 class MapPlacedUnitManagerTest {
+    @Test
+    fun `consuming an ECM solution persists module use and activates the fitted field`() {
+        val activations = mutableListOf<EcmActivation>()
+        val usage = mutableMapOf<TacticalFireKey, TacticalFireUsage>()
+        val root = Container()
+        val manager = MapPlacedUnitManager(
+            root = root,
+            unitLayer = root.container(),
+            geometry = CENTERED_GEOMETRY,
+            mapUnitsPerPixel = 1.0,
+            mapWidth = 1000,
+            mapHeight = 1000,
+            viewportProvider = {
+                CameraViewport.centeredOnMap(CENTERED_GEOMETRY, 1000, 1000, 1000, 1000, zoom = 1.0)
+            },
+            contextMenuManager = ContextMenuManager(root),
+            deferredActionRunner = ContextMenuDeferredActionRunner(root),
+            dialogManager = MapViewerDialogManager(),
+            tacticalFireUsageProvider = { usage[it] ?: TacticalFireUsage() },
+            onTacticalFireUsageChanged = { key, value -> usage[key] = value },
+            ecmActivationsProvider = { turn -> activations.filter { it.turnNumber == turn } },
+            onEcmActivation = activations::add,
+        )
+        val definition = OlympiadDawnShip.parse(
+            """{"name":"ECM Ship","class":"Frigate","hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"ecm","id":"ecm-1"}]}""",
+        )
+        val sourceTemplate = MapViewerUnitTemplate(
+            UnitTemplateId(UUID(0, 70)), "Source", Bitmap32(4, 4), affiliation = UnitAffiliation.Friend,
+            customProperties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),
+        )
+        val targetDefinition = OlympiadDawnShip.parse(
+            """{"name":"Target","class":"Frigate","hull":{"points":1,"rows":1},"armour":[],"systems":[]}""",
+        )
+        val targetTemplate = MapViewerUnitTemplate(
+            UnitTemplateId(UUID(0, 71)), "Target", Bitmap32(4, 4), affiliation = UnitAffiliation.Hostile,
+            customProperties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), targetDefinition),
+        )
+        val sourceId = MapPlacedObjectId(UUID(0, 72))
+        val targetId = MapPlacedObjectId(UUID(0, 73))
+        manager.upsert(manager.buildSnapshot(sourceId, sourceTemplate.id, sourceTemplate, "Source", MapCoordinate(0.5, 0.5), facingDegrees = 0))
+        manager.upsert(manager.buildSnapshot(targetId, targetTemplate.id, targetTemplate, "Target", MapCoordinate(0.5, 0.498), facingDegrees = 0))
+
+        assertThat(manager.consumeTacticalSolution(sourceId, targetId), equalTo(true))
+
+        assertThat(activations.single().moduleKeys, equalTo(setOf("ecm-ecm-1")))
+        assertThat(activations.single().intensity, equalTo(3))
+        assertThat(usage.getValue(TacticalFireKey(1, sourceId)).firedWeapons, equalTo(setOf("ecm-ecm-1")))
+        assertThat(
+            TacticalTurnMarker.usage(manager.snapshot(sourceId)!!.customProperties, 1),
+            equalTo(TacticalFireUsage(setOf("ecm-ecm-1"), 0)),
+        )
+    }
+
     @Test
     fun `replacing a unit template refreshes the live unit affiliation`() {
         val root = Container()
