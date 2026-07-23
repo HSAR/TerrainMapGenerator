@@ -50,6 +50,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.turnOriginFor
+import io.hsar.mapgenerator.commandgui.korge.launch.LaunchBackgroundGenerationSegments
 import io.hsar.mapgenerator.commandgui.korge.launch.LaunchBackgroundTileGenerator
 import io.hsar.mapgenerator.commandgui.korge.launch.LaunchTopographyBackground
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchFlow
@@ -186,11 +187,12 @@ internal class MapViewerScene(
                     }
 
                     val launchFlow = MapViewerLaunchFlow()
-                    val launchBackgroundSeed = Random().nextLong()
+                    var launchBackgroundSeed = Random().nextLong()
                     var launchBackground: LaunchTopographyBackground? = null
                     val launchBackgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
                     var launchBackgroundJob: Job? = null
                     var launchBackgroundGenerationCompleted = false
+                    val launchBackgroundGenerationSegments = LaunchBackgroundGenerationSegments()
                     var launchpadView: MapViewerLaunchpadView? = null
                     var newOperationView: MapViewerNewOperationView? = null
                     var launchShell: MapViewerLaunchShell? = null
@@ -230,6 +232,7 @@ internal class MapViewerScene(
                     fun loadLaunchBackground() {
                         if (launchBackgroundJob != null || launchBackgroundGenerationCompleted) return
                         val background = currentLaunchBackground()
+                        val generation = launchBackgroundGenerationSegments.current()
                         val startedAt = System.nanoTime()
                         launchBackgroundJob = launchBackgroundScope.launch {
                             runCatching {
@@ -247,6 +250,7 @@ internal class MapViewerScene(
                                             tile.arrivalJitterMilliseconds,
                                         )
                                         runOnUiThread {
+                                            if (!launchBackgroundGenerationSegments.isCurrent(generation) || launchBackground !== background) return@runOnUiThread
                                             background.accept(tile)
                                             launchShell?.updateTile(tile)
                                         }
@@ -270,10 +274,28 @@ internal class MapViewerScene(
                                 (System.nanoTime() - startedAt) / 1_000_000,
                             )
                             runOnUiThread {
-                                launchBackgroundJob = null
-                                launchBackgroundGenerationCompleted = true
+                                if (launchBackgroundGenerationSegments.isCurrent(generation) && launchBackground === background) {
+                                    launchBackgroundJob = null
+                                    launchBackgroundGenerationCompleted = true
+                                }
                             }
                         }
+                    }
+
+                    fun regenerateLaunchBackground() {
+                        launchBackgroundGenerationSegments.replace()
+                        launchBackgroundJob?.cancel()
+                        launchBackgroundJob = null
+                        launchBackgroundGenerationCompleted = false
+                        launchBackgroundSeed = Random().nextLong()
+                        val regenerationViewport = launchShell?.regenerationViewport() ?: displayViewport()
+                        val regenerated = LaunchTopographyBackground.create(
+                            viewportWidth = regenerationViewport.width,
+                            viewportHeight = regenerationViewport.height,
+                            seed = launchBackgroundSeed,
+                        )
+                        launchBackground = regenerated
+                        launchShell?.replaceBackground(regenerated, ::loadLaunchBackground)
                     }
 
                     fun showViewer(
@@ -1494,6 +1516,7 @@ internal class MapViewerScene(
                                 viewportWidth = viewport.width,
                                 viewportHeight = viewport.height,
                                 background = currentLaunchBackground(),
+                                onRegenerate = ::regenerateLaunchBackground,
                             )
                             loadLaunchBackground()
                         }
@@ -1524,6 +1547,7 @@ internal class MapViewerScene(
                                 viewportWidth = viewport.width,
                                 viewportHeight = viewport.height,
                                 background = currentLaunchBackground(),
+                                onRegenerate = ::regenerateLaunchBackground,
                             )
                             loadLaunchBackground()
                         }

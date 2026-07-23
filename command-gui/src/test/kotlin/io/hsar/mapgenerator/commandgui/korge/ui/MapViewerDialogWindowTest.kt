@@ -26,6 +26,29 @@ class MapViewerDialogWindowTest {
     }
 
     @Test
+    fun `title text uses the space between its left inset and close button`() {
+        val layout = MapViewerDialogLayoutBuilder.build(
+            bounds = MapViewerDialogBounds(left = 0.0, top = 0.0, width = 360.0, height = 300.0),
+        )
+
+        assertThat(
+            MapViewerDialogChrome.titleTextWidth(layout),
+            equalTo(
+                layout.titleBar.width - layout.closeButton.width -
+                        MapViewerDialogChrome.TITLE_TEXT_RIGHT_GAP - MapViewerDialogChrome.TITLE_TEXT_LEFT,
+            ),
+        )
+        assertThat(MapViewerDialogChrome.TITLE_TEXT_RIGHT_GAP, equalTo(14.0))
+        assertThat(
+            MapViewerTextViews.ellipsize(
+                MapViewerDialogChrome.dialogTitleText("Background: Ridged Badlands"),
+                MapViewerDialogChrome.titleTextWidth(layout),
+            ),
+            equalTo("BACKGROUND: RIDGED BADLANDS"),
+        )
+    }
+
+    @Test
     fun `non modal dialog only blocks points inside its bounds`() {
         val root = Container()
         val window = MapViewerDialogWindow(

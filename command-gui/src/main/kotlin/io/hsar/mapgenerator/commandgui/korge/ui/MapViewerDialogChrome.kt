@@ -85,7 +85,7 @@ internal object MapViewerDialogChrome {
     ) {
         titleBar.removeChildren()
         titleBar.solidRect(layout.titleBar.width, layout.titleBar.height, MapViewerUiBoxes.toRgba(Palette.Colours.DARK, TITLE_BAR_ALPHA))
-        val titleWidth = (layout.titleBar.width - layout.closeButton.width - TITLE_TEXT_RIGHT_GAP - TITLE_TEXT_LEFT).coerceAtLeast(0.0)
+        val titleWidth = titleTextWidth(layout)
         if (titleTabs.isEmpty()) {
             val fittedTitle = MapViewerTextViews.ellipsize(
                 text = dialogTitleText(title),
@@ -152,8 +152,11 @@ internal object MapViewerDialogChrome {
 
     const val TITLE_BAR_ALPHA = 235
     internal const val TITLE_TEXT_LEFT = 14.0
-    internal const val TITLE_TEXT_RIGHT_GAP = 56.0
+    internal const val TITLE_TEXT_RIGHT_GAP = 14.0
     internal const val DIALOG_PANEL_FILL_ALPHA = 220
+
+    internal fun titleTextWidth(layout: MapViewerDialogLayout): Double =
+        (layout.titleBar.width - layout.closeButton.width - TITLE_TEXT_RIGHT_GAP - TITLE_TEXT_LEFT).coerceAtLeast(0.0)
 
     internal fun dialogPanelStyle(active: Boolean): UiFrameStyle =
         UiFrameStyle(

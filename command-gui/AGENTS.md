@@ -19,6 +19,11 @@
   only when content, dimensions, or dialog state actually changes.
 - Save files may carry an `additionalData.json` payload; preserve it on a best-efforts basis and write it back additively when present, without making it required for normal
   save/load flows.
+- Launchpad menu centring, the persistent launch shell, and launch-background regeneration must use `korge/launch/MapViewerViewport.kt`'s `MapViewerViewportResolver`. Its
+  `actualVirtualWidth`/`actualVirtualHeight` values are authoritative, with the KorGE window dimensions used only as the startup fallback when either actual value is zero. A fixed
+  raster canvas sized to an earlier background creates first-regeneration grid judder and a right-edge black band; each generation must retain its own clipped canvas and the
+  outgoing/current canvases must be laid out independently during the transition. Repeated regeneration must advance `korge/launch/LaunchBackgroundGenerationSegments.kt` before
+  cancelling the old job, so stale queued tile publications cannot update the current canvas.
 
 ## SITREP Contacts
 

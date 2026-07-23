@@ -20,6 +20,15 @@ import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 
 class LaunchTopographyBackgroundTest {
+
+    @Test
+    fun `background exposes the seeded biome and generation information`() {
+        val background = LaunchTopographyBackground.create(800, 600, 73L)
+
+        assertThat(background.biome, equalTo("Ridged Badlands"))
+        assertThat(background.information.map { it.first }, equalTo(listOf("Biome", "Seed", "Texture", "Noise scale", "Contour levels")))
+        assertThat(background.information.first { it.first == "Seed" }.second, equalTo("73"))
+    }
     @Test
     fun `background texture renders at one hundred and fifty percent of viewport dimensions`() {
         val background = LaunchTopographyBackground.create(1920, 1080, 73L)
@@ -47,9 +56,9 @@ class LaunchTopographyBackgroundTest {
     fun `tile plan covers the texture with square cores`() {
         val tiles = LaunchBackgroundTilePlan.tiles(textureWidth = 1920, textureHeight = 1080)
 
-        assertThat(tiles, hasSize(40))
-        assertThat(tiles.map(LaunchBackgroundTileCoordinate::column).toSet(), equalTo((0..7).toSet()))
-        assertThat(tiles.map(LaunchBackgroundTileCoordinate::row).toSet(), equalTo((0..4).toSet()))
+        assertThat(tiles, hasSize(18))
+        assertThat(tiles.map(LaunchBackgroundTileCoordinate::column).toSet(), equalTo((0..5).toSet()))
+        assertThat(tiles.map(LaunchBackgroundTileCoordinate::row).toSet(), equalTo((0..2).toSet()))
     }
 
     @Test
@@ -58,18 +67,24 @@ class LaunchTopographyBackgroundTest {
         val preview = coordinate.request(73L, LaunchBackgroundTileQuality.PREVIEW)
         val refinement = coordinate.request(73L, LaunchBackgroundTileQuality.REFINEMENT)
 
-        assertThat(preview.width to preview.height, equalTo(36 to 36))
+        assertThat(preview.width to preview.height, equalTo(54 to 54))
         assertThat(preview.worldUnitsPerPixel, equalTo(8.0))
-        assertThat(preview.worldOriginX to preview.worldOriginY, equalTo(216.0 to 456.0))
+        assertThat(preview.worldOriginX to preview.worldOriginY, equalTo(324.0 to 684.0))
         assertThat(preview.tracing.stepPixels, equalTo(1.0))
         assertThat(preview.tracing.seedGridStepPixels, equalTo(2))
         assertThat(preview.tracing.maximumPointsPerDirection, equalTo(2_500))
-        assertThat(refinement.width to refinement.height, equalTo(288 to 288))
+        assertThat(refinement.width to refinement.height, equalTo(432 to 432))
         assertThat(refinement.worldUnitsPerPixel, equalTo(1.0))
-        assertThat(refinement.worldOriginX to refinement.worldOriginY, equalTo(216.0 to 456.0))
+        assertThat(refinement.worldOriginX to refinement.worldOriginY, equalTo(324.0 to 684.0))
         assertThat(refinement.seed, equalTo(preview.seed))
         assertThat(refinement.noiseScale, equalTo(preview.noiseScale))
         assertThat(refinement.contourLevels, equalTo(preview.contourLevels))
+    }
+
+    @Test
+    fun `tile clips overlap within the bleed to prevent fractional scale seams`() {
+        assertThat(LaunchBackgroundTileCoordinate.TILE_CLIP_SIZE, equalTo(362))
+        assertThat(LaunchBackgroundTileCoordinate.TILE_CLIP_OVERLAP < LaunchBackgroundTileCoordinate.TILE_BLEED, equalTo(true))
     }
 
     @Test
@@ -80,9 +95,9 @@ class LaunchTopographyBackgroundTest {
             seed = 73L,
         )
 
-        assertThat(request.width to request.height, equalTo(8 to 5))
-        assertThat(request.worldOriginX to request.worldOriginY, equalTo(120.0 to 120.0))
-        assertThat(request.worldUnitsPerPixel, equalTo(240.0))
+        assertThat(request.width to request.height, equalTo(6 to 3))
+        assertThat(request.worldOriginX to request.worldOriginY, equalTo(180.0 to 180.0))
+        assertThat(request.worldUnitsPerPixel, equalTo(360.0))
         assertThat(request.contourLevels, equalTo(emptyList()))
     }
 
@@ -168,7 +183,7 @@ class LaunchTopographyBackgroundTest {
 
     @Test
     fun `seeded scheduler decisions are deterministic`() {
-        val coordinates = (0..7).map { column -> LaunchBackgroundTileCoordinate(column, 0) }
+        val coordinates = (0..5).map { column -> LaunchBackgroundTileCoordinate(column, 0) }
 
         fun drain(seed: Long): List<LaunchBackgroundRenderJob> {
             val random = Random(seed)
@@ -251,7 +266,7 @@ class LaunchTopographyBackgroundTest {
         val generator = LaunchBackgroundTileGenerator(
             parallelism = 1,
             render = { request ->
-                if (request.width == 36) error("broken preview")
+                if (request.width == 54) error("broken preview")
                 BufferedImage(request.width, request.height, BufferedImage.TYPE_INT_ARGB)
             },
             wait = {},
@@ -274,7 +289,7 @@ class LaunchTopographyBackgroundTest {
         val generator = LaunchBackgroundTileGenerator(
             parallelism = 1,
             render = { request ->
-                if (request.width == 288) error("broken refinement")
+                if (request.width == 432) error("broken refinement")
                 BufferedImage(request.width, request.height, BufferedImage.TYPE_INT_ARGB)
             },
             wait = {},
@@ -295,9 +310,9 @@ class LaunchTopographyBackgroundTest {
         val background = LaunchTopographyBackground.create(160, 160, 17L)
         val coordinate = LaunchBackgroundTileCoordinate(0, 0)
 
-        background.accept(update(coordinate, LaunchBackgroundTileQuality.PREVIEW, 36))
+        background.accept(update(coordinate, LaunchBackgroundTileQuality.PREVIEW, 54))
         assertThat(background.tiles().single().preview != null, equalTo(true))
-        background.accept(update(coordinate, LaunchBackgroundTileQuality.REFINEMENT, 288))
+        background.accept(update(coordinate, LaunchBackgroundTileQuality.REFINEMENT, 432))
 
         assertThat(background.available, equalTo(true))
         assertThat(background.tiles().single().preview, equalTo(null))
@@ -312,6 +327,16 @@ class LaunchTopographyBackgroundTest {
         assertThat(LaunchBackgroundTileReveal.refinementAlpha(0.0), equalTo(0.0))
         assertThat(LaunchBackgroundTileReveal.refinementAlpha(140.0), closeTo(0.5, 0.00001))
         assertThat(LaunchBackgroundTileReveal.refinementAlpha(280.0), equalTo(1.0))
+    }
+
+    @Test
+    fun `new background segment prevents stale tile publications`() {
+        val segments = LaunchBackgroundGenerationSegments()
+        val first = segments.current()
+        val second = segments.replace()
+
+        assertThat(segments.isCurrent(first), equalTo(false))
+        assertThat(segments.isCurrent(second), equalTo(true))
     }
 
     private fun update(

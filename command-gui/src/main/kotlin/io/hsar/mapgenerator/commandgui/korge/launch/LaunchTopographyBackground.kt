@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.contourgenerator.ContourTracingOptions
+import io.hsar.mapgenerator.contourgenerator.TerrainProfile
 import io.hsar.mapgenerator.contourgenerator.TopographyGenerator
 import io.hsar.mapgenerator.contourgenerator.TopographyRenderer
 import io.hsar.mapgenerator.contourgenerator.TopographyRequest
@@ -17,19 +18,6 @@ import java.awt.image.BufferedImage
 import java.util.PriorityQueue
 import java.util.Random
 import kotlin.collections.ArrayDeque
-import kotlin.collections.List
-import kotlin.collections.associate
-import kotlin.collections.emptyList
-import kotlin.collections.flatMap
-import kotlin.collections.getValue
-import kotlin.collections.isNotEmpty
-import kotlin.collections.linkedMapOf
-import kotlin.collections.map
-import kotlin.collections.plusAssign
-import kotlin.collections.set
-import kotlin.collections.sortedWith
-import kotlin.collections.toList
-import kotlin.collections.withIndex
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 
@@ -88,8 +76,10 @@ internal data class LaunchBackgroundTileCoordinate(
         }
 
     companion object {
-        const val TILE_SIZE = 240
-        const val TILE_BLEED = 24
+        const val TILE_SIZE = 360
+        const val TILE_BLEED = 36
+        const val TILE_CLIP_OVERLAP = 2
+        const val TILE_CLIP_SIZE = TILE_SIZE + TILE_CLIP_OVERLAP
         const val PADDED_TILE_SIZE = TILE_SIZE + TILE_BLEED * 2
         const val PREVIEW_DIVISOR = 8
         const val PREVIEW_PADDED_TILE_SIZE = PADDED_TILE_SIZE / PREVIEW_DIVISOR
@@ -373,6 +363,18 @@ internal class LaunchTopographyBackground private constructor(
     val textureWidth: Int,
     val textureHeight: Int,
 ) {
+    val biome: String
+        get() = TerrainProfile.SEEDED.resolve(seed).displayName()
+
+    val information: List<Pair<String, String>>
+        get() = listOf(
+            "Biome" to biome,
+            "Seed" to seed.toString(),
+            "Texture" to "${textureWidth} x $textureHeight",
+            "Noise scale" to NOISE_SCALE.toString(),
+            "Contour levels" to "${CONTOUR_LEVELS.size}",
+        )
+
     private val completedTiles = linkedMapOf<LaunchBackgroundTileCoordinate, LaunchBackgroundTileSnapshot>()
     val available: Boolean
         get() = completedTiles.isNotEmpty()
@@ -397,12 +399,19 @@ internal class LaunchTopographyBackground private constructor(
     fun tiles(): List<LaunchBackgroundTileSnapshot> = completedTiles.values.toList()
 
     companion object {
+        private const val NOISE_SCALE = 475.0
+        private val CONTOUR_LEVELS = (5..15).map { it * 0.05 }
+
         fun create(viewportWidth: Int, viewportHeight: Int, seed: Long): LaunchTopographyBackground =
             LaunchBackgroundLayout.sourceSize(viewportWidth, viewportHeight).let { (width, height) ->
                 LaunchTopographyBackground(seed, width, height)
             }
     }
 }
+
+private fun TerrainProfile.displayName(): String = name
+    .split('_')
+    .joinToString(" ") { word -> word.lowercase().replaceFirstChar(Char::uppercase) }
 
 internal object LaunchBackgroundTileReveal {
     const val PREVIEW_FADE_MILLISECONDS = 120.0
