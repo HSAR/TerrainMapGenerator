@@ -13,7 +13,6 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteStore
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
 import io.hsar.mapgenerator.image.Palette
-import korlibs.image.text.TextAlignment
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
@@ -178,45 +177,18 @@ internal class MapViewerNotesPanel(
     }
 
     private fun renderNoteRow(parent: Container, note: MapNoteSnapshot, width: Double, top: Double) {
-        val row = parent.container()
-        row.xy(0.0, top)
-        MapViewerUiBoxes.box(row, width, ROW_HEIGHT)
-        MapViewerTextViews.leftBox(
-            parent = row,
-            text = MapViewerTextViews.ellipsize(note.title.ifBlank { "Untitled Note" }, width - 86.0),
-            width = width - 86.0,
-            height = 28.0,
-            color = Palette.Colours.WHITE,
-        ) {
-            x = ROW_INSET
-            y = 5.0
-        }
-        MapViewerTextViews.leftBox(
-            parent = row,
-            text = MapViewerTextViews.ellipsize(note.body.lineSequence().firstOrNull().orEmpty(), width - 86.0, size = 18.0),
-            width = width - 86.0,
-            height = 22.0,
-            size = 18.0,
-            color = Palette.Colours.LIGHT,
-        ) {
-            x = ROW_INSET
-            y = 33.0
-        }
-        MapViewerTextViews.box(
-            parent = row,
-            text = note.referencedObjectIds.size.toString(),
-            width = 54.0,
+        MapViewerUniversalList.renderItem(
+            parent = parent,
+            item = MapViewerUniversalListItem(
+                title = note.title.ifBlank { "Untitled Note" },
+                subtitle = note.body.lineSequence().firstOrNull().orEmpty(),
+                trailingLabel = note.referencedObjectIds.size.toString(),
+            ),
+            width = width,
+            top = top,
             height = ROW_HEIGHT,
-            role = MapViewerFontRole.FLAVOUR,
-            size = 18.0,
-            color = Palette.Colours.LIGHT,
-            alignment = TextAlignment.MIDDLE_RIGHT,
-        ) {
-            x = width - 64.0
-        }
-        row.mouse {
-            onClick { openNote(note) }
-        }
+            onClick = { openNote(note) },
+        )
     }
 
     private fun openNote(note: MapNoteSnapshot, restored: MapViewerPersistedDialog? = null): Boolean {
@@ -276,6 +248,5 @@ internal class MapViewerNotesPanel(
         const val EMPTY_HEIGHT = 80.0
         const val ROW_HEIGHT = 62.0
         const val ROW_GAP = 10.0
-        const val ROW_INSET = 10.0
     }
 }

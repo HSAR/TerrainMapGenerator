@@ -28,14 +28,14 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerImageViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerScrollState
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerScrollbar
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSwatchViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputValidation
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputs
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTransientNotice
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitCreateDialog
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUniversalList
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUniversalListItem
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.commandgui.korge.ui.UiFrameStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
@@ -530,6 +530,14 @@ internal class MapViewerNewOperationView(
                 row.customProperties = updated.customProperties
                 render(layout.viewportWidth, layout.viewportHeight)
             },
+            onChanged = { updated ->
+                row.name = updated.name
+                row.bitmap = updated.bitmap
+                row.assetSource = updated.assetSource
+                row.affiliation = updated.affiliation
+                row.customProperties = updated.customProperties
+                render(layout.viewportWidth, layout.viewportHeight)
+            },
             onDismiss = {},
             onTransientNotice = transientNotice::show,
         )
@@ -609,49 +617,60 @@ internal class MapViewerNewOperationView(
     }
 
     private fun renderFocusedUnitSelector(parent: Container, rowWidth: Double) {
-        var top = 0.0
-        UNIT_AFFILIATION_GROUPS.forEach { group ->
-            val groupRows = unitRows.filter { it.affiliation == group.affiliation }
-            if (groupRows.size < 2) {
-                groupRows.forEach { row ->
-                    renderUnitRow(parent, row, top, rowWidth)
-                    top += unitRowHeight()
+        MapViewerUniversalList.renderUnitAffiliationGroups(
+            parent = parent,
+            width = rowWidth,
+            items = unitRows,
+            affiliationOf = { it.affiliation },
+            collapsedGroups = collapsedUnitAffiliationGroups,
+            rowHeight = unitRowHeight(),
+            rowGap = 0.0,
+            headerHeight = UNIT_GROUP_HEADER_HEIGHT,
+            headerGap = UNIT_GROUP_GAP,
+            renderRow = { row, top -> renderUnitRow(parent, row, top, rowWidth) },
+            onGroupsChanged = {
+                selectedUnitRowId?.let { selectedId ->
+                    if (unitRows.firstOrNull { it.id == selectedId }?.affiliation in collapsedUnitAffiliationGroups) {
+                        selectedUnitRowId = null
+                    }
                 }
-                return@forEach
-            }
-            val collapsed = group.affiliation in collapsedUnitAffiliationGroups
-            MapViewerCollapsiblePanel.header(
-                parent = parent,
-                width = rowWidth,
-                height = UNIT_GROUP_HEADER_HEIGHT,
-                label = group.label,
-                expanded = !collapsed,
-            ) {
-                if (!collapsed && unitRows.firstOrNull { it.id == selectedUnitRowId }?.affiliation == group.affiliation) {
-                    selectedUnitRowId = null
-                }
-                if (collapsed) collapsedUnitAffiliationGroups.remove(group.affiliation) else collapsedUnitAffiliationGroups.add(group.affiliation)
                 render(layout.viewportWidth, layout.viewportHeight)
-            }.xy(0.0, top)
-            top += UNIT_GROUP_HEADER_HEIGHT + UNIT_GROUP_GAP
-            if (!collapsed) {
-                groupRows.forEach { row ->
-                    renderUnitRow(parent, row, top, rowWidth)
-                    top += unitRowHeight()
-                }
-            }
-        }
+            },
+        )
     }
 
     private fun focusedUnitSelectorContentHeight(): Double =
-        UNIT_AFFILIATION_GROUPS.sumOf { group ->
-            val count = unitRows.count { it.affiliation == group.affiliation }
-            if (count < 2) count * unitRowHeight() else {
-                UNIT_GROUP_HEADER_HEIGHT + UNIT_GROUP_GAP + if (group.affiliation in collapsedUnitAffiliationGroups) 0.0 else count * unitRowHeight()
-            }
-        }
+        MapViewerUniversalList.unitAffiliationGroupsHeight(
+            items = unitRows,
+            affiliationOf = { it.affiliation },
+            collapsedGroups = collapsedUnitAffiliationGroups,
+            rowHeight = unitRowHeight(),
+            rowGap = 0.0,
+            headerHeight = UNIT_GROUP_HEADER_HEIGHT,
+            headerGap = UNIT_GROUP_GAP,
+        )
 
     private fun renderUnitRow(parent: Container, row: UnitRow, top: Double, rowWidth: Double) {
+        if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) {
+            MapViewerUniversalList.renderItem(
+                parent = parent,
+                item = MapViewerUniversalListItem(
+                    title = row.name,
+                    bitmap = row.bitmap,
+                    swatch = UnitAffiliationUi.swatchColor(row.affiliation),
+                    selected = selectedUnitRowId == row.id,
+                ),
+                width = rowWidth,
+                top = top,
+                onClick = {
+                    if (selectedUnitRowId != row.id) {
+                        selectedUnitRowId = row.id
+                        render(layout.viewportWidth, layout.viewportHeight)
+                    }
+                },
+            )
+            return
+        }
         val rowHeight = unitRowHeight()
         val rowContainer = parent.container()
         rowContainer.xy(0.0, top)
@@ -677,20 +696,6 @@ internal class MapViewerNewOperationView(
             left = PREVIEW_LEFT,
             top = (rowHeight - PREVIEW_HEIGHT) * 0.5,
         )
-
-        if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) {
-            val swatchHost = rowContainer.container()
-            swatchHost.xy(rowWidth - 34.0, (rowHeight - 24.0) * 0.5)
-            MapViewerSwatchViews.render(swatchHost, UnitAffiliationUi.swatchColor(row.affiliation), 24.0)
-            MapViewerTextViews.leftBox(
-                parent = rowContainer,
-                text = row.name,
-                width = rowWidth - PREVIEW_WIDTH - 18.0,
-                height = rowHeight,
-                color = MapViewerUiStateStyle.text(selected),
-            ).xy(PREVIEW_LEFT + PREVIEW_WIDTH + 10.0, 0.0)
-            return
-        }
 
         val handleLeft = rowWidth - HANDLE_WIDTH - 10.0
         val affiliationWidth = if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) 150.0 else 0.0
@@ -1505,11 +1510,6 @@ internal class MapViewerNewOperationView(
         var input: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerInputField? = null,
     ) : ReorderRow
 
-    private data class UnitAffiliationGroup(
-        val affiliation: UnitAffiliation?,
-        val label: String,
-    )
-
     private data class ReorderDragState(
         val rowId: Long,
         val startIndex: Int,
@@ -1580,13 +1580,6 @@ internal class MapViewerNewOperationView(
         const val DEFAULT_GRID_WIDTH = 1_000
         const val DEFAULT_GRID_HEIGHT = 1_000
         const val BRACKET_INSET = 5.0
-        val UNIT_AFFILIATION_GROUPS = listOf(
-            UnitAffiliationGroup(UnitAffiliation.Friend, "Friend"),
-            UnitAffiliationGroup(UnitAffiliation.Hostile, "Hostile"),
-            UnitAffiliationGroup(UnitAffiliation.Neutral, "Neutral"),
-            UnitAffiliationGroup(UnitAffiliation.Unknown, "Unknown"),
-            UnitAffiliationGroup(null, "Unaffiliated"),
-        )
         private fun <T> MutableList<T>.move(fromIndex: Int, toIndex: Int) {
             if (fromIndex == toIndex) return
             val item = removeAt(fromIndex)

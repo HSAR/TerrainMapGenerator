@@ -51,7 +51,7 @@ internal class MapViewerGraphicSidebar(
 
     fun blocksScreenPoint(point: Vector2D): Boolean =
         toggleBounds.contains(point) ||
-                (open && point.x in panel.x..(panel.x + PANEL_WIDTH) && point.y in panel.y..(panel.y + PANEL_HEIGHT + templates.size * (ROW_HEIGHT + 6.0)))
+                (open && point.x in panel.x..(panel.x + PANEL_WIDTH) && point.y in panel.y..(panel.y + PANEL_HEIGHT + templates.size * (MapViewerUniversalList.DEFAULT_ROW_HEIGHT + ROW_GAP)))
 
     fun restoreTemplates(snapshots: List<GraphicTemplateSnapshot>) {
         templates.clear()
@@ -119,12 +119,15 @@ internal class MapViewerGraphicSidebar(
         MapViewerTextViews.box(import, "New Graphic / Template", PANEL_WIDTH, ROW_HEIGHT, color = Palette.Colours.WHITE)
         import.mouse { this.onClick { importGraphic() } }
         templates.forEachIndexed { index, snapshot ->
-            val row = panel.container().xy(0.0, ROW_HEIGHT + 8.0 + index * (ROW_HEIGHT + 6.0))
-            MapViewerUiBoxes.box(row, PANEL_WIDTH, ROW_HEIGHT)
-            MapViewerTextViews.leftBox(row, snapshot.template.name, PANEL_WIDTH, ROW_HEIGHT, color = Palette.Colours.WHITE) { x = 8.0 }
-            row.mouse {
-                onDown { if (this.button == MouseButton.LEFT) beginDrag(snapshot) else if (this.button == MouseButton.RIGHT) openMenu(snapshot, currentPosGlobal) }
-            }
+            MapViewerUniversalList.renderItem(
+                parent = panel,
+                item = MapViewerUniversalListItem(title = snapshot.template.name, bitmap = snapshot.template.bitmap),
+                width = PANEL_WIDTH,
+                top = ROW_HEIGHT + 8.0 + index * (MapViewerUniversalList.DEFAULT_ROW_HEIGHT + ROW_GAP),
+                onDown = { button, point ->
+                    if (button == MouseButton.LEFT) beginDrag(snapshot) else if (button == MouseButton.RIGHT) openMenu(snapshot, point)
+                },
+            )
         }
     }
 
@@ -181,5 +184,6 @@ internal class MapViewerGraphicSidebar(
         const val PANEL_WIDTH = 320.0
         const val PANEL_HEIGHT = 80.0
         const val ROW_HEIGHT = 40.0
+        const val ROW_GAP = 8.0
     }
 }

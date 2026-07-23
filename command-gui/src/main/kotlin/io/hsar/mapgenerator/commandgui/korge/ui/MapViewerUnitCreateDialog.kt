@@ -37,6 +37,7 @@ internal class MapViewerUnitCreateDialog(
     private val dialogKey: Any = Any(),
     private val initialTemplate: MapViewerUnitTemplate? = null,
     private val onCreated: (MapViewerUnitTemplate) -> Unit,
+    private val onChanged: (MapViewerUnitTemplate) -> Unit = {},
     private val onDismiss: () -> Unit,
     private val onTransientNotice: (String) -> Unit = {},
 ) {
@@ -67,15 +68,18 @@ internal class MapViewerUnitCreateDialog(
     private val affiliationDropdown = MapViewerDropdownMenu(
         root = root,
         options = UnitAffiliationUi.options,
-        onSelected = { affiliation -> selectedAffiliation = affiliation },
+        onSelected = { affiliation ->
+            selectedAffiliation = affiliation
+            notifyChanged()
+        },
         labelForValue = UnitAffiliationUi::label,
         swatchForValue = UnitAffiliationUi::swatchColor,
     )
     private val customPropertiesEditor = MapViewerCustomPropertiesEditor(
         initialProperties = initialTemplate?.customProperties.orEmpty(),
         reservedKeys = UNIT_TYPE_FIELD_KEYS,
-        onRowsChanged = { dialogWindow?.refresh() },
-        onValidationChanged = { dialogWindow?.refresh() },
+        onRowsChanged = { notifyChanged(); dialogWindow?.refresh() },
+        onValidationChanged = { notifyChanged(); dialogWindow?.refresh() },
         tooltipRoot = root,
     )
 
@@ -176,6 +180,7 @@ internal class MapViewerUnitCreateDialog(
 
             selectedBitmap = bitmap
             selectedAssetSource = AssetSource.fromFile(file)
+            notifyChanged()
             dialogWindow?.refresh()
         }
 
@@ -193,6 +198,7 @@ internal class MapViewerUnitCreateDialog(
         nameInput?.controller?.onTextUpdated?.add {
             val wasValid = nameWasValid
             nameValue = nameInput?.text.orEmpty()
+            notifyChanged()
             nameWasValid = MapViewerTextInputValidation.isPresent(nameValue)
             if (nameWasValid != wasValid) {
                 pendingNameFocus = true
@@ -309,6 +315,23 @@ internal class MapViewerUnitCreateDialog(
             assetSource = selectedAssetSource,
             affiliation = selectedAffiliation,
             customProperties = sanitizedProperties,
+        )
+    }
+
+    private fun notifyChanged() {
+        createTemplateWithoutValidation()?.let(onChanged)
+    }
+
+    private fun createTemplateWithoutValidation(): MapViewerUnitTemplate? {
+        val bitmap = selectedBitmap ?: return null
+        if (nameValue.isBlank() || !customPropertiesEditor.isValid) return null
+        return MapViewerUnitTemplate(
+            id = initialTemplate?.id ?: UnitTemplateId(UUID.randomUUID()),
+            name = nameValue.trim(),
+            bitmap = bitmap,
+            assetSource = selectedAssetSource,
+            affiliation = selectedAffiliation,
+            customProperties = MoveLimit.sanitize(templateProperties()),
         )
     }
 

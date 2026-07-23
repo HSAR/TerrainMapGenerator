@@ -5,17 +5,16 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.ContextMenuManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapContextMenuTarget
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectMenuAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
-import korlibs.image.color.RGBA
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
 import korlibs.korge.view.onStageResized
-import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Vector2D
 
@@ -40,6 +39,7 @@ internal class MapViewerSidebar(
     private val unitTemplates = initialUnitTemplates.mapIndexed { index, template ->
         UnitTemplateRow(template.id, template)
     }.toMutableList()
+    private val collapsedAffiliationGroups = mutableSetOf<UnitAffiliation?>()
     private var collapsed = false
     private var dragState: DragState? = null
     private var lastDragPointer: Vector2D? = null
@@ -214,55 +214,39 @@ internal class MapViewerSidebar(
 
         val unitList = parent.container()
         unitList.xy(0.0, HEADER_HEIGHT + HEADER_GAP)
-        unitTemplates.forEachIndexed { index, row ->
-            addUnitSource(unitList, row, index, itemWidth)
-        }
+        renderGroupedUnitSources(unitList, itemWidth)
     }
 
-    private fun addUnitSource(parent: Container, row: UnitTemplateRow, index: Int, itemWidth: Double) {
-        val itemTop = index * (UNIT_ITEM_HEIGHT + UNIT_ITEM_GAP)
-        val iconSlotWidth = 40.0
-        val iconInset = 2.0
-        val item = parent.container()
+    private fun renderGroupedUnitSources(parent: Container, itemWidth: Double) {
+        MapViewerUniversalList.renderUnitAffiliationGroups(
+            parent = parent,
+            width = itemWidth,
+            items = unitTemplates,
+            affiliationOf = { it.template.affiliation },
+            collapsedGroups = collapsedAffiliationGroups,
+            rowHeight = MapViewerUniversalList.DEFAULT_ROW_HEIGHT,
+            rowGap = UNIT_ITEM_GAP,
+            headerHeight = GROUP_HEADER_HEIGHT,
+            headerGap = GROUP_GAP,
+            renderRow = { row, top -> addUnitSource(parent, row, top, itemWidth) },
+            onGroupsChanged = { relayout(layoutViewportWidth(), layoutViewportHeight()) },
+        )
+    }
 
-        item.xy(0.0, itemTop.toDouble())
-        val hitbox = item.solidRect(itemWidth, UNIT_ITEM_HEIGHT, RGBA(0, 0, 0, 0))
-        hitbox.mouse {
-            onDown {
-                if (button == MouseButton.LEFT) {
-                    beginDrag(row.template)
-                } else if (button == MouseButton.RIGHT) {
-                    openContextMenu(row, currentPosGlobal)
-                }
-            }
-        }
-
-        MapViewerUiBoxes.box(item, itemWidth, UNIT_ITEM_HEIGHT)
-
-        val iconSize = UNIT_ITEM_HEIGHT - 10.0
-        val iconFrame = item.container()
-        iconFrame.xy(iconInset, (UNIT_ITEM_HEIGHT - iconSize) * 0.5)
-        iconFrame.solidRect(iconSlotWidth, iconSize, RGBA(0, 0, 0, 0))
-        val fittedIcon = MapViewerIconFit.inside(row.template.bitmap, iconSlotWidth, iconSize)
-        MapViewerImageViews.icon(iconFrame, row.template.bitmap) {
-            scale = fittedIcon.scale
-            x = fittedIcon.x
-            y = fittedIcon.y
-        }
-        MapViewerTextViews.leftBox(
-            parent = item,
-            text = row.template.name,
-            width = itemWidth - (iconInset + iconSlotWidth + 4.0 + iconSlotWidth),
-            height = UNIT_ITEM_HEIGHT,
-            color = Palette.Colours.WHITE,
-        ) {
-            x = iconInset + iconSlotWidth + 4.0
-        }
-
-        val affiliationFrame = item.container()
-        affiliationFrame.xy(itemWidth - iconSlotWidth + (iconSlotWidth - iconSize) * 0.5, (UNIT_ITEM_HEIGHT - iconSize) * 0.5)
-        affiliationFrame.solidRect(iconSlotWidth, iconSize, RGBA(0, 0, 0, 0))
-        MapViewerSwatchViews.render(affiliationFrame, UnitAffiliationUi.swatchColor(row.template.affiliation), iconSize)
+    private fun addUnitSource(parent: Container, row: UnitTemplateRow, top: Double, itemWidth: Double) {
+        MapViewerUniversalList.renderItem(
+            parent = parent,
+            item = MapViewerUniversalListItem(
+                title = row.template.name,
+                bitmap = row.template.bitmap,
+                swatch = UnitAffiliationUi.swatchColor(row.template.affiliation),
+            ),
+            width = itemWidth,
+            top = top,
+            onDown = { button, point ->
+                if (button == MouseButton.LEFT) beginDrag(row.template) else if (button == MouseButton.RIGHT) openContextMenu(row, point)
+            },
+        )
     }
 
     private fun buildToggleButton(parent: Container, width: Double, height: Double, label: String, onClick: () -> Unit = {}) {
@@ -410,11 +394,15 @@ internal class MapViewerSidebar(
         HEADER_HEIGHT + HEADER_GAP + unitListHeight()
 
     private fun unitListHeight(): Double =
-        if (unitTemplates.isEmpty()) {
-            0.0
-        } else {
-            unitTemplates.size * UNIT_ITEM_HEIGHT + (unitTemplates.size - 1) * UNIT_ITEM_GAP
-        }
+        MapViewerUniversalList.unitAffiliationGroupsHeight(
+            items = unitTemplates,
+            affiliationOf = { it.template.affiliation },
+            collapsedGroups = collapsedAffiliationGroups,
+            rowHeight = MapViewerUniversalList.DEFAULT_ROW_HEIGHT,
+            rowGap = UNIT_ITEM_GAP,
+            headerHeight = GROUP_HEADER_HEIGHT,
+            headerGap = GROUP_GAP,
+        )
 
     private fun preferredDialogHeight(): Double =
         MapViewerSidebarLayoutBuilder.PANEL_MIN_HEIGHT.coerceAtLeast(contentHeight(MapViewerSidebarLayoutBuilder.PANEL_WIDTH))
@@ -436,8 +424,9 @@ internal class MapViewerSidebar(
         const val CONTENT_MINIMUM_WIDTH = 280.0
         const val HEADER_HEIGHT = 40.0
         const val HEADER_GAP = 12.0
-        const val UNIT_ITEM_HEIGHT = 40.0
         const val UNIT_ITEM_GAP = 10.0
+        const val GROUP_HEADER_HEIGHT = 36.0
+        const val GROUP_GAP = 8.0
         const val PREVIEW_WIDTH = 120.0
         const val PREVIEW_HEIGHT = 40.0
         const val PREVIEW_OFFSET_X = 14.0
