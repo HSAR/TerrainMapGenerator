@@ -114,6 +114,41 @@ internal object MapViewerUniversalList {
             }
         }.first
 
+    fun <T> visibleUnitAffiliationRowPositions(
+        items: List<T>,
+        affiliationOf: (T) -> UnitAffiliation?,
+        collapsedGroups: Set<UnitAffiliation?>,
+        rowHeight: Double,
+        rowGap: Double,
+        headerHeight: Double,
+        headerGap: Double,
+        ungroupedSectionGap: Double = DEFAULT_UNGROUPED_SECTION_GAP,
+    ): List<Pair<T, Double>> {
+        var top = 0.0
+        var previousWasGroupedSection = false
+        val positions = mutableListOf<Pair<T, Double>>()
+        unitAffiliationGroups.forEach { group ->
+            val groupItems = items.filter { affiliationOf(it) == group.affiliation }
+            if (groupItems.isEmpty()) return@forEach
+            if (groupItems.size < 2) {
+                if (previousWasGroupedSection) top += ungroupedSectionGap
+                positions += groupItems.single() to top
+                top += rowHeight + rowGap
+                previousWasGroupedSection = false
+                return@forEach
+            }
+            top += headerHeight + headerGap
+            if (group.affiliation !in collapsedGroups) {
+                groupItems.forEach { item ->
+                    positions += item to top
+                    top += rowHeight + rowGap
+                }
+            }
+            previousWasGroupedSection = true
+        }
+        return positions
+    }
+
     fun <S> collapseStateDraft(
         collapsedSections: Set<S>,
         sectionKey: (S) -> String,

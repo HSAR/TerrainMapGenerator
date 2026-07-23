@@ -54,6 +54,7 @@ import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import korlibs.image.text.TextAlignment
 import korlibs.korge.annotations.KorgeExperimental
+import korlibs.korge.input.cursor
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.addUpdater
@@ -64,6 +65,7 @@ import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Size2D
 import korlibs.math.geom.Vector2D
+import korlibs.render.GameWindow
 import korlibs.render.awt.AwtGameWindow
 import java.awt.Component
 import java.awt.EventQueue
@@ -207,6 +209,7 @@ internal class MapViewerNewOperationView(
 
     fun close() {
         closed = true
+        clearReorderDrag()
         nativeDropTargetComponent?.dropTarget = null
         referenceSystemDropdown.close()
         transientNotice.dispose()
@@ -441,13 +444,13 @@ internal class MapViewerNewOperationView(
             MapViewerLaunchUi.button(
                 panel,
                 actionWidth,
-                36.0,
+                ACTION_BUTTON_HEIGHT,
                 if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) "Add Unit Type" else "Add",
             ) { addUnitType() }.xy(CONTENT_PADDING, actionTop)
             MapViewerLaunchUi.button(
                 panel,
                 actionWidth,
-                36.0,
+                ACTION_BUTTON_HEIGHT,
                 if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) "Import Unit Types" else "Import",
                 disabled = unitTypesImportInProgress,
             ) { importUnitTypesFromSave() }.xy(CONTENT_PADDING + actionWidth + FIELD_GAP, actionTop)
@@ -536,7 +539,7 @@ internal class MapViewerNewOperationView(
                 row.assetSource = updated.assetSource
                 row.affiliation = updated.affiliation
                 row.customProperties = updated.customProperties
-                render(layout.viewportWidth, layout.viewportHeight)
+                refreshFocusedUnitSelector()
             },
             onDismiss = {},
             onTransientNotice = transientNotice::show,
@@ -578,7 +581,7 @@ internal class MapViewerNewOperationView(
             parent = parent,
             width = width,
             height = UNIT_DROP_HEADER_HEIGHT,
-            label = "DROP UNIT ICONS HERE",
+            label = "Unit Icon Import",
             expanded = !unitIconDropTargetCollapsed,
         ) {
             unitIconDropTargetCollapsed = !unitIconDropTargetCollapsed
@@ -634,7 +637,7 @@ internal class MapViewerNewOperationView(
                         selectedUnitRowId = null
                     }
                 }
-                render(layout.viewportWidth, layout.viewportHeight)
+                refreshFocusedUnitSelector()
             },
         )
     }
@@ -666,6 +669,11 @@ internal class MapViewerNewOperationView(
                     if (selectedUnitRowId != row.id) {
                         selectedUnitRowId = row.id
                         render(layout.viewportWidth, layout.viewportHeight)
+                    }
+                },
+                onDown = { button, _ ->
+                    if (button == MouseButton.LEFT) {
+                        beginReorderDrag(row.id, unitRows.indexOf(row))
                     }
                 },
             )
@@ -749,7 +757,7 @@ internal class MapViewerNewOperationView(
         handle.mouse {
             onDown {
                 if (button == MouseButton.LEFT) {
-                    dragState = ReorderDragState(rowId = rowId, startIndex = index)
+                    beginReorderDrag(rowId, index)
                 }
             }
         }
@@ -1101,24 +1109,77 @@ internal class MapViewerNewOperationView(
     private fun updateDrag(mousePos: Vector2D?, leftHeld: Boolean) {
         val drag = dragState ?: return
         if (!leftHeld || mousePos == null) {
-            dragState = null
+            clearReorderDrag()
             return
         }
 
-        val currentIndex = unitRows.indexOfFirst { it.id == drag.rowId }
-        if (currentIndex < 0) {
-            dragState = null
+        val source = unitRows.firstOrNull { it.id == drag.rowId }
+        if (source == null) {
+            clearReorderDrag()
             return
         }
 
         val listTop = layout.unitsPanelBounds.top + unitListTop()
         val relativeY = mousePos.y - listTop + unitScrollState.offset
-        val targetIndex = (relativeY / unitRowHeight()).toInt().coerceIn(0, unitRows.lastIndex)
-        if (targetIndex != currentIndex) {
-            unitRows.move(currentIndex, targetIndex)
-            dragState = drag.copy(startIndex = targetIndex)
-            render(layout.viewportWidth, layout.viewportHeight)
+        val sourceCategoryRows = if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) {
+            MapViewerUniversalList.visibleUnitAffiliationRowPositions(
+                items = unitRows,
+                affiliationOf = { it.affiliation },
+                collapsedGroups = collapsedUnitAffiliationGroups,
+                rowHeight = unitRowHeight(),
+                rowGap = 0.0,
+                headerHeight = UNIT_GROUP_HEADER_HEIGHT,
+                headerGap = UNIT_GROUP_GAP,
+            )
+                .filter { (row, _) -> row.affiliation == source.affiliation }
+        } else {
+            unitRows
+                .mapIndexed { index, row -> row to index * unitRowHeight() }
+                .filter { (row, _) -> row.affiliation == source.affiliation }
         }
+        val sourcePosition = sourceCategoryRows.indexOfFirst { (row, _) -> row.id == source.id }
+        val sourceTop = sourceCategoryRows.getOrNull(sourcePosition)?.second
+        val targetPosition = if (sourceTop != null && relativeY in sourceTop..(sourceTop + unitRowHeight())) {
+            sourcePosition
+        } else {
+            sourceCategoryRows
+                .indexOfFirst { (_, top) -> relativeY < top + unitRowHeight() * 0.5 }
+                .let { if (it < 0) sourceCategoryRows.size else it }
+        }
+        val reordered = MapViewerUnitTypeOrdering.moveWithinCategory(
+            items = unitRows,
+            source = source,
+            categoryOf = UnitRow::affiliation,
+            targetPosition = targetPosition,
+        )
+        if (reordered != unitRows) {
+            unitRows.clear()
+            unitRows += reordered
+            dragState = drag.copy(startIndex = unitRows.indexOfFirst { it.id == source.id })
+            if (panelFocus == MapViewerNewOperationPanelFocus.UNIT_TYPES) {
+                refreshFocusedUnitSelector()
+            } else {
+                render(layout.viewportWidth, layout.viewportHeight)
+            }
+        }
+    }
+
+    private fun beginReorderDrag(rowId: Long, startIndex: Int) {
+        dragState = ReorderDragState(rowId = rowId, startIndex = startIndex)
+        layer.cursor = GameWindow.Cursor.MOVE
+    }
+
+    private fun clearReorderDrag() {
+        dragState = null
+        layer.cursor = GameWindow.Cursor.DEFAULT
+    }
+
+    private fun refreshFocusedUnitSelector() {
+        val content = unitScrollContent ?: return
+        content.removeChildren()
+        renderFocusedUnitSelector(content, unitListWidth)
+        unitScrollState = unitScrollState.withContent(contentHeight = focusedUnitSelectorContentHeight())
+        updateUnitScrollOffset(unitScrollState.offset)
     }
 
     private fun installNativeFileDropTarget() {
@@ -1346,7 +1407,7 @@ internal class MapViewerNewOperationView(
         ROW_HEIGHT
 
     private fun unitListTop(): Double =
-        unitActionTop() + 60.0
+        unitActionTop() + if (unitIconDropTargetCollapsed) 0.0 else ACTION_BUTTON_HEIGHT + FIELD_GAP
 
     private fun unitActionTop(): Double =
         if (unitIconDropTargetCollapsed) DROP_TARGET_TOP + UNIT_DROP_HEADER_HEIGHT + FIELD_GAP else DROP_TARGET_TOP + UNIT_DROP_HEADER_HEIGHT + FIELD_GAP + DROP_TARGET_HEIGHT + FIELD_GAP
@@ -1562,12 +1623,12 @@ internal class MapViewerNewOperationView(
         const val CONTENT_PADDING = 24.0
         const val DROP_TARGET_TOP = 72.0
         const val DROP_TARGET_HEIGHT = 64.0
-        const val LIST_TOP = 208.0
         const val ROW_HEIGHT = 44.0
         const val IMPORT_BATCH_SIZE = 8
         const val UNIT_GROUP_HEADER_HEIGHT = 36.0
         const val UNIT_GROUP_GAP = 8.0
         const val UNIT_DROP_HEADER_HEIGHT = 36.0
+        const val ACTION_BUTTON_HEIGHT = 36.0
         const val PREVIEW_WIDTH = 64.0
         const val PREVIEW_HEIGHT = 36.0
         const val PREVIEW_LEFT = 0.0
@@ -1580,10 +1641,28 @@ internal class MapViewerNewOperationView(
         const val DEFAULT_GRID_WIDTH = 1_000
         const val DEFAULT_GRID_HEIGHT = 1_000
         const val BRACKET_INSET = 5.0
-        private fun <T> MutableList<T>.move(fromIndex: Int, toIndex: Int) {
-            if (fromIndex == toIndex) return
-            val item = removeAt(fromIndex)
-            add(if (toIndex > fromIndex) toIndex - 1 else toIndex, item)
+    }
+}
+
+internal object MapViewerUnitTypeOrdering {
+    fun <T, C> moveWithinCategory(
+        items: List<T>,
+        source: T,
+        categoryOf: (T) -> C,
+        targetPosition: Int,
+    ): List<T> {
+        val sourceIndex = items.indexOf(source)
+        if (sourceIndex < 0) return items
+        val category = categoryOf(source)
+        val categoryIndices = items.indices.filter { categoryOf(items[it]) == category }
+        val sourcePosition = categoryIndices.indexOf(sourceIndex)
+        if (sourcePosition < 0) return items
+        val categoryItems = categoryIndices.map(items::get).toMutableList()
+        val sourceItem = categoryItems.removeAt(sourcePosition)
+        categoryItems.add(targetPosition.coerceIn(0, categoryItems.size), sourceItem)
+        if (categoryItems == categoryIndices.map(items::get)) return items
+        return items.toMutableList().also { result ->
+            categoryIndices.forEachIndexed { index, itemIndex -> result[itemIndex] = categoryItems[index] }
         }
     }
 }

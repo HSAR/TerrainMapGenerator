@@ -289,7 +289,7 @@ internal class MapViewerUnitCreateDialog(
     }
 
     private fun createTemplate(): MapViewerUnitTemplate? {
-        val name = nameInput?.text?.trim().orEmpty()
+        val name = MapViewerUnitTypeName.forConfirmation(nameInput?.text.orEmpty())
         val bitmap = selectedBitmap
         when {
             name.isBlank() -> {
@@ -327,7 +327,7 @@ internal class MapViewerUnitCreateDialog(
         if (nameValue.isBlank() || !customPropertiesEditor.isValid) return null
         return MapViewerUnitTemplate(
             id = initialTemplate?.id ?: UnitTemplateId(UUID.randomUUID()),
-            name = nameValue.trim(),
+            name = MapViewerUnitTypeName.forLiveUpdate(nameValue),
             bitmap = bitmap,
             assetSource = selectedAssetSource,
             affiliation = selectedAffiliation,
@@ -564,6 +564,12 @@ internal class MapViewerUnitCreateDialog(
         val SHIP_PROPERTY_KEYS = setOf(OlympiadDawnShip.DEFINITION_KEY, OlympiadDawnShip.DEFAULT_DAMAGE_KEY)
         val UNIT_TYPE_FIELD_KEYS = setOf("name", "assetId", "affiliation") + SHIP_PROPERTY_KEYS
     }
+}
+
+internal object MapViewerUnitTypeName {
+    fun forLiveUpdate(value: String): String = value
+
+    fun forConfirmation(value: String): String = value.trim()
 }
 
 private data class UnitTypeDialogLayout(
