@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.view.Container
 import korlibs.korge.view.Text
@@ -10,12 +11,32 @@ import org.junit.jupiter.api.Test
 
 class MapViewerDialogWindowTest {
     @Test
+    fun `viewer controls sit to the left of the close button`() {
+        val layout = MapViewerDialogLayoutBuilder.build(
+            bounds = MapViewerDialogBounds(left = 0.0, top = 0.0, width = 400.0, height = 300.0),
+            showWindowControls = true,
+        )
+
+        assertThat(layout.minimizeButton.right, equalTo(layout.pinButton.left))
+        assertThat(layout.pinButton.right, equalTo(layout.closeButton.left))
+        assertThat(layout.closeButton.right, equalTo(layout.titleBar.right))
+        assertThat(
+            MapViewerDialogChrome.titleTextWidth(layout),
+            equalTo(
+                layout.titleBar.width - layout.closeButton.width * 3.0 -
+                        MapViewerDialogChrome.TITLE_TEXT_RIGHT_GAP - MapViewerDialogChrome.TITLE_TEXT_LEFT,
+            ),
+        )
+    }
+
+    @Test
     fun `close button is title height and flush with the title bar right edge`() {
         val layout = MapViewerDialogLayoutBuilder.build(
             bounds = MapViewerDialogBounds(left = 0.0, top = 0.0, width = 400.0, height = 300.0),
         )
 
         assertThat(layout.closeButton.width, equalTo(layout.closeButton.height))
+        assertThat(layout.showWindowControls, equalTo(false))
         assertThat(layout.closeButton.height, equalTo(layout.titleBar.height + MapViewerDialogLayoutBuilder.BORDER_INSET * 2.0))
         assertThat(layout.closeButton.top, equalTo(layout.titleBar.top - MapViewerDialogLayoutBuilder.BORDER_INSET))
         assertThat(
@@ -231,6 +252,83 @@ class MapViewerDialogWindowTest {
     }
 
     @Test
+    fun `minimized dialogs dock across the top and restore their expanded bounds`() {
+        val viewport = CameraViewport(500.0, 500.0, 1.0, 700, 600, 1000, 1000)
+        val manager = MapViewerDialogManager { viewport }
+        val windows = (1..3).map { index ->
+            MapViewerDialogWindow(
+                root = Container(),
+                title = "Test $index",
+                persistence = MapViewerDialogPersistence("test-$index"),
+                preferredWidth = 300.0,
+                preferredHeight = 300.0,
+                contentHeight = { 0.0 },
+                onClose = {},
+                renderContent = { _, _ -> },
+                dialogManager = manager,
+            ).also { it.show(700, 600) }
+        }
+        val original = windows.first().currentBounds
+
+        windows.forEach(MapViewerDialogWindow::minimize)
+
+        assertThat(windows[0].currentDisplayBounds?.left, equalTo(16.0))
+        assertThat(windows[1].currentDisplayBounds?.left, equalTo(324.0))
+        assertThat(windows[2].currentDisplayBounds?.left, equalTo(16.0))
+        assertThat(windows[2].currentDisplayBounds?.top, equalTo(66.0))
+        assertThat(windows.all { it.isMinimized }, equalTo(true))
+        assertThat(windows.first().blocksScreenPoint(Vector2D(20.0, 20.0)), equalTo(true))
+        assertThat(windows.first().blocksScreenPoint(Vector2D(100.0, 100.0)), equalTo(false))
+
+        windows.first().restore()
+
+        assertThat(windows.first().currentBounds, equalTo(original))
+        assertThat(windows.first().isMinimized, equalTo(false))
+        assertThat(windows[1].currentDisplayBounds?.left, equalTo(16.0))
+    }
+
+    @Test
+    fun `pinned dialog follows its top right map anchor without rerendering content`() {
+        var viewport = CameraViewport(500.0, 500.0, 1.0, 800, 600, 2000, 2000)
+        val manager = MapViewerDialogManager { viewport }
+        var renderCount = 0
+        val window = MapViewerDialogWindow(
+            root = Container(),
+            title = "Pinned",
+            persistence = MapViewerDialogPersistence("test"),
+            preferredWidth = 400.0,
+            preferredHeight = 300.0,
+            contentHeight = { 0.0 },
+            onClose = {},
+            renderContent = { _, _ -> renderCount++ },
+            dialogManager = manager,
+        )
+        window.show(800, 600)
+        window.togglePinned()
+        val renderCountAfterPinning = renderCount
+
+        viewport = viewport.copy(centerX = 600.0)
+        window.refreshPinnedPositionIfRequired()
+
+        assertThat(window.isPinned, equalTo(true))
+        assertThat(window.currentDisplayBounds, equalTo(MapViewerDialogBounds(100.0, 150.0, 400.0, 300.0)))
+        assertThat(renderCount, equalTo(renderCountAfterPinning))
+
+        window.minimize()
+        viewport = viewport.copy(centerY = 600.0)
+        window.refreshPinnedPositionIfRequired()
+
+        assertThat(window.currentDisplayBounds, equalTo(MapViewerDialogBounds(100.0, 50.0, 400.0, 42.0)))
+        assertThat(renderCount, equalTo(renderCountAfterPinning))
+
+        viewport = viewport.copy(centerX = 1500.0)
+        window.refreshPinnedPositionIfRequired()
+
+        assertThat(window.currentDisplayBounds?.right, equalTo(-400.0))
+        assertThat(renderCount, equalTo(renderCountAfterPinning))
+    }
+
+    @Test
     fun `refreshing a dialog title does not rebuild its content tree`() {
         val root = Container()
         var title = "Edit Unit - A"
@@ -279,6 +377,13 @@ class MapViewerDialogWindowTest {
             equalTo(tabWidth),
         )
         assertThat(tabWidth, equalTo(expectedTabWidth))
+        assertThat(
+            MapViewerDialogTitleTabLayoutBuilder.minimumShellWidth(
+                listOf("Turns", "Much Longer Settings"),
+                showWindowControls = true,
+            ),
+            equalTo(minimumWidth + MapViewerDialogLayoutBuilder.CLOSE_BUTTON_SIZE * 2.0),
+        )
     }
 
     @Test

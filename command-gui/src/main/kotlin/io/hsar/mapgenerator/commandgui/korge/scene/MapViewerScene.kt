@@ -532,6 +532,7 @@ internal class MapViewerScene(
                                             dialogs = dialogManager.persistedDialogs() + listOfNotNull(
                                                 sidebar.persistedDialog(),
                                                 graphicSidebar.persistedDialog(),
+                                                ledgerPanel?.persistedDialog(),
                                                 notesPanel?.persistedDialog(),
                                             ),
                                         ),
@@ -708,7 +709,7 @@ internal class MapViewerScene(
 
                         contextMenuManager = ContextMenuManager(sceneLayers.ui)
                         val deferredContextMenuActions = ContextMenuDeferredActionRunner(sceneLayers.ui)
-                        dialogManager = MapViewerDialogManager()
+                        dialogManager = MapViewerDialogManager { currentViewport }
 
                         unitManager = MapPlacedUnitManager(
                             root = sceneLayers.ui,
@@ -955,6 +956,7 @@ internal class MapViewerScene(
                         )
                         graphicSidebar = MapViewerGraphicSidebar(
                             root = sceneLayers.ui,
+                            dialogManager = dialogManager,
                             contextMenuManager = contextMenuManager,
                             onGraphicDropped = { template, screenPoint ->
                                 unitManager.resolvePlacement(screenPoint)?.let { coordinate ->
@@ -1073,6 +1075,7 @@ internal class MapViewerScene(
                             root = sceneLayers.ui,
                             viewportWidth = viewport.width,
                             viewportHeight = viewport.height,
+                            dialogManager = dialogManager,
                             canUndo = { actionHistory.canUndo },
                             canRedo = { actionHistory.canRedo },
                             turnPanelState = { actionHistory.turnPanelState(turnMode) },
@@ -1234,6 +1237,7 @@ internal class MapViewerScene(
                                 .forEach { dialog -> notesPanel?.restoreNote(dialog) }
                             restoredUiState.dialogs.firstOrNull { it.type == "unit-types" }?.let(sidebar::restoreDialog)
                             restoredUiState.dialogs.firstOrNull { it.type == "graphics" }?.let(graphicSidebar::restoreDialog)
+                            restoredUiState.dialogs.firstOrNull { it.type == "ledger" }?.let { dialog -> ledgerPanel?.restoreDialog(dialog) }
                             restoredUiState.dialogs.firstOrNull { it.type == "notes" }?.let { dialog -> notesPanel?.restoreDialog(dialog) }
                             restoredUiState.dialogs
                                 .filter { it.type == "sitrep" }

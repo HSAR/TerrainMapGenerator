@@ -99,6 +99,7 @@ internal class MapViewerNoteDialog(
                 },
             ),
             mode = MapViewerDialogMode.FLOATING,
+            dialogManager = dialogManager,
         )
         dialogManager.register(
             owner = this,

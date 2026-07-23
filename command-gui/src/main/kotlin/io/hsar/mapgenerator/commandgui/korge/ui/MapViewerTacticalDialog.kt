@@ -23,7 +23,7 @@ internal class MapViewerTacticalDialog(
     private val dialogName: String = "Tactical",
     private val fireActionLabel: String = "Fire",
     private val onDismiss: () -> Unit = {},
-    private val restoredBounds: MapViewerDialogBounds? = null,
+    private val restored: MapViewerPersistedDialog? = null,
     private val persistenceTargetId: String,
     private val focusTargetBoundsProvider: () -> List<ScreenBounds> = { emptyList() },
     private val onSolutionSelected: (MapPlacedObjectId?) -> Unit = {},
@@ -72,9 +72,10 @@ internal class MapViewerTacticalDialog(
             persistence = MapViewerDialogPersistence(
                 type = "tactical",
                 targetId = persistenceTargetId,
-                restored = restoredBounds?.let { bounds -> MapViewerPersistedDialog("tactical", persistenceTargetId, bounds) },
+                restored = restored,
             ),
             mode = MapViewerDialogMode.FLOATING,
+            dialogManager = dialogManager,
         )
         dialogManager.register(
             owner = this,

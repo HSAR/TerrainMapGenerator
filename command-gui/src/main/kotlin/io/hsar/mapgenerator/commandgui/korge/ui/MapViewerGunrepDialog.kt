@@ -66,6 +66,7 @@ internal class MapViewerGunrepDialog(
             },
             persistence = MapViewerDialogPersistence(type = "gunrep"),
             mode = MapViewerDialogMode.FLOATING,
+            dialogManager = dialogManager,
         )
         dialogManager.register(
             owner = this,

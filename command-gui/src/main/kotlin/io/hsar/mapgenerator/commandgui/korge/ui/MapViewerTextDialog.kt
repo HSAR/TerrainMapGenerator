@@ -47,6 +47,7 @@ internal class MapViewerTextDialog(
             onClose = ::close,
             renderContent = ::renderContent,
             mode = MapViewerDialogMode.FLOATING,
+            dialogManager = dialogManager,
         )
         dialogManager.register(
             owner = this,

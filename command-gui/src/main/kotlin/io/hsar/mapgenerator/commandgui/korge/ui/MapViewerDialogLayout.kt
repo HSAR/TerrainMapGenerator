@@ -32,8 +32,11 @@ internal data class MapViewerDialogBounds(
 
 internal data class MapViewerDialogLayout(
     val bounds: MapViewerDialogBounds,
+    val showWindowControls: Boolean,
     val titleBar: ScreenBounds,
     val body: ScreenBounds,
+    val minimizeButton: ScreenBounds,
+    val pinButton: ScreenBounds,
     val closeButton: ScreenBounds,
     val contentViewport: ScreenBounds,
     val scrollbar: ScreenBounds,
@@ -118,15 +121,21 @@ internal object MapViewerDialogLayoutBuilder {
             MapViewerDialogActions.minimumWidth(actionButtonCount),
         ) + (CONTENT_PADDING * 2.0) + MapViewerScrollbar.WIDTH + SCROLLBAR_GAP
 
-    fun build(bounds: MapViewerDialogBounds, actionButtonCount: Int = 0): MapViewerDialogLayout {
+    fun build(
+        bounds: MapViewerDialogBounds,
+        actionButtonCount: Int = 0,
+        showWindowControls: Boolean = false,
+    ): MapViewerDialogLayout {
         val footerLayout = MapViewerDialogActions.footerLayout(bounds.width, actionButtonCount)
         val footerHeight = MapViewerDialogActions.footerHeight(actionButtonCount, footerLayout)
         val contentTop = BORDER_INSET + TITLE_BAR_HEIGHT + FOOTER_TOP_GAP
         val contentLeft = CONTENT_PADDING
         val contentWidth = contentViewportWidth(bounds.width)
         val contentHeight = bounds.height - contentTop - CONTENT_PADDING - footerHeight
+        val closeButtonLeft = (bounds.width - BORDER_INSET - CLOSE_BUTTON_SIZE).coerceAtLeast(BORDER_INSET)
         return MapViewerDialogLayout(
             bounds = bounds,
+            showWindowControls = showWindowControls,
             titleBar = ScreenBounds(
                 left = BORDER_INSET,
                 top = BORDER_INSET,
@@ -139,9 +148,21 @@ internal object MapViewerDialogLayoutBuilder {
                 width = (bounds.width - BORDER_INSET * 2.0).coerceAtLeast(0.0),
                 height = (bounds.height - (BORDER_INSET * 2.0) - TITLE_BAR_HEIGHT - footerHeight).coerceAtLeast(0.0),
             ),
+            minimizeButton = ScreenBounds(
+                left = closeButtonLeft - CLOSE_BUTTON_SIZE * 2.0,
+                top = 0.0,
+                width = CLOSE_BUTTON_SIZE,
+                height = CLOSE_BUTTON_SIZE,
+            ),
+            pinButton = ScreenBounds(
+                left = closeButtonLeft - CLOSE_BUTTON_SIZE,
+                top = 0.0,
+                width = CLOSE_BUTTON_SIZE,
+                height = CLOSE_BUTTON_SIZE,
+            ),
             closeButton = ScreenBounds(
-                left = (bounds.width - BORDER_INSET - CLOSE_BUTTON_SIZE).coerceAtLeast(BORDER_INSET),
-                top = BORDER_INSET - BORDER_INSET,
+                left = closeButtonLeft,
+                top = 0.0,
                 width = CLOSE_BUTTON_SIZE,
                 height = CLOSE_BUTTON_SIZE,
             ),

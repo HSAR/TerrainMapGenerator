@@ -149,6 +149,7 @@ internal class MapViewerUnitEditDialog(
                 },
             ),
             mode = MapViewerDialogMode.FLOATING,
+            dialogManager = dialogManager,
         ).also {
             it.show(viewportWidth, viewportHeight)
             dialogManager.register(

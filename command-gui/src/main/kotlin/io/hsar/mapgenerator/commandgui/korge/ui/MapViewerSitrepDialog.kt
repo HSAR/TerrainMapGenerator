@@ -38,7 +38,7 @@ internal class MapViewerSitrepDialog(
     private val onTransientNotice: (String) -> Unit = {},
     private val preferredWidth: Double = PREFERRED_WIDTH,
     private val preferredHeight: Double = PREFERRED_HEIGHT,
-    private val restoredBounds: MapViewerDialogBounds? = null,
+    private val restored: MapViewerPersistedDialog? = null,
 ) {
     private enum class ReportMode(
         val label: String,
@@ -113,9 +113,10 @@ internal class MapViewerSitrepDialog(
             persistence = MapViewerDialogPersistence(
                 type = "sitrep",
                 targetId = observer.id.value.toString(),
-                restored = restoredBounds?.let { bounds -> MapViewerPersistedDialog("sitrep", observer.id.value.toString(), bounds) },
+                restored = restored,
             ),
             mode = MapViewerDialogMode.FLOATING,
+            dialogManager = dialogManager,
         )
         dialogManager.register(
             owner = this,

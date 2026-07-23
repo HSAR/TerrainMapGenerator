@@ -465,7 +465,7 @@ internal class MapPlacedUnitManager(
         dialog.targetId
             ?.let { value -> runCatching { MapPlacedObjectId(java.util.UUID.fromString(value)) }.getOrNull() }
             ?.let { id -> units.firstOrNull { it.id == id } }
-            ?.let { unit -> unit.openNavrepVisibilityDialog(unit, dialog.bounds); true }
+            ?.let { unit -> unit.openNavrepVisibilityDialog(unit, dialog); true }
             ?: false
 
     fun restoreUnitEditDialog(dialog: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog): Boolean =
@@ -479,7 +479,7 @@ internal class MapPlacedUnitManager(
         dialog.targetId
             ?.let { value -> runCatching { MapPlacedObjectId(java.util.UUID.fromString(value)) }.getOrNull() }
             ?.let { id -> units.firstOrNull { it.id == id } }
-            ?.let { unit -> unit.openTacticalDialog(unit, dialog.bounds); true }
+            ?.let { unit -> unit.openTacticalDialog(unit, dialog); true }
             ?: false
 
     fun consumeTacticalSolution(unitId: MapPlacedObjectId, targetId: MapPlacedObjectId): Boolean =
@@ -985,7 +985,7 @@ internal class MapPlacedUnitManager(
 
         fun openNavrepVisibilityDialog(
             unit: PlacedUnit,
-            restoredBounds: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogBounds? = null,
+            restored: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog? = null,
         ) {
             val snapshot = unit.snapshot()
             val turnNumber = sitrepTurnNumberProvider()
@@ -1011,13 +1011,13 @@ internal class MapPlacedUnitManager(
                 },
                 ecmIntensityProvider = ::ecmIntensityAt,
                 onTransientNotice = onTransientNotice,
-                restoredBounds = restoredBounds,
+                restored = restored,
             ).open()
         }
 
         fun openTacticalDialog(
             unit: PlacedUnit,
-            restoredBounds: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogBounds? = null,
+            restored: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog? = null,
         ) {
             val key = TacticalDialogKey(unit.id)
             if (dialogManager.hasTarget(key)) return
@@ -1042,7 +1042,7 @@ internal class MapPlacedUnitManager(
                             )
                         }
                 },
-                restoredBounds = restoredBounds,
+                restored = restored,
                 persistenceTargetId = unit.id.value.toString(),
                 focusTargetBoundsProvider = { listOf(unit.snapshot().focusTargetBounds(coordinateSpace, viewportProvider())) },
                 onDismiss = {

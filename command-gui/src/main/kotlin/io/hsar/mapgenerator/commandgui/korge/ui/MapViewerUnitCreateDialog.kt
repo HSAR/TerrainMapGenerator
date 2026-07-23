@@ -110,6 +110,7 @@ internal class MapViewerUnitCreateDialog(
                 renderContent(content, contentWidth)
             },
             mode = MapViewerDialogMode.FLOATING,
+            dialogManager = dialogManager,
         ).also {
             it.show(viewportWidth, viewportHeight)
             dialogManager.register(

@@ -21,3 +21,6 @@
     - Input boxes should clamp to min/max permitted values when user input would violate them.
 - Generic perf pass on all dynamically sized panels, these should not rebuild trees or force redraw per frame when scrolling
 - Dialog shadows should not draw over other dialogs
+- Can't delete unit types in the new operation screen
+- Importing unit types with the same name, even if different affiliations, to the new operation screen doesn't work
+- Collapsed unit types list is not a universal list

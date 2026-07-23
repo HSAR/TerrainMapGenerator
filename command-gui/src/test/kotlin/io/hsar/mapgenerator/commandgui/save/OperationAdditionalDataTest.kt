@@ -5,6 +5,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogBounds
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog
+import korlibs.math.geom.Vector2D
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -82,5 +83,34 @@ class OperationAdditionalDataTest {
         assertThat(restored.type, equalTo("unit-edit"))
         assertThat(restored.targetId, equalTo(dialog.targetId))
         assertThat(restored.draft?.path("name")?.textValue(), equalTo("Alpha"))
+    }
+
+    @Test
+    fun `dialog window state round trips additively and missing state defaults safely`() {
+        val dialog = MapViewerPersistedDialog(
+            type = "note",
+            targetId = "note-id",
+            bounds = MapViewerDialogBounds(10.0, 20.0, 300.0, 400.0),
+            minimized = true,
+            pinned = true,
+            pinAnchor = Vector2D(123.0, 456.0),
+        )
+        val data = OperationAdditionalData.fromJson(null)
+
+        data.updateUiState(UiSessionState(dialogs = listOf(dialog)))
+
+        val restored = OperationAdditionalData.fromJson(data.toJsonOrNull()).uiState().dialogs.single()
+        val legacy = MapViewerPersistedDialog.fromJson(
+            OperationSaveJson.objectMapper.readTree(
+                """{"type":"note","bounds":{"left":1,"top":2,"width":300,"height":400}}""",
+            ),
+        )
+
+        assertThat(restored.minimized, equalTo(true))
+        assertThat(restored.pinned, equalTo(true))
+        assertThat(restored.pinAnchor, equalTo(Vector2D(123.0, 456.0)))
+        assertThat(legacy?.minimized, equalTo(false))
+        assertThat(legacy?.pinned, equalTo(false))
+        assertThat(legacy?.pinAnchor, equalTo(null))
     }
 }

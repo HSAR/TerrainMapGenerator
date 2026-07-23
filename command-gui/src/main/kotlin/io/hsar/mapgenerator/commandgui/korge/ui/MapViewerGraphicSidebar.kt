@@ -21,6 +21,7 @@ import javax.swing.filechooser.FileNameExtensionFilter
 
 internal class MapViewerGraphicSidebar(
     root: Container,
+    private val dialogManager: MapViewerDialogManager,
     private val contextMenuManager: ContextMenuManager,
     private val onGraphicDropped: (GraphicTemplateSnapshot, Vector2D) -> Unit,
     private val onTemplateCreated: (GraphicTemplateSnapshot) -> Unit,
@@ -34,7 +35,7 @@ internal class MapViewerGraphicSidebar(
     private val templates = mutableListOf<GraphicTemplateSnapshot>()
     private var drag: DragState? = null
     private var dialogWindow: MapViewerDialogWindow? = null
-    private var restoredDialogBounds: MapViewerDialogBounds? = null
+    private var restoredDialog: MapViewerPersistedDialog? = null
     private var toggleBounds = ScreenBounds(0.0, 0.0, TOGGLE_WIDTH, TOGGLE_HEIGHT)
 
     init {
@@ -57,7 +58,7 @@ internal class MapViewerGraphicSidebar(
         dialogWindow?.persistedDialog()
 
     fun restoreDialog(dialog: MapViewerPersistedDialog) {
-        restoredDialogBounds = dialog.bounds
+        restoredDialog = dialog
         closeDialog()
         openDialog()
     }
@@ -130,7 +131,7 @@ internal class MapViewerGraphicSidebar(
             },
             persistence = MapViewerDialogPersistence(
                 type = "graphics",
-                restored = restoredDialogBounds?.let { MapViewerPersistedDialog("graphics", bounds = it) },
+                restored = restoredDialog,
             ),
             preferredWidth = PANEL_WIDTH,
             preferredHeight = contentHeight(),
@@ -139,9 +140,10 @@ internal class MapViewerGraphicSidebar(
             onClose = ::closeDialog,
             renderContent = ::renderContent,
             mode = MapViewerDialogMode.FLOATING,
+            dialogManager = dialogManager,
         )
         dialogWindow?.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
-        restoredDialogBounds = null
+        restoredDialog = null
     }
 
     private fun closeDialog() {

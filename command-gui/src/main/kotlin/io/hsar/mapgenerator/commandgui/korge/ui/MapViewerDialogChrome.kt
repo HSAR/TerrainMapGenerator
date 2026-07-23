@@ -5,6 +5,7 @@ import korlibs.image.text.TextAlignment
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
+import korlibs.korge.view.graphics
 import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 
@@ -17,6 +18,13 @@ internal object MapViewerDialogChrome {
         onClose: () -> Unit,
         onBeginMove: () -> Unit,
         onBeginResize: () -> Unit,
+        showWindowControls: Boolean = false,
+        minimized: Boolean = false,
+        pinned: Boolean = false,
+        onMinimize: () -> Unit = {},
+        onPin: () -> Unit = {},
+        onTitleClick: () -> Unit = {},
+        renderResizeHandle: Boolean = true,
     ): Container {
         MapViewerUiBoxes.box(
             parent = parent,
@@ -25,7 +33,7 @@ internal object MapViewerDialogChrome {
             style = ::dialogPanelStyle,
         )
 
-        val titleBar = renderTitleBar(parent, layout, title, titleTabs, onBeginMove)
+        val titleBar = renderTitleBar(parent, layout, title, titleTabs, onBeginMove, onTitleClick)
 
         parent.solidRect(layout.body.width, MapViewerDialogLayoutBuilder.BORDER_INSET, MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, MapViewerUiStateStyle.ACTIVE_ALPHA)) {
             x = layout.body.left
@@ -48,13 +56,28 @@ internal object MapViewerDialogChrome {
             }
         }
 
-        val resize = parent.container()
-        resize.xy(layout.resizeHandle.left, layout.resizeHandle.top)
-        resize.solidRect(layout.resizeHandle.width, layout.resizeHandle.height, MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, 0))
-        MapViewerCornerBrackets.render(resize, layout.resizeHandle.width, layout.resizeHandle.height, MapViewerCornerBrackets.Corner.BOTTOM_RIGHT)
-        resize.mouse {
-            onDown {
-                onBeginResize()
+        if (showWindowControls) {
+            renderWindowButton(parent, layout.minimizeButton) { frame ->
+                renderMinimizeIcon(frame, layout.minimizeButton.width, layout.minimizeButton.height, minimized)
+            }.mouse {
+                onClick { onMinimize() }
+            }
+            renderWindowButton(parent, layout.pinButton, active = pinned) { frame ->
+                renderPinIcon(frame, layout.pinButton.width, layout.pinButton.height)
+            }.mouse {
+                onClick { onPin() }
+            }
+        }
+
+        if (renderResizeHandle) {
+            val resize = parent.container()
+            resize.xy(layout.resizeHandle.left, layout.resizeHandle.top)
+            resize.solidRect(layout.resizeHandle.width, layout.resizeHandle.height, MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, 0))
+            MapViewerCornerBrackets.render(resize, layout.resizeHandle.width, layout.resizeHandle.height, MapViewerCornerBrackets.Corner.BOTTOM_RIGHT)
+            resize.mouse {
+                onDown {
+                    onBeginResize()
+                }
             }
         }
         return titleBar
@@ -66,12 +89,16 @@ internal object MapViewerDialogChrome {
         title: String,
         titleTabs: List<MapViewerDialogTitleTab> = emptyList(),
         onBeginMove: () -> Unit,
+        onTitleClick: () -> Unit = {},
     ): Container = parent.container().also { titleBar ->
         titleBar.xy(layout.titleBar.left, layout.titleBar.top)
         refreshTitleBar(titleBar, layout, title, titleTabs, onBeginMove)
         titleBar.mouse {
             onDown {
                 onBeginMove()
+            }
+            onClick {
+                onTitleClick()
             }
         }
     }
@@ -156,7 +183,12 @@ internal object MapViewerDialogChrome {
     internal const val DIALOG_PANEL_FILL_ALPHA = 220
 
     internal fun titleTextWidth(layout: MapViewerDialogLayout): Double =
-        (layout.titleBar.width - layout.closeButton.width - TITLE_TEXT_RIGHT_GAP - TITLE_TEXT_LEFT).coerceAtLeast(0.0)
+        (
+                layout.titleBar.width -
+                        layout.closeButton.width * (if (layout.showWindowControls) 3.0 else 1.0) -
+                        TITLE_TEXT_RIGHT_GAP -
+                        TITLE_TEXT_LEFT
+                ).coerceAtLeast(0.0)
 
     internal fun dialogPanelStyle(active: Boolean): UiFrameStyle =
         UiFrameStyle(
@@ -171,6 +203,61 @@ internal object MapViewerDialogChrome {
 
     internal fun dialogTitleText(text: String): String =
         MapViewerTextViews.titleText(text)
+
+    private fun renderWindowButton(
+        parent: Container,
+        bounds: ScreenBounds,
+        active: Boolean = false,
+        renderIcon: (Container) -> Unit,
+    ): Container =
+        parent.container().also { button ->
+            button.xy(bounds.left, bounds.top)
+            MapViewerBoxedIcon.frame(
+                parent = button,
+                width = bounds.width,
+                height = bounds.height,
+                sharedRightEdge = true,
+            ).also { frame ->
+                if (active) {
+                    frame.solidRect(
+                        bounds.width - MapViewerBoxedIcon.STROKE_WIDTH * 2.0,
+                        bounds.height - MapViewerBoxedIcon.STROKE_WIDTH * 2.0,
+                        MapViewerUiBoxes.toRgba(Palette.Colours.WHITE, ACTIVE_CONTROL_FILL_ALPHA),
+                    ).xy(MapViewerBoxedIcon.STROKE_WIDTH, MapViewerBoxedIcon.STROKE_WIDTH)
+                }
+                renderIcon(frame)
+            }
+        }
+
+    private fun renderMinimizeIcon(parent: Container, width: Double, height: Double, minimized: Boolean) {
+        MapViewerChevron.render(
+            parent = parent,
+            width = width,
+            height = height,
+            direction = if (minimized) MapViewerChevronDirection.DOWN else MapViewerChevronDirection.UP,
+        )
+    }
+
+    private fun renderPinIcon(parent: Container, width: Double, height: Double) {
+        val arm = MapViewerBoxedIcon.iconArm(width, height)
+        val centerX = width * 0.5
+        val centerY = height * 0.5
+        parent.graphics {
+            lineWidth = MapViewerBoxedIcon.STROKE_WIDTH
+            stroke(MapViewerUiBoxes.toRgba(Palette.Colours.WHITE)) {
+                moveTo(centerX - arm, centerY - arm * 0.8)
+                lineTo(centerX + arm, centerY - arm * 0.8)
+                moveTo(centerX - arm * 0.55, centerY - arm * 0.8)
+                lineTo(centerX - arm * 0.55, centerY + arm * 0.25)
+                lineTo(centerX + arm * 0.55, centerY + arm * 0.25)
+                lineTo(centerX + arm * 0.55, centerY - arm * 0.8)
+                moveTo(centerX, centerY + arm * 0.25)
+                lineTo(centerX, centerY + arm)
+            }
+        }
+    }
+
+    private const val ACTIVE_CONTROL_FILL_ALPHA = 72
 }
 
 internal object MapViewerDialogTitleTabLayoutBuilder {
@@ -181,12 +268,12 @@ internal object MapViewerDialogTitleTabLayoutBuilder {
             ?.let { labelWidth -> labelWidth + TAB_HORIZONTAL_PADDING * 2.0 }
             ?: 0.0
 
-    fun minimumShellWidth(labels: List<String>): Double =
+    fun minimumShellWidth(labels: List<String>, showWindowControls: Boolean = false): Double =
         if (labels.isEmpty()) {
             0.0
         } else {
             tabWidth(labels) * labels.size +
-                    MapViewerDialogLayoutBuilder.CLOSE_BUTTON_SIZE +
+                    MapViewerDialogLayoutBuilder.CLOSE_BUTTON_SIZE * (if (showWindowControls) 3.0 else 1.0) +
                     MapViewerDialogChrome.TITLE_TEXT_RIGHT_GAP +
                     MapViewerDialogChrome.TITLE_TEXT_LEFT +
                     MapViewerDialogLayoutBuilder.BORDER_INSET * 2.0

@@ -24,6 +24,7 @@ internal class MapViewerLedgerPanel(
     root: Container,
     viewportWidth: Int,
     viewportHeight: Int,
+    private val dialogManager: MapViewerDialogManager,
     private val canUndo: () -> Boolean,
     private val canRedo: () -> Boolean,
     private val turnPanelState: () -> TurnPanelState,
@@ -74,6 +75,7 @@ internal class MapViewerLedgerPanel(
     private var unitIconSizeInput: MapViewerInputField? = null
     private var inputActive = false
     private var dialogWindow: MapViewerDialogWindow? = null
+    private var restoredDialog: MapViewerPersistedDialog? = null
     private var layout = MapViewerLedgerPanelLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
 
     val isTextInputActive: Boolean
@@ -117,6 +119,15 @@ internal class MapViewerLedgerPanel(
         refresh()
     }
 
+    fun persistedDialog(): MapViewerPersistedDialog? =
+        dialogWindow?.persistedDialog()
+
+    fun restoreDialog(dialog: MapViewerPersistedDialog) {
+        restoredDialog = dialog
+        closeDialog()
+        openDialog()
+    }
+
     private fun relayout(viewportWidth: Int, viewportHeight: Int) {
         layout = MapViewerLedgerPanelLayoutBuilder.build(viewportWidth, viewportHeight, collapsed = true)
 
@@ -134,7 +145,7 @@ internal class MapViewerLedgerPanel(
         dialogWindow = MapViewerDialogWindow(
             root = overlay,
             title = "Game",
-            persistence = MapViewerDialogPersistence("ledger"),
+            persistence = MapViewerDialogPersistence("ledger", restored = restoredDialog),
             titleTabs = ::titleTabs,
             initialPosition = ::initialDialogPosition,
             preferredWidth = MapViewerLedgerPanelLayoutBuilder.PANEL_WIDTH,
@@ -144,8 +155,10 @@ internal class MapViewerLedgerPanel(
             onClose = ::closeDialog,
             renderContent = ::renderContent,
             mode = MapViewerDialogMode.FLOATING,
+            dialogManager = dialogManager,
         )
         dialogWindow?.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
+        restoredDialog = null
     }
 
     private fun initialDialogPosition(defaultBounds: MapViewerDialogBounds): Vector2D =

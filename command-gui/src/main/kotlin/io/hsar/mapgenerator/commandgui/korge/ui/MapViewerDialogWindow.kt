@@ -26,8 +26,13 @@ internal data class MapViewerDialogPersistence(
     val restored: MapViewerPersistedDialog? = null,
     val draft: () -> JsonNode? = { null },
 ) {
-    fun persisted(bounds: MapViewerDialogBounds): MapViewerPersistedDialog =
-        MapViewerPersistedDialog(type, targetId, bounds, draft())
+    fun persisted(
+        bounds: MapViewerDialogBounds,
+        minimized: Boolean,
+        pinned: Boolean,
+        pinAnchor: Vector2D?,
+    ): MapViewerPersistedDialog =
+        MapViewerPersistedDialog(type, targetId, bounds, draft(), minimized, pinned, pinAnchor)
 }
 
 internal class MapViewerDialogWindow(
@@ -46,6 +51,7 @@ internal class MapViewerDialogWindow(
     private val onClose: () -> Unit,
     private val renderContent: (Container, Double) -> Unit,
     private val mode: MapViewerDialogMode = MapViewerDialogMode.FLOATING,
+    private val dialogManager: MapViewerDialogManager? = null,
 ) {
     private val layer = root.container()
     private val shadowLayer = layer.container().also {
@@ -67,6 +73,11 @@ internal class MapViewerDialogWindow(
     private var renderedTitle: String? = null
     private var dragState: DialogDragState? = null
     private var isOpen = false
+    private var minimized = false
+    private var pinned = false
+    private var pinAnchor: Vector2D? = null
+    private var dockedPosition: Vector2D? = null
+    private var lastViewport: io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport? = null
 
     fun show(viewportWidth: Int, viewportHeight: Int) {
         if (isOpen) {
@@ -93,7 +104,14 @@ internal class MapViewerDialogWindow(
             ?.let { position -> defaultBounds.movedTo(position.x, position.y) }
             ?.let { with(MapViewerDialogLayoutBuilder) { it.clampedTo(viewportWidth, viewportHeight, minimumWidth()) } }
             ?: defaultBounds
+        minimized = persistence.restored?.minimized == true && hasViewerWindowControls()
+        pinned = persistence.restored?.let { it.pinned && it.pinAnchor != null } == true &&
+                hasViewerWindowControls()
+        pinAnchor = persistence.restored?.pinAnchor.takeIf { pinned }
+        lastViewport = dialogManager?.viewport()
         installInputHandlers()
+        if (minimized && !pinned) dock()
+        if (pinned) updatePinnedPosition()
         render()
     }
 
@@ -103,24 +121,34 @@ internal class MapViewerDialogWindow(
         }
 
         isOpen = false
+        dialogManager?.undockMinimized(this)
         layer.removeFromParent()
     }
 
     fun blocksScreenPoint(point: Vector2D): Boolean =
         isOpen && (
                 mode == MapViewerDialogMode.MODAL ||
-                        bounds?.contains(point) == true ||
-                        resizeHandleBounds()?.contains(point) == true
+                        displayBounds()?.contains(point) == true ||
+                        (!minimized && resizeHandleBounds()?.contains(point) == true)
                 )
 
     val isModal: Boolean
         get() = mode == MapViewerDialogMode.MODAL
 
     fun persistedDialog(): MapViewerPersistedDialog? =
-        bounds?.let(persistence::persisted)
+        bounds?.let { persistence.persisted(it, minimized, pinned, pinAnchor) }
 
     val currentBounds: MapViewerDialogBounds?
         get() = bounds
+
+    internal val currentDisplayBounds: MapViewerDialogBounds?
+        get() = displayBounds()
+
+    internal val isMinimized: Boolean
+        get() = minimized
+
+    internal val isPinned: Boolean
+        get() = pinned
 
     fun refresh() {
         if (isOpen) {
@@ -138,7 +166,11 @@ internal class MapViewerDialogWindow(
         layer.onStageResized { width, height ->
             viewportWidth = width
             viewportHeight = height
-            bounds = bounds?.let { with(MapViewerDialogLayoutBuilder) { it.clampedTo(width, height, minimumWidth()) } }
+            if (!pinned) {
+                bounds = bounds?.let { with(MapViewerDialogLayoutBuilder) { it.clampedTo(width, height, minimumWidth()) } }
+            }
+            dialogManager?.resizeDock(width)
+            if (pinned) updatePinnedPosition()
             render()
         }
         layer.mouse {
@@ -146,7 +178,7 @@ internal class MapViewerDialogWindow(
                 // Consume backdrop clicks so the map never receives modal-dialog input.
             }
             onScrollAnywhere {
-                if (bounds?.contains(views.input.mousePos) == true && scrollState.needsScrolling) {
+                if (!minimized && displayBounds()?.contains(views.input.mousePos) == true && scrollState.needsScrolling) {
                     scrollState = scrollState.scrolledBy(scrollDeltaYLines * MapViewerScrollbar.SCROLL_STEP_PX)
                     updateScrollPosition()
                 }
@@ -156,6 +188,7 @@ internal class MapViewerDialogWindow(
             val pointer = layer.stage?.views?.input?.mousePos ?: return@addUpdater
             val leftHeld = layer.stage?.views?.input?.mouseButtonPressed(korlibs.event.MouseButton.LEFT) ?: false
             refreshTitleIfChanged()
+            refreshPinnedPositionIfRequired()
             val focusTargetBounds = focusTargetBoundsProvider()
             if (focusTargetBounds != lastFocusTargetBounds) {
                 renderShadow(focusTargetBounds)
@@ -186,12 +219,31 @@ internal class MapViewerDialogWindow(
                 is DialogDragState.Resize -> state.original.resizedTo(
                     width = state.original.width + pointer.x - state.startPointer.x,
                     height = state.original.height + pointer.y - state.startPointer.y,
-                ).let { with(MapViewerDialogLayoutBuilder) { it.resizedWithinViewport(viewportWidth, viewportHeight, minimumWidth()) } }
-            }.let { with(MapViewerDialogLayoutBuilder) { it.clampedTo(viewportWidth, viewportHeight, minimumWidth()) } }
+                ).let {
+                    if (pinned) {
+                        it.resizedTo(
+                            it.width.coerceAtLeast(minimumWidth()),
+                            it.height.coerceAtLeast(MapViewerDialogLayoutBuilder.MIN_HEIGHT),
+                        )
+                    } else {
+                        with(MapViewerDialogLayoutBuilder) {
+                            it.resizedWithinViewport(viewportWidth, viewportHeight, minimumWidth())
+                        }
+                    }
+                }
+            }.let {
+                if (pinned) it else with(MapViewerDialogLayoutBuilder) {
+                    it.clampedTo(viewportWidth, viewportHeight, minimumWidth())
+                }
+            }
             when (state) {
-                is DialogDragState.Move -> moveTo(nextBounds, focusTargetBounds)
+                is DialogDragState.Move -> {
+                    moveTo(nextBounds, focusTargetBounds)
+                    updatePinAnchor()
+                }
                 is DialogDragState.Resize -> {
                     bounds = nextBounds
+                    updatePinAnchor()
                     render(focusTargetBounds)
                 }
             }
@@ -199,17 +251,21 @@ internal class MapViewerDialogWindow(
     }
 
     private fun render(focusTargetBounds: List<ScreenBounds> = focusTargetBoundsProvider()) {
-        val currentBounds = bounds ?: return
+        val currentBounds = displayBounds() ?: return
         val minimumWidth = minimumWidth()
         val clampedBounds = currentBounds.let { current ->
             with(MapViewerDialogLayoutBuilder) { current.clampedTo(viewportWidth, viewportHeight, minimumWidth) }
         }
-        if (clampedBounds != currentBounds) {
+        if (!pinned && !minimized && clampedBounds != currentBounds) {
             bounds = clampedBounds
             render(focusTargetBounds)
             return
         }
-        val layout = MapViewerDialogLayoutBuilder.build(currentBounds, actions.size)
+        val layout = MapViewerDialogLayoutBuilder.build(currentBounds, actions.size, hasViewerWindowControls())
+        if (minimized) {
+            renderMinimized(layout)
+            return
+        }
         val contentHeightValue = contentHeight(layout.contentViewport.width)
         scrollState = scrollState.withContent(
             viewportHeight = layout.contentViewport.height,
@@ -242,6 +298,10 @@ internal class MapViewerDialogWindow(
             onClose = onClose,
             onBeginMove = { beginDrag(DialogDragMode.MOVE) },
             onBeginResize = { beginDrag(DialogDragMode.RESIZE) },
+            showWindowControls = hasViewerWindowControls(),
+            pinned = pinned,
+            onMinimize = ::minimize,
+            onPin = ::togglePinned,
         )
         renderedTitle = resolvedTitle
 
@@ -268,6 +328,39 @@ internal class MapViewerDialogWindow(
         }
     }
 
+    private fun renderMinimized(layout: MapViewerDialogLayout) {
+        contentContainer = null
+        scrollbarContainer = null
+        titleBar = null
+        panelLayer.removeChildren()
+        shadowLayer.removeChildren()
+        panelLayer.xy(layout.bounds.left, layout.bounds.top)
+        val panel = panelLayer.container()
+        panel.solidRect(layout.bounds.width, layout.bounds.height, RGBA(0, 0, 0, 0)).mouse {
+            onClick {
+                // Consume clicks within the minimized frame so they do not reach the map.
+            }
+        }
+        val resolvedTitle = titleProvider()
+        titleBar = MapViewerDialogChrome.render(
+            parent = panel,
+            layout = layout,
+            title = resolvedTitle,
+            titleTabs = emptyList(),
+            onClose = onClose,
+            onBeginMove = {},
+            onBeginResize = {},
+            showWindowControls = true,
+            minimized = true,
+            pinned = pinned,
+            onMinimize = ::restore,
+            onPin = ::togglePinned,
+            onTitleClick = ::restore,
+            renderResizeHandle = false,
+        )
+        renderedTitle = resolvedTitle
+    }
+
     internal fun moveTo(bounds: MapViewerDialogBounds, focusTargetBounds: List<ScreenBounds> = focusTargetBoundsProvider()) {
         if (!isOpen) {
             return
@@ -279,6 +372,7 @@ internal class MapViewerDialogWindow(
     }
 
     private fun beginDrag(mode: DialogDragMode) {
+        if (minimized) return
         val pointer = layer.stage?.views?.input?.mousePos ?: return
         val currentBounds = bounds ?: return
         dragState = when (mode) {
@@ -289,7 +383,7 @@ internal class MapViewerDialogWindow(
 
     private fun updateScrollDrag(pointer: Vector2D) {
         val currentBounds = bounds ?: return
-        val layout = MapViewerDialogLayoutBuilder.build(currentBounds, actions.size)
+        val layout = MapViewerDialogLayoutBuilder.build(currentBounds, actions.size, hasViewerWindowControls())
         if (!scrollState.needsScrolling) {
             return
         }
@@ -320,14 +414,14 @@ internal class MapViewerDialogWindow(
     }
 
     private fun refreshTitle(title: String) {
-        val currentBounds = bounds ?: return
+        val currentBounds = displayBounds() ?: return
         titleBar?.let {
             MapViewerDialogChrome.refreshTitleBar(
                 titleBar = it,
-                layout = MapViewerDialogLayoutBuilder.build(currentBounds, actions.size),
+                layout = MapViewerDialogLayoutBuilder.build(currentBounds, actions.size, hasViewerWindowControls()),
                 title = title,
-                titleTabs = titleTabs(),
-                onBeginMove = { beginDrag(DialogDragMode.MOVE) },
+                titleTabs = if (minimized) emptyList() else titleTabs(),
+                onBeginMove = { if (!minimized) beginDrag(DialogDragMode.MOVE) },
             )
         }
         renderedTitle = title
@@ -336,7 +430,7 @@ internal class MapViewerDialogWindow(
     private fun updateScrollPosition() {
         contentContainer?.y = -scrollState.offset
         val currentBounds = bounds ?: return
-        val layout = MapViewerDialogLayoutBuilder.build(currentBounds, actions.size)
+        val layout = MapViewerDialogLayoutBuilder.build(currentBounds, actions.size, hasViewerWindowControls())
         scrollbarContainer?.let { scrollbar ->
             scrollbar.removeChildren()
             MapViewerScrollbar.render(scrollbar, layout.scrollbar, scrollState) { pointerY ->
@@ -346,6 +440,10 @@ internal class MapViewerDialogWindow(
     }
 
     private fun renderShadow(focusTargetBounds: List<ScreenBounds>) {
+        if (minimized) {
+            shadowLayer.removeChildren()
+            return
+        }
         val currentBounds = bounds ?: return
         lastFocusTargetBounds = focusTargetBounds
         shadowLayer.removeChildren()
@@ -364,7 +462,7 @@ internal class MapViewerDialogWindow(
     private fun resizeHandleBounds(): ScreenBounds? {
         val currentBounds = bounds ?: return null
         return MapViewerDialogLayoutBuilder
-            .build(currentBounds, actions.size)
+            .build(currentBounds, actions.size, hasViewerWindowControls())
             .resizeHandle
             .offsetBy(currentBounds.left, currentBounds.top)
     }
@@ -375,8 +473,114 @@ internal class MapViewerDialogWindow(
     private fun minimumWidth(): Double =
         maxOf(
             MapViewerDialogLayoutBuilder.minimumShellWidth(contentMinimumWidth(), actions.size),
-            MapViewerDialogTitleTabLayoutBuilder.minimumShellWidth(titleTabs().map { it.label }),
+            MapViewerDialogTitleTabLayoutBuilder.minimumShellWidth(titleTabs().map { it.label }, hasViewerWindowControls()),
+            if (hasViewerWindowControls()) {
+                MapViewerDialogLayoutBuilder.CLOSE_BUTTON_SIZE * 3.0 +
+                        MapViewerDialogChrome.TITLE_TEXT_LEFT +
+                        MapViewerDialogChrome.TITLE_TEXT_RIGHT_GAP +
+                        MapViewerDialogLayoutBuilder.BORDER_INSET * 2.0
+            } else {
+                0.0
+            },
         )
+
+    private fun hasViewerWindowControls(): Boolean =
+        mode == MapViewerDialogMode.FLOATING && dialogManager?.supportsViewerWindowControls == true
+
+    private fun displayBounds(): MapViewerDialogBounds? =
+        bounds?.let { expanded ->
+            if (!minimized) {
+                expanded
+            } else {
+                val position = if (pinned) projectedPinPosition(expanded.width) else dockedPosition
+                val resolvedPosition = position ?: Vector2D(expanded.left, MapViewerDialogLayoutBuilder.OUTER_PADDING)
+                MapViewerDialogBounds(
+                    left = resolvedPosition.x,
+                    top = resolvedPosition.y,
+                    width = expanded.width,
+                    height = MapViewerDialogLayoutBuilder.CLOSE_BUTTON_SIZE,
+                )
+            }
+        }
+
+    internal fun minimize() {
+        if (!hasViewerWindowControls() || minimized) return
+        minimized = true
+        dragState = null
+        if (pinned) updatePinnedPosition() else dock()
+        render()
+    }
+
+    internal fun restore() {
+        if (!minimized) return
+        dialogManager?.undockMinimized(this)
+        dockedPosition = null
+        minimized = false
+        if (pinned) updatePinnedPosition()
+        render()
+    }
+
+    internal fun togglePinned() {
+        if (!hasViewerWindowControls()) return
+        if (!pinned) {
+            val displayed = displayBounds() ?: return
+            pinned = true
+            dialogManager?.undockMinimized(this)
+            dockedPosition = null
+            setPinAnchor(displayed)
+        } else {
+            val displayed = displayBounds()
+            pinned = false
+            pinAnchor = null
+            displayed?.let { bounds = bounds?.movedTo(it.left, it.top) }
+            if (minimized) dock()
+        }
+        render()
+    }
+
+    private fun dock() {
+        val width = bounds?.width ?: return
+        dialogManager?.dockMinimized(this, width, viewportWidth) { position ->
+            dockedPosition = position
+            panelLayer.xy(position.x, position.y)
+        }
+    }
+
+    private fun updatePinAnchor() {
+        if (!pinned) return
+        setPinAnchor(displayBounds() ?: return)
+    }
+
+    private fun setPinAnchor(currentBounds: MapViewerDialogBounds) {
+        val viewport = dialogManager?.viewport() ?: return
+        pinAnchor = Vector2D(
+            viewport.left + currentBounds.right / viewport.zoom,
+            viewport.top + currentBounds.top / viewport.zoom,
+        )
+        lastViewport = viewport
+    }
+
+    private fun projectedPinPosition(width: Double): Vector2D? {
+        val anchor = pinAnchor ?: return null
+        val viewport = dialogManager?.viewport() ?: return null
+        return Vector2D(viewport.screenX(anchor.x) - width, viewport.screenY(anchor.y))
+    }
+
+    private fun updatePinnedPosition() {
+        if (!pinned) return
+        val expanded = bounds ?: return
+        val position = projectedPinPosition(expanded.width) ?: return
+        if (!minimized) bounds = expanded.movedTo(position.x, position.y)
+        panelLayer.xy(position.x, position.y)
+        renderShadow(focusTargetBoundsProvider())
+        lastViewport = dialogManager?.viewport()
+    }
+
+    internal fun refreshPinnedPositionIfRequired() {
+        if (!pinned) return
+        val viewport = dialogManager?.viewport() ?: return
+        if (viewport != lastViewport) updatePinnedPosition()
+    }
 
     private sealed interface DialogDragState {
         val startPointer: Vector2D

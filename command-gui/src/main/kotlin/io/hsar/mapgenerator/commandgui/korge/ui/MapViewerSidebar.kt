@@ -44,7 +44,7 @@ internal class MapViewerSidebar(
     private var dragState: DragState? = null
     private var lastDragPointer: Vector2D? = null
     private var dialogWindow: MapViewerDialogWindow? = null
-    private var restoredPanelBounds: MapViewerDialogBounds? = null
+    private var restoredPanelDialog: MapViewerPersistedDialog? = null
     private var restoreCollapseStateOnNextOpen = false
     private var layout = MapViewerSidebarLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
 
@@ -148,7 +148,7 @@ internal class MapViewerSidebar(
         dialogWindow?.persistedDialog()
 
     fun restoreDialog(dialog: MapViewerPersistedDialog) {
-        restoredPanelBounds = dialog.bounds
+        restoredPanelDialog = dialog
         val collapsedKeys = MapViewerUniversalList.restoreCollapsedSections(
             draft = dialog.draft,
             sectionFromKey = { key -> key.takeIf(::isAffiliationKey) },
@@ -186,7 +186,7 @@ internal class MapViewerSidebar(
             initialPosition = ::initialDialogPosition,
             persistence = MapViewerDialogPersistence(
                 type = "unit-types",
-                restored = restoredPanelBounds?.let { bounds -> MapViewerPersistedDialog("unit-types", bounds = bounds) },
+                restored = restoredPanelDialog,
                 draft = {
                     MapViewerUniversalList.collapseStateDraft(
                         collapsedSections = collapsedAffiliationGroups.map(::affiliationKey).toSet(),
@@ -201,9 +201,10 @@ internal class MapViewerSidebar(
             onClose = ::closeDialog,
             renderContent = ::renderContent,
             mode = MapViewerDialogMode.FLOATING,
+            dialogManager = dialogManager,
         )
         dialogWindow?.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
-        restoredPanelBounds = null
+        restoredPanelDialog = null
         restoreCollapseStateOnNextOpen = false
     }
 
