@@ -45,6 +45,7 @@ internal class MapViewerSidebar(
     private var lastDragPointer: Vector2D? = null
     private var dialogWindow: MapViewerDialogWindow? = null
     private var restoredPanelBounds: MapViewerDialogBounds? = null
+    private var restoreCollapseStateOnNextOpen = false
     private var layout = MapViewerSidebarLayoutBuilder.build(viewportWidth, viewportHeight, collapsed)
 
     internal val isUnitDragging: Boolean
@@ -148,6 +149,14 @@ internal class MapViewerSidebar(
 
     fun restoreDialog(dialog: MapViewerPersistedDialog) {
         restoredPanelBounds = dialog.bounds
+        val collapsedKeys = MapViewerUniversalList.restoreCollapsedSections(
+            draft = dialog.draft,
+            sectionFromKey = { key -> key.takeIf(::isAffiliationKey) },
+        )
+        collapsedAffiliationGroups.clear()
+        collapsedAffiliationGroups += collapsedKeys.mapNotNull(::affiliationFromKey)
+        if (UNAFFILIATED_AFFILIATION_KEY in collapsedKeys) collapsedAffiliationGroups += null
+        restoreCollapseStateOnNextOpen = true
         closeDialog()
         openDialog()
     }
@@ -168,7 +177,9 @@ internal class MapViewerSidebar(
         if (dialogWindow != null) {
             return
         }
-        collapseGroupsToFit(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
+        if (!restoreCollapseStateOnNextOpen) {
+            collapseGroupsToFit(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
+        }
         dialogWindow = MapViewerDialogWindow(
             root = overlay,
             title = "Unit Types",
@@ -176,6 +187,12 @@ internal class MapViewerSidebar(
             persistence = MapViewerDialogPersistence(
                 type = "unit-types",
                 restored = restoredPanelBounds?.let { bounds -> MapViewerPersistedDialog("unit-types", bounds = bounds) },
+                draft = {
+                    MapViewerUniversalList.collapseStateDraft(
+                        collapsedSections = collapsedAffiliationGroups.map(::affiliationKey).toSet(),
+                        sectionKey = { it },
+                    )
+                },
             ),
             preferredWidth = MapViewerSidebarLayoutBuilder.PANEL_WIDTH,
             preferredHeight = preferredDialogHeight(),
@@ -187,6 +204,7 @@ internal class MapViewerSidebar(
         )
         dialogWindow?.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
         restoredPanelBounds = null
+        restoreCollapseStateOnNextOpen = false
     }
 
     private fun initialDialogPosition(defaultBounds: MapViewerDialogBounds): Vector2D =
@@ -432,6 +450,15 @@ internal class MapViewerSidebar(
     private fun unitListContentHeight(): Double =
         HEADER_HEIGHT + HEADER_GAP + unitListHeight()
 
+    private fun affiliationKey(affiliation: UnitAffiliation?): String =
+        affiliation?.name ?: UNAFFILIATED_AFFILIATION_KEY
+
+    private fun affiliationFromKey(key: String): UnitAffiliation? =
+        UnitAffiliation.entries.firstOrNull { it.name == key }
+
+    private fun isAffiliationKey(key: String): Boolean =
+        key == UNAFFILIATED_AFFILIATION_KEY || affiliationFromKey(key) != null
+
     private data class DragState(
         val template: MapViewerUnitTemplate,
         val preview: Container,
@@ -456,5 +483,6 @@ internal class MapViewerSidebar(
         const val PREVIEW_HEIGHT = 40.0
         const val PREVIEW_OFFSET_X = 14.0
         const val PREVIEW_OFFSET_Y = 14.0
+        const val UNAFFILIATED_AFFILIATION_KEY = "UNAFFILIATED"
     }
 }

@@ -1,6 +1,9 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.ObjectNode
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
+import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.image.bitmap.Bitmap32
@@ -46,16 +49,20 @@ internal object MapViewerUniversalList {
         rowGap: Double,
         headerHeight: Double,
         headerGap: Double,
+        ungroupedSectionGap: Double = DEFAULT_UNGROUPED_SECTION_GAP,
         renderRow: (T, Double) -> Unit,
         onGroupsChanged: () -> Unit,
     ): Double {
         var top = 0.0
+        var previousWasGroupedSection = false
         unitAffiliationGroups.forEach { group ->
             val groupItems = items.filter { affiliationOf(it) == group.affiliation }
             if (groupItems.isEmpty()) return@forEach
             if (groupItems.size < 2) {
+                if (previousWasGroupedSection) top += ungroupedSectionGap
                 renderRow(groupItems.single(), top)
                 top += rowHeight + rowGap
+                previousWasGroupedSection = false
                 return@forEach
             }
             val collapsed = group.affiliation in collapsedGroups
@@ -76,6 +83,7 @@ internal object MapViewerUniversalList {
                     top += rowHeight + rowGap
                 }
             }
+            previousWasGroupedSection = true
         }
         return top
     }
@@ -88,15 +96,44 @@ internal object MapViewerUniversalList {
         rowGap: Double,
         headerHeight: Double,
         headerGap: Double,
+        ungroupedSectionGap: Double = DEFAULT_UNGROUPED_SECTION_GAP,
     ): Double =
-        unitAffiliationGroups.sumOf { group ->
+        unitAffiliationGroups.fold(Pair(0.0, false)) { (height, previousWasGroupedSection), group ->
             val count = items.count { affiliationOf(it) == group.affiliation }
-            if (count == 0) 0.0 else if (count < 2) {
-                count * (rowHeight + rowGap)
-            } else {
-                headerHeight + headerGap + if (group.affiliation in collapsedGroups) 0.0 else count * (rowHeight + rowGap)
+            when {
+                count == 0 -> height to previousWasGroupedSection
+                count < 2 -> {
+                    val sectionGap = if (previousWasGroupedSection) ungroupedSectionGap else 0.0
+                    height + sectionGap + count * (rowHeight + rowGap) to false
+                }
+
+                else -> {
+                    val itemsHeight = if (group.affiliation in collapsedGroups) 0.0 else count * (rowHeight + rowGap)
+                    height + headerHeight + headerGap + itemsHeight to true
+                }
+            }
+        }.first
+
+    fun <S> collapseStateDraft(
+        collapsedSections: Set<S>,
+        sectionKey: (S) -> String,
+    ): ObjectNode =
+        OperationSaveJson.objectMapper.createObjectNode().apply {
+            putArray(COLLAPSED_SECTIONS_FIELD).also { sections ->
+                collapsedSections.map(sectionKey).sorted().forEach(sections::add)
             }
         }
+
+    fun <S> restoreCollapsedSections(
+        draft: JsonNode?,
+        sectionFromKey: (String) -> S?,
+    ): Set<S> =
+        draft
+            ?.path(COLLAPSED_SECTIONS_FIELD)
+            ?.takeIf(JsonNode::isArray)
+            ?.mapNotNull { node -> node.textValue()?.let(sectionFromKey) }
+            ?.toSet()
+            .orEmpty()
 
     /**
      * Collapses sections until their content fits [availableHeight]. A supplied
@@ -208,4 +245,6 @@ internal object MapViewerUniversalList {
     private const val TEXT_GAP = 10.0
     private const val SWATCH_SIZE = 24.0
     private const val TRAILING_LABEL_WIDTH = 54.0
+    private const val COLLAPSED_SECTIONS_FIELD = "collapsedSections"
+    private const val DEFAULT_UNGROUPED_SECTION_GAP = 8.0
 }

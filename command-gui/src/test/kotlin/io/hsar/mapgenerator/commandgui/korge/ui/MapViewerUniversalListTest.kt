@@ -1,7 +1,9 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.contains
+import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 
 class MapViewerUniversalListTest {
@@ -47,5 +49,34 @@ class MapViewerUniversalListTest {
         )
 
         assertThat(collapsed, contains("second", "first"))
+    }
+
+    @Test
+    fun `collapse state round trips through generic section keys`() {
+        val draft = MapViewerUniversalList.collapseStateDraft(
+            collapsedSections = setOf("friend", "unaffiliated"),
+            sectionKey = { it },
+        )
+
+        val restored = MapViewerUniversalList.restoreCollapsedSections(draft) { key ->
+            key.takeIf { it in setOf("friend", "unaffiliated") }
+        }
+
+        assertThat(restored, equalTo(setOf("friend", "unaffiliated")))
+    }
+
+    @Test
+    fun `grouped sections leave extra space before following ungrouped items`() {
+        val height = MapViewerUniversalList.unitAffiliationGroupsHeight(
+            items = listOf(UnitAffiliation.Friend, UnitAffiliation.Friend, UnitAffiliation.Hostile),
+            affiliationOf = { it },
+            collapsedGroups = emptySet(),
+            rowHeight = 10.0,
+            rowGap = 1.0,
+            headerHeight = 5.0,
+            headerGap = 2.0,
+        )
+
+        assertThat(height, equalTo(48.0))
     }
 }
