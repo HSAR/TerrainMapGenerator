@@ -190,13 +190,7 @@ internal class MapViewerSidebar(
     }
 
     private fun initialDialogPosition(defaultBounds: MapViewerDialogBounds): Vector2D =
-        MapViewerSidebarLayoutBuilder.build(
-            viewportWidth = layoutViewportWidth(),
-            viewportHeight = layoutViewportHeight(),
-            collapsed = false,
-        ).panelBounds
-            ?.let { Vector2D(it.left, it.top) }
-            ?: Vector2D(defaultBounds.left, defaultBounds.top)
+        MapViewerDialogLayoutBuilder.alignRight(defaultBounds, layoutViewportWidth())
 
     private fun closeDialog() {
         collapsed = true

@@ -149,13 +149,7 @@ internal class MapViewerLedgerPanel(
     }
 
     private fun initialDialogPosition(defaultBounds: MapViewerDialogBounds): Vector2D =
-        MapViewerLedgerPanelLayoutBuilder.build(
-            viewportWidth = layoutViewportWidth(),
-            viewportHeight = layoutViewportHeight(),
-            collapsed = false,
-        ).panelBounds
-            ?.let { Vector2D(it.left, it.top) }
-            ?: Vector2D(defaultBounds.left, defaultBounds.top)
+        MapViewerDialogLayoutBuilder.alignLeft(defaultBounds)
 
     private fun closeDialog() {
         collapsed = true

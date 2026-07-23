@@ -230,9 +230,23 @@ internal object MapViewerDialogLayoutBuilder {
     fun contentViewportWidth(shellWidth: Double): Double =
         (shellWidth - CONTENT_PADDING * 2.0 - MapViewerScrollbar.WIDTH - SCROLLBAR_GAP).coerceAtLeast(0.0)
 
+    /** Standard starting point for a window associated with the left sidebar controls. */
+    fun alignLeft(bounds: MapViewerDialogBounds): Vector2D =
+        Vector2D(OUTER_PADDING, sidebarTop())
+
+    /** Standard starting point for a window associated with the right sidebar controls. */
+    fun alignRight(bounds: MapViewerDialogBounds, viewportWidth: Int): Vector2D =
+        Vector2D(
+            x = viewportWidth - OUTER_PADDING - bounds.width,
+            y = sidebarTop(),
+        )
+
     private fun maximumInitialShellHeight(viewportHeight: Int): Double =
         (viewportHeight * MAX_INITIAL_HEIGHT_RATIO)
             .coerceAtMost((viewportHeight - OUTER_PADDING * 2.0).coerceAtLeast(0.0))
+
+    private fun sidebarTop(): Double =
+        OUTER_PADDING + MapViewerSidebarLayoutBuilder.TOGGLE_HEIGHT + MapViewerSidebarLayoutBuilder.PANEL_TOP_GAP
 
     fun MapViewerDialogBounds.clampedTo(
         viewportWidth: Int,

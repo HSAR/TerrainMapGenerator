@@ -485,6 +485,7 @@ internal class MapViewerScene(
                                             selectedObjectIds = selectionController.selectedIds().toList(),
                                             dialogs = dialogManager.persistedDialogs() + listOfNotNull(
                                                 sidebar.persistedDialog(),
+                                                graphicSidebar.persistedDialog(),
                                                 notesPanel?.persistedDialog(),
                                             ),
                                         ),
@@ -1176,6 +1177,7 @@ internal class MapViewerScene(
                                 .filter { it.type == "note" }
                                 .forEach { dialog -> notesPanel?.restoreNote(dialog) }
                             restoredUiState.dialogs.firstOrNull { it.type == "unit-types" }?.let(sidebar::restoreDialog)
+                            restoredUiState.dialogs.firstOrNull { it.type == "graphics" }?.let(graphicSidebar::restoreDialog)
                             restoredUiState.dialogs.firstOrNull { it.type == "notes" }?.let { dialog -> notesPanel?.restoreDialog(dialog) }
                             restoredUiState.dialogs
                                 .filter { it.type == "sitrep" }

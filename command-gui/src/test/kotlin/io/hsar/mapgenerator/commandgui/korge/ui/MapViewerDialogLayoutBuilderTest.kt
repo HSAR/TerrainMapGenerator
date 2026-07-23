@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import korlibs.math.geom.Vector2D
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.greaterThanOrEqualTo
@@ -138,6 +139,20 @@ class MapViewerDialogLayoutBuilderTest {
         assertThat(
             MapViewerDialogLayoutBuilder.minimumShellWidth(240.0, actionButtonCount = 2),
             equalTo(240.0 + (MapViewerDialogLayoutBuilder.CONTENT_PADDING * 2.0) + MapViewerScrollbar.WIDTH + 10.0),
+        )
+    }
+
+    @Test
+    fun `sidebar alignments honour the top gutter and measured dialog width`() {
+        val bounds = MapViewerDialogBounds(0.0, 0.0, 326.0, 480.0)
+
+        assertThat(
+            MapViewerDialogLayoutBuilder.alignLeft(bounds),
+            equalTo(Vector2D(16.0, 68.0)),
+        )
+        assertThat(
+            MapViewerDialogLayoutBuilder.alignRight(bounds, viewportWidth = 1200),
+            equalTo(Vector2D(858.0, 68.0)),
         )
     }
 

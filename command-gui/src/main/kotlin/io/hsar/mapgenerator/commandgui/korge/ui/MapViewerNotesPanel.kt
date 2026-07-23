@@ -122,13 +122,7 @@ internal class MapViewerNotesPanel(
     }
 
     private fun initialDialogPosition(defaultBounds: MapViewerDialogBounds): Vector2D =
-        MapViewerNotesPanelLayoutBuilder.build(
-            viewportWidth = layoutViewportWidth(),
-            viewportHeight = layoutViewportHeight(),
-            collapsed = false,
-        ).panelBounds
-            ?.let { Vector2D(it.left, it.top) }
-            ?: Vector2D(defaultBounds.left, defaultBounds.top)
+        MapViewerDialogLayoutBuilder.alignLeft(defaultBounds)
 
     private fun closeDialog() {
         collapsed = true

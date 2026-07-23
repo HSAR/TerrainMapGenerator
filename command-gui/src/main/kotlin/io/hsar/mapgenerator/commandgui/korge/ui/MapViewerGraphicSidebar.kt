@@ -30,19 +30,20 @@ internal class MapViewerGraphicSidebar(
 ) {
     private val overlay = root.container()
     private val toggleButton = overlay.container()
-    private val panel = overlay.container()
+    private val dragLayer = overlay.container()
     private val templates = mutableListOf<GraphicTemplateSnapshot>()
-    private var open = false
     private var drag: DragState? = null
+    private var dialogWindow: MapViewerDialogWindow? = null
+    private var restoredDialogBounds: MapViewerDialogBounds? = null
     private var toggleBounds = ScreenBounds(0.0, 0.0, TOGGLE_WIDTH, TOGGLE_HEIGHT)
 
     init {
         overlay.zIndex = 10_100.0
+        dragLayer.zIndex = 20_000.0
+        dragLayer.mouseEnabled = false
         toggleButton.mouse {
             onClick {
-                open = !open
-                panel.visible = open
-                render()
+                if (dialogWindow == null) openDialog() else closeDialog()
             }
         }
         overlay.onStageResized { width, height -> layout(width, height) }
@@ -50,19 +51,27 @@ internal class MapViewerGraphicSidebar(
     }
 
     fun blocksScreenPoint(point: Vector2D): Boolean =
-        toggleBounds.contains(point) ||
-                (open && point.x in panel.x..(panel.x + PANEL_WIDTH) && point.y in panel.y..(panel.y + PANEL_HEIGHT + templates.size * (MapViewerUniversalList.DEFAULT_ROW_HEIGHT + ROW_GAP)))
+        toggleBounds.contains(point) || dialogWindow?.blocksScreenPoint(point) == true
+
+    fun persistedDialog(): MapViewerPersistedDialog? =
+        dialogWindow?.persistedDialog()
+
+    fun restoreDialog(dialog: MapViewerPersistedDialog) {
+        restoredDialogBounds = dialog.bounds
+        closeDialog()
+        openDialog()
+    }
 
     fun restoreTemplates(snapshots: List<GraphicTemplateSnapshot>) {
         templates.clear()
         templates += snapshots.sortedBy { it.index }
-        render()
+        dialogWindow?.refresh()
     }
 
     fun addTemplate(snapshot: GraphicTemplateSnapshot, notify: Boolean = true) {
         templates.removeAll { it.id == snapshot.id }
         templates.add(snapshot.index.coerceIn(0, templates.size), snapshot)
-        render()
+        dialogWindow?.refresh()
         if (notify) onTemplateCreated(snapshot)
     }
 
@@ -71,21 +80,24 @@ internal class MapViewerGraphicSidebar(
         if (index < 0) return null
         val before = templates[index]
         templates[index] = snapshot.copy(index = index)
-        render()
+        dialogWindow?.refresh()
         if (notify && before != templates[index]) onTemplateEdited(before, templates[index])
         return templates[index]
     }
 
     fun removeTemplate(id: GraphicTemplateId, notify: Boolean = true): GraphicTemplateSnapshot? =
         templates.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let { index ->
-            templates.removeAt(index).also { render(); if (notify) onTemplateDeleted(it) }
+            templates.removeAt(index).also {
+                dialogWindow?.refresh()
+                if (notify) onTemplateDeleted(it)
+            }
         }
 
     fun template(id: GraphicTemplateId): GraphicTemplateSnapshot? = templates.firstOrNull { it.id == id }
 
     fun update(pointer: Vector2D, leftHeld: Boolean) {
         val state = drag ?: return
-        state.preview.xy(pointer.x + 12.0, pointer.y + 12.0)
+        state.preview.xy(pointer.x + PREVIEW_OFFSET, pointer.y + PREVIEW_OFFSET)
         if (leftHeld) return
         if (!blocksScreenPoint(pointer)) onGraphicDropped(state.template, pointer)
         state.preview.removeFromParent()
@@ -95,11 +107,7 @@ internal class MapViewerGraphicSidebar(
     private fun layout(width: Int, height: Int) {
         val toggleLeft = width - OUTER_PADDING - TOGGLE_WIDTH * 2.0 - TOGGLE_GAP
         toggleBounds = ScreenBounds(toggleLeft, OUTER_PADDING, TOGGLE_WIDTH, TOGGLE_HEIGHT)
-        panel.x = toggleLeft
-        panel.y = OUTER_PADDING + TOGGLE_HEIGHT + PANEL_TOP_GAP
-        panel.visible = open
         renderToggle()
-        render()
     }
 
     private fun renderToggle() {
@@ -111,25 +119,63 @@ internal class MapViewerGraphicSidebar(
         )
     }
 
-    private fun render() {
-        panel.removeChildren()
-        if (!open) return
-        val import = panel.container().xy(0.0, 0.0)
-        MapViewerUiBoxes.button(import, PANEL_WIDTH, ROW_HEIGHT)
-        MapViewerTextViews.box(import, "New Graphic / Template", PANEL_WIDTH, ROW_HEIGHT, color = Palette.Colours.WHITE)
-        import.mouse { this.onClick { importGraphic() } }
+    private fun openDialog() {
+        val stage = overlay.stage ?: return
+        if (dialogWindow != null) return
+        dialogWindow = MapViewerDialogWindow(
+            root = overlay,
+            title = "Graphics",
+            initialPosition = { defaultBounds ->
+                MapViewerDialogLayoutBuilder.alignRight(defaultBounds, layoutViewportWidth())
+            },
+            persistence = MapViewerDialogPersistence(
+                type = "graphics",
+                restored = restoredDialogBounds?.let { MapViewerPersistedDialog("graphics", bounds = it) },
+            ),
+            preferredWidth = PANEL_WIDTH,
+            preferredHeight = contentHeight(),
+            contentMinimumWidth = { CONTENT_MINIMUM_WIDTH },
+            contentHeight = { contentHeight() },
+            onClose = ::closeDialog,
+            renderContent = ::renderContent,
+            mode = MapViewerDialogMode.FLOATING,
+        )
+        dialogWindow?.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
+        restoredDialogBounds = null
+    }
+
+    private fun closeDialog() {
+        dialogWindow?.close()
+        dialogWindow = null
+    }
+
+    private fun layoutViewportWidth(): Int =
+        overlay.stage?.views?.actualVirtualWidth ?: 0
+
+    private fun renderContent(parent: Container, itemWidth: Double) {
+        val buttonWidth = 180.0
+        parent.container().also { addButton ->
+            addButton.xy(itemWidth - buttonWidth, 0.0)
+            MapViewerUiBoxes.button(addButton, buttonWidth, HEADER_HEIGHT)
+            MapViewerTextViews.box(addButton, "New Graphic / Template", buttonWidth, HEADER_HEIGHT, color = Palette.Colours.WHITE)
+            addButton.mouse { onClick { importGraphic() } }
+        }
+        val list = parent.container().xy(0.0, HEADER_HEIGHT + HEADER_GAP)
         templates.forEachIndexed { index, snapshot ->
             MapViewerUniversalList.renderItem(
-                parent = panel,
+                parent = list,
                 item = MapViewerUniversalListItem(title = snapshot.template.name, bitmap = snapshot.template.bitmap),
-                width = PANEL_WIDTH,
-                top = ROW_HEIGHT + 8.0 + index * (MapViewerUniversalList.DEFAULT_ROW_HEIGHT + ROW_GAP),
+                width = itemWidth,
+                top = index * (MapViewerUniversalList.DEFAULT_ROW_HEIGHT + ROW_GAP),
                 onDown = { button, point ->
                     if (button == MouseButton.LEFT) beginDrag(snapshot) else if (button == MouseButton.RIGHT) openMenu(snapshot, point)
                 },
             )
         }
     }
+
+    private fun contentHeight(): Double =
+        HEADER_HEIGHT + HEADER_GAP + templates.size * (MapViewerUniversalList.DEFAULT_ROW_HEIGHT + ROW_GAP)
 
     private fun importGraphic() {
         val file = JFileChooser().apply {
@@ -148,8 +194,9 @@ internal class MapViewerGraphicSidebar(
     }
 
     private fun beginDrag(template: GraphicTemplateSnapshot) {
-        val preview = overlay.container()
-        MapViewerUiBoxes.imageBox(preview, template.template.bitmap, 120.0, 40.0)
+        dragLayer.removeChildren()
+        val preview = dragLayer.container()
+        MapViewerUiBoxes.imageBox(preview, template.template.bitmap, PREVIEW_WIDTH, PREVIEW_HEIGHT)
         drag = DragState(template, preview)
     }
 
@@ -180,10 +227,13 @@ internal class MapViewerGraphicSidebar(
         const val TOGGLE_WIDTH = 120.0
         const val TOGGLE_HEIGHT = 40.0
         const val TOGGLE_GAP = 12.0
-        const val PANEL_TOP_GAP = 12.0
         const val PANEL_WIDTH = 320.0
-        const val PANEL_HEIGHT = 80.0
-        const val ROW_HEIGHT = 40.0
+        const val CONTENT_MINIMUM_WIDTH = 280.0
+        const val HEADER_HEIGHT = 40.0
+        const val HEADER_GAP = 12.0
         const val ROW_GAP = 8.0
+        const val PREVIEW_WIDTH = 120.0
+        const val PREVIEW_HEIGHT = 40.0
+        const val PREVIEW_OFFSET = 12.0
     }
 }
