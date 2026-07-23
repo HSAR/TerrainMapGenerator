@@ -212,8 +212,27 @@ internal object MapViewerDialogLayoutBuilder {
             .coerceAtMost(maxInitialHeight)
     }
 
+    fun maximumInitialContentHeight(
+        shellWidth: Double,
+        viewportHeight: Int,
+        actionButtonCount: Int = 0,
+    ): Double =
+        build(
+            bounds = MapViewerDialogBounds(
+                left = 0.0,
+                top = 0.0,
+                width = shellWidth,
+                height = maximumInitialShellHeight(viewportHeight),
+            ),
+            actionButtonCount = actionButtonCount,
+        ).contentViewport.height
+
     fun contentViewportWidth(shellWidth: Double): Double =
         (shellWidth - CONTENT_PADDING * 2.0 - MapViewerScrollbar.WIDTH - SCROLLBAR_GAP).coerceAtLeast(0.0)
+
+    private fun maximumInitialShellHeight(viewportHeight: Int): Double =
+        (viewportHeight * MAX_INITIAL_HEIGHT_RATIO)
+            .coerceAtMost((viewportHeight - OUTER_PADDING * 2.0).coerceAtLeast(0.0))
 
     fun MapViewerDialogBounds.clampedTo(
         viewportWidth: Int,

@@ -168,6 +168,7 @@ internal class MapViewerSidebar(
         if (dialogWindow != null) {
             return
         }
+        collapseGroupsToFit(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
         dialogWindow = MapViewerDialogWindow(
             root = overlay,
             title = "Unit Types",
@@ -229,7 +230,7 @@ internal class MapViewerSidebar(
             headerHeight = GROUP_HEADER_HEIGHT,
             headerGap = GROUP_GAP,
             renderRow = { row, top -> addUnitSource(parent, row, top, itemWidth) },
-            onGroupsChanged = { relayout(layoutViewportWidth(), layoutViewportHeight()) },
+            onGroupsChanged = { dialogWindow?.refresh() },
         )
     }
 
@@ -405,7 +406,37 @@ internal class MapViewerSidebar(
         )
 
     private fun preferredDialogHeight(): Double =
-        MapViewerSidebarLayoutBuilder.PANEL_MIN_HEIGHT.coerceAtLeast(contentHeight(MapViewerSidebarLayoutBuilder.PANEL_WIDTH))
+        contentHeight(MapViewerSidebarLayoutBuilder.PANEL_WIDTH)
+
+    private fun collapseGroupsToFit(viewportWidth: Int, viewportHeight: Int) {
+        val minimumWidth = MapViewerDialogLayoutBuilder.minimumShellWidth(CONTENT_MINIMUM_WIDTH)
+        val shellWidth = MapViewerDialogLayoutBuilder.clampSize(
+            size = MapViewerDialogSize(MapViewerSidebarLayoutBuilder.PANEL_WIDTH, MapViewerDialogLayoutBuilder.MIN_HEIGHT),
+            viewportWidth = viewportWidth,
+            viewportHeight = viewportHeight,
+            minimumWidth = minimumWidth,
+        ).width
+        val collapsibleGroups = MapViewerUniversalList.unitAffiliationGroups
+            .filter { group -> unitTemplates.count { it.template.affiliation == group.affiliation } > 1 }
+            .map(MapViewerUnitAffiliationGroup::affiliation)
+
+        MapViewerUniversalList.collapseSectionsToFit(
+            sections = collapsibleGroups,
+            collapsedSections = collapsedAffiliationGroups,
+            availableHeight = MapViewerDialogLayoutBuilder.maximumInitialContentHeight(shellWidth, viewportHeight),
+            contentHeight = ::unitListContentHeight,
+            collapseOrder = listOf(
+                null,
+                UnitAffiliation.Neutral,
+                UnitAffiliation.Friend,
+                UnitAffiliation.Unknown,
+                UnitAffiliation.Hostile,
+            ),
+        )
+    }
+
+    private fun unitListContentHeight(): Double =
+        HEADER_HEIGHT + HEADER_GAP + unitListHeight()
 
     private data class DragState(
         val template: MapViewerUnitTemplate,

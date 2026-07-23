@@ -57,6 +57,25 @@ class MapViewerDialogLayoutBuilderTest {
     }
 
     @Test
+    fun `maximum initial content height honours dialog chrome`() {
+        val height = MapViewerDialogLayoutBuilder.maximumInitialContentHeight(
+            shellWidth = 400.0,
+            viewportHeight = 800,
+        )
+
+        assertThat(
+            height,
+            equalTo(
+                600.0 -
+                        MapViewerDialogLayoutBuilder.BORDER_INSET -
+                        MapViewerDialogLayoutBuilder.TITLE_BAR_HEIGHT -
+                        MapViewerDialogLayoutBuilder.FOOTER_TOP_GAP -
+                        MapViewerDialogLayoutBuilder.CONTENT_PADDING,
+            ),
+        )
+    }
+
+    @Test
     fun `dragged bounds are clamped inside viewport`() {
         val bounds = MapViewerDialogBounds(-200.0, -100.0, 420.0, 360.0)
 

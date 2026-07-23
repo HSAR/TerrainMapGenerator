@@ -98,6 +98,29 @@ internal object MapViewerUniversalList {
             }
         }
 
+    /**
+     * Collapses sections until their content fits [availableHeight]. A supplied
+     * [collapseOrder] takes precedence; otherwise sections collapse from the
+     * end of [sections] backwards.
+     */
+    fun <S> collapseSectionsToFit(
+        sections: List<S>,
+        collapsedSections: MutableSet<S>,
+        availableHeight: Double,
+        contentHeight: () -> Double,
+        collapseOrder: List<S>? = null,
+    ) {
+        val orderedSections = (collapseOrder ?: sections.asReversed())
+            .filter { it in sections }
+            .distinct()
+
+        orderedSections
+            .asSequence()
+            .filter { it !in collapsedSections }
+            .takeWhile { contentHeight() > availableHeight }
+            .forEach(collapsedSections::add)
+    }
+
     fun renderItem(
         parent: Container,
         item: MapViewerUniversalListItem,
