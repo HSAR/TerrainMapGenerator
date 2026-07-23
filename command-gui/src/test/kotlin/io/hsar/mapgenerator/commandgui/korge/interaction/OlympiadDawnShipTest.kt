@@ -18,6 +18,20 @@ class OlympiadDawnShipTest {
     }
 
     @Test
+    fun `binds bays and mine layers from ship JSON systems`() {
+        val definition = OlympiadDawnShip.parse(
+            """{"hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"bay","id":"kfNfH","capacity":16,"type":"cargo"},{"name":"bay","id":"cargo-bay","type":"cargo"},{"name":"bay","id":"sized-bay","capacity":8},{"name":"bay","id":"plain-bay"},{"name":"mineLayer","id":"F1jAt","capacity":3}],"class":"Minelayer","name":"Test"}""",
+        )
+
+        assertThat(definition.systems.map(OlympiadDawnShipSystem::name), equalTo(listOf("Cargo Bay - 16", "Cargo Bay", "Bay - 8", "Bay", "Mine Layer - 3")))
+        assertThat(definition.systems.map(OlympiadDawnShipSystem::capacity), equalTo(listOf(null, null, null, null, 3)))
+        assertThat(
+            OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition)[OlympiadDawnShip.magazinePropertyKey("F1jAt")],
+            equalTo("3"),
+        )
+    }
+
+    @Test
     fun `parses a ship definition and preserves untracked source sections`() {
         val definition = OlympiadDawnShip.parse(
             """{"hull":{"points":24,"rows":4},"armour":[[5,0]],"systems":[{"name":"drive","thrust":2,"id":"drive-1"},{"name":"fireControl","id":"fc-1"},{"name":"hangar","id":"hangar-1"}],"weapons":[{"name":"beam","class":2,"leftArc":"FS","numArcs":2}],"fighters":[{"name":"fighters","type":"standard","id":"squadron-1","mods":[],"hangar":"hangar-1"}],"mass":55,"class":"Heavy Cruiser","name":"Vandenburg"}""",

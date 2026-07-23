@@ -159,8 +159,8 @@ internal object OlympiadDawnShip {
                 val rawSystemName = system.requiredText("name")
                 val capacity = system.path("capacity").takeIf { !it.isMissingNode && !it.isNull }
                     ?.takeIf(JsonNode::isIntegralNumber)?.intValue()?.takeIf { it >= 0 }
-                if (rawSystemName == "magazine" && capacity == null) {
-                    throw IllegalArgumentException("Magazine capacity must be a non-negative integer")
+                if (rawSystemName in CAPACITY_SYSTEM_NAMES && capacity == null) {
+                    throw IllegalArgumentException("${rawSystemName.friendlySystemLabel()} capacity must be a non-negative integer")
                 }
                 val name = system.friendlySystemName(fighterNamesByHangar[id])
                 val count = if (system.path("name").textValue() == "drive") {
@@ -171,7 +171,7 @@ internal object OlympiadDawnShip {
                         id = if (count == 1) id else "$id-$index",
                         name = name,
                         fighterSquadronIds = fighterIdsByHangar[id].orEmpty(),
-                        capacity = capacity.takeIf { rawSystemName == "magazine" },
+                        capacity = capacity.takeIf { rawSystemName in CAPACITY_SYSTEM_NAMES },
                     )
                 }
             }
@@ -329,7 +329,24 @@ internal object OlympiadDawnShip {
             "ecm" -> "Electronic Countermeasures"
             "sensors" -> "Advanced Sensors"
             "magazine" -> "Magazine - ${path("capacity").intValue()}"
+            "mineLayer" -> "Mine Layer - ${path("capacity").intValue()}"
+            "bay" -> listOfNotNull(
+                path("type").textValue()?.titleCaseWords()?.takeIf(String::isNotEmpty),
+                "Bay",
+            ).joinToString(" ") + path("capacity").takeIf(JsonNode::isIntegralNumber)?.intValue()?.takeIf { it >= 0 }?.let { " - $it" }.orEmpty()
             else -> requiredText("name")
+        }
+
+    private fun String.titleCaseWords(): String =
+        trim()
+            .split(Regex("[\\s_-]+"))
+            .filter(String::isNotEmpty)
+            .joinToString(" ") { word -> word.lowercase().replaceFirstChar(Char::titlecase) }
+
+    private fun String.friendlySystemLabel(): String =
+        when (this) {
+            "mineLayer" -> "Mine layer"
+            else -> replaceFirstChar(Char::titlecase)
         }
 
     private fun JsonNode.parseArcs(): List<String> {
@@ -527,6 +544,7 @@ internal object OlympiadDawnShip {
         weapons.sumOf { beamFirepowerAtRange(it, rangeU) }
 
     private val ARC_ORDER = listOf("F", "FS", "AS", "A", "AP", "FP")
+    private val CAPACITY_SYSTEM_NAMES = setOf("magazine", "mineLayer")
 
     private fun JsonNode.requiredPositiveInt(field: String): Int =
         path(field).takeIf(JsonNode::isInt)?.intValue()?.takeIf { it > 0 }
