@@ -15,6 +15,7 @@ internal class MapSelectionController(
     private val onMovePreviewChanged: (MapObjectMovePreview?) -> Unit = {},
     private val onLedgerEntry: (LedgerEntry) -> Unit,
     private val constrainUnitMove: (UnitSnapshot) -> UnitSnapshot = { it },
+    private val onGraphicTemplateResized: (GraphicTemplateId, Double, Double) -> LedgerEntry? = { _, _, _ -> null },
 ) {
     private val selectedIds = linkedSetOf<MapPlacedObjectId>()
     private var boxState: BoxSelectionState? = null
@@ -135,6 +136,15 @@ internal class MapSelectionController(
         val originalFixedCorner = originalFrame
             ?.corner(handle.corner.opposite())
             ?.let { coordinateSpace.screenToMap(it, viewportProvider()) }
+        val resizedTemplateIds = selectedSnapshots
+            .filterIsInstance<GraphicSnapshot>()
+            .map(GraphicSnapshot::graphicTemplateId)
+            .toSet()
+        val originalSnapshots = (
+                selectedSnapshots + objectController.snapshots()
+                    .filterIsInstance<GraphicSnapshot>()
+                    .filter { it.graphicTemplateId in resizedTemplateIds }
+                ).distinctBy(MapPlacedObjectSnapshot::id)
         resizeState = ResizeState(
             grabbedCorner = handle.corner,
             originalBounds = bounds,
@@ -152,7 +162,8 @@ internal class MapSelectionController(
                 altHeld = altHeld,
             ),
             originalFixedCorner = originalFixedCorner,
-            originalSnapshots = selectedSnapshots,
+            selectedSnapshots = selectedSnapshots,
+            originalSnapshots = originalSnapshots,
         )
         boxState = null
         moveState = null
@@ -296,8 +307,8 @@ internal class MapSelectionController(
     }
 
     private fun applyResize(state: ResizeState, pointer: Vector2D) {
-        MapSelectionResize.resizeSnapshots(
-            originalSnapshots = state.originalSnapshots,
+        val resizedSelection = MapSelectionResize.resizeSnapshots(
+            originalSnapshots = state.selectedSnapshots,
             bounds = state.originalBounds,
             grabbedCorner = state.grabbedCorner,
             anchor = state.anchor,
@@ -305,6 +316,25 @@ internal class MapSelectionController(
             originalFixedCorner = state.originalFixedCorner,
             aspectRatio = coordinateSpace.aspectRatio,
         )
+        val templateSizes = resizedSelection
+            .filterIsInstance<GraphicSnapshot>()
+            .associate { it.graphicTemplateId to GraphicTemplateSize(it.normalizedWidth, it.normalizedHeight) }
+        val resizedById = resizedSelection.associateBy(MapPlacedObjectSnapshot::id)
+        state.originalSnapshots
+            .map { original ->
+                when (original) {
+                    is GraphicSnapshot -> templateSizes[original.graphicTemplateId]
+                        ?.let { size ->
+                            original.copy(
+                                normalizedWidth = size.width,
+                                normalizedHeight = size.height,
+                            )
+                        }
+                        ?: original
+
+                    else -> resizedById[original.id] ?: original
+                }
+            }
             .forEach(objectController::previewObject)
     }
 
@@ -319,13 +349,26 @@ internal class MapSelectionController(
     }
 
     private fun commitResize(state: ResizeState) {
-        val actions = state.originalSnapshots.mapNotNull { before ->
+        val objectActions = state.originalSnapshots.mapNotNull { before ->
             val after = objectController.snapshot(before.id) ?: return@mapNotNull null
             MapPlacedObjectPatch.diff(before, after)
                 .takeIf { it.isNotEmpty() }
                 ?.let { EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before)) }
         }
-        recordBatch(actions)
+        val templateActions = state.originalSnapshots
+            .filterIsInstance<GraphicSnapshot>()
+            .distinctBy(GraphicSnapshot::graphicTemplateId)
+            .mapNotNull { before ->
+                (objectController.snapshot(before.id) as? GraphicSnapshot)
+                    ?.let { after ->
+                        onGraphicTemplateResized(
+                            after.graphicTemplateId,
+                            after.normalizedWidth,
+                            after.normalizedHeight,
+                        )
+                    }
+            }
+        recordBatch(objectActions + templateActions)
     }
 
     private fun updateMovePreview(state: GroupMoveState) {
@@ -492,6 +535,7 @@ internal class MapSelectionController(
         val originalBounds: MapSelectionBounds,
         val anchor: MapCoordinate,
         val originalFixedCorner: MapCoordinate?,
+        val selectedSnapshots: List<MapPlacedObjectSnapshot>,
         val originalSnapshots: List<MapPlacedObjectSnapshot>,
     )
 

@@ -37,15 +37,19 @@ internal class MapObjectController(
 
     fun createGraphic(template: GraphicTemplateSnapshot, mapCoordinate: MapCoordinate): GraphicSnapshot {
         val bitmap = template.template.bitmap
-        val width = DEFAULT_GRAPHIC_WIDTH
+        val size = template.template.normalizedSize()
+            ?: GraphicTemplateSize(
+                width = DEFAULT_GRAPHIC_WIDTH,
+                height = DEFAULT_GRAPHIC_WIDTH * mapWidth.toDouble() / mapHeight * bitmap.height.toDouble() / bitmap.width.toDouble(),
+            )
         return GraphicSnapshot(
             id = MapPlacedObjectId(uuidGenerator()),
             graphicTemplateId = template.id,
             template = template.template,
             instanceName = template.template.name,
             mapCoordinate = mapCoordinate,
-            normalizedWidth = width,
-            normalizedHeight = width * mapWidth.toDouble() / mapHeight * bitmap.height.toDouble() / bitmap.width.toDouble(),
+            normalizedWidth = size.width,
+            normalizedHeight = size.height,
         ).also(::createObject)
     }
 

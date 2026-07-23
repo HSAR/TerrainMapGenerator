@@ -898,6 +898,16 @@ internal class MapViewerScene(
                             onMovePreviewChanged = { preview -> objectMovePreview = preview },
                             onLedgerEntry = ::recordLedgerEntry,
                             constrainUnitMove = unitManager::constrainMove,
+                            onGraphicTemplateResized = { id, width, height ->
+                                graphicSidebar.template(id)?.let { before ->
+                                    val after = before.copy(template = before.template.withNormalizedSize(width, height))
+                                    graphicSidebar.replaceTemplate(after, notify = false)
+                                    graphicManager.replaceTemplate(after)
+                                    MapViewerGraphicTemplatePatch.diff(before, after).let { patch ->
+                                        EditGraphicTemplateAction(id, patch.forward, patch.backward, before, after)
+                                    }
+                                }
+                            },
                         )
                         selectionControllerReady = true
 

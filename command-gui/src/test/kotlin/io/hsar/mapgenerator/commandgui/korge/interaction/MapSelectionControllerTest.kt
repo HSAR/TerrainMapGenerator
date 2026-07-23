@@ -242,6 +242,70 @@ class MapSelectionControllerTest {
     }
 
     @Test
+    fun `resizing one graphic resizes every placed instance of its template around its centre`() {
+        val graphicManager = graphicManager()
+        val objectController = objectController(graphicManager)
+        val templateId = GraphicTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000130"))
+        val otherTemplateId = GraphicTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000131"))
+        val template = MapViewerGraphicTemplate(templateId, "Graphic", Bitmap32(100, 100))
+        val first = graphicSnapshot("00000000-0000-0000-0000-000000000132", templateId, template, 0.3, 0.3, 0.1)
+        val second = graphicSnapshot("00000000-0000-0000-0000-000000000133", templateId, template, 0.7, 0.7, 0.2)
+        val unrelated = graphicSnapshot(
+            "00000000-0000-0000-0000-000000000134",
+            otherTemplateId,
+            MapViewerGraphicTemplate(otherTemplateId, "Other", Bitmap32(100, 100)),
+            0.5,
+            0.5,
+            0.15,
+        )
+        listOf(first, second, unrelated).forEach(objectController::createObject)
+        val resizedTemplates = mutableListOf<Triple<GraphicTemplateId, Double, Double>>()
+        val selectionController = selectionController(
+            objectController = objectController,
+            onGraphicTemplateResized = { id, width, height ->
+                resizedTemplates += Triple(id, width, height)
+                null
+            },
+        )
+        selectionController.selectOnly(first.id)
+
+        selectionController.beginLeftDrag(resizeHandleCenterFor(listOf(first)))
+        selectionController.update(Vector2D(500.0, 100.0), leftHeld = true)
+
+        val resizedFirst = objectController.snapshot(first.id) as GraphicSnapshot
+        val resizedSecond = objectController.snapshot(second.id) as GraphicSnapshot
+        assertThat(resizedFirst.normalizedWidth, equalTo(resizedSecond.normalizedWidth))
+        assertThat(resizedFirst.normalizedHeight, equalTo(resizedSecond.normalizedHeight))
+        assertThat(resizedFirst.mapCoordinate, equalTo(first.mapCoordinate))
+        assertThat(resizedSecond.mapCoordinate, equalTo(second.mapCoordinate))
+        assertThat(objectController.snapshot(unrelated.id), equalTo(unrelated))
+
+        selectionController.update(Vector2D(500.0, 100.0), leftHeld = false)
+
+        assertThat(
+            resizedTemplates,
+            equalTo(listOf(Triple(templateId, resizedFirst.normalizedWidth, resizedFirst.normalizedHeight))),
+        )
+    }
+
+    @Test
+    fun `new graphic inherits its template size`() {
+        val objectController = objectController(graphicManager())
+        val templateId = GraphicTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000135"))
+        val template = GraphicTemplateSnapshot(
+            id = templateId,
+            template = MapViewerGraphicTemplate(templateId, "Graphic", Bitmap32(100, 50))
+                .withNormalizedSize(width = 0.08, height = 0.04),
+            index = 0,
+        )
+
+        val created = objectController.createGraphic(template, MapCoordinate(0.5, 0.5))
+
+        assertThat(created.normalizedWidth, equalTo(0.08))
+        assertThat(created.normalizedHeight, equalTo(0.04))
+    }
+
+    @Test
     fun `single unit pivot rotation updates facing and keeps position fixed`() {
         val objectController = objectController()
         val unit = unitSnapshot("00000000-0000-0000-0000-000000000087", destroyed = false, x = 0.5, y = 0.5)
@@ -352,6 +416,7 @@ class MapSelectionControllerTest {
         objectController: MapObjectController,
         objectAt: (Vector2D) -> MapPlacedObjectSelection? = { null },
         onLedgerEntry: (LedgerEntry) -> Unit = {},
+        onGraphicTemplateResized: (GraphicTemplateId, Double, Double) -> LedgerEntry? = { _, _, _ -> null },
     ) = MapSelectionController(
         coordinateSpace = MapCoordinateSpace(GEOMETRY, mapWidth = 1000, mapHeight = 1000),
         viewportProvider = ::viewport,
@@ -360,9 +425,10 @@ class MapSelectionControllerTest {
         objectAt = objectAt,
         onStateChanged = {},
         onLedgerEntry = onLedgerEntry,
+        onGraphicTemplateResized = onGraphicTemplateResized,
     )
 
-    private fun objectController(): MapObjectController =
+    private fun objectController(graphicManager: MapPlacedGraphicManager? = null): MapObjectController =
         MapObjectController(
             unitManager = MapPlacedUnitManager(
                 root = Container(),
@@ -376,8 +442,37 @@ class MapSelectionControllerTest {
                 deferredActionRunner = ContextMenuDeferredActionRunner(Container()),
                 dialogManager = MapViewerDialogManager(),
             ),
+            graphicManager = graphicManager,
             drawingStore = MapDrawingStore(),
         )
+
+    private fun graphicManager() =
+        MapPlacedGraphicManager(
+            root = Container(),
+            graphicLayer = Container(),
+            geometry = GEOMETRY,
+            mapWidth = 1000,
+            mapHeight = 1000,
+            viewportProvider = ::viewport,
+            contextMenuManager = ContextMenuManager(Container()),
+        )
+
+    private fun graphicSnapshot(
+        id: String,
+        templateId: GraphicTemplateId,
+        template: MapViewerGraphicTemplate,
+        x: Double,
+        y: Double,
+        size: Double,
+    ) = GraphicSnapshot(
+        id = MapPlacedObjectId(UUID.fromString(id)),
+        graphicTemplateId = templateId,
+        template = template,
+        instanceName = template.name,
+        mapCoordinate = MapCoordinate(x, y),
+        normalizedWidth = size,
+        normalizedHeight = size,
+    )
 
     private fun drawingSnapshot(id: String) =
         DrawingSnapshot(
