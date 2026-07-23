@@ -51,6 +51,23 @@ class MoveLimitTest {
         assertThat(history.turnOriginFor(createdId), equalTo(MapCoordinate(0.6, 0.7)))
     }
 
+    @Test
+    fun `move-limit override retains the requested destination`() {
+        val origin = MapCoordinate(0.5, 0.5)
+        val requested = MapCoordinate(0.9, 0.9)
+        val overridden = MoveLimit.constrain(
+            origin = origin,
+            requested = requested,
+            limit = 1.0,
+            mapWidth = 100,
+            mapHeight = 100,
+            mapUnitsPerPixel = 1.0,
+            overrideLimit = true,
+        )
+
+        assertThat(overridden, equalTo(requested))
+    }
+
     private fun unit(id: MapPlacedObjectId, template: MapViewerUnitTemplate, coordinate: MapCoordinate) =
         UnitSnapshot(
             id = id,

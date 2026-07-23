@@ -126,9 +126,7 @@ internal class MapViewerCustomPropertiesEditor(
                 val wasConflicting = row.isConflicting()
                 row.key = keyInput.text
                 if (row.isConflicting() != wasConflicting) {
-                    pendingFocusInputIndex = firstInputIndex
                     onValidationChanged()
-                    rerender()
                 }
             }
             inputs += keyInput

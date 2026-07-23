@@ -19,6 +19,7 @@ import io.hsar.mapgenerator.commandgui.save.TacticalFireUsage
 import io.hsar.mapgenerator.commandgui.save.TacticalTurnMarker
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.image.Palette
+import korlibs.event.Key
 import korlibs.event.MouseButton
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
@@ -109,7 +110,7 @@ internal class MapPlacedUnitManager(
             refreshIconDisplay()
             refreshEcmFields()
             updateEcmDrag(input.mousePos, input.mouseButtonPressed(MouseButton.LEFT))
-            updateDrag(input.mousePos, input.mouseButtonPressed(MouseButton.LEFT))
+            updateDrag(input.mousePos, input.mouseButtonPressed(MouseButton.LEFT), input.keys[Key.SHIFT])
         }
     }
 
@@ -549,7 +550,7 @@ internal class MapPlacedUnitManager(
         )
     }
 
-    private fun updateDrag(pointer: Vector2D, leftHeld: Boolean) {
+    private fun updateDrag(pointer: Vector2D, leftHeld: Boolean, shiftHeld: Boolean) {
         val state = dragState ?: return
         if (!interactionsEnabled()) {
             dragState = null
@@ -580,7 +581,7 @@ internal class MapPlacedUnitManager(
             viewport = viewportProvider(),
             bounds = coordinateSpace.backgroundBounds,
         )
-        val constrainedCoordinate = constrainMove(state.unit, mapCoordinate)
+        val constrainedCoordinate = constrainMove(state.unit, mapCoordinate, overrideMoveLimit = shiftHeld)
         val worldPoint = coordinateSpace.toWorld(constrainedCoordinate)
 
         state.unit.mapCoordinate = constrainedCoordinate
@@ -636,6 +637,7 @@ internal class MapPlacedUnitManager(
             initialName = unit.instanceName,
             initialPositionX = position.easting,
             initialPositionY = position.northing,
+            initialGridSquare = position.easting.takeIf { gridLayer?.referenceSystem == io.hsar.mapgenerator.grid.ReferenceSystem.EPSILON },
             initialDestroyed = unit.destroyed,
             initialFacing = UnitFacingResolver.format(unit.facingDegrees),
             initialAffiliation = unit.template.affiliation,
@@ -1698,17 +1700,17 @@ internal class MapPlacedUnitManager(
         unit.view.y = worldPoint.y - unit.worldHeight * 0.5
     }
 
-    internal fun constrainMove(snapshot: UnitSnapshot): UnitSnapshot =
-        snapshot.copy(mapCoordinate = constrainMove(snapshot, snapshot.mapCoordinate))
+    internal fun constrainMove(snapshot: UnitSnapshot, overrideMoveLimit: Boolean): UnitSnapshot =
+        snapshot.copy(mapCoordinate = constrainMove(snapshot, snapshot.mapCoordinate, overrideMoveLimit))
 
-    private fun constrainMove(unit: PlacedUnit, requested: MapCoordinate): MapCoordinate =
-        constrainMove(unit.snapshot(), requested)
+    private fun constrainMove(unit: PlacedUnit, requested: MapCoordinate, overrideMoveLimit: Boolean = false): MapCoordinate =
+        constrainMove(unit.snapshot(), requested, overrideMoveLimit)
 
-    private fun constrainMove(snapshot: UnitSnapshot, requested: MapCoordinate): MapCoordinate =
+    private fun constrainMove(snapshot: UnitSnapshot, requested: MapCoordinate, overrideMoveLimit: Boolean = false): MapCoordinate =
         MoveLimit.parse(snapshot.template.customProperties)
             ?.let { limit ->
                 turnOriginProvider(snapshot.id)?.let { origin ->
-                    MoveLimit.constrain(origin, requested, limit, mapWidth, mapHeight, mapUnitsPerPixel)
+                    MoveLimit.constrain(origin, requested, limit, mapWidth, mapHeight, mapUnitsPerPixel, overrideMoveLimit)
                 }
             }
             ?: requested

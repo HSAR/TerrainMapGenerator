@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
+import io.hsar.mapgenerator.commandgui.korge.interaction.GridReferenceFields
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnFighterLaunchStatus
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip
@@ -12,6 +13,7 @@ import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.view.Container
+import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
 import korlibs.korge.view.xy
 import kotlin.math.max
@@ -26,6 +28,7 @@ internal class MapViewerUnitEditDialog(
     initialName: String,
     initialPositionX: String,
     initialPositionY: String,
+    private val initialGridSquare: String? = null,
     private val initialDestroyed: Boolean,
     private val initialFacing: String,
     initialAffiliation: UnitAffiliation?,
@@ -46,6 +49,7 @@ internal class MapViewerUnitEditDialog(
     private val restored: MapViewerPersistedDialog? = null,
 ) {
     private var nameValue = initialName
+    private var gridSquareValue = initialGridSquare.orEmpty()
     private var positionXValue = initialPositionX
     private var positionYValue = initialPositionY
     private var destroyedValue = initialDestroyed
@@ -53,6 +57,7 @@ internal class MapViewerUnitEditDialog(
     private var affiliationValue = initialAffiliation
     private val initialAffiliationValue = initialAffiliation
     private var nameInput: MapViewerInputField? = null
+    private var gridSquareInput: MapViewerInputField? = null
     private var positionXInput: MapViewerInputField? = null
     private var positionYInput: MapViewerInputField? = null
     private var facingInput: MapViewerInputField? = null
@@ -66,10 +71,10 @@ internal class MapViewerUnitEditDialog(
     private var isOpen = false
     private var window: MapViewerDialogWindow? = null
     private var initialFocusApplied = false
-    private var nameWasValid = MapViewerTextInputValidation.isPresent(nameValue)
-    private var positionWasValid = isPositionValid(positionXValue, positionYValue)
-    private var facingWasValid = isFacingValid(facingValue)
-    private var pendingNameFocus = false
+    private var synchronizingPositionFields = false
+    private val positionPreviewDebouncer = MapViewerDebouncer<GridReferenceFields>(POSITION_PREVIEW_DELAY_MILLISECONDS) { position ->
+        onPositionPreviewChanged(position.easting, position.northing)
+    }
     private val shipDefinition = OlympiadDawnShip.definition(initialCustomProperties) ?: OlympiadDawnShip.definition(unitType.customProperties)
     private var shipDamage = shipDefinition?.let { OlympiadDawnShip.instanceDamage(initialCustomProperties, it) }
     private var shipPanelCollapsed = true
@@ -90,15 +95,33 @@ internal class MapViewerUnitEditDialog(
         inheritedProperties = unitType.customProperties.filterKeys { it !in SHIP_PROPERTY_KEYS },
         reservedKeys = UNIT_FIELD_KEYS,
         onRowsChanged = { window?.refresh() },
-        onValidationChanged = { window?.refresh() },
         tooltipRoot = root,
     )
 
     init {
+        root.addUpdater {
+            if (isOpen) positionPreviewDebouncer.flush()
+        }
+        initialGridSquare?.let {
+            EpsilonPositionFields.parse(initialPositionY).let { position ->
+                positionXValue = position.x
+                positionYValue = position.y
+            }
+        }
         restored?.draft?.let { draft ->
             nameValue = draft.path("name").textValue() ?: nameValue
-            positionXValue = draft.path("positionX").textValue() ?: positionXValue
-            positionYValue = draft.path("positionY").textValue() ?: positionYValue
+            val restoredPositionX = draft.path("positionX").textValue() ?: positionXValue
+            val restoredPositionY = draft.path("positionY").textValue() ?: positionYValue
+            if (initialGridSquare == null) {
+                positionXValue = restoredPositionX
+                positionYValue = restoredPositionY
+            } else {
+                gridSquareValue = draft.path("gridSquare").textValue() ?: restoredPositionX
+                EpsilonPositionFields.parse(restoredPositionY).let { position ->
+                    positionXValue = position.x
+                    positionYValue = position.y
+                }
+            }
             destroyedValue = draft.path("destroyed").takeIf { it.isBoolean }?.booleanValue() ?: destroyedValue
             facingValue = draft.path("facing").textValue() ?: facingValue
             affiliationValue = draft.path("affiliation").textValue()
@@ -136,8 +159,11 @@ internal class MapViewerUnitEditDialog(
                 draft = {
                     OperationSaveJson.objectMapper.createObjectNode().apply {
                         put("name", nameValue)
-                        put("positionX", positionXValue)
-                        put("positionY", positionYValue)
+                        positionFields().let { position ->
+                            put("positionX", position.easting)
+                            put("positionY", position.northing)
+                        }
+                        initialGridSquare?.let { put("gridSquare", gridSquareValue) }
                         put("destroyed", destroyedValue)
                         put("facing", facingValue)
                         affiliationValue?.let { affiliation -> put("affiliation", affiliation.name) }
@@ -192,6 +218,7 @@ internal class MapViewerUnitEditDialog(
         }
 
         isOpen = false
+        positionPreviewDebouncer.cancel()
         dialogManager.unregister(this)
         customPropertiesEditor.hideTooltip()
         window?.close()
@@ -204,6 +231,7 @@ internal class MapViewerUnitEditDialog(
 
     val isTextInputActive: Boolean
         get() = nameInput?.isFocused == true ||
+                gridSquareInput?.isFocused == true ||
                 positionXInput?.isFocused == true ||
                 positionYInput?.isFocused == true ||
                 facingInput?.isFocused == true ||
@@ -216,9 +244,13 @@ internal class MapViewerUnitEditDialog(
         val inlineBlock = MapViewerInlineInputs.block(UNIT_INLINE_LABELS)
         val twoColumn = width >= splitRowMinimumWidth()
         val splitWidth = if (twoColumn) (width - MapViewerDialogSpacing.FIELD_GAP) / 2.0 else width
-        val nameTop = NAME_TOP
-        val affiliationTop = if (twoColumn) NAME_TOP else AFFILIATION_TOP
-        val facingTop = if (twoColumn) AFFILIATION_TOP else FACING_TOP
+        val epsilonCoordinates = initialGridSquare != null
+        val detailsTopOffset = if (epsilonCoordinates) EPSILON_NAME_TOP - NAME_TOP else 0.0
+        val positionLabelTop = if (epsilonCoordinates) EPSILON_POSITION_LABEL_TOP else POSITION_LABEL_TOP
+        val positionInputTop = if (epsilonCoordinates) EPSILON_POSITION_INPUT_TOP else POSITION_INPUT_TOP
+        val nameTop = if (epsilonCoordinates) EPSILON_NAME_TOP else NAME_TOP
+        val affiliationTop = (if (twoColumn) NAME_TOP else AFFILIATION_TOP) + detailsTopOffset
+        val facingTop = (if (twoColumn) AFFILIATION_TOP else FACING_TOP) + detailsTopOffset
         val destroyedTop = if (twoColumn) {
             facingTop
         } else {
@@ -247,7 +279,7 @@ internal class MapViewerUnitEditDialog(
             color = Palette.Colours.WHITE,
         ) {
             x = 0.0
-            y = POSITION_LABEL_TOP
+            y = positionLabelTop
         }
         MapViewerTextViews.box(
             parent = parent,
@@ -257,22 +289,22 @@ internal class MapViewerUnitEditDialog(
             color = Palette.Colours.WHITE,
         ) {
             x = positionFieldWidth + MapViewerDialogSpacing.FIELD_GAP
-            y = POSITION_LABEL_TOP
+            y = positionLabelTop
         }
 
         positionXInput = MapViewerTextInputs.input(
             parent = parent,
             text = positionXValue,
             x = 0.0,
-            y = POSITION_INPUT_TOP,
+            y = positionInputTop,
             width = positionFieldWidth,
             height = MapViewerDialogSpacing.INPUT_HEIGHT,
-            frameStyle = MapViewerTextInputValidation.frameStyle(isPositionValid(positionXValue, positionYValue)),
+            frameStyle = MapViewerTextInputValidation.frameStyle(positionFields().let { position -> isPositionValid(position.easting, position.northing) }),
         ).also { input ->
             input.controller.onTextUpdated.add {
+                if (synchronizingPositionFields) return@add
                 positionXValue = input.text
                 refreshPositionPreview()
-                refreshIfPositionValidityChanged()
             }
         }
 
@@ -280,15 +312,43 @@ internal class MapViewerUnitEditDialog(
             parent = parent,
             text = positionYValue,
             x = positionFieldWidth + MapViewerDialogSpacing.FIELD_GAP,
-            y = POSITION_INPUT_TOP,
+            y = positionInputTop,
             width = positionFieldWidth,
             height = MapViewerDialogSpacing.INPUT_HEIGHT,
-            frameStyle = MapViewerTextInputValidation.frameStyle(isPositionValid(positionXValue, positionYValue)),
+            frameStyle = MapViewerTextInputValidation.frameStyle(positionFields().let { position -> isPositionValid(position.easting, position.northing) }),
         ).also { input ->
             input.controller.onTextUpdated.add {
+                if (synchronizingPositionFields) return@add
                 positionYValue = input.text
                 refreshPositionPreview()
-                refreshIfPositionValidityChanged()
+            }
+        }
+
+        if (epsilonCoordinates) {
+            MapViewerTextViews.box(
+                parent = parent,
+                text = "Grid Square",
+                width = fieldWidth,
+                height = POSITION_LABEL_HEIGHT,
+                color = Palette.Colours.WHITE,
+            ) {
+                x = 0.0
+                y = POSITION_LABEL_TOP
+            }
+            gridSquareInput = MapViewerTextInputs.input(
+                parent = parent,
+                text = gridSquareValue,
+                x = 0.0,
+                y = POSITION_INPUT_TOP,
+                width = fieldWidth,
+                height = MapViewerDialogSpacing.INPUT_HEIGHT,
+                frameStyle = MapViewerTextInputValidation.frameStyle(positionFields().let { position -> isPositionValid(position.easting, position.northing) }),
+            ).also { input ->
+                input.controller.onTextUpdated.add {
+                    if (synchronizingPositionFields) return@add
+                    gridSquareValue = input.text
+                    refreshPositionPreview()
+                }
             }
         }
 
@@ -304,13 +364,7 @@ internal class MapViewerUnitEditDialog(
             frameStyle = MapViewerTextInputValidation.frameStyle(MapViewerTextInputValidation.isPresent(nameValue)),
         )
         nameInput?.controller?.onTextUpdated?.add {
-            val wasValid = nameWasValid
             nameValue = nameInput?.text.orEmpty()
-            nameWasValid = MapViewerTextInputValidation.isPresent(nameValue)
-            if (nameWasValid != wasValid) {
-                pendingNameFocus = true
-                window?.refresh()
-            }
         }
 
         MapViewerInlineInputs.block(emptyList()).controlWithoutLabel(
@@ -342,7 +396,6 @@ internal class MapViewerUnitEditDialog(
             input.controller.onTextUpdated.add {
                 facingValue = input.text
                 onFacingPreviewChanged(facingValue)
-                refreshIfFacingValidityChanged()
             }
         }
 
@@ -425,24 +478,33 @@ internal class MapViewerUnitEditDialog(
             nameInput?.focus()
             initialFocusApplied = true
         }
-        if (pendingNameFocus) {
-            nameInput?.focus()
-            pendingNameFocus = false
-        }
     }
 
     private fun syncFields(sync: MapViewerDialogPositionSync) {
-        positionXValue = sync.positionX
-        positionYValue = sync.positionY
-        positionXInput?.text = sync.positionX
-        positionYInput?.text = sync.positionY
-        window?.refresh()
+        positionPreviewDebouncer.cancel()
+        synchronizingPositionFields = true
+        try {
+            if (initialGridSquare == null) {
+                positionXValue = sync.positionX
+                positionYValue = sync.positionY
+            } else {
+                gridSquareValue = sync.positionX
+                EpsilonPositionFields.parse(sync.positionY).let { position ->
+                    positionXValue = position.x
+                    positionYValue = position.y
+                }
+            }
+            gridSquareInput?.text = gridSquareValue
+            positionXInput?.text = positionXValue
+            positionYInput?.text = positionYValue
+        } finally {
+            synchronizingPositionFields = false
+        }
     }
 
     private fun updateAffiliation(value: UnitAffiliation?) {
         affiliationValue = value
         onAffiliationPreviewChanged(value)
-        window?.refresh()
     }
 
     private fun renderDestroyedToggle(parent: Container) {
@@ -469,24 +531,7 @@ internal class MapViewerUnitEditDialog(
         )
 
     private fun refreshPositionPreview() {
-        onPositionPreviewChanged(positionXValue, positionYValue)
-        window?.refresh()
-    }
-
-    private fun refreshIfPositionValidityChanged() {
-        val isValid = isPositionValid(positionXValue, positionYValue)
-        if (isValid != positionWasValid) {
-            positionWasValid = isValid
-            window?.refresh()
-        }
-    }
-
-    private fun refreshIfFacingValidityChanged() {
-        val isValid = isFacingValid(facingValue)
-        if (isValid != facingWasValid) {
-            facingWasValid = isValid
-            window?.refresh()
-        }
+        positionPreviewDebouncer.schedule(positionFields())
     }
 
     private fun saveAndClose() {
@@ -496,8 +541,8 @@ internal class MapViewerUnitEditDialog(
 
         if (onSave(
                 nameValue.trim(),
-                positionXValue.trim(),
-                positionYValue.trim(),
+                positionFields().easting.trim(),
+                positionFields().northing.trim(),
                 destroyedValue,
                 facingValue.trim(),
                 affiliationValue,
@@ -511,7 +556,8 @@ internal class MapViewerUnitEditDialog(
     private fun contentHeight(width: Double): Double =
         (width.let {
             val twoColumn = it >= splitRowMinimumWidth()
-            val facingTop = if (twoColumn) AFFILIATION_TOP else FACING_TOP
+            val detailsTopOffset = if (initialGridSquare != null) EPSILON_NAME_TOP - NAME_TOP else 0.0
+            val facingTop = (if (twoColumn) AFFILIATION_TOP else FACING_TOP) + detailsTopOffset
             val destroyedTop = if (twoColumn) {
                 facingTop
             } else {
@@ -548,7 +594,7 @@ internal class MapViewerUnitEditDialog(
 
     private fun canSave(): Boolean =
         MapViewerTextInputValidation.isPresent(nameValue) &&
-                isPositionValid(positionXValue, positionYValue) &&
+                positionFields().let { position -> isPositionValid(position.easting, position.northing) } &&
                 isFacingValid(facingValue) &&
                 customPropertiesEditor.isValid
 
@@ -620,6 +666,10 @@ internal class MapViewerUnitEditDialog(
                 MapViewerDialogSpacing.FIELD_GAP +
                 positionAxisInputMinimumWidth(positionYValue, "Y")
 
+    private fun positionFields(): GridReferenceFields =
+        initialGridSquare?.let { GridReferenceFields(gridSquareValue, "$positionXValue-$positionYValue") }
+            ?: GridReferenceFields(positionXValue, positionYValue)
+
     private fun positionAxisInputMinimumWidth(value: String, fallback: String): Double =
         maxOf(POSITION_INPUT_MINIMUM_WIDTH, MapViewerTextViews.measure(value.ifBlank { fallback }).width + 24.0)
 
@@ -637,7 +687,7 @@ internal class MapViewerUnitEditDialog(
     private companion object {
         const val TYPE = "unit-edit"
         const val PREFERRED_WIDTH = 560.0
-        const val PREFERRED_HEIGHT = 540.0
+        const val PREFERRED_HEIGHT = 622.0
         const val ICON_SLOT_WIDTH = 34.0
         const val ICON_SLOT_HEIGHT = 26.0
         const val MIN_FIELD_WIDTH = 120.0
@@ -647,9 +697,13 @@ internal class MapViewerUnitEditDialog(
         const val POSITION_LABEL_TOP = 68.0
         const val POSITION_LABEL_HEIGHT = 22.0
         const val POSITION_INPUT_TOP = 96.0
+        const val EPSILON_POSITION_LABEL_TOP = 150.0
+        const val EPSILON_POSITION_INPUT_TOP = 178.0
+        const val EPSILON_NAME_TOP = 232.0
         const val NAME_TOP = 150.0
         const val AFFILIATION_TOP = 204.0
         const val FACING_TOP = 258.0
+        const val POSITION_PREVIEW_DELAY_MILLISECONDS = 350L
         val UNIT_INLINE_LABELS = listOf("Name", "Facing", "KIA")
         val UNIT_FIELD_KEYS = setOf(
             "type",
@@ -662,5 +716,12 @@ internal class MapViewerUnitEditDialog(
             "normalizedHeight",
         )
         val SHIP_PROPERTY_KEYS = setOf(OlympiadDawnShip.DAMAGE_KEY)
+    }
+}
+
+internal data class EpsilonPositionFields(val x: String, val y: String) {
+    companion object {
+        fun parse(value: String): EpsilonPositionFields =
+            value.split('-', limit = 2).let { parts -> EpsilonPositionFields(parts.getOrElse(0) { "" }, parts.getOrElse(1) { "" }) }
     }
 }

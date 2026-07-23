@@ -14,7 +14,7 @@ internal class MapSelectionController(
     private val onStateChanged: (MapSelectionState) -> Unit,
     private val onMovePreviewChanged: (MapObjectMovePreview?) -> Unit = {},
     private val onLedgerEntry: (LedgerEntry) -> Unit,
-    private val constrainUnitMove: (UnitSnapshot) -> UnitSnapshot = { it },
+    private val constrainUnitMove: (UnitSnapshot, Boolean) -> UnitSnapshot = { snapshot, _ -> snapshot },
     private val onGraphicTemplateResized: (GraphicTemplateId, Double, Double) -> LedgerEntry? = { _, _, _ -> null },
 ) {
     private val selectedIds = linkedSetOf<MapPlacedObjectId>()
@@ -115,7 +115,7 @@ internal class MapSelectionController(
     fun update(pointer: Vector2D, leftHeld: Boolean, shiftHeld: Boolean = false) {
         resizeState?.let { updateResize(it, pointer, leftHeld) }
         pivotState?.let { updatePivot(it, pointer, leftHeld, shiftHeld) }
-        moveState?.let { updateGroupMove(it, pointer, leftHeld) }
+        moveState?.let { updateGroupMove(it, pointer, leftHeld, shiftHeld) }
         boxState?.let { updateBoxSelection(it, pointer, leftHeld) }
     }
 
@@ -240,7 +240,7 @@ internal class MapSelectionController(
         return true
     }
 
-    private fun updateGroupMove(state: GroupMoveState, pointer: Vector2D, leftHeld: Boolean) {
+    private fun updateGroupMove(state: GroupMoveState, pointer: Vector2D, leftHeld: Boolean, shiftHeld: Boolean) {
         if (!leftHeld) {
             commitGroupMove(state)
             moveState = null
@@ -260,7 +260,7 @@ internal class MapSelectionController(
         )
         state.originalSnapshots
             .map { it.moveBy(delta) }
-            .map { snapshot -> if (snapshot is UnitSnapshot) constrainUnitMove(snapshot) else snapshot }
+            .map { snapshot -> if (snapshot is UnitSnapshot) constrainUnitMove(snapshot, shiftHeld) else snapshot }
             .forEach(objectController::previewObject)
         updateMovePreview(state)
         publish()

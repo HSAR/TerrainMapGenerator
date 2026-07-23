@@ -89,6 +89,32 @@ class MapSelectionControllerTest {
     }
 
     @Test
+    fun `shift drag bypasses the unit move constraint`() {
+        val objectController = objectController()
+        val unit = unitSnapshot("00000000-0000-0000-0000-000000000091", destroyed = false)
+        objectController.createObject(unit)
+        var receivedShiftOverride = false
+        val selectionController = MapSelectionController(
+            coordinateSpace = MapCoordinateSpace(GEOMETRY, mapWidth = 1000, mapHeight = 1000),
+            viewportProvider = ::viewport,
+            objectController = objectController,
+            contextMenuManager = ContextMenuManager(Container()),
+            objectAt = { MapPlacedObjectSelection(MapPlacedObjectSelectionKind.UNIT, unit.id, 0.0) },
+            onStateChanged = {},
+            onLedgerEntry = {},
+            constrainUnitMove = { snapshot, shiftHeld ->
+                receivedShiftOverride = shiftHeld
+                snapshot
+            },
+        )
+
+        selectionController.beginLeftDrag(Vector2D(500.0, 500.0))
+        selectionController.update(Vector2D(900.0, 900.0), leftHeld = true, shiftHeld = true)
+
+        assertThat(receivedShiftOverride, equalTo(true))
+    }
+
+    @Test
     fun `shift drag inverts selection status for every object in the box`() {
         val objectController = objectController()
         val first = unitSnapshot("00000000-0000-0000-0000-000000000083", destroyed = false, x = 0.2, y = 0.2)

@@ -24,7 +24,9 @@ internal object MoveLimit {
         mapWidth: Int,
         mapHeight: Int,
         mapUnitsPerPixel: Double,
+        overrideLimit: Boolean = false,
     ): MapCoordinate {
+        if (overrideLimit) return requested
         val dx = requested.x - origin.x
         val dy = requested.y - origin.y
         val distance = hypot(dx * mapWidth, dy * mapHeight) * mapUnitsPerPixel
