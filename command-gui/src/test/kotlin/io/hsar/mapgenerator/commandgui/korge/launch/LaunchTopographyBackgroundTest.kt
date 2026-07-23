@@ -1,22 +1,32 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
-import io.hsar.mapgenerator.contourgenerator.TopographyRequest
+import io.hsar.mapgenerator.contourgenerator.TopographyGenerator
 import korlibs.image.bitmap.Bitmap32
-import korlibs.korge.view.Container
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.everyItem
+import org.hamcrest.Matchers.greaterThanOrEqualTo
+import org.hamcrest.Matchers.hasSize
+import org.hamcrest.Matchers.lessThanOrEqualTo
 import org.junit.jupiter.api.Test
 import java.awt.image.BufferedImage
+import java.util.*
+import java.util.concurrent.atomic.AtomicInteger
 
 class LaunchTopographyBackgroundTest {
     @Test
-    fun `empty background draws immediately without generating terrain`() {
-        val background = LaunchTopographyBackground.empty(73L)
+    fun `background texture renders at one hundred and fifty percent of viewport dimensions`() {
+        val background = LaunchTopographyBackground.create(1920, 1080, 73L)
 
         assertThat(background.seed, equalTo(73L))
+        assertThat(background.textureWidth to background.textureHeight, equalTo(2880 to 1620))
         assertThat(background.available, equalTo(false))
-        assertThat(background.quality, equalTo(-1))
     }
 
     @Test
@@ -34,123 +44,285 @@ class LaunchTopographyBackgroundTest {
     }
 
     @Test
-    fun `source size renders at one hundred and fifty percent of viewport dimensions`() {
-        val sourceSize = LaunchBackgroundLayout.sourceSize(1920, 1080)
+    fun `tile plan covers the texture with square cores`() {
+        val tiles = LaunchBackgroundTilePlan.tiles(textureWidth = 1920, textureHeight = 1080)
 
-        assertThat(sourceSize, equalTo(2880 to 1620))
+        assertThat(tiles, hasSize(40))
+        assertThat(tiles.map(LaunchBackgroundTileCoordinate::column).toSet(), equalTo((0..7).toSet()))
+        assertThat(tiles.map(LaunchBackgroundTileCoordinate::row).toSet(), equalTo((0..4).toSet()))
     }
 
     @Test
-    fun `progression uses four aligned tactical resolutions`() {
-        val stages = LaunchBackgroundProgression.stages(1280, 720)
+    fun `preview and refinement requests preserve their shared world extent`() {
+        val coordinate = LaunchBackgroundTileCoordinate(column = 1, row = 2)
+        val preview = coordinate.request(73L, LaunchBackgroundTileQuality.PREVIEW)
+        val refinement = coordinate.request(73L, LaunchBackgroundTileQuality.REFINEMENT)
 
-        assertThat(stages.map { it.width to it.height }, equalTo(listOf(240 to 135, 480 to 270, 960 to 540, 1920 to 1080)))
-        assertThat(stages.map(LaunchBackgroundStage::worldUnitsPerPixel), equalTo(listOf(8.0, 4.0, 2.0, 1.0)))
-        assertThat(stages.map(LaunchBackgroundStage::smooth), equalTo(listOf(false, false, false, true)))
-        assertThat(stages.map { it.width * it.worldUnitsPerPixel }, equalTo(List(4) { 1920.0 }))
-        assertThat(stages.map { it.height * it.worldUnitsPerPixel }, equalTo(List(4) { 1080.0 }))
+        assertThat(preview.width to preview.height, equalTo(36 to 36))
+        assertThat(preview.worldUnitsPerPixel, equalTo(8.0))
+        assertThat(preview.worldOriginX to preview.worldOriginY, equalTo(216.0 to 456.0))
+        assertThat(preview.tracing.stepPixels, equalTo(1.0))
+        assertThat(preview.tracing.seedGridStepPixels, equalTo(2))
+        assertThat(preview.tracing.maximumPointsPerDirection, equalTo(2_500))
+        assertThat(refinement.width to refinement.height, equalTo(288 to 288))
+        assertThat(refinement.worldUnitsPerPixel, equalTo(1.0))
+        assertThat(refinement.worldOriginX to refinement.worldOriginY, equalTo(216.0 to 456.0))
+        assertThat(refinement.seed, equalTo(preview.seed))
+        assertThat(refinement.noiseScale, equalTo(preview.noiseScale))
+        assertThat(refinement.contourLevels, equalTo(preview.contourLevels))
     }
 
     @Test
-    fun `progression rounds fractional source dimensions consistently`() {
-        val stages = LaunchBackgroundProgression.stages(801, 601)
+    fun `priority noisemap samples the centre of every tile`() {
+        val request = LaunchBackgroundTileCoordinate.priorityRequest(
+            textureWidth = 1920,
+            textureHeight = 1080,
+            seed = 73L,
+        )
 
-        assertThat(stages.map { it.width to it.height }, equalTo(listOf(151 to 113, 301 to 226, 601 to 451, 1202 to 902)))
-        assertThat(stages.last().width to stages.last().height, equalTo(1202 to 902))
+        assertThat(request.width to request.height, equalTo(8 to 5))
+        assertThat(request.worldOriginX to request.worldOriginY, equalTo(120.0 to 120.0))
+        assertThat(request.worldUnitsPerPixel, equalTo(240.0))
+        assertThat(request.contourLevels, equalTo(emptyList()))
     }
 
     @Test
-    fun `stage requests preserve terrain settings while scaling tracing`() {
-        val requests = LaunchBackgroundProgression.stages(1280, 720).map { it.request(73L) }
+    fun `priority order is strictly highest elevation first`() {
+        val background = LaunchTopographyBackground.create(1280, 720, 73L)
+        val request = LaunchBackgroundTileCoordinate.priorityRequest(
+            background.textureWidth,
+            background.textureHeight,
+            background.seed,
+        )
+        val field = TopographyGenerator.generate(request).heightField
+        val order = LaunchBackgroundTilePlan.priorityOrder(background)
+        val elevations = order.map { coordinate -> field[coordinate.column, coordinate.row] }
 
-        assertThat(requests.map(TopographyRequest::seed).distinct(), equalTo(listOf(73L)))
-        assertThat(requests.map(TopographyRequest::noiseScale).distinct(), equalTo(listOf(475.0)))
-        assertThat(requests.map(TopographyRequest::contourLevels).distinct().size, equalTo(1))
-        assertThat(requests.map { it.tracing.stepPixels }, equalTo(listOf(1.0, 1.0, 1.0, 2.0)))
-        assertThat(requests.map { it.tracing.seedGridStepPixels }, equalTo(listOf(2, 3, 6, 12)))
-        assertThat(requests.map { it.tracing.maximumPointsPerDirection }, equalTo(listOf(2_500, 5_000, 10_000, 20_000)))
+        assertThat(elevations.zipWithNext().all { (first, second) -> first >= second }, equalTo(true))
     }
 
     @Test
-    fun `raster sampling remains pixelated until the final stage`() {
-        val sampling = LaunchBackgroundProgression.stages(1280, 720).map { stage ->
-            LaunchTopographyBackground(73L, stage, Bitmap32(stage.width, stage.height))
-                .renderRaster(Container(), 1280, 720)
-                ?.smoothing
+    fun `parallelism leaves one processor free and never exceeds sixteen`() {
+        assertThat(LaunchBackgroundTilePlan.parallelism(1), equalTo(1))
+        assertThat(LaunchBackgroundTilePlan.parallelism(4), equalTo(3))
+        assertThat(LaunchBackgroundTilePlan.parallelism(17), equalTo(16))
+        assertThat(LaunchBackgroundTilePlan.parallelism(64), equalTo(16))
+    }
+
+    @Test
+    fun `arrival jitter is deterministic quality aware and bounded`() {
+        val tiles = LaunchBackgroundTilePlan.tiles(textureWidth = 1920, textureHeight = 1080)
+        val first = tiles.map { tile ->
+            LaunchBackgroundTilePlan.arrivalJitter(73L, tile, LaunchBackgroundTileQuality.PREVIEW)
+        }
+        val second = tiles.map { tile ->
+            LaunchBackgroundTilePlan.arrivalJitter(73L, tile, LaunchBackgroundTileQuality.PREVIEW)
+        }
+        val refinements = tiles.map { tile ->
+            LaunchBackgroundTilePlan.arrivalJitter(73L, tile, LaunchBackgroundTileQuality.REFINEMENT)
         }
 
-        assertThat(sampling, equalTo(listOf(false, false, false, true)))
+        assertThat(first, equalTo(second))
+        assertThat(first, everyItem(greaterThanOrEqualTo(40L)))
+        assertThat(first, everyItem(lessThanOrEqualTo(320L)))
+        assertThat(first == refinements, equalTo(false))
     }
 
     @Test
-    fun `final raster downsamples and is resampled with cover placement after resize`() {
-        val finalStage = LaunchBackgroundProgression.stages(1000, 600).last()
-        val background = LaunchTopographyBackground(73L, finalStage, Bitmap32(finalStage.width, finalStage.height))
-
-        val initial = background.renderRaster(Container(), 1000, 600)
-        val resized = background.renderRaster(Container(), 800, 800)
-
-        assertThat(initial?.smoothing, equalTo(true))
-        assertThat(initial?.scaleX, closeTo(2.0 / 3.0, 0.00001))
-        assertThat(initial?.scaleY, closeTo(2.0 / 3.0, 0.00001))
-        assertThat(resized?.smoothing, equalTo(true))
-        assertThat(resized?.scaleX, closeTo(8.0 / 9.0, 0.00001))
-        assertThat(resized?.scaleY, closeTo(8.0 / 9.0, 0.00001))
-        assertThat(resized?.x, closeTo(-266.66667, 0.0001))
-        assertThat(resized?.y, closeTo(0.0, 0.0001))
+    fun `refinement probability follows the quadratic preview completion curve`() {
+        assertThat(LaunchBackgroundJobScheduler.refinementProbability(0.0), equalTo(0.05))
+        assertThat(LaunchBackgroundJobScheduler.refinementProbability(0.5), closeTo(0.2375, 0.00001))
+        assertThat(LaunchBackgroundJobScheduler.refinementProbability(1.0), equalTo(0.8))
     }
 
     @Test
-    fun `progression publishes successful stages and continues after failure`() {
-        val published = mutableListOf<Int>()
-        val failures = mutableListOf<Int>()
+    fun `scheduler keeps both queues in peaks first order when refinement draws lose`() {
+        val coordinates = (0..2).map { column -> LaunchBackgroundTileCoordinate(column, 0) }
+        val scheduler = LaunchBackgroundJobScheduler(coordinates, draw = { 1.0 })
+        val jobs = buildList {
+            repeat(6) {
+                scheduler.nextJob()?.also { job ->
+                    add(job)
+                    scheduler.complete(job)
+                }
+            }
+        }
 
-        val best = LaunchBackgroundProgression.generate(
-            viewportWidth = 1280,
-            viewportHeight = 720,
-            seed = 73L,
-            generate = { request ->
-                if (request.width == 480) error("broken second stage")
+        assertThat(jobs.map(LaunchBackgroundRenderJob::quality), equalTo(List(3) { LaunchBackgroundTileQuality.PREVIEW } + List(3) { LaunchBackgroundTileQuality.REFINEMENT }))
+        assertThat(jobs.take(3).map(LaunchBackgroundRenderJob::coordinate), equalTo(coordinates))
+        assertThat(jobs.takeLast(3).map(LaunchBackgroundRenderJob::coordinate), equalTo(coordinates))
+    }
+
+    @Test
+    fun `scheduler can refine a published preview while other previews remain`() {
+        val coordinates = (0..2).map { column -> LaunchBackgroundTileCoordinate(column, 0) }
+        val scheduler = LaunchBackgroundJobScheduler(coordinates, draw = { 0.0 })
+        val preview = scheduler.nextJob()!!
+        scheduler.complete(preview)
+
+        val refinement = scheduler.nextJob()!!
+
+        assertThat(preview.quality, equalTo(LaunchBackgroundTileQuality.PREVIEW))
+        assertThat(refinement, equalTo(LaunchBackgroundRenderJob(coordinates.first(), LaunchBackgroundTileQuality.REFINEMENT)))
+    }
+
+    @Test
+    fun `seeded scheduler decisions are deterministic`() {
+        val coordinates = (0..7).map { column -> LaunchBackgroundTileCoordinate(column, 0) }
+
+        fun drain(seed: Long): List<LaunchBackgroundRenderJob> {
+            val random = Random(seed)
+            val scheduler = LaunchBackgroundJobScheduler(coordinates, random::nextDouble)
+            return buildList {
+                while (size < coordinates.size * 2) {
+                    scheduler.nextJob()?.also { job ->
+                        add(job)
+                        scheduler.complete(job)
+                    }
+                }
+            }
+        }
+
+        assertThat(drain(91L), equalTo(drain(91L)))
+    }
+
+    @Test
+    fun `generator caps active rendering while continuously producing both qualities`() = runBlocking {
+        val background = LaunchTopographyBackground.create(1600, 160, 73L)
+        val active = AtomicInteger()
+        val maximumActive = AtomicInteger()
+        val updates = Collections.synchronizedList(mutableListOf<LaunchBackgroundTileUpdate>())
+        val order = LaunchBackgroundTilePlan.tiles(background.textureWidth, background.textureHeight)
+        val generator = LaunchBackgroundTileGenerator(
+            parallelism = 4,
+            render = { request ->
+                active.incrementAndGet().also { current ->
+                    maximumActive.updateAndGet { previous -> maxOf(previous, current) }
+                }
+                Thread.sleep(5)
+                active.decrementAndGet()
                 BufferedImage(request.width, request.height, BufferedImage.TYPE_INT_ARGB)
             },
-            onStage = { background, _ -> published += background.quality },
-            onFailure = { stage, _, _ -> failures += stage.index },
+            wait = {},
+            priorityOrder = { order },
         )
 
-        assertThat(published, equalTo(listOf(0, 2, 3)))
-        assertThat(failures, equalTo(listOf(1)))
-        assertThat(best.quality, equalTo(3))
-        assertThat(best.available, equalTo(true))
+        generator.generate(background, onTile = updates::add)
+
+        assertThat(maximumActive.get(), lessThanOrEqualTo(4))
+        assertThat(updates, hasSize(order.size * 2))
+        assertThat(updates.count { it.quality == LaunchBackgroundTileQuality.PREVIEW }, equalTo(order.size))
+        assertThat(updates.count { it.quality == LaunchBackgroundTileQuality.REFINEMENT }, equalTo(order.size))
     }
 
     @Test
-    fun `complete progression failure preserves black fallback`() {
-        val published = mutableListOf<Int>()
-        val failures = mutableListOf<Int>()
-
-        val best = LaunchBackgroundProgression.generate(
-            viewportWidth = 320,
-            viewportHeight = 180,
-            seed = 91L,
-            generate = { error("broken generator") },
-            onStage = { background, _ -> published += background.quality },
-            onFailure = { stage, _, _ -> failures += stage.index },
+    fun `reveal delays release render capacity immediately`() = runBlocking {
+        val background = LaunchTopographyBackground.create(800, 160, 73L)
+        val order = LaunchBackgroundTilePlan.tiles(background.textureWidth, background.textureHeight)
+        val revealGate = CompletableDeferred<Unit>()
+        val rendered = AtomicInteger()
+        val generator = LaunchBackgroundTileGenerator(
+            parallelism = 2,
+            render = { request ->
+                rendered.incrementAndGet()
+                BufferedImage(request.width, request.height, BufferedImage.TYPE_INT_ARGB)
+            },
+            wait = { revealGate.await() },
+            priorityOrder = { order },
         )
 
-        assertThat(published, equalTo(emptyList()))
-        assertThat(failures, equalTo(listOf(0, 1, 2, 3)))
-        assertThat(best.available, equalTo(false))
+        val generation = async {
+            generator.generate(background, onTile = {})
+        }
+        withTimeout(2_000) {
+            while (rendered.get() < order.size) yield()
+        }
+
+        assertThat(rendered.get(), equalTo(order.size))
+        revealGate.complete(Unit)
+        generation.await()
     }
 
     @Test
-    fun `crossfade uses clamped smoothstep interpolation`() {
-        val alphas = listOf(-1.0, 0.0, 75.0, 150.0, 300.0, 400.0).map(LaunchBackgroundCrossfade::alpha)
+    fun `failed preview remains eligible for a successful refinement`() = runBlocking {
+        val background = LaunchTopographyBackground.create(160, 160, 73L)
+        val updates = mutableListOf<LaunchBackgroundTileUpdate>()
+        val failures = mutableListOf<LaunchBackgroundRenderJob>()
+        val generator = LaunchBackgroundTileGenerator(
+            parallelism = 1,
+            render = { request ->
+                if (request.width == 36) error("broken preview")
+                BufferedImage(request.width, request.height, BufferedImage.TYPE_INT_ARGB)
+            },
+            wait = {},
+            priorityOrder = { LaunchBackgroundTilePlan.tiles(it.textureWidth, it.textureHeight) },
+        )
 
-        assertThat(alphas[0], equalTo(0.0))
-        assertThat(alphas[1], equalTo(0.0))
-        assertThat(alphas[2], closeTo(0.15625, 0.00001))
-        assertThat(alphas[3], closeTo(0.5, 0.00001))
-        assertThat(alphas[4], equalTo(1.0))
-        assertThat(alphas[5], equalTo(1.0))
+        generator.generate(
+            background,
+            onTile = updates::add,
+            onFailure = { job, _, _ -> failures += job },
+        )
+
+        assertThat(failures.map(LaunchBackgroundRenderJob::quality), equalTo(listOf(LaunchBackgroundTileQuality.PREVIEW)))
+        assertThat(updates.map(LaunchBackgroundTileUpdate::quality), equalTo(listOf(LaunchBackgroundTileQuality.REFINEMENT)))
     }
+
+    @Test
+    fun `failed refinement leaves its preview cached`() = runBlocking {
+        val background = LaunchTopographyBackground.create(160, 160, 91L)
+        val generator = LaunchBackgroundTileGenerator(
+            parallelism = 1,
+            render = { request ->
+                if (request.width == 288) error("broken refinement")
+                BufferedImage(request.width, request.height, BufferedImage.TYPE_INT_ARGB)
+            },
+            wait = {},
+            priorityOrder = { LaunchBackgroundTilePlan.tiles(it.textureWidth, it.textureHeight) },
+        )
+
+        generator.generate(
+            background,
+            onTile = { update -> background.accept(update) },
+        )
+
+        assertThat(background.tiles().single().preview != null, equalTo(true))
+        assertThat(background.tiles().single().refinement, equalTo(null))
+    }
+
+    @Test
+    fun `cached refinement replaces and releases its preview`() {
+        val background = LaunchTopographyBackground.create(160, 160, 17L)
+        val coordinate = LaunchBackgroundTileCoordinate(0, 0)
+
+        background.accept(update(coordinate, LaunchBackgroundTileQuality.PREVIEW, 36))
+        assertThat(background.tiles().single().preview != null, equalTo(true))
+        background.accept(update(coordinate, LaunchBackgroundTileQuality.REFINEMENT, 288))
+
+        assertThat(background.available, equalTo(true))
+        assertThat(background.tiles().single().preview, equalTo(null))
+        assertThat(background.tiles().single().refinement != null, equalTo(true))
+    }
+
+    @Test
+    fun `tile reveal fades previews and refinements independently`() {
+        assertThat(LaunchBackgroundTileReveal.previewAlpha(-1.0), equalTo(0.0))
+        assertThat(LaunchBackgroundTileReveal.previewAlpha(60.0), closeTo(0.5, 0.00001))
+        assertThat(LaunchBackgroundTileReveal.previewAlpha(120.0), equalTo(1.0))
+        assertThat(LaunchBackgroundTileReveal.refinementAlpha(0.0), equalTo(0.0))
+        assertThat(LaunchBackgroundTileReveal.refinementAlpha(140.0), closeTo(0.5, 0.00001))
+        assertThat(LaunchBackgroundTileReveal.refinementAlpha(280.0), equalTo(1.0))
+    }
+
+    private fun update(
+        coordinate: LaunchBackgroundTileCoordinate,
+        quality: LaunchBackgroundTileQuality,
+        size: Int,
+    ) = LaunchBackgroundTileUpdate(
+        coordinate = coordinate,
+        quality = quality,
+        bitmap = Bitmap32(size, size),
+        renderMilliseconds = 1L,
+        arrivalJitterMilliseconds = 40L,
+    )
 }

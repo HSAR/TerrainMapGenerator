@@ -50,6 +50,8 @@ data class TopographyRequest(
     val height: Int,
     val seed: Long,
     val worldUnitsPerPixel: Double = 1.0,
+    val worldOriginX: Double = 0.0,
+    val worldOriginY: Double = 0.0,
     val noiseScale: Double = 425.0,
     val terrainProfile: TerrainProfile = TerrainProfile.SEEDED,
     val contourLevels: List<Double> = (3..17).map { it * 0.05 },

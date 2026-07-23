@@ -30,7 +30,10 @@ object TopographyGenerator {
         resolvedProfile: TerrainProfile,
     ): TopographyMap {
         val sampleAtPixel = { x: Double, y: Double ->
-            sampler.sample(x * request.worldUnitsPerPixel, y * request.worldUnitsPerPixel).coerceIn(0.0, 1.0)
+            sampler.sample(
+                request.worldOriginX + x * request.worldUnitsPerPixel,
+                request.worldOriginY + y * request.worldUnitsPerPixel,
+            ).coerceIn(0.0, 1.0)
         }
         val field = HeightField(
             width = request.width,

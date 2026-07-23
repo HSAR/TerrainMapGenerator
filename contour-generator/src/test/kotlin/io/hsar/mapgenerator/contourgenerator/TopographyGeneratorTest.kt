@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.contourgenerator
 
 import org.hamcrest.MatcherAssert.assertThat
+import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.greaterThan
 import org.hamcrest.Matchers.hasSize
@@ -144,6 +145,86 @@ class TopographyGeneratorTest {
     }
 
     @Test
+    fun `origin aware tile samples match the same whole field coordinates`() {
+        val whole = TopographyGenerator.generate(
+            request(width = 64, height = 64, seed = 73L, contourLevels = emptyList()),
+        )
+        val tile = TopographyGenerator.generate(
+            request(
+                width = 16,
+                height = 20,
+                seed = 73L,
+                worldOriginX = 19.0,
+                worldOriginY = 23.0,
+                contourLevels = emptyList(),
+            ),
+        )
+
+        (0 until tile.heightField.width).forEach { x ->
+            (0 until tile.heightField.height).forEach { y ->
+                assertThat(tile.heightField[x, y], equalTo(whole.heightField[x + 19, y + 23]))
+            }
+        }
+    }
+
+    @Test
+    fun `negative bleed origins remain deterministic and normalized`() {
+        val request = request(
+            width = 48,
+            height = 48,
+            seed = 91L,
+            worldOriginX = -24.0,
+            worldOriginY = -24.0,
+            contourLevels = emptyList(),
+        )
+
+        val first = TopographyGenerator.generate(request).heightField.values()
+        val second = TopographyGenerator.generate(request).heightField.values()
+
+        assertThat(first.contentEquals(second), equalTo(true))
+        assertThat(first.all { it in 0.0..1.0 }, equalTo(true))
+    }
+
+    @Test
+    fun `overlapping adjacent tiles trace the same contour at their shared core edge`() {
+        val tracing = ContourTracingOptions(
+            stepPixels = 2.0,
+            seedGridStepPixels = 12,
+            maximumPointsPerDirection = 20_000,
+        )
+        val sampler = HeightSampler { _, worldY -> ((worldY + 24.0) / 287.0).coerceIn(0.0, 1.0) }
+        val left = TopographyGenerator.generate(
+            request(
+                width = 288,
+                height = 288,
+                worldOriginX = -24.0,
+                worldOriginY = -24.0,
+                contourLevels = listOf(0.5),
+                tracing = tracing,
+            ),
+            sampler,
+        )
+        val right = TopographyGenerator.generate(
+            request(
+                width = 288,
+                height = 288,
+                worldOriginX = 216.0,
+                worldOriginY = -24.0,
+                contourLevels = listOf(0.5),
+                tracing = tracing,
+            ),
+            sampler,
+        )
+
+        val leftEdgePoint = left.contours.single().points.minBy { point -> kotlin.math.abs(point.x - 264.0) }
+        val rightEdgePoint = right.contours.single().points.minBy { point -> kotlin.math.abs(point.x - 24.0) }
+
+        assertThat(kotlin.math.abs(leftEdgePoint.x - 264.0), lessThanOrEqualTo(2.0))
+        assertThat(kotlin.math.abs(rightEdgePoint.x - 24.0), lessThanOrEqualTo(2.0))
+        assertThat(leftEdgePoint.y, closeTo(rightEdgePoint.y, 0.02))
+    }
+
+    @Test
     fun `traces one closed contour around a radial height field`() {
         val size = 65
         val centre = 32.0
@@ -195,6 +276,8 @@ class TopographyGeneratorTest {
         height: Int = 32,
         seed: Long = 1L,
         worldUnitsPerPixel: Double = 1.0,
+        worldOriginX: Double = 0.0,
+        worldOriginY: Double = 0.0,
         noiseScale: Double = 350.0,
         terrainProfile: TerrainProfile = TerrainProfile.SEEDED,
         contourLevels: List<Double> = listOf(0.5),
@@ -204,6 +287,8 @@ class TopographyGeneratorTest {
         height = height,
         seed = seed,
         worldUnitsPerPixel = worldUnitsPerPixel,
+        worldOriginX = worldOriginX,
+        worldOriginY = worldOriginY,
         noiseScale = noiseScale,
         terrainProfile = terrainProfile,
         contourLevels = contourLevels,

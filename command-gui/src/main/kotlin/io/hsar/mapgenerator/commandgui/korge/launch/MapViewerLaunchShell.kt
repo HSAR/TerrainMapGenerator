@@ -1,30 +1,36 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
+import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.Colors
 import korlibs.image.color.RGBA
 import korlibs.korge.view.Container
+import korlibs.korge.view.Image
 import korlibs.korge.view.addUpdater
+import korlibs.korge.view.clipContainer
 import korlibs.korge.view.container
+import korlibs.korge.view.image
 import korlibs.korge.view.onStageResized
 import korlibs.korge.view.solidRect
+import korlibs.korge.view.xy
+import korlibs.math.geom.Size2D
 
 internal class MapViewerLaunchShell(
     root: Container,
     viewportWidth: Int,
     viewportHeight: Int,
-    background: LaunchTopographyBackground,
+    private val background: LaunchTopographyBackground,
 ) {
     private val layer = root.container()
     private val backgroundBaseLayer = layer.container()
     private val backgroundRasterLayer = layer.container()
     private val backgroundWashLayer = layer.container()
     private val headerLayer = layer.container()
-    private var latestBackground = background
-    private var displayedBackground = background
-    private var displayedRaster: Container? = null
-    private var transition: BackgroundTransition? = null
-    private val pendingBackgrounds = mutableListOf<LaunchTopographyBackground>()
+    private val textureCanvas = backgroundRasterLayer.clipContainer(
+        Size2D(background.textureWidth.toDouble(), background.textureHeight.toDouble()),
+    )
+    private val renderedTiles = mutableMapOf<LaunchBackgroundTileCoordinate, RenderedTile>()
+    private val tileReveals = mutableListOf<TileReveal>()
     private var viewportWidth = viewportWidth
     private var viewportHeight = viewportHeight
 
@@ -34,8 +40,9 @@ internal class MapViewerLaunchShell(
             render(width, height)
         }
         layer.addUpdater {
-            updateTransition()
+            updateTileReveals()
         }
+        background.tiles().forEach(::renderSnapshot)
         render(viewportWidth, viewportHeight)
     }
 
@@ -43,75 +50,154 @@ internal class MapViewerLaunchShell(
         layer.removeFromParent()
     }
 
-    fun updateBackground(background: LaunchTopographyBackground) {
-        if (background.quality <= latestBackground.quality) return
-        latestBackground = background
-        pendingBackgrounds += background
-        startNextTransition()
+    fun updateTile(update: LaunchBackgroundTileUpdate) = when (update.quality) {
+        LaunchBackgroundTileQuality.PREVIEW -> renderPreview(update.coordinate, update.bitmap, animate = true)
+        LaunchBackgroundTileQuality.REFINEMENT -> renderRefinement(update.coordinate, update.bitmap, animate = true)
     }
 
     private fun render(viewportWidth: Int, viewportHeight: Int) {
         this.viewportWidth = viewportWidth
         this.viewportHeight = viewportHeight
-        snapToLatestBackground()
-        renderBackdrop()
+        backgroundBaseLayer.removeChildren()
+        backgroundBaseLayer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), Colors.BLACK)
+        LaunchBackgroundLayout.cover(
+            background.textureWidth,
+            background.textureHeight,
+            viewportWidth,
+            viewportHeight,
+        ).also { placement ->
+            textureCanvas.scaleX = placement.scale
+            textureCanvas.scaleY = placement.scale
+            textureCanvas.xy(placement.left, placement.top)
+        }
+        backgroundWashLayer.removeChildren()
+        backgroundWashLayer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 72))
         headerLayer.removeChildren()
         MapViewerLaunchpadTemplate.renderHeader(headerLayer, MapViewerLaunchShellLayoutBuilder.build(viewportWidth).headerBounds)
     }
 
-    private fun renderBackdrop() {
-        backgroundBaseLayer.removeChildren()
-        backgroundBaseLayer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), Colors.BLACK)
-        backgroundRasterLayer.removeChildren()
-        displayedRaster = backgroundRasterLayer.container().also { raster ->
-            displayedBackground.renderRaster(raster, viewportWidth, viewportHeight)
+    private fun renderSnapshot(snapshot: LaunchBackgroundTileSnapshot) {
+        snapshot.refinement?.let { bitmap -> renderRefinement(snapshot.coordinate, bitmap, animate = false) }
+            ?: snapshot.preview?.let { bitmap -> renderPreview(snapshot.coordinate, bitmap, animate = false) }
+    }
+
+    private fun renderPreview(coordinate: LaunchBackgroundTileCoordinate, bitmap: Bitmap32, animate: Boolean) {
+        val rendered = renderedTile(coordinate)
+        if (rendered.preview != null || rendered.refinement != null) return
+        rendered.preview = rendered.clip.image(bitmap) {
+            smoothing = false
+            scaleX = LaunchBackgroundTileCoordinate.PREVIEW_DIVISOR.toDouble()
+            scaleY = LaunchBackgroundTileCoordinate.PREVIEW_DIVISOR.toDouble()
+            xy(
+                -LaunchBackgroundTileCoordinate.TILE_BLEED.toDouble(),
+                -LaunchBackgroundTileCoordinate.TILE_BLEED.toDouble(),
+            )
+            alpha = if (animate) 0.0 else 1.0
         }
-        backgroundWashLayer.removeChildren()
-        backgroundWashLayer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 72))
-    }
-
-    private fun snapToLatestBackground() {
-        pendingBackgrounds.clear()
-        transition = null
-        displayedBackground = latestBackground
-    }
-
-    private fun startNextTransition() {
-        if (transition != null) return
-        val next = pendingBackgrounds.removeFirstOrNull() ?: return
-        val incoming = backgroundRasterLayer.container().also { raster ->
-            raster.alpha = 0.0
-            next.renderRaster(raster, viewportWidth, viewportHeight)
+        if (animate) {
+            tileReveals += TileReveal.Preview(rendered.preview!!, System.nanoTime())
         }
-        transition = BackgroundTransition(
-            background = next,
-            outgoing = displayedRaster,
-            incoming = incoming,
-            startedAtNanos = System.nanoTime(),
-        )
     }
 
-    private fun updateTransition(nowNanos: Long = System.nanoTime()) {
-        transition?.let { active ->
-            val elapsedMilliseconds = (nowNanos - active.startedAtNanos) / 1_000_000.0
-            active.incoming.alpha = LaunchBackgroundCrossfade.alpha(elapsedMilliseconds)
-            if (elapsedMilliseconds >= LaunchBackgroundCrossfade.DURATION_MILLISECONDS) {
-                active.incoming.alpha = 1.0
-                active.outgoing?.removeFromParent()
-                displayedBackground = active.background
-                displayedRaster = active.incoming
-                transition = null
-                startNextTransition()
+    private fun renderRefinement(coordinate: LaunchBackgroundTileCoordinate, bitmap: Bitmap32, animate: Boolean) {
+        val rendered = renderedTile(coordinate)
+        if (rendered.refinement != null) return
+        rendered.refinement = rendered.clip.image(bitmap) {
+            smoothing = true
+            xy(
+                -LaunchBackgroundTileCoordinate.TILE_BLEED.toDouble(),
+                -LaunchBackgroundTileCoordinate.TILE_BLEED.toDouble(),
+            )
+            alpha = if (animate) 0.0 else 1.0
+        }
+        if (animate) {
+            tileReveals.removeAll { reveal ->
+                reveal is TileReveal.Preview && reveal.preview === rendered.preview
+            }
+            tileReveals += TileReveal.Refinement(
+                preview = rendered.preview,
+                refinement = rendered.refinement!!,
+                startingPreviewAlpha = rendered.preview?.alpha ?: 0.0,
+                startedAtNanos = System.nanoTime(),
+                rendered = rendered,
+            )
+        } else {
+            rendered.preview?.removeFromParent()
+            rendered.preview = null
+        }
+    }
+
+    private fun renderedTile(coordinate: LaunchBackgroundTileCoordinate): RenderedTile =
+        renderedTiles.getOrPut(coordinate) {
+            RenderedTile(
+                clip = textureCanvas.clipContainer(
+                    Size2D(
+                        LaunchBackgroundTileCoordinate.TILE_SIZE.toDouble(),
+                        LaunchBackgroundTileCoordinate.TILE_SIZE.toDouble(),
+                    ),
+                ) {
+                    xy(coordinate.left.toDouble(), coordinate.top.toDouble())
+                },
+            )
+        }
+
+    private fun updateTileReveals(nowNanos: Long = System.nanoTime()) {
+        tileReveals.forEach { reveal ->
+            val elapsedMilliseconds = (nowNanos - reveal.startedAtNanos) / 1_000_000.0
+            when (reveal) {
+                is TileReveal.Preview ->
+                    reveal.preview.alpha = LaunchBackgroundTileReveal.previewAlpha(elapsedMilliseconds)
+
+                is TileReveal.Refinement -> {
+                    val refinementAlpha = LaunchBackgroundTileReveal.refinementAlpha(elapsedMilliseconds)
+                    reveal.refinement.alpha = refinementAlpha
+                    reveal.preview?.alpha = reveal.startingPreviewAlpha * (1.0 - refinementAlpha)
+                }
             }
         }
+        tileReveals.filter { reveal ->
+            val elapsedMilliseconds = (nowNanos - reveal.startedAtNanos) / 1_000_000.0
+            when (reveal) {
+                is TileReveal.Preview -> elapsedMilliseconds >= LaunchBackgroundTileReveal.PREVIEW_FADE_MILLISECONDS
+                is TileReveal.Refinement -> elapsedMilliseconds >= LaunchBackgroundTileReveal.REFINEMENT_FADE_MILLISECONDS
+            }
+        }.also { completed ->
+            completed.forEach { reveal ->
+                when (reveal) {
+                    is TileReveal.Preview -> reveal.preview.alpha = 1.0
+                    is TileReveal.Refinement -> {
+                        reveal.preview?.removeFromParent()
+                        reveal.refinement.alpha = 1.0
+                        reveal.rendered.preview = null
+                    }
+                }
+            }
+            tileReveals.removeAll(completed)
+        }
     }
 
-    private data class BackgroundTransition(
-        val background: LaunchTopographyBackground,
-        val outgoing: Container?,
-        val incoming: Container,
-        val startedAtNanos: Long,
+    private data class RenderedTile(
+        val clip: Container,
+        var preview: Image? = null,
+        var refinement: Image? = null,
     )
+
+    private sealed interface TileReveal {
+        val startedAtNanos: Long
+
+        data class Preview(
+            val preview: Image,
+            override val startedAtNanos: Long,
+        ) : TileReveal
+
+        data class Refinement(
+            val preview: Image?,
+            val refinement: Image,
+            val startingPreviewAlpha: Double,
+            override val startedAtNanos: Long,
+            val rendered: RenderedTile,
+        ) : TileReveal
+    }
 
     private companion object {
         const val Z_INDEX = 59_000.0

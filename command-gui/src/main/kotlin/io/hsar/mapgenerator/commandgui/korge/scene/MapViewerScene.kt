@@ -50,7 +50,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.turnOriginFor
-import io.hsar.mapgenerator.commandgui.korge.launch.LaunchBackgroundProgression
+import io.hsar.mapgenerator.commandgui.korge.launch.LaunchBackgroundTileGenerator
 import io.hsar.mapgenerator.commandgui.korge.launch.LaunchTopographyBackground
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchFlow
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchShell
@@ -110,6 +110,12 @@ import korlibs.korge.view.solidRect
 import korlibs.korge.view.xy
 import korlibs.math.geom.Size2D
 import korlibs.render.awt.AwtGameWindow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.apache.logging.log4j.LogManager
 import java.awt.Component
@@ -181,8 +187,9 @@ internal class MapViewerScene(
 
                     val launchFlow = MapViewerLaunchFlow()
                     val launchBackgroundSeed = Random().nextLong()
-                    var launchBackground = LaunchTopographyBackground.empty(launchBackgroundSeed)
-                    var launchBackgroundLoading = false
+                    var launchBackground: LaunchTopographyBackground? = null
+                    val launchBackgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+                    var launchBackgroundJob: Job? = null
                     var launchBackgroundGenerationCompleted = false
                     var launchpadView: MapViewerLaunchpadView? = null
                     var newOperationView: MapViewerNewOperationView? = null
@@ -201,6 +208,7 @@ internal class MapViewerScene(
                         Container,
                     ) -> Unit
                     val exitProgram = {
+                        launchBackgroundScope.cancel()
                         gameWindow.exit(0)
                     }
                     fun displayViewport() = MapViewerViewportResolver.resolve(
@@ -210,43 +218,59 @@ internal class MapViewerScene(
                         fallbackHeight = gameWindow.height,
                     )
 
-                    fun loadLaunchBackground() {
-                        if (launchBackgroundLoading || launchBackgroundGenerationCompleted) return
-                        launchBackgroundLoading = true
-                        val viewport = displayViewport()
-                        thread(name = "command-gui-launch-topography", isDaemon = true) {
-                            LaunchBackgroundProgression.generate(
+                    fun currentLaunchBackground(): LaunchTopographyBackground =
+                        launchBackground ?: displayViewport().let { viewport ->
+                            LaunchTopographyBackground.create(
                                 viewportWidth = viewport.width,
                                 viewportHeight = viewport.height,
                                 seed = launchBackgroundSeed,
-                                onStage = { generated, elapsedMilliseconds ->
-                                    logger.info(
-                                        "Launch topography stage {}/4 rendered at {}x{} in {}ms",
-                                        generated.quality + 1,
-                                        generated.stage?.width,
-                                        generated.stage?.height,
-                                        elapsedMilliseconds,
-                                    )
-                                    runOnUiThread {
-                                        if (generated.quality > launchBackground.quality) {
-                                            launchBackground = generated
-                                            launchShell?.updateBackground(generated)
+                            )
+                        }.also { generated -> launchBackground = generated }
+
+                    fun loadLaunchBackground() {
+                        if (launchBackgroundJob != null || launchBackgroundGenerationCompleted) return
+                        val background = currentLaunchBackground()
+                        val startedAt = System.nanoTime()
+                        launchBackgroundJob = launchBackgroundScope.launch {
+                            runCatching {
+                                LaunchBackgroundTileGenerator().generate(
+                                    background = background,
+                                    onTile = { tile ->
+                                        logger.info(
+                                            "Launch topography {} tile ({},{}) rendered at {}x{} in {}ms; revealing after {}ms",
+                                            tile.quality.name.lowercase(),
+                                            tile.coordinate.column,
+                                            tile.coordinate.row,
+                                            tile.bitmap.width,
+                                            tile.bitmap.height,
+                                            tile.renderMilliseconds,
+                                            tile.arrivalJitterMilliseconds,
+                                        )
+                                        runOnUiThread {
+                                            background.accept(tile)
+                                            launchShell?.updateTile(tile)
                                         }
-                                    }
-                                },
-                                onFailure = { stage, error, elapsedMilliseconds ->
-                                    logger.warn(
-                                        "Unable to generate launch topography stage {}/4 at {}x{} after {}ms; continuing with remaining stages.",
-                                        stage.index + 1,
-                                        stage.width,
-                                        stage.height,
-                                        elapsedMilliseconds,
-                                        error,
-                                    )
-                                },
+                                    },
+                                    onFailure = { job, error, elapsedMilliseconds ->
+                                        logger.warn(
+                                            "Unable to generate launch topography {} tile ({},{}) after {}ms; continuing.",
+                                            job.quality.name.lowercase(),
+                                            job.coordinate.column,
+                                            job.coordinate.row,
+                                            elapsedMilliseconds,
+                                            error,
+                                        )
+                                    },
+                                )
+                            }.onFailure { error ->
+                                logger.error("Launch topography tile generation stopped unexpectedly.", error)
+                            }
+                            logger.info(
+                                "Launch topography tile generation completed in {}ms",
+                                (System.nanoTime() - startedAt) / 1_000_000,
                             )
                             runOnUiThread {
-                                launchBackgroundLoading = false
+                                launchBackgroundJob = null
                                 launchBackgroundGenerationCompleted = true
                             }
                         }
@@ -1469,7 +1493,7 @@ internal class MapViewerScene(
                                 root = views.stage,
                                 viewportWidth = viewport.width,
                                 viewportHeight = viewport.height,
-                                background = launchBackground,
+                                background = currentLaunchBackground(),
                             )
                             loadLaunchBackground()
                         }
@@ -1499,7 +1523,7 @@ internal class MapViewerScene(
                                 root = views.stage,
                                 viewportWidth = viewport.width,
                                 viewportHeight = viewport.height,
-                                background = launchBackground,
+                                background = currentLaunchBackground(),
                             )
                             loadLaunchBackground()
                         }
