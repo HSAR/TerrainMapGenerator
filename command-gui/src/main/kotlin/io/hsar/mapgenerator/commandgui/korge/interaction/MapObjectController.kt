@@ -10,6 +10,8 @@ internal class MapObjectController(
     private val unitManager: MapPlacedUnitManager,
     private val graphicManager: MapPlacedGraphicManager? = null,
     private val drawingStore: MapDrawingStore,
+    private val mapWidth: Int = 1,
+    private val mapHeight: Int = 1,
     private val onDrawingsChanged: (MapDrawingState) -> Unit = {},
     private val clearTransientState: () -> Unit = {},
     private val uuidGenerator: () -> UUID = UUID::randomUUID,
@@ -43,7 +45,7 @@ internal class MapObjectController(
             instanceName = template.template.name,
             mapCoordinate = mapCoordinate,
             normalizedWidth = width,
-            normalizedHeight = width * bitmap.height.toDouble() / bitmap.width.toDouble(),
+            normalizedHeight = width * mapWidth.toDouble() / mapHeight * bitmap.height.toDouble() / bitmap.width.toDouble(),
         ).also(::createObject)
     }
 

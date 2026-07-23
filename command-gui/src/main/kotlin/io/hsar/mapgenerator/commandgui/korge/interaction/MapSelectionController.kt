@@ -122,7 +122,7 @@ internal class MapSelectionController(
         val selectedSnapshots = selectedIds.mapNotNull(objectController::snapshot)
         val handle = selectedSnapshots.resizeHandleAt(screenPoint) ?: return false
         val bounds = selectedSnapshots.combinedSelectionBounds(coordinateSpace) ?: return false
-        val resizeableSnapshots = selectedSnapshots.filter { it is DrawingSnapshot || it is GraphicSnapshot }
+        val resizeableSnapshots = selectedSnapshots.filter(MapPlacedObjectSnapshot::supportsResizeHandles)
         if (resizeableSnapshots.isEmpty()) {
             return false
         }
@@ -456,7 +456,7 @@ internal class MapSelectionController(
         pivotHandleForSelection(this, coordinateSpace, viewportProvider(), groupFrame)
 
     private fun List<MapPlacedObjectSnapshot>.resizeHandleAt(screenPoint: Vector2D): ScreenCornerBracket? =
-        takeIf { it.any { snapshot -> snapshot is DrawingSnapshot || snapshot is GraphicSnapshot } }
+        takeIf { it.any(MapPlacedObjectSnapshot::supportsResizeHandles) }
             ?.resizeFrame()
             ?.cornerBrackets(SELECTION_BRACKET_LENGTH_PX, SELECTION_BRACKET_THICKNESS_PX)
             ?.firstOrNull { it.contains(screenPoint) }

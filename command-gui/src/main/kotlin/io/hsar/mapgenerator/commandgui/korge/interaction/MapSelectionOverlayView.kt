@@ -78,7 +78,7 @@ internal class MapSelectionOverlayView(
     }
 
     private fun MapSelectionState.selectionBracketFrame(): ScreenSelectionFrame? =
-        takeIf { selected.any { snapshot -> snapshot is DrawingSnapshot } }
+        takeIf { selected.any(MapPlacedObjectSnapshot::supportsResizeHandles) }
             ?.let {
                 groupFrame ?: selected.singleOrNull()?.selectionFrame(
                     coordinateSpace = coordinateSpace,

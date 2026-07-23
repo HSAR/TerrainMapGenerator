@@ -36,6 +36,9 @@ internal data class MapSelectionBounds(
     }
 }
 
+internal fun MapPlacedObjectSnapshot.supportsResizeHandles(): Boolean =
+    this is DrawingSnapshot || this is GraphicSnapshot
+
 internal fun MapPlacedObjectSnapshot.selectionBounds(coordinateSpace: MapCoordinateSpace): MapSelectionBounds =
     when (this) {
         is UnitSnapshot -> MapSelectionBounds(

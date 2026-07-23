@@ -237,6 +237,32 @@ class MapSelectionResizeTest {
         assertThat((resized[1] as DrawingSnapshot).drawing == drawing.drawing, equalTo(false))
     }
 
+    @Test
+    fun `graphic resize keeps aspect ratio and uses one scale for position`() {
+        val templateId = GraphicTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000120"))
+        val graphic = GraphicSnapshot(
+            id = id("00000000-0000-0000-0000-000000000121"),
+            graphicTemplateId = templateId,
+            template = MapViewerGraphicTemplate(templateId, "Graphic", Bitmap32(200, 100)),
+            instanceName = "Graphic",
+            mapCoordinate = MapCoordinate(0.4, 0.3),
+            normalizedWidth = 0.4,
+            normalizedHeight = 0.2,
+        )
+
+        val resized = MapSelectionResize.resizeSnapshots(
+            originalSnapshots = listOf(graphic),
+            bounds = MapSelectionBounds(0.2, 0.2, 0.6, 0.4),
+            grabbedCorner = ScreenSelectionCorner.BOTTOM_RIGHT,
+            anchor = MapCoordinate(0.2, 0.2),
+            draggedCorner = MapCoordinate(1.0, 0.8),
+        ).single() as GraphicSnapshot
+
+        assertThat(resized.normalizedWidth / resized.normalizedHeight, closeTo(2.0, 0.0001))
+        assertThat(resized.mapCoordinate.x, closeTo(0.8, 0.0001))
+        assertThat(resized.mapCoordinate.y, closeTo(0.5, 0.0001))
+    }
+
     private fun assertPoint(point: MapDrawingPoint, x: Double, y: Double) {
         assertThat(point.x, closeTo(x, 0.0001))
         assertThat(point.y, closeTo(y, 0.0001))

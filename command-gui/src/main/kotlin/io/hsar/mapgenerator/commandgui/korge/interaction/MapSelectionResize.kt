@@ -71,11 +71,11 @@ internal object MapSelectionResize {
                 is UnitSnapshot -> snapshot
                 is GraphicSnapshot -> snapshot.copy(
                     mapCoordinate = MapCoordinate(
-                        anchor.x + (snapshot.mapCoordinate.x - anchor.x) * scaleX,
-                        anchor.y + (snapshot.mapCoordinate.y - anchor.y) * scaleY,
+                        anchor.x + (snapshot.mapCoordinate.x - anchor.x) * graphicScale(scaleX, scaleY),
+                        anchor.y + (snapshot.mapCoordinate.y - anchor.y) * graphicScale(scaleX, scaleY),
                     ),
-                    normalizedWidth = (snapshot.normalizedWidth * abs(scaleX)).coerceAtLeast(MIN_LOCAL_RADIUS),
-                    normalizedHeight = (snapshot.normalizedHeight * abs(scaleY)).coerceAtLeast(MIN_LOCAL_RADIUS),
+                    normalizedWidth = (snapshot.normalizedWidth * abs(graphicScale(scaleX, scaleY))).coerceAtLeast(MIN_LOCAL_RADIUS),
+                    normalizedHeight = (snapshot.normalizedHeight * abs(graphicScale(scaleX, scaleY))).coerceAtLeast(MIN_LOCAL_RADIUS),
                 )
                 is DrawingSnapshot -> snapshot.copy(
                     drawing = snapshot.drawing.resize(
@@ -104,6 +104,9 @@ internal object MapSelectionResize {
         }
         return ((current - anchor) / originalDelta).coerceAtLeast(MIN_SCALE)
     }
+
+    private fun graphicScale(scaleX: Double, scaleY: Double): Double =
+        if (abs(scaleX - 1.0) >= abs(scaleY - 1.0)) scaleX else scaleY
 
     private fun MapDrawing.resize(
         bounds: MapSelectionBounds,

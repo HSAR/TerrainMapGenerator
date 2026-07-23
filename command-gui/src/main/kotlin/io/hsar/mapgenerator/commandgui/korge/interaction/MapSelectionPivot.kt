@@ -91,35 +91,40 @@ internal object MapSelectionPivot {
         coordinateSpace: MapCoordinateSpace,
         shiftHeld: Boolean,
     ): MapDrawing =
-        when (this) {
-            is FreeformDrawing -> copy(points = points.map { it.rotate(pivotCenterWorld, deltaRadians, coordinateSpace) })
+        rotationDelta(deltaRadians, shiftHeld).let { effectiveDeltaRadians ->
+            when (this) {
+                is FreeformDrawing -> copy(points = points.map { it.rotate(pivotCenterWorld, effectiveDeltaRadians, coordinateSpace) })
             is LineDrawing -> copy(
-                start = start.rotate(pivotCenterWorld, deltaRadians, coordinateSpace),
-                end = end.rotate(pivotCenterWorld, deltaRadians, coordinateSpace),
+                start = start.rotate(pivotCenterWorld, effectiveDeltaRadians, coordinateSpace),
+                end = end.rotate(pivotCenterWorld, effectiveDeltaRadians, coordinateSpace),
             )
 
             is RectangleDrawing -> {
                 val originalCenter = MapDrawingGeometry.center(start, end)
-                val rotatedCenter = originalCenter.rotate(pivotCenterWorld, deltaRadians, coordinateSpace)
+                val rotatedCenter = originalCenter.rotate(pivotCenterWorld, effectiveDeltaRadians, coordinateSpace)
                 copy(
                     start = start.translate(originalCenter, rotatedCenter),
                     end = end.translate(originalCenter, rotatedCenter),
-                    rotationDegrees = rotatedDegrees(rotationDegrees, deltaRadians, shiftHeld),
+                    rotationDegrees = rotatedDegrees(rotationDegrees, effectiveDeltaRadians, shiftHeld),
                 )
             }
 
             is OvalDrawing -> copy(
-                center = center.rotate(pivotCenterWorld, deltaRadians, coordinateSpace),
-                rotationDegrees = rotatedDegrees(rotationDegrees, deltaRadians, shiftHeld),
+                center = center.rotate(pivotCenterWorld, effectiveDeltaRadians, coordinateSpace),
+                rotationDegrees = rotatedDegrees(rotationDegrees, effectiveDeltaRadians, shiftHeld),
             )
+            }
         }
+
+    private fun rotationDelta(deltaRadians: Double, shiftHeld: Boolean): Double =
+        if (shiftHeld) Math.toRadians(snapDegrees(Math.toDegrees(deltaRadians).toDouble()).toDouble()) else deltaRadians
 
     private fun rotatedDegrees(rotationDegrees: Double, deltaRadians: Double, shiftHeld: Boolean): Double {
         val totalDegrees = rotationDegrees + Math.toDegrees(deltaRadians)
         return if (shiftHeld) {
             snapDegrees(totalDegrees).toDouble()
         } else {
-            normalizeDegrees(totalDegrees.roundToInt()).toDouble()
+            normalizeDegrees(totalDegrees)
         }
     }
 
@@ -158,6 +163,9 @@ internal object MapSelectionPivot {
     }
 
     private fun normalizeDegrees(degrees: Int): Int =
+        ((degrees % FULL_CIRCLE_DEGREES) + FULL_CIRCLE_DEGREES) % FULL_CIRCLE_DEGREES
+
+    private fun normalizeDegrees(degrees: Double): Double =
         ((degrees % FULL_CIRCLE_DEGREES) + FULL_CIRCLE_DEGREES) % FULL_CIRCLE_DEGREES
 
     private fun snapDegrees(degrees: Double): Int =

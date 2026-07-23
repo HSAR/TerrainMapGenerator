@@ -105,6 +105,50 @@ class MapSelectionPivotTest {
     }
 
     @Test
+    fun `unshifted drawing rotation follows the cursor without degree rounding`() {
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000007")),
+            drawing = RectangleDrawing(
+                start = MapDrawingPoint(0.4, 0.45),
+                end = MapDrawingPoint(0.6, 0.55),
+                color = java.awt.Color.RED,
+            ),
+        )
+
+        val updated = MapSelectionPivot.rotateSnapshots(
+            originalSnapshots = listOf(drawing),
+            pivotCenterWorld = coordinateSpace.toWorld(MapCoordinate(0.5, 0.5)),
+            deltaRadians = Math.toRadians(12.5),
+            coordinateSpace = coordinateSpace,
+        ).single() as DrawingSnapshot
+
+        assertThat((updated.drawing as RectangleDrawing).rotationDegrees, closeTo(12.5, 0.0001))
+    }
+
+    @Test
+    fun `shifted freeform rotation snaps the cursor delta to 45 degrees`() {
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000008")),
+            drawing = FreeformDrawing(
+                points = listOf(MapDrawingPoint(0.5, 0.4), MapDrawingPoint(0.6, 0.5)),
+                color = java.awt.Color.RED,
+            ),
+        )
+
+        val updated = MapSelectionPivot.rotateSnapshots(
+            originalSnapshots = listOf(drawing),
+            pivotCenterWorld = coordinateSpace.toWorld(MapCoordinate(0.5, 0.5)),
+            deltaRadians = Math.toRadians(40.0),
+            coordinateSpace = coordinateSpace,
+            shiftHeld = true,
+        ).single() as DrawingSnapshot
+
+        val point = (updated.drawing as FreeformDrawing).points.first()
+        assertThat(point.x, closeTo(0.5707, 0.0001))
+        assertThat(point.y, closeTo(0.4293, 0.0001))
+    }
+
+    @Test
     fun `freeform drawings rotate around the shared pivot center`() {
         val drawing = DrawingSnapshot(
             id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000004")),

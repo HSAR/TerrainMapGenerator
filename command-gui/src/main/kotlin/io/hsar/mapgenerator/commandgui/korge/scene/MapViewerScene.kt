@@ -802,6 +802,8 @@ internal class MapViewerScene(
                             unitManager = unitManager,
                             graphicManager = graphicManager,
                             drawingStore = drawingStore,
+                            mapWidth = renderedMap.bitmap.width,
+                            mapHeight = renderedMap.bitmap.height,
                             onDrawingsChanged = { state ->
                                 if (!startupReplayInProgress) {
                                     drawingView.update(state, currentViewport.zoom)
@@ -1206,7 +1208,8 @@ internal class MapViewerScene(
                             val rightHeld = input.mouseButtonPressed(korlibs.event.MouseButton.RIGHT)
                             graphicSidebar.update(pointer, leftHeld)
                             val escapeMenuOpen = escapeMenu?.isOpen == true
-                            val uiBlocksPointer = toolbar?.blocksScreenPoint(pointer) == true ||
+                            val graphicUnderPointer = graphicManager.selectionAt(pointer) != null
+                            val uiBlocksPointer = !graphicUnderPointer && (toolbar?.blocksScreenPoint(pointer) == true ||
                                     ledgerPanel?.blocksScreenPoint(pointer) == true ||
                                     notesPanel?.blocksScreenPoint(pointer) == true ||
                                     sidebar.blocksScreenPoint(pointer) ||
@@ -1216,7 +1219,7 @@ internal class MapViewerScene(
                                     unitManager.blocksScreenPoint(pointer) ||
                                     unitManager.isContextMenuOpen ||
                                     escapeMenu?.isOpen == true ||
-                                    contextMenuManager.blocksScreenPoint(pointer)
+                                    contextMenuManager.blocksScreenPoint(pointer))
 
                             if (effectiveTool() == MapViewerTool.SELECT && !uiBlocksPointer) {
                                 if (leftHeld && !previousLeftHeld) {
@@ -1351,7 +1354,7 @@ internal class MapViewerScene(
                                         unitManager.blocksScreenPoint(point) ||
                                         unitManager.isContextMenuOpen ||
                                         drawingManager.blocksScreenPoint(point) ||
-                                        graphicManager.blocksScreenPoint(point) ||
+                                        (effectiveTool() != MapViewerTool.SELECT && graphicManager.blocksScreenPoint(point)) ||
                                         escapeMenu?.isOpen == true ||
                                         contextMenuManager.blocksScreenPoint(point) ||
                                         (effectiveTool() == MapViewerTool.SELECT && unitManager.hasEcmHandleAt(point)) ||

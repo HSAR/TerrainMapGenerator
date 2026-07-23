@@ -136,12 +136,14 @@ internal class MapPlacedGraphicManager(
 
     private fun positionView(placed: PlacedGraphic) {
         val world = coordinateSpace.toWorld(placed.snapshot.mapCoordinate)
-        placed.container.x = world.x
-        placed.container.y = world.y
-        placed.view.scaleX = coordinateSpace.toWorldWidth(placed.snapshot.normalizedWidth) / placed.snapshot.template.bitmap.width
-        placed.view.scaleY = coordinateSpace.toWorldHeight(placed.snapshot.normalizedHeight) / placed.snapshot.template.bitmap.height
-        placed.view.x = -placed.snapshot.template.bitmap.width * 0.5
-        placed.view.y = -placed.snapshot.template.bitmap.height * 0.5
+        val worldWidth = coordinateSpace.toWorldWidth(placed.snapshot.normalizedWidth)
+        val worldHeight = coordinateSpace.toWorldHeight(placed.snapshot.normalizedHeight)
+        placed.container.x = 0.0
+        placed.container.y = 0.0
+        placed.view.scaleX = worldWidth / placed.snapshot.template.bitmap.width
+        placed.view.scaleY = worldHeight / placed.snapshot.template.bitmap.height
+        placed.view.x = world.x - worldWidth * 0.5
+        placed.view.y = world.y - worldHeight * 0.5
     }
 
     private class PlacedGraphic(
