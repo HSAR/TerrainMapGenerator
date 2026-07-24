@@ -1290,7 +1290,6 @@ internal class MapViewerScene(
                         sidebar.restoreUnitTemplates(replayedLedger.unitTemplates)
                         graphicSidebar.restoreTemplates(replayedLedger.graphicTemplates)
                         objectController.restoreAll(replayedLedger.objects)
-                        replayedLedger.unitTemplates.forEach(unitManager::replaceUnitTemplate)
                         replayedLedger.notes.forEach(noteStore::upsert)
                         reconcileMarkedTacticalState()
                         (loadedOperation?.ledgerEntries ?: initialLedgerEntries).forEach(actionHistory::record)

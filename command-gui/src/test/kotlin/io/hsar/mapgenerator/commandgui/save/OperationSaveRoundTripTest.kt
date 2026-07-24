@@ -385,6 +385,53 @@ class OperationSaveRoundTripTest {
     }
 
     @Test
+    fun `unit affiliation edits in ledger replay to the latest affiliation after load`() {
+        val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000d6")
+        val template = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000035")),
+            name = "Recon",
+            bitmap = Bitmap32(4, 4) { _, _ -> RGBA(0, 255, 0, 255) },
+            affiliation = UnitAffiliation.Friend,
+        )
+        val created = UnitSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000036")),
+            unitTemplateId = template.id,
+            template = template,
+            instanceName = "Recon 1",
+            destroyed = false,
+            facingDegrees = null,
+            mapCoordinate = MapCoordinate(0.25, 0.75),
+            normalizedWidth = 0.08,
+            normalizedHeight = 0.08,
+        )
+        val edited = created.copy(template = created.template.copy(affiliation = UnitAffiliation.Hostile))
+
+        val savePath = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
+            request(
+                operationId = operationId,
+                mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                ledgerEntries = listOf(
+                    CreateUnitTemplateAction(UnitTemplateSnapshot(template.id, template, 0)),
+                    CreateObjectAction(created),
+                    EditObjectAction(
+                        objectId = created.id,
+                        forward = MapPlacedObjectPatch.diff(created, edited),
+                        backward = MapPlacedObjectPatch.diff(edited, created),
+                    ),
+                ),
+            ),
+            tempDir.resolve("unit-affiliation-edit-save.oct.zip"),
+        )
+
+        val loaded = OperationSaveLoader().load(savePath)
+        val replayed = io.hsar.mapgenerator.commandgui.korge.interaction.LedgerReplay.replay(loaded.ledgerEntries)
+        val replayedUnit = replayed.objects.single() as UnitSnapshot
+
+        assertThat(replayedUnit.template.affiliation, equalTo(UnitAffiliation.Hostile))
+    }
+
+    @Test
     fun `unknown non-string unit and unit template properties load as compact json strings`() {
         val unit = OperationSaveJson.objectMapper.readValue(
             """
