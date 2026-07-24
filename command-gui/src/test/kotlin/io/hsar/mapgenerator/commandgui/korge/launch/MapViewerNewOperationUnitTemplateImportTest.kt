@@ -5,6 +5,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateActio
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import korlibs.image.bitmap.Bitmap32
@@ -14,6 +15,22 @@ import org.junit.jupiter.api.Test
 import java.util.*
 
 class MapViewerNewOperationUnitTemplateImportTest {
+    @Test
+    fun `unit type identities retain same named friendly and hostile types`() {
+        val friendlyInfantry = unitTypeIdentity("Infantry", UnitAffiliation.Friend)
+        val hostileInfantry = unitTypeIdentity("Infantry", UnitAffiliation.Hostile)
+
+        assertThat(friendlyInfantry == hostileInfantry, equalTo(false))
+    }
+
+    @Test
+    fun `unit type identities match same named types with the same affiliation`() {
+        val existingInfantry = unitTypeIdentity("Infantry", UnitAffiliation.Friend)
+        val importedInfantry = unitTypeIdentity("Infantry", UnitAffiliation.Friend)
+
+        assertThat(existingInfantry, equalTo(importedInfantry))
+    }
+
     @Test
     fun `latest unit templates applies batch edits and deletes in save order`() {
         val alpha = snapshot("Alpha", index = 0)

@@ -1218,7 +1218,7 @@ internal class MapViewerNewOperationView(
     }
 
     private fun upsertUnitRow(row: UnitRow): Boolean {
-        val existingIndex = unitRows.indexOfFirst { it.name == row.name }
+        val existingIndex = unitRows.indexOfFirst { unitTypeIdentity(it.name, it.affiliation) == unitTypeIdentity(row.name, row.affiliation) }
         if (existingIndex >= 0) {
             unitRows[existingIndex] = row.copy(id = unitRows[existingIndex].id)
             return false
@@ -1590,6 +1590,9 @@ internal fun List<LedgerEntry>.latestUnitTemplates(): List<UnitTemplateSnapshot>
     forEach(::apply)
     return order.mapNotNull(snapshots::get)
 }
+
+internal fun unitTypeIdentity(name: String, affiliation: UnitAffiliation?): Pair<String, UnitAffiliation?> =
+    name to affiliation
 
 private fun GridConfiguration.formatStartX(): String =
     referenceSystem.formatCoord(startX, CoordAxis.X, referenceSystem.gridScale)
