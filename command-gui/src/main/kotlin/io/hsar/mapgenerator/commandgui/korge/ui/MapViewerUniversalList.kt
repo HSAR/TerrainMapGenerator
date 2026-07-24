@@ -7,11 +7,14 @@ import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.image.bitmap.Bitmap32
+import korlibs.korge.input.cursor
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
+import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
 import korlibs.korge.view.xy
 import korlibs.math.geom.Vector2D
+import korlibs.render.GameWindow
 import java.awt.Color
 
 internal data class MapViewerUniversalListItem(
@@ -30,6 +33,93 @@ internal data class MapViewerUnitAffiliationGroup(
 
 internal object MapViewerUniversalList {
     const val DEFAULT_ROW_HEIGHT = 44.0
+
+    /** Shared pointer handling for lists whose rows can be reordered by dragging. */
+    class ReorderController<T, K, C>(
+        private val root: Container,
+        private val items: () -> List<T>,
+        private val keyOf: (T) -> K,
+        private val categoryOf: (T) -> C = { Unit as C },
+        private val enabled: () -> Boolean = { true },
+        private val onReordered: (List<T>) -> Unit,
+    ) {
+        private val rows = mutableMapOf<K, Container>()
+        private val suppressedClicks = mutableSetOf<K>()
+        private var drag: Drag<K>? = null
+
+        init {
+            root.addUpdater {
+                val input = root.stage?.views?.input ?: return@addUpdater
+                val state = drag ?: return@addUpdater
+                if (!input.mouseButtonPressed(MouseButton.LEFT)) {
+                    drag = null
+                    root.cursor = GameWindow.Cursor.DEFAULT
+                    return@addUpdater
+                }
+                val pointer = input.mousePos
+                if (!state.active && pointer.distanceTo(state.start) < DRAG_THRESHOLD) return@addUpdater
+                if (!state.active) {
+                    state.active = true
+                    suppressedClicks += state.key
+                    root.cursor = GameWindow.Cursor.MOVE
+                }
+                val source = items().firstOrNull { keyOf(it) == state.key } ?: return@addUpdater.also { clearDrag() }
+                val categoryRows = items()
+                    .filter { categoryOf(it) == categoryOf(source) }
+                    .mapNotNull { item -> rows[keyOf(item)]?.let { item to it.getGlobalBounds() } }
+                val target = categoryRows
+                    .indexOfFirst { (_, bounds) -> pointer.y < bounds.top + bounds.height * 0.5 }
+                    .let { if (it < 0) categoryRows.size else it }
+                moveWithinCategory(items(), source, categoryOf, target)
+                    .takeIf { it != items() }
+                    ?.let(onReordered)
+            }
+        }
+
+        fun beginRender() {
+            rows.clear()
+        }
+
+        fun register(item: T, row: Container) {
+            val key = keyOf(item)
+            rows[key] = row
+            row.mouse {
+                onDown {
+                    if (button == MouseButton.LEFT && enabled()) drag = Drag(key, currentPosGlobal)
+                }
+            }
+        }
+
+        fun consumeClick(item: T): Boolean = suppressedClicks.remove(keyOf(item))
+
+        private fun clearDrag() {
+            drag = null
+            root.cursor = GameWindow.Cursor.DEFAULT
+        }
+
+        private data class Drag<K>(val key: K, val start: Vector2D, var active: Boolean = false)
+    }
+
+    fun <T, K, C> reorderController(
+        parent: Container,
+        items: () -> List<T>,
+        keyOf: (T) -> K,
+        categoryOf: (T) -> C = { Unit as C },
+        enabled: () -> Boolean = { true },
+        onReordered: (List<T>) -> Unit,
+    ): ReorderController<T, K, C> = ReorderController(parent, items, keyOf, categoryOf, enabled, onReordered)
+
+    fun <T, C> moveWithinCategory(items: List<T>, source: T, categoryOf: (T) -> C, targetPosition: Int): List<T> {
+        val sourceIndex = items.indexOf(source)
+        if (sourceIndex < 0) return items
+        val categoryIndices = items.indices.filter { categoryOf(items[it]) == categoryOf(source) }
+        val sourcePosition = categoryIndices.indexOf(sourceIndex)
+        if (sourcePosition < 0) return items
+        val categoryItems = categoryIndices.map(items::get).toMutableList()
+        val sourceItem = categoryItems.removeAt(sourcePosition)
+        categoryItems.add(targetPosition.coerceIn(0, categoryItems.size), sourceItem)
+        return items.toMutableList().also { result -> categoryIndices.forEachIndexed { index, itemIndex -> result[itemIndex] = categoryItems[index] } }
+    }
 
     val unitAffiliationGroups = listOf(
         MapViewerUnitAffiliationGroup(UnitAffiliation.Friend, "Friend"),
@@ -201,6 +291,7 @@ internal object MapViewerUniversalList {
         height: Double = DEFAULT_ROW_HEIGHT,
         onClick: (() -> Unit)? = null,
         onDown: ((MouseButton, Vector2D) -> Unit)? = null,
+        reorder: (() -> Unit)? = null,
     ): Container = parent.container().also { row ->
         row.xy(0.0, top)
         MapViewerUiBoxes.box(row, width, height, style = { active -> MapViewerUiBoxes.defaultStyle(active && item.selected) })
@@ -252,10 +343,11 @@ internal object MapViewerUniversalList {
                 color = Palette.Colours.LIGHT,
             ) { x = width - TRAILING_LABEL_WIDTH - INSET }
         }
-        if (onClick != null || onDown != null) {
+        if (onClick != null || onDown != null || reorder != null) {
             row.mouse {
                 onClick { onClick?.invoke() }
                 onDown { onDown?.invoke(button, currentPosGlobal) }
+                onDown { reorder?.invoke() }
             }
         }
     }
@@ -282,4 +374,5 @@ internal object MapViewerUniversalList {
     private const val TRAILING_LABEL_WIDTH = 54.0
     private const val COLLAPSED_SECTIONS_FIELD = "collapsedSections"
     private const val DEFAULT_UNGROUPED_SECTION_GAP = 8.0
+    private const val DRAG_THRESHOLD = 6.0
 }

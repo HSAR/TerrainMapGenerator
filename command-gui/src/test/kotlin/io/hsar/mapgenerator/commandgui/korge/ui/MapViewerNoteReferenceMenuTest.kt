@@ -19,7 +19,7 @@ class MapViewerNoteReferenceMenuTest {
             id = MapNoteId(UUID.fromString("00000000-0000-0000-0000-000000000010")),
             title = "Alpha",
             body = "",
-            referencedObjectIds = setOf(objectId),
+            referencedObjectIds = listOf(objectId),
         )
         store.upsert(matching)
         store.upsert(
@@ -27,7 +27,7 @@ class MapViewerNoteReferenceMenuTest {
                 id = MapNoteId(UUID.fromString("00000000-0000-0000-0000-000000000011")),
                 title = "Bravo",
                 body = "",
-                referencedObjectIds = setOf(unrelatedId),
+                referencedObjectIds = listOf(unrelatedId),
             ),
         )
 

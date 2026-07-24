@@ -34,12 +34,19 @@ internal class MapViewerNoteDialog(
     private var current = note
     private var titleValue = note.title
     private var bodyValue = note.body
-    private var referencedObjectIds = note.referencedObjectIds.toMutableSet()
+    private var referencedObjectIds = note.referencedObjectIds.toMutableList()
     private var titleInput: MapViewerInputField? = null
     private var bodyInput: MapViewerInputField? = null
     private var window: MapViewerDialogWindow? = null
     private var referenceDropTargetBounds: ScreenBounds? = null
     private var referencesExpanded = false
+    private val referenceReorderController = MapViewerUniversalList.reorderController<MapPlacedObjectId, MapPlacedObjectId, Unit>(
+        parent = root,
+        items = { referencedObjectIds },
+        keyOf = { it },
+        enabled = { !readOnly() },
+        onReordered = ::applyReferenceEdit,
+    )
 
     init {
         restored?.draft?.let { draft ->
@@ -48,7 +55,7 @@ internal class MapViewerNoteDialog(
             val references = draft.path("references").mapNotNull { value ->
                 value.textValue()?.let { runCatching { MapPlacedObjectId(UUID.fromString(it)) }.getOrNull() }
             }
-            if (references.isNotEmpty()) referencedObjectIds = references.toMutableSet()
+            if (references.isNotEmpty()) referencedObjectIds = references.distinct().toMutableList()
             referencesExpanded = draft.path("referencesExpanded").booleanValue()
         }
     }
@@ -177,6 +184,8 @@ internal class MapViewerNoteDialog(
         }
 
         val updatedIds = referencedObjectIds + objectIds
+            .sortedBy { it.value.toString() }
+            .filterNot(referencedObjectIds::contains)
         if (updatedIds != referencedObjectIds) {
             applyReferenceEdit(updatedIds)
         }
@@ -185,6 +194,7 @@ internal class MapViewerNoteDialog(
     }
 
     private fun renderReferenceControls(parent: Container, itemWidth: Double, top: Double) {
+        referenceReorderController.beginRender()
         renderReferencesHeader(parent, itemWidth, top)
         referenceDropTargetBounds = null
         if (!referencesExpanded) {
@@ -202,7 +212,7 @@ internal class MapViewerNoteDialog(
                 height = bounds.height,
             )
         }
-        referencedObjectIds.toList().forEachIndexed { index, id ->
+        referencedObjectIds.forEachIndexed { index, id ->
             renderReferenceRow(
                 parent = parent,
                 id = id,
@@ -275,8 +285,9 @@ internal class MapViewerNoteDialog(
             label = "Remove",
             enabled = !readOnly(),
         ) {
-            applyReferenceEdit(referencedObjectIds - id)
+            if (!referenceReorderController.consumeClick(id)) applyReferenceEdit(referencedObjectIds - id)
         }
+        referenceReorderController.register(id, row)
     }
 
     private fun objectLabel(id: MapPlacedObjectId): String =
@@ -284,14 +295,14 @@ internal class MapViewerNoteDialog(
             ?.name
             ?: "Missing object"
 
-    private fun applyReferenceEdit(updatedIds: Set<MapPlacedObjectId>) {
+    private fun applyReferenceEdit(updatedIds: List<MapPlacedObjectId>) {
         if (updatedIds == current.referencedObjectIds) {
             return
         }
         val updated = current.copy(referencedObjectIds = updatedIds)
         onSaved(current, updated)
         current = updated
-        referencedObjectIds = updatedIds.toMutableSet()
+        referencedObjectIds = updatedIds.distinct().toMutableList()
         window?.refresh()
     }
 
@@ -299,7 +310,7 @@ internal class MapViewerNoteDialog(
         val updated = current.copy(
             title = titleValue.ifBlank { "Untitled Note" },
             body = bodyValue,
-            referencedObjectIds = referencedObjectIds.toSet(),
+            referencedObjectIds = referencedObjectIds.toList(),
         )
         if (MapNotePatch.diff(current, updated).isNotEmpty()) {
             onSaved(current, updated)

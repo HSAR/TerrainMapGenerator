@@ -56,6 +56,7 @@ internal data class MapSaveDto(
     JsonSubTypes.Type(value = CreateNoteEntrySaveDto::class, name = "create-note"),
     JsonSubTypes.Type(value = EditNoteEntrySaveDto::class, name = "edit-note"),
     JsonSubTypes.Type(value = DeleteNoteEntrySaveDto::class, name = "delete-note"),
+    JsonSubTypes.Type(value = ReorderNotesEntrySaveDto::class, name = "reorder-notes"),
     JsonSubTypes.Type(value = CreateGraphicTemplateEntrySaveDto::class, name = "create-graphic-template"),
     JsonSubTypes.Type(value = DeleteGraphicTemplateEntrySaveDto::class, name = "delete-graphic-template"),
     JsonSubTypes.Type(value = EditGraphicTemplateEntrySaveDto::class, name = "edit-graphic-template"),
@@ -127,6 +128,11 @@ internal data class EditNoteEntrySaveDto(
 
 internal data class DeleteNoteEntrySaveDto(
     val note: NoteSaveDto,
+) : LedgerEntrySaveDto
+
+internal data class ReorderNotesEntrySaveDto(
+    val forward: List<UUID>,
+    val backward: List<UUID>,
 ) : LedgerEntrySaveDto
 
 internal data class NoteSaveDto(

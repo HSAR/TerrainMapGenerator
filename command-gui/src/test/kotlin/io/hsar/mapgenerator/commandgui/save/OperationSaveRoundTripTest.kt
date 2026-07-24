@@ -103,12 +103,12 @@ class OperationSaveRoundTripTest {
             id = MapNoteId(UUID.fromString("00000000-0000-0000-0000-0000000000a1")),
             title = "Contact",
             body = "Initial note body",
-            referencedObjectIds = setOf(createdUnit.id, createdDrawing.id),
+            referencedObjectIds = listOf(createdUnit.id, createdDrawing.id),
         )
         val editedNote = createdNote.copy(
             title = "Contact moved",
             body = "Updated note body",
-            referencedObjectIds = setOf(createdUnit.id),
+            referencedObjectIds = listOf(createdUnit.id),
         )
         val ledger = listOf(
             CreateUnitTemplateAction(UnitTemplateSnapshot(unitTemplate.id, unitTemplate, 0)),

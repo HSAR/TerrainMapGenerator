@@ -39,6 +39,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerGraphicTemplat
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerGraphicTemplatePatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplatePatch
+import io.hsar.mapgenerator.commandgui.korge.interaction.ReorderNotesAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
@@ -307,6 +308,11 @@ private class RuntimeLedgerReplayer(
             )
 
             is DeleteNoteEntrySaveDto -> DeleteNoteAction(entry.note.toRuntimeSnapshot())
+
+            is ReorderNotesEntrySaveDto -> ReorderNotesAction(
+                forward = entry.forward.map(::MapNoteId),
+                backward = entry.backward.map(::MapNoteId),
+            )
         }
 
     private fun NoteSaveDto.toRuntimeSnapshot() =
@@ -314,7 +320,7 @@ private class RuntimeLedgerReplayer(
             id = MapNoteId(id),
             title = title,
             body = body,
-            referencedObjectIds = referencedObjectIds.map(::MapPlacedObjectId).toSet(),
+            referencedObjectIds = referencedObjectIds.map(::MapPlacedObjectId).distinct(),
         )
 
     private fun SavedMapObjectDto.toRuntimeSnapshot(id: UUID): MapPlacedObjectSnapshot =

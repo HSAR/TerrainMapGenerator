@@ -79,4 +79,13 @@ class MapViewerUniversalListTest {
 
         assertThat(height, equalTo(48.0))
     }
+
+    @Test
+    fun `generic ordering moves an item to the final position`() {
+        val items = listOf("first", "second", "third")
+
+        val reordered = MapViewerUniversalList.moveWithinCategory(items, "first", { Unit }, 3)
+
+        assertThat(reordered, equalTo(listOf("second", "third", "first")))
+    }
 }

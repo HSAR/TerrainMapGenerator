@@ -30,6 +30,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
+import io.hsar.mapgenerator.commandgui.korge.interaction.ReorderNotesAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import java.awt.Color
@@ -94,6 +95,11 @@ internal class LedgerEntrySaveMapper(
 
             is DeleteNoteAction -> DeleteNoteEntrySaveDto(
                 note = entry.snapshot.toDto(),
+            )
+
+            is ReorderNotesAction -> ReorderNotesEntrySaveDto(
+                forward = entry.forward.map { it.value },
+                backward = entry.backward.map { it.value },
             )
 
             else -> error("Unsupported ledger entry type: ${entry::class.qualifiedName}")

@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUniversalList
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -14,7 +15,7 @@ class MapViewerUnitTypeOrderingTest {
             TestUnit("friend-3", "friend"),
         )
 
-        val reordered = MapViewerUnitTypeOrdering.moveWithinCategory(
+        val reordered = MapViewerUniversalList.moveWithinCategory(
             items = items,
             source = items[0],
             categoryOf = TestUnit::category,
@@ -29,7 +30,7 @@ class MapViewerUnitTypeOrderingTest {
         val items = listOf(TestUnit("friend-1", "friend"), TestUnit("friend-2", "friend"))
 
         assertThat(
-            MapViewerUnitTypeOrdering.moveWithinCategory(items, items[0], TestUnit::category, 0),
+            MapViewerUniversalList.moveWithinCategory(items, items[0], TestUnit::category, 0),
             equalTo(items),
         )
     }

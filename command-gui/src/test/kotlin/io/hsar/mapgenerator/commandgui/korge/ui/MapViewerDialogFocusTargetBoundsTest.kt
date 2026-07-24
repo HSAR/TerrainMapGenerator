@@ -21,7 +21,7 @@ class MapViewerDialogFocusTargetBoundsTest {
     fun `empty referenced objects produce no focus bounds`() {
         assertThat(
             referencedObjectFocusTargetBounds(
-                referencedObjectIds = emptySet(),
+                referencedObjectIds = emptyList(),
                 objectSnapshot = { null },
                 coordinateSpace = coordinateSpace(),
                 viewport = viewport(),
@@ -48,7 +48,7 @@ class MapViewerDialogFocusTargetBoundsTest {
         )
 
         val bounds = referencedObjectFocusTargetBounds(
-            referencedObjectIds = setOf(first.id, second.id),
+            referencedObjectIds = listOf(first.id, second.id),
             objectSnapshot = { id ->
                 listOf(first, second).firstOrNull { it.id == id }
             },

@@ -1053,6 +1053,10 @@ internal class MapViewerScene(
 
                             override fun deleteNote(id: MapNoteId): MapNoteSnapshot? =
                                 noteStore.delete(id)
+
+                            override fun reorderNotes(ids: List<MapNoteId>) {
+                                noteStore.reorder(ids)
+                            }
                         }
                         fun performUndo() {
                             val wasReadOnly = turnMode is TurnPanelMode.ReadOnly

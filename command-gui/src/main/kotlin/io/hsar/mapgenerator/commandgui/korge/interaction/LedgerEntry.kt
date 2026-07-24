@@ -135,6 +135,8 @@ internal interface LedgerController {
     fun applyNoteEdit(id: MapNoteId, changes: Map<String, JsonNode?>): MapNoteSnapshot?
 
     fun deleteNote(id: MapNoteId): MapNoteSnapshot?
+
+    fun reorderNotes(ids: List<MapNoteId>) {}
 }
 
 internal interface LedgerEntry {
@@ -321,6 +323,19 @@ internal data class DeleteNoteAction(
 
     override fun redo(controller: LedgerController) {
         controller.deleteNote(snapshot.id)
+    }
+}
+
+internal data class ReorderNotesAction(
+    val forward: List<MapNoteId>,
+    val backward: List<MapNoteId>,
+) : LedgerEntry {
+    override fun undo(controller: LedgerController) {
+        controller.reorderNotes(backward)
+    }
+
+    override fun redo(controller: LedgerController) {
+        controller.reorderNotes(forward)
     }
 }
 

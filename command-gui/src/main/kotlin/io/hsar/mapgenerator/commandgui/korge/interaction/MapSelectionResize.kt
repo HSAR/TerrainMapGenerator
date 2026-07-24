@@ -44,12 +44,22 @@ internal object MapSelectionResize {
                 if (altHeld) bounds.center() else bounds.coordinate(grabbedCorner.opposite())
             }
 
-            is FreeformDrawing, is LineDrawing -> anchorFor(
+            is FreeformDrawing -> anchorFor(
                 bounds = drawing.selectionBounds(aspectRatio),
                 grabbedCorner = grabbedCorner,
                 selectionSize = 1,
                 altHeld = altHeld,
             )
+
+            is LineDrawing ->
+                if (altHeld) {
+                    MapCoordinate(
+                        x = (drawing.start.x + drawing.end.x) * 0.5,
+                        y = (drawing.start.y + drawing.end.y) * 0.5,
+                    )
+                } else {
+                    drawing.endpointFor(grabbedCorner.opposite())
+                }
         }
 
     fun resizeSnapshots(
@@ -121,9 +131,11 @@ internal object MapSelectionResize {
     ): MapDrawing =
         when (this) {
             is FreeformDrawing -> copy(points = points.map { it.resize(anchor, scaleX, scaleY) })
-            is LineDrawing -> copy(
-                start = start.resize(anchor, scaleX, scaleY),
-                end = end.resize(anchor, scaleX, scaleY),
+            is LineDrawing -> resizeFromEndpoint(
+                grabbedCorner = grabbedCorner,
+                anchor = anchor,
+                draggedCorner = draggedCorner,
+                altHeld = selectionSize == 1 && anchor.isCloseTo(MapDrawingGeometry.center(start, end)),
             )
 
             is RectangleDrawing ->
@@ -170,6 +182,28 @@ internal object MapSelectionResize {
             end = MapDrawingPoint(localBounds.right, localBounds.bottom),
         )
     }
+
+    private fun LineDrawing.resizeFromEndpoint(
+        grabbedCorner: ScreenSelectionCorner,
+        anchor: MapCoordinate,
+        draggedCorner: MapCoordinate,
+        altHeld: Boolean,
+    ): LineDrawing =
+        if (altHeld) {
+            val oppositeEndpoint = MapDrawingPoint(
+                x = anchor.x * 2.0 - draggedCorner.x,
+                y = anchor.y * 2.0 - draggedCorner.y,
+            )
+            if (grabbedCorner.selectsStartEndpoint()) {
+                copy(start = draggedCorner.toDrawingPoint(), end = oppositeEndpoint)
+            } else {
+                copy(start = oppositeEndpoint, end = draggedCorner.toDrawingPoint())
+            }
+        } else if (grabbedCorner.selectsStartEndpoint()) {
+            copy(start = draggedCorner.toDrawingPoint(), end = anchor.toDrawingPoint())
+        } else {
+            copy(start = anchor.toDrawingPoint(), end = draggedCorner.toDrawingPoint())
+        }
 
     private fun RectangleDrawing.resizeRotatedRectangleFromCenter(
         draggedCorner: MapCoordinate,
@@ -281,6 +315,12 @@ internal object MapSelectionResize {
             ScreenSelectionCorner.BOTTOM_RIGHT -> ScreenSelectionCorner.TOP_LEFT
             ScreenSelectionCorner.BOTTOM_LEFT -> ScreenSelectionCorner.TOP_RIGHT
         }
+
+    private fun ScreenSelectionCorner.selectsStartEndpoint(): Boolean =
+        this == ScreenSelectionCorner.TOP_LEFT || this == ScreenSelectionCorner.BOTTOM_LEFT
+
+    private fun LineDrawing.endpointFor(corner: ScreenSelectionCorner): MapCoordinate =
+        if (corner.selectsStartEndpoint()) start.toCoordinate() else end.toCoordinate()
 
     private fun MapDrawing.selectionBounds(aspectRatio: Double): MapSelectionBounds =
         when (this) {

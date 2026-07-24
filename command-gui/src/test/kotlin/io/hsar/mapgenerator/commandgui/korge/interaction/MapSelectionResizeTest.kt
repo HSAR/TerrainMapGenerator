@@ -86,6 +86,52 @@ class MapSelectionResizeTest {
     }
 
     @Test
+    fun `diagonal line resize handles move the corresponding endpoint`() {
+        val line = DrawingSnapshot(
+            id = id("00000000-0000-0000-0000-000000000109"),
+            drawing = LineDrawing(
+                start = MapDrawingPoint(0.2, 0.8),
+                end = MapDrawingPoint(0.7, 0.3),
+                color = Color.RED,
+            ),
+        )
+
+        val startAnchor = MapSelectionResize.anchorFor(
+            drawing = line.drawing,
+            grabbedCorner = ScreenSelectionCorner.BOTTOM_LEFT,
+            altHeld = false,
+            aspectRatio = 1.0,
+        )
+        val endAnchor = MapSelectionResize.anchorFor(
+            drawing = line.drawing,
+            grabbedCorner = ScreenSelectionCorner.TOP_RIGHT,
+            altHeld = false,
+            aspectRatio = 1.0,
+        )
+        val startResized = MapSelectionResize.resizeSnapshots(
+            originalSnapshots = listOf(line),
+            bounds = MapSelectionBounds(0.2, 0.3, 0.7, 0.8),
+            grabbedCorner = ScreenSelectionCorner.BOTTOM_LEFT,
+            anchor = startAnchor,
+            draggedCorner = MapCoordinate(0.1, 0.9),
+        ).single() as DrawingSnapshot
+        val endResized = MapSelectionResize.resizeSnapshots(
+            originalSnapshots = listOf(line),
+            bounds = MapSelectionBounds(0.2, 0.3, 0.7, 0.8),
+            grabbedCorner = ScreenSelectionCorner.TOP_RIGHT,
+            anchor = endAnchor,
+            draggedCorner = MapCoordinate(0.8, 0.2),
+        ).single() as DrawingSnapshot
+
+        val resizedStartLine = startResized.drawing as LineDrawing
+        val resizedEndLine = endResized.drawing as LineDrawing
+        assertPoint(resizedStartLine.start, 0.1, 0.9)
+        assertPoint(resizedStartLine.end, 0.7, 0.3)
+        assertPoint(resizedEndLine.start, 0.2, 0.8)
+        assertPoint(resizedEndLine.end, 0.8, 0.2)
+    }
+
+    @Test
     fun `oval resize updates center and radii and preserves rotation`() {
         val oval = DrawingSnapshot(
             id = id("00000000-0000-0000-0000-000000000104"),

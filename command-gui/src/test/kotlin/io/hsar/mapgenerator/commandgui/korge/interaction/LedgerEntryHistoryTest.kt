@@ -137,7 +137,7 @@ class LedgerEntryHistoryTest {
             id = MapNoteId(UUID.fromString("00000000-0000-0000-0000-000000000101")),
             title = "Contact",
             body = "Initial body",
-            referencedObjectIds = setOf(MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000201"))),
+            referencedObjectIds = listOf(MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000201"))),
         )
         val updated = note.copy(
             title = "Contact moved",

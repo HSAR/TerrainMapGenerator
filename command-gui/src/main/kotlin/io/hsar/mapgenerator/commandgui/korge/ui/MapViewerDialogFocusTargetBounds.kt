@@ -20,7 +20,7 @@ internal fun Collection<MapPlacedObjectSnapshot>.focusTargetBounds(
     map { it.focusTargetBounds(coordinateSpace, viewport) }
 
 internal fun referencedObjectFocusTargetBounds(
-    referencedObjectIds: Set<MapPlacedObjectId>,
+    referencedObjectIds: List<MapPlacedObjectId>,
     objectSnapshot: (MapPlacedObjectId) -> MapPlacedObjectSnapshot?,
     coordinateSpace: MapCoordinateSpace,
     viewport: CameraViewport,

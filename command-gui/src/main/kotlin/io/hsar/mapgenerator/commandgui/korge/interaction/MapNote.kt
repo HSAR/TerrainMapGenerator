@@ -13,7 +13,7 @@ internal data class MapNoteSnapshot(
     val id: MapNoteId,
     val title: String,
     val body: String,
-    val referencedObjectIds: Set<MapPlacedObjectId> = emptySet(),
+    val referencedObjectIds: List<MapPlacedObjectId> = emptyList(),
 )
 
 internal object MapNotePatch {
@@ -37,7 +37,7 @@ internal object MapNotePatch {
                 "body" -> current.copy(body = value.requireValue().asText())
                 "referencedObjectIds" -> current.copy(referencedObjectIds = value.requireValue().map { node ->
                     MapPlacedObjectId(UUID.fromString(node.asText()))
-                }.toSet())
+                }.distinct())
 
                 else -> current
             }
@@ -68,13 +68,13 @@ internal class MapNoteStore(
     fun createNote(
         title: String = DEFAULT_TITLE,
         body: String = "",
-        referencedObjectIds: Set<MapPlacedObjectId> = emptySet(),
+        referencedObjectIds: List<MapPlacedObjectId> = emptyList(),
     ): MapNoteSnapshot =
         MapNoteSnapshot(
             id = MapNoteId(uuidGenerator()),
             title = title,
             body = body,
-            referencedObjectIds = referencedObjectIds,
+            referencedObjectIds = referencedObjectIds.distinct(),
         ).also(::upsert)
 
     fun upsert(snapshot: MapNoteSnapshot) {
@@ -101,6 +101,13 @@ internal class MapNoteStore(
 
     fun snapshots(): List<MapNoteSnapshot> =
         notes.toList()
+
+    fun reorder(ids: List<MapNoteId>) {
+        val known = notes.associateBy(MapNoteSnapshot::id)
+        if (ids.size != notes.size || ids.distinct().size != ids.size || ids.any { it !in known }) return
+        notes.clear()
+        notes += ids.map(known::getValue)
+    }
 
     fun snapshotsReferencing(objectId: MapPlacedObjectId): List<MapNoteSnapshot> =
         notes.filter { objectId in it.referencedObjectIds }

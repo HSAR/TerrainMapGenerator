@@ -84,6 +84,14 @@ internal object LedgerReplay {
                 notes[id]?.let { MapNotePatch.apply(it, changes) }?.also { notes[id] = it }
 
             override fun deleteNote(id: MapNoteId): MapNoteSnapshot? = notes.remove(id)
+
+            override fun reorderNotes(ids: List<MapNoteId>) {
+                if (ids.size == notes.size && ids.toSet() == notes.keys) {
+                    val reordered = ids.associateWith(notes::getValue)
+                    notes.clear()
+                    notes.putAll(reordered)
+                }
+            }
         }
         entries.forEach { it.redo(controller) }
         return ReplayedLedger(

@@ -12,6 +12,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteStore
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.ReorderNotesAction
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
@@ -35,6 +36,19 @@ internal class MapViewerNotesPanel(
     private val onLedgerEntry: (LedgerEntry) -> Unit,
 ) {
     private val overlay = root.container()
+    private val reorderController = MapViewerUniversalList.reorderController<MapNoteSnapshot, MapNoteId, Unit>(
+        parent = overlay,
+        items = noteStore::snapshots,
+        keyOf = MapNoteSnapshot::id,
+        enabled = { !isReadOnly() },
+        onReordered = { reordered ->
+            val before = noteStore.snapshots().map(MapNoteSnapshot::id)
+            val after = reordered.map(MapNoteSnapshot::id)
+            noteStore.reorder(after)
+            onLedgerEntry(ReorderNotesAction(after, before))
+            dialogWindow?.refresh()
+        },
+    )
     private val toggleButton = overlay.container()
     private var collapsed = true
     private var dialogWindow: MapViewerDialogWindow? = null
@@ -132,6 +146,7 @@ internal class MapViewerNotesPanel(
     }
 
     private fun renderContent(parent: Container, itemWidth: Double, contentViewportHeight: Double) {
+        reorderController.beginRender()
         val createButton = parent.container()
         createButton.xy(0.0, 0.0)
         MapViewerActionButtons.button(
@@ -182,8 +197,8 @@ internal class MapViewerNotesPanel(
             width = width,
             top = top,
             height = ROW_HEIGHT,
-            onClick = { openNote(note) },
-        )
+            onClick = { if (!reorderController.consumeClick(note)) openNote(note) },
+        ).also { row -> reorderController.register(note, row) }
     }
 
     private fun openNote(note: MapNoteSnapshot, restored: MapViewerPersistedDialog? = null): Boolean {
