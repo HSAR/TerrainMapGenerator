@@ -1,9 +1,11 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
+import io.hsar.mapgenerator.commandgui.korge.scene.MapViewerSceneLayers
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.view.Container
 import korlibs.korge.view.Text
+import korlibs.korge.view.container
 import korlibs.math.geom.Vector2D
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
@@ -249,6 +251,40 @@ class MapViewerDialogWindowTest {
 
         assertThat(renderCount, equalTo(1))
         assertThat(window.blocksScreenPoint(Vector2D(140.0, 160.0)), equalTo(true))
+    }
+
+    @Test
+    fun `focus shadows render in the shared ui underlay and clear when minimized or closed`() {
+        val stage = Container()
+        val underlay = stage.container().also { it.name = MapViewerSceneLayers.UI_UNDERLAY_NAME }
+        val root = stage.container()
+        val window = MapViewerDialogWindow(
+            root = root,
+            title = "Test",
+            persistence = MapViewerDialogPersistence("test"),
+            focusTargetBoundsProvider = { listOf(ScreenBounds(left = 40.0, top = 40.0, width = 20.0, height = 20.0)) },
+            preferredWidth = 400.0,
+            preferredHeight = 300.0,
+            contentHeight = { 0.0 },
+            onClose = {},
+            renderContent = { _, _, _ -> },
+            dialogManager = MapViewerDialogManager { CameraViewport(500.0, 500.0, 1.0, 800, 600, 1000, 1000) },
+        )
+
+        window.show(800, 600)
+        val shadowContainer = underlay.children.single() as Container
+
+        assertThat(underlay.children.size, equalTo(1))
+        assertThat(shadowContainer.children.size, equalTo(1))
+        assertThat(root.children.size, equalTo(1))
+
+        window.minimize()
+
+        assertThat(shadowContainer.children.size, equalTo(0))
+
+        window.close()
+
+        assertThat(underlay.children.size, equalTo(0))
     }
 
     @Test

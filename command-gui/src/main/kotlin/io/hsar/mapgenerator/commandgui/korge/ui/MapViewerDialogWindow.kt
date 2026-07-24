@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import com.fasterxml.jackson.databind.JsonNode
+import io.hsar.mapgenerator.commandgui.korge.scene.MapViewerSceneLayers
 import korlibs.image.color.RGBA
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
@@ -37,6 +38,7 @@ internal data class MapViewerDialogPersistence(
 
 internal class MapViewerDialogWindow(
     private val root: Container,
+    private val focusShadowRoot: Container? = null,
     private val title: String,
     private val titleProvider: () -> String = { title },
     private val titleTabs: () -> List<MapViewerDialogTitleTab> = { emptyList() },
@@ -55,8 +57,12 @@ internal class MapViewerDialogWindow(
     private val dialogManager: MapViewerDialogManager? = null,
 ) {
     private val layer = root.container()
-    private val shadowLayer = layer.container().also {
+    private val backdropLayer = layer.container().also {
         it.zIndex = 0.0
+        it.mouseEnabled = false
+    }
+    private val focusShadowLayer = resolveFocusShadowParent().container().also {
+        it.zIndex = if (it.parent == layer) 0.0 else Z_INDEX
         it.mouseEnabled = false
     }
     private val panelLayer = layer.container().also {
@@ -123,6 +129,10 @@ internal class MapViewerDialogWindow(
 
         isOpen = false
         dialogManager?.undockMinimized(this)
+        clearFocusShadow()
+        if (focusShadowLayer.parent != layer) {
+            focusShadowLayer.removeFromParent()
+        }
         layer.removeFromParent()
     }
 
@@ -197,7 +207,7 @@ internal class MapViewerDialogWindow(
             refreshPinnedPositionIfRequired()
             val focusTargetBounds = focusTargetBoundsProvider()
             if (focusTargetBounds != lastFocusTargetBounds) {
-                renderShadow(focusTargetBounds)
+                renderFocusShadow(focusTargetBounds)
             }
 
             if (!leftHeld) {
@@ -285,7 +295,8 @@ internal class MapViewerDialogWindow(
         scrollbarContainer = null
         titleBar = null
         panelLayer.removeChildren()
-        renderShadow(focusTargetBounds)
+        renderBackdrop()
+        renderFocusShadow(focusTargetBounds)
 
         panelLayer.xy(currentBounds.left, currentBounds.top)
         val panel = panelLayer.container()
@@ -339,7 +350,8 @@ internal class MapViewerDialogWindow(
         scrollbarContainer = null
         titleBar = null
         panelLayer.removeChildren()
-        shadowLayer.removeChildren()
+        backdropLayer.removeChildren()
+        clearFocusShadow()
         panelLayer.xy(layout.bounds.left, layout.bounds.top)
         val panel = panelLayer.container()
         panel.solidRect(layout.bounds.width, layout.bounds.height, RGBA(0, 0, 0, 0)).mouse {
@@ -374,7 +386,7 @@ internal class MapViewerDialogWindow(
 
         this.bounds = bounds
         panelLayer.xy(bounds.left, bounds.top)
-        renderShadow(focusTargetBounds)
+        renderFocusShadow(focusTargetBounds)
     }
 
     private fun beginDrag(mode: DialogDragMode) {
@@ -445,19 +457,24 @@ internal class MapViewerDialogWindow(
         }
     }
 
-    private fun renderShadow(focusTargetBounds: List<ScreenBounds>) {
+    private fun renderBackdrop() {
+        backdropLayer.removeChildren()
+        if (mode == MapViewerDialogMode.MODAL) {
+            backdropLayer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 160))
+        }
+    }
+
+    private fun renderFocusShadow(focusTargetBounds: List<ScreenBounds>) {
         if (minimized) {
-            shadowLayer.removeChildren()
+            lastFocusTargetBounds = focusTargetBounds
+            focusShadowLayer.removeChildren()
             return
         }
         val currentBounds = bounds ?: return
         lastFocusTargetBounds = focusTargetBounds
-        shadowLayer.removeChildren()
-        if (mode == MapViewerDialogMode.MODAL) {
-            shadowLayer.solidRect(viewportWidth.toDouble(), viewportHeight.toDouble(), RGBA(0, 0, 0, 160))
-        }
+        focusShadowLayer.removeChildren()
         focusShadowShape(currentBounds, focusTargetBounds)?.let { shape ->
-            shadowLayer.graphics {
+            focusShadowLayer.graphics {
                 fill(FOCUS_SHADOW_COLOR) {
                     path(shape.toVectorPath())
                 }
@@ -578,9 +595,21 @@ internal class MapViewerDialogWindow(
         val position = projectedPinPosition(expanded.width) ?: return
         if (!minimized) bounds = expanded.movedTo(position.x, position.y)
         panelLayer.xy(position.x, position.y)
-        renderShadow(focusTargetBoundsProvider())
+        renderFocusShadow(focusTargetBoundsProvider())
         lastViewport = dialogManager?.viewport()
     }
+
+    private fun clearFocusShadow() {
+        lastFocusTargetBounds = emptyList()
+        focusShadowLayer.removeChildren()
+    }
+
+    private fun resolveFocusShadowParent(): Container =
+        focusShadowRoot
+            ?: root.parent?.children
+                ?.filterIsInstance<Container>()
+                ?.firstOrNull { it.name == MapViewerSceneLayers.UI_UNDERLAY_NAME }
+            ?: layer
 
     internal fun refreshPinnedPositionIfRequired() {
         if (!pinned) return
