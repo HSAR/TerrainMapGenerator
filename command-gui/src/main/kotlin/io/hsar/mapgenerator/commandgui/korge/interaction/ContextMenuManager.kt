@@ -1,6 +1,9 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerBoxedIcon
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerChevron
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerChevronDirection
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogChrome
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextInputValidation
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
@@ -8,7 +11,6 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.image.color.RGBA
-import korlibs.image.text.TextAlignment
 import korlibs.korge.input.mouse
 import korlibs.korge.internal.KorgeInternal
 import korlibs.korge.view.Container
@@ -192,13 +194,13 @@ internal class ContextMenuManager(
             val option = menu.container()
             option.xy(ContextMenuLayout.PADDING, ContextMenuLayout.optionTop(index))
             val optionWidth = menuWidth - PADDING * 2
-            val optionHeight = ACTION_HEIGHT - 4.0
+            val optionHeight = ACTION_HEIGHT - ContextMenuLayout.OPTION_VERTICAL_INSET * 2
             MapViewerUiBoxes.button(
                 parent = option,
                 width = optionWidth,
                 height = optionHeight,
                 active = action.enabled,
-            ).xy(0.0, 2.0)
+            ).xy(0.0, ContextMenuLayout.OPTION_VERTICAL_INSET)
             val labelWidth = optionWidth - optionTrailingWidth(action)
             MapViewerTextViews.leftBox(
                 parent = option,
@@ -222,14 +224,14 @@ internal class ContextMenuManager(
             }
             if (action.submenuActions.isNotEmpty()) {
                 val arrow = option.container()
-                arrow.xy(optionWidth - optionTrailingWidth(action), 0.0)
-                MapViewerTextViews.box(
+                arrow.xy(
+                    optionWidth - optionTrailingWidth(action),
+                    contextMenuSubmenuIndicatorTop(),
+                )
+                renderContextMenuSubmenuIndicator(
                     parent = arrow,
-                    text = ">",
                     width = optionTrailingWidth(action),
                     height = optionHeight,
-                    color = Palette.Colours.WHITE,
-                    alignment = TextAlignment.MIDDLE_RIGHT,
                 )
             }
             option.mouse {
@@ -413,6 +415,24 @@ internal object ContextMenuDismissal {
     fun shouldDismiss(bounds: ScreenBounds, pointer: Vector2D) =
         !bounds.contains(pointer)
 }
+
+internal fun renderContextMenuSubmenuIndicator(
+    parent: Container,
+    width: Double,
+    height: Double,
+) {
+    val button = MapViewerBoxedIcon.frame(parent, width, height)
+    MapViewerChevron.render(
+        parent = button,
+        width = width,
+        height = height,
+        direction = MapViewerChevronDirection.RIGHT,
+        color = MapViewerUiBoxes.toRgba(Palette.Colours.WHITE),
+    )
+}
+
+internal fun contextMenuSubmenuIndicatorTop(): Double =
+    ContextMenuLayout.OPTION_VERTICAL_INSET
 
 internal object ContextMenuActionExecutor {
     fun execute(
