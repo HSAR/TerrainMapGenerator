@@ -84,6 +84,7 @@ internal class MapViewerNoteDialog(
             ),
             onClose = ::close,
             renderContent = ::renderContent,
+            scrollTargetAt = { point -> bodyInput?.consumesScrollAt(point) == true },
             focusTargetBoundsProvider = { focusTargetBoundsProvider() },
             persistence = MapViewerDialogPersistence(
                 type = TYPE,

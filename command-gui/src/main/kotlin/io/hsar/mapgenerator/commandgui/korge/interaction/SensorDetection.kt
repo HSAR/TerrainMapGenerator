@@ -611,7 +611,10 @@ internal object SensorDetection {
         }.sum()
         val advancedSensors = observerProfile?.advancedSensorsBonus ?: observer.advancedSensorsBonus()
         val identification = (base * observerModifier) * 2.0.pow(bandOffset + observerSensorModifier) + advancedSensors
-        return SensorRanges(identification, identification * DETECTION_RANGE_BAND_MULTIPLIER)
+        return SensorRanges(
+            identification = identification,
+            detection = if (customProperties.booleanProperty("maximumWarp")) Double.POSITIVE_INFINITY else identification * DETECTION_RANGE_BAND_MULTIPLIER,
+        )
     }
 
     private fun UnitSnapshot.activeSensors(): Boolean = customProperties.booleanProperty("activeSensors")
@@ -655,13 +658,16 @@ internal object SensorDetection {
             if (sensorReportMode == SensorReportMode.NAVREP && customProperties.booleanProperty("activeWarp")) {
                 add("Active warp: +2 detection bands.")
             }
+            if (customProperties.booleanProperty("maximumWarp")) {
+                add("Maximum warp: automatically detected at any range.")
+            }
             if (sensorReportMode == SensorReportMode.NAVREP && customProperties.booleanProperty("inNebula")) {
                 add("In nebula: -1 detection band.")
             }
         }
 
     private fun formatDistance(distanceUnits: Double): String =
-        ((distanceUnits * 10.0).roundToInt() / 10.0).toString().trimEnd('0').trimEnd('.')
+        if (distanceUnits.isInfinite()) "∞" else ((distanceUnits * 10.0).roundToInt() / 10.0).toString().trimEnd('0').trimEnd('.')
 
     private fun buildPositionSummary(
         observer: UnitSnapshot,

@@ -146,7 +146,7 @@ internal class MapViewerSitrepDialog(
         )
         currentTop += MapViewerDialogSpacing.INPUT_HEIGHT + SECTION_GAP
         renderSensorOptions(parent, width, currentTop)
-        currentTop += SENSOR_OPTIONS_HEIGHT + SECTION_GAP
+        currentTop += sensorOptionsHeight() + SECTION_GAP
         renderReportSections(parent, width, currentTop)
     }
 
@@ -180,7 +180,21 @@ internal class MapViewerSitrepDialog(
             width = optionWidth,
             onToggle = { updateObserverSensorOption(secondOption.second) },
         )
+        if (reportMode == ReportMode.NAVREP) {
+            renderSensorOption(
+                parent = parent,
+                label = "Maximum Warp",
+                checked = observer.sensorOptionEnabled(MAXIMUM_WARP_KEY),
+                y = top + SENSOR_OPTION_ROW_HEIGHT + SENSOR_OPTION_ROW_GAP,
+                left = 0.0,
+                width = width,
+                onToggle = { updateObserverSensorOption(MAXIMUM_WARP_KEY) },
+            )
+        }
     }
+
+    private fun sensorOptionsHeight(): Double =
+        if (reportMode == ReportMode.NAVREP) SENSOR_OPTION_ROW_HEIGHT * 2.0 + SENSOR_OPTION_ROW_GAP else SENSOR_OPTION_ROW_HEIGHT
 
     private fun renderSensorOption(
         parent: Container,
@@ -359,7 +373,7 @@ internal class MapViewerSitrepDialog(
         val reportTextHeight = MapViewerWrappedText.height(MapViewerWrappedText.wrap(currentReport.displayText, width, TEXT_SIZE).size)
         return MapViewerDialogSpacing.INPUT_HEIGHT +
                 SECTION_GAP +
-                SENSOR_OPTIONS_HEIGHT +
+                sensorOptionsHeight() +
                 SECTION_GAP +
                 reportTextHeight +
                 SECTION_GAP +
@@ -829,6 +843,7 @@ internal class MapViewerSitrepDialog(
         const val ACTIVE_SENSORS_KEY = "activeSensors"
         const val IN_NEBULA_KEY = "inNebula"
         const val ACTIVE_WARP_KEY = "activeWarp"
+        const val MAXIMUM_WARP_KEY = "maximumWarp"
         const val PREFERRED_WIDTH = 900.0
         const val PREFERRED_HEIGHT = 680.0
         const val PREFERRED_MIN_CONTENT_WIDTH = 600.0
@@ -842,8 +857,8 @@ internal class MapViewerSitrepDialog(
         const val ROW_HEIGHT = 34.0
         const val ROW_GAP = 8.0
         const val SENSOR_OPTION_ROW_HEIGHT = 34.0
+        const val SENSOR_OPTION_ROW_GAP = 8.0
         const val SENSOR_OPTION_SPLIT_GAP = 8.0
-        const val SENSOR_OPTIONS_HEIGHT = SENSOR_OPTION_ROW_HEIGHT
         const val CHECKBOX_SIZE = 16.0
         const val CHECKBOX_GAP = 8.0
         const val CHECKBOX_LABEL_GAP = 12.0

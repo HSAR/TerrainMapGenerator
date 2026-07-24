@@ -343,6 +343,101 @@ class SensorDetectionTest {
     }
 
     @Test
+    fun `maximum warp is detected at any range but identified normally in both reports`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-00000000001b",
+            instanceName = "Observer",
+            unitClass = "CA",
+            x = 0.5,
+            y = 0.5,
+        )
+        val target = unit(
+            id = "00000000-0000-0000-0000-00000000001c",
+            instanceName = "Target",
+            unitClass = "CL",
+            x = 0.7,
+            y = 0.5,
+            customProperties = mapOf("maximumWarp" to "true"),
+        )
+
+        SensorReportMode.entries.forEach { reportMode ->
+            val check = SensorDetection.visibilityChecks(
+                observer = observer,
+                candidates = listOf(observer, target),
+                mapWidth = 1_000,
+                mapHeight = 1_000,
+                mapUnitsPerPixel = 1.0,
+                sensorReportMode = reportMode,
+            ).single()
+
+            assertThat(check.detected, equalTo(true))
+            assertThat(check.visible, equalTo(false))
+            assertThat(check.detectionRangeUnits.isInfinite(), equalTo(true))
+            assertThat(check.identificationRangeUnits, equalTo(18.0))
+
+            val nearbyCheck = SensorDetection.visibilityChecks(
+                observer = observer,
+                candidates = listOf(observer, target.copy(mapCoordinate = MapCoordinate(0.51, 0.5))),
+                mapWidth = 1_000,
+                mapHeight = 1_000,
+                mapUnitsPerPixel = 1.0,
+                sensorReportMode = reportMode,
+            ).single()
+
+            assertThat(nearbyCheck.visible, equalTo(true))
+        }
+    }
+
+    @Test
+    fun `maximum warp is detected-only in scirep and remains informational in navrep`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-00000000001d",
+            instanceName = "Observer",
+            unitClass = "CA",
+            x = 0.5,
+            y = 0.5,
+            affiliation = UnitAffiliation.Friend,
+        )
+        val target = unit(
+            id = "00000000-0000-0000-0000-00000000001e",
+            instanceName = "Target",
+            unitClass = "CL",
+            x = 0.7,
+            y = 0.5,
+            affiliation = UnitAffiliation.Friend,
+            customProperties = mapOf("maximumWarp" to "true"),
+        )
+
+        val scirep = SensorDetection.visibilityReport(
+            observer = observer,
+            candidates = listOf(observer, target),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+            includedIds = emptySet(),
+            unidentifiedIds = setOf(target.id),
+            candidateFilter = { true },
+            sensorReportMode = SensorReportMode.SCIREP,
+        )
+        val navrep = SensorDetection.visibilityReport(
+            observer = observer,
+            candidates = listOf(observer, target),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+            sensorReportMode = SensorReportMode.NAVREP,
+        )
+
+        assertThat(scirep.unidentifiedChecks.map { it.unit.id }, equalTo(listOf(target.id)))
+        assertThat(navrep.unidentifiedChecks, equalTo(emptyList<SensorVisibilityCheck>()))
+        assertThat(navrep.hiddenChecks.map { it.unit.id }, equalTo(listOf(target.id)))
+        assertThat(
+            SensorDetection.hiddenContactLabel(observer, navrep.hiddenChecks.single(), 1_000, 1_000),
+            equalTo("CL Target contact ranges are ∞ / 18, actual range is 200"),
+        )
+    }
+
+    @Test
     fun `navrep reports nebular conditions before electronic warfare`() {
         val observer = unit(
             id = "00000000-0000-0000-0000-0000000000c1",

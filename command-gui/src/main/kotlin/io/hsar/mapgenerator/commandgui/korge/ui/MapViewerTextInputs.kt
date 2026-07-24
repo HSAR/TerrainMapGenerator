@@ -148,7 +148,8 @@ internal object MapViewerTextInputs {
 
             field.mouse {
                 onScrollAnywhere {
-                    if (scrollState.needsScrolling) {
+                    val pointer = field.stage?.views?.input?.mousePos
+                    if (pointer != null && field.getGlobalBounds().contains(pointer) && scrollState.needsScrolling) {
                         updateScroll(scrollDeltaYLines * MapViewerScrollbar.SCROLL_STEP_PX)
                     }
                 }
@@ -227,6 +228,9 @@ internal object MapViewerTextInputs {
                 input = input,
                 visibleText = visibleText,
                 textProvider = { MapViewerInputTextWrap.unwrapSoft(input.text, currentSoftBreakIndexes) },
+                consumesScrollAt = { point ->
+                    scrollable && scrollState.needsScrolling && field.getGlobalBounds().contains(point)
+                },
                 onSetText = { value ->
                     currentLogicalText = value
                     trackedValue(value).also {
@@ -433,6 +437,7 @@ internal class MapViewerInputField(
     private val input: UITextInput,
     private val visibleText: Text,
     private val textProvider: () -> String = { input.text },
+    private val consumesScrollAt: (korlibs.math.geom.Vector2D) -> Boolean = { false },
     private val onSetText: (String) -> Unit = { value ->
         input.text = value
         visibleText.text = value
@@ -476,4 +481,7 @@ internal class MapViewerInputField(
             onClick { block() }
         }
     }
+
+    fun consumesScrollAt(point: korlibs.math.geom.Vector2D): Boolean =
+        consumesScrollAt(point)
 }

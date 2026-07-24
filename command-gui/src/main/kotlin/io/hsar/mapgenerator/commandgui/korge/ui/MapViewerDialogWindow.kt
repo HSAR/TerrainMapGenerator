@@ -50,6 +50,7 @@ internal class MapViewerDialogWindow(
     private val actions: List<MapViewerDialogAction> = emptyList(),
     private val onClose: () -> Unit,
     private val renderContent: (Container, Double, Double) -> Unit,
+    private val scrollTargetAt: (Vector2D) -> Boolean = { false },
     private val mode: MapViewerDialogMode = MapViewerDialogMode.FLOATING,
     private val dialogManager: MapViewerDialogManager? = null,
 ) {
@@ -178,7 +179,12 @@ internal class MapViewerDialogWindow(
                 // Consume backdrop clicks so the map never receives modal-dialog input.
             }
             onScrollAnywhere {
-                if (!minimized && displayBounds()?.contains(views.input.mousePos) == true && scrollState.needsScrolling) {
+                val pointer = views.input.mousePos
+                if (!minimized &&
+                    displayBounds()?.contains(pointer) == true &&
+                    !scrollTargetAt(pointer) &&
+                    scrollState.needsScrolling
+                ) {
                     scrollState = scrollState.scrolledBy(scrollDeltaYLines * MapViewerScrollbar.SCROLL_STEP_PX)
                     updateScrollPosition()
                 }
