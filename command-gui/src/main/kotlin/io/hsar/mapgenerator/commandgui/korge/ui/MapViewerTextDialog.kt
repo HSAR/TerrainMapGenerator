@@ -59,7 +59,7 @@ internal class MapViewerTextDialog(
         return true
     }
 
-    private fun renderContent(parent: Container, width: Double) {
+    private fun renderContent(parent: Container, width: Double, contentViewportHeight: Double) {
         val body = parent.container()
         body.xy(0.0, 0.0)
         val wrapped = MapViewerWrappedText.wrap(text, width, TEXT_SIZE)

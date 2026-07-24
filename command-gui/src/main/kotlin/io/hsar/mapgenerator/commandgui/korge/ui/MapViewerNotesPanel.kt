@@ -131,7 +131,7 @@ internal class MapViewerNotesPanel(
         dialogWindow = null
     }
 
-    private fun renderContent(parent: Container, itemWidth: Double) {
+    private fun renderContent(parent: Container, itemWidth: Double, contentViewportHeight: Double) {
         val createButton = parent.container()
         createButton.xy(0.0, 0.0)
         MapViewerActionButtons.button(

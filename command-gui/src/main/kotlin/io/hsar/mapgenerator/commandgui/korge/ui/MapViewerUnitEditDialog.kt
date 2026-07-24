@@ -237,7 +237,7 @@ internal class MapViewerUnitEditDialog(
                 facingInput?.isFocused == true ||
                 customPropertiesEditor.isTextInputActive
 
-    private fun renderContent(parent: Container, width: Double) {
+    private fun renderContent(parent: Container, width: Double, contentViewportHeight: Double) {
         val fieldWidth = width
         val typePreviewWidth = fieldWidth
         val positionFieldWidth = (fieldWidth - MapViewerDialogSpacing.FIELD_GAP) / 2.0

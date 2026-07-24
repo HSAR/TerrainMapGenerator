@@ -154,7 +154,7 @@ internal class MapViewerGraphicSidebar(
     private fun layoutViewportWidth(): Int =
         overlay.stage?.views?.actualVirtualWidth ?: 0
 
-    private fun renderContent(parent: Container, itemWidth: Double) {
+    private fun renderContent(parent: Container, itemWidth: Double, contentViewportHeight: Double) {
         val buttonWidth = 180.0
         parent.container().also { addButton ->
             addButton.xy(itemWidth - buttonWidth, 0.0)

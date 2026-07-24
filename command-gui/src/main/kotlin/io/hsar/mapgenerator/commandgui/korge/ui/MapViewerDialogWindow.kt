@@ -49,7 +49,7 @@ internal class MapViewerDialogWindow(
     private val contentHeight: (Double) -> Double,
     private val actions: List<MapViewerDialogAction> = emptyList(),
     private val onClose: () -> Unit,
-    private val renderContent: (Container, Double) -> Unit,
+    private val renderContent: (Container, Double, Double) -> Unit,
     private val mode: MapViewerDialogMode = MapViewerDialogMode.FLOATING,
     private val dialogManager: MapViewerDialogManager? = null,
 ) {
@@ -311,7 +311,7 @@ internal class MapViewerDialogWindow(
             val content = container()
             contentContainer = content
             content.xy(0.0, -scrollState.offset)
-            renderContent(content, layout.contentViewport.width)
+            renderContent(content, layout.contentViewport.width, layout.contentViewport.height)
         }
         if (scrollState.needsScrolling) {
             scrollbarContainer = panel.container()

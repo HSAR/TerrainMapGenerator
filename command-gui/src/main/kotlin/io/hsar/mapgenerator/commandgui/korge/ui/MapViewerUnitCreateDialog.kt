@@ -106,8 +106,8 @@ internal class MapViewerUnitCreateDialog(
                 MapViewerDialogAction(confirmLabel, enabled = { canConfirm() }) { confirm() },
             ) + if (initialTemplate != null) listOf(MapViewerDialogAction("Cancel") { close() }) else emptyList(),
             onClose = { close() },
-            renderContent = { content, contentWidth ->
-                renderContent(content, contentWidth)
+            renderContent = { content, contentWidth, contentViewportHeight ->
+                renderContent(content, contentWidth, contentViewportHeight)
             },
             mode = MapViewerDialogMode.FLOATING,
             dialogManager = dialogManager,
@@ -146,7 +146,7 @@ internal class MapViewerUnitCreateDialog(
         onDismiss()
     }
 
-    private fun renderContent(content: Container, contentWidth: Double) {
+    private fun renderContent(content: Container, contentWidth: Double, contentViewportHeight: Double) {
         content.removeChildren()
 
         val layout = layoutForWidth(contentWidth)
@@ -271,7 +271,7 @@ internal class MapViewerUnitCreateDialog(
     fun renderEmbedded(parent: Container, width: Double) {
         embeddedParent = parent
         embeddedWidth = width
-        renderContent(parent, width)
+        renderContent(parent, width, contentHeightFor(width))
     }
 
     fun embeddedHeight(width: Double): Double =

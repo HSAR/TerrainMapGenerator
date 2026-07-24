@@ -186,7 +186,7 @@ internal class MapViewerLaunchShell(
         backgroundInfoDialog = null
     }
 
-    private fun renderBackgroundInfo(parent: Container, itemWidth: Double) {
+    private fun renderBackgroundInfo(parent: Container, itemWidth: Double, contentViewportHeight: Double) {
         background.information.forEachIndexed { index, (label, value) ->
             MapViewerTextViews.box(parent, "$label: $value", itemWidth, 28.0).xy(0.0, index * 30.0)
         }

@@ -185,7 +185,7 @@ internal class MapViewerLedgerPanel(
             )
         }
 
-    private fun renderContent(parent: Container, itemWidth: Double) {
+    private fun renderContent(parent: Container, itemWidth: Double, contentViewportHeight: Double) {
         markerInput = null
         unitIconSizeInput = null
         when (activeTab) {

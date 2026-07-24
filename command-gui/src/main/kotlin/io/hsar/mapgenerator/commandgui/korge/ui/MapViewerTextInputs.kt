@@ -10,6 +10,7 @@ import korlibs.korge.ui.uiTextInput
 import korlibs.korge.view.Container
 import korlibs.korge.view.Text
 import korlibs.korge.view.ViewRenderer
+import korlibs.korge.view.addUpdater
 import korlibs.korge.view.clipContainer
 import korlibs.korge.view.container
 import korlibs.korge.view.xy
@@ -30,6 +31,7 @@ internal object MapViewerTextInputs {
         alignment: TextAlignment = TextAlignment.MIDDLE_LEFT,
         wrapWords: Boolean = false,
         selectEndWhenClickBelowText: Boolean = false,
+        scrollable: Boolean = false,
         frameStyle: (Boolean) -> UiFrameStyle = MapViewerUiBoxes::defaultStyle,
     ): MapViewerInputField =
         parent.container().let { field ->
@@ -40,7 +42,8 @@ internal object MapViewerTextInputs {
                 it.xy(2.0, 2.0)
                 it.zIndex = 1.0
             }
-            val visibleTextWidth = width - 12.0
+            val scrollbarGutter = if (scrollable) MapViewerScrollbar.WIDTH + 4.0 else 0.0
+            val visibleTextWidth = width - 12.0 - scrollbarGutter
             fun trackedValue(value: String): MapViewerInputTextWrap.WrappedText =
                 if (wrapWords) {
                     MapViewerInputTextWrap.wrapTracked(value, visibleTextWidth, role, textSize)
@@ -51,6 +54,9 @@ internal object MapViewerTextInputs {
             var currentLogicalText = text
             var currentSoftBreakIndexes = emptySet<Int>()
             var applyingTrackedWrap = false
+            var scrollState = MapViewerScrollState(0.0, 0.0)
+            var scrollbarLayer: Container? = null
+            var scrollDragState: InputScrollDragState? = null
             val initialTrackedText = trackedValue(text).also {
                 currentSoftBreakIndexes = it.softBreakIndexes
             }
@@ -72,7 +78,7 @@ internal object MapViewerTextInputs {
                     }
                 }
             }
-            val visibleTextClip = field.clipContainer(Size2D(width - 12.0, height - 4.0)) {
+            val visibleTextClip = field.clipContainer(Size2D(visibleTextWidth, height - 4.0)) {
                 zIndex = 10.0
                 mouseEnabled = false
             }.also {
@@ -90,6 +96,76 @@ internal object MapViewerTextInputs {
                 alignment = alignment,
             ).also {
                 it.mouseEnabled = false
+            }
+
+            fun updateScrollState() {
+                val lineCount = input.text.count { character -> character == '\n' } + 1
+                scrollState = scrollState.withContent(
+                    viewportHeight = visibleTextHeight,
+                    contentHeight = lineCount * visualLineHeight + 4.0,
+                )
+                visibleText.y = -scrollState.offset
+            }
+
+            fun renderScrollbar() {
+                scrollbarLayer?.removeFromParent()
+                scrollbarLayer = null
+                if (!scrollable || !scrollState.needsScrolling) return
+                scrollbarLayer = field.container().also { layer ->
+                    layer.zIndex = 20.0
+                    MapViewerScrollbar.render(
+                        parent = layer,
+                        bounds = ScreenBounds(
+                            left = width - MapViewerScrollbar.WIDTH - 2.0,
+                            top = 2.0,
+                            width = MapViewerScrollbar.WIDTH,
+                            height = height - 4.0,
+                        ),
+                        state = scrollState,
+                        onThumbDown = { pointerY ->
+                            scrollDragState = InputScrollDragState(pointerY, scrollState.offset)
+                        },
+                    )
+                }
+            }
+
+            fun updateScroll(delta: Double) {
+                scrollState = scrollState.scrolledBy(delta)
+                visibleText.y = -scrollState.offset
+                renderScrollbar()
+            }
+
+            field.mouse {
+                onScrollAnywhere {
+                    if (scrollState.needsScrolling) {
+                        updateScroll(scrollDeltaYLines * MapViewerScrollbar.SCROLL_STEP_PX)
+                    }
+                }
+            }
+            field.addUpdater {
+                val drag = scrollDragState ?: return@addUpdater
+                val stage = field.stage ?: return@addUpdater
+                if (!stage.views.input.mouseButtonPressed(korlibs.event.MouseButton.LEFT)) {
+                    scrollDragState = null
+                    return@addUpdater
+                }
+                val bounds = field.getGlobalBounds()
+                scrollState = scrollState.withOffset(
+                    MapViewerScrollbar.dragOffset(
+                        bounds = ScreenBounds(
+                            left = bounds.left + width - MapViewerScrollbar.WIDTH - 2.0,
+                            top = bounds.top + 2.0,
+                            width = MapViewerScrollbar.WIDTH,
+                            height = height - 4.0,
+                        ),
+                        state = scrollState,
+                        dragStartPointerY = drag.pointerY,
+                        dragStartOffset = drag.offset,
+                        currentPointerY = stage.views.input.mousePos.y,
+                    ),
+                )
+                visibleText.y = -scrollState.offset
+                renderScrollbar()
             }
 
             input.controller.onTextUpdated.add {
@@ -118,23 +194,35 @@ internal object MapViewerTextInputs {
                     }
                 }
                 visibleText.text = input.text
+                updateScrollState()
+                renderScrollbar()
             }
 
             MapViewerInputField(
                 root = field,
                 input = input,
                 visibleText = visibleText,
-                textProvider = { currentLogicalText },
+                textProvider = { MapViewerInputTextWrap.unwrapSoft(input.text, currentSoftBreakIndexes) },
                 onSetText = { value ->
                     currentLogicalText = value
                     trackedValue(value).also {
                         currentSoftBreakIndexes = it.softBreakIndexes
                         input.text = it.text
                         visibleText.text = it.text
+                        updateScrollState()
+                        renderScrollbar()
                     }
                 },
-            )
+            ).also {
+                updateScrollState()
+                renderScrollbar()
+            }
         }
+
+    private data class InputScrollDragState(
+        val pointerY: Double,
+        val offset: Double,
+    )
 }
 
 internal object MapViewerInputClickPlacement {

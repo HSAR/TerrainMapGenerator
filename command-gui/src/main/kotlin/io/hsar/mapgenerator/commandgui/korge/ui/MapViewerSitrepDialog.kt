@@ -132,7 +132,7 @@ internal class MapViewerSitrepDialog(
         return true
     }
 
-    private fun renderContent(parent: Container, width: Double) {
+    private fun renderContent(parent: Container, width: Double, contentViewportHeight: Double) {
         var currentTop = 0.0
         MapViewerInlineInputs.dropdown(
             parent = parent,

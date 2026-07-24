@@ -113,7 +113,7 @@ internal class MapViewerNoteDialog(
         return true
     }
 
-    private fun renderContent(parent: Container, itemWidth: Double) {
+    private fun renderContent(parent: Container, itemWidth: Double, contentViewportHeight: Double) {
         titleInput = null
         bodyInput = null
         val inlineBlock = MapViewerInlineInputs.block(listOf("Title"))
@@ -133,6 +133,7 @@ internal class MapViewerNoteDialog(
         }
 
         val bodyTop = TITLE_ROW_HEIGHT + SECTION_GAP + referencesHeight() + SECTION_GAP
+        val bodyHeight = MapViewerNoteDialogLayout.bodyHeight(contentViewportHeight, bodyTop)
         renderReferenceControls(parent, itemWidth, TITLE_ROW_HEIGHT + SECTION_GAP)
 
         MapViewerTextViews.leftBox(
@@ -148,12 +149,13 @@ internal class MapViewerNoteDialog(
             parent = parent,
             text = bodyValue,
             width = itemWidth,
-            height = BODY_HEIGHT,
+            height = bodyHeight,
             y = bodyTop + LABEL_HEIGHT,
             textSize = MapViewerTextViews.DEFAULT_TEXT_SIZE - 2.0,
             alignment = TextAlignment.TOP_LEFT,
             wrapWords = true,
             selectEndWhenClickBelowText = true,
+            scrollable = true,
         ).also { input ->
             input.onClick { input.focus() }
             input.controller.onTextUpdated.add {
@@ -320,7 +322,7 @@ internal class MapViewerNoteDialog(
                 referencesHeight() +
                 SECTION_GAP +
                 LABEL_HEIGHT +
-                BODY_HEIGHT
+                MapViewerNoteDialogLayout.MIN_BODY_HEIGHT
 
     private fun referencesHeight(): Double =
         CONTROL_HEIGHT +
@@ -346,7 +348,6 @@ internal class MapViewerNoteDialog(
         const val PREFERRED_HEIGHT = 720.0
         const val CONTENT_MINIMUM_WIDTH = 420.0
         const val TITLE_ROW_HEIGHT = MapViewerDialogSpacing.INPUT_HEIGHT
-        const val BODY_HEIGHT = 132.0
         const val DROP_TARGET_HEIGHT = 72.0
         const val LABEL_HEIGHT = 28.0
         const val SECTION_GAP = 14.0
@@ -360,4 +361,11 @@ internal class MapViewerNoteDialog(
         const val REMOVE_HEIGHT = 30.0
         const val BRACKET_INSET = 5.0
     }
+}
+
+internal object MapViewerNoteDialogLayout {
+    const val MIN_BODY_HEIGHT = 132.0
+
+    fun bodyHeight(contentViewportHeight: Double, bodyTop: Double): Double =
+        (contentViewportHeight - bodyTop - 28.0).coerceAtLeast(MIN_BODY_HEIGHT)
 }

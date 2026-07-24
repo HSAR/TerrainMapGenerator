@@ -37,6 +37,21 @@ class MapViewerInputTextWrapTest {
     }
 
     @Test
+    fun `tracked text can be unwrapped and rewrapped at a wider width`() {
+        val narrowWidth = MapViewerTextViews.measure("Alpha beta").width + 1.0
+        val wideWidth = MapViewerTextViews.measure("Alpha beta gamma").width + 1.0
+
+        val narrow = MapViewerInputTextWrap.wrapTracked("Alpha beta gamma", narrowWidth)
+        val widened = MapViewerInputTextWrap.wrapTracked(
+            MapViewerInputTextWrap.unwrapSoft(narrow.text, narrow.softBreakIndexes),
+            wideWidth,
+        )
+
+        assertThat(widened.text, equalTo("Alpha beta gamma"))
+        assertThat(widened.softBreakIndexes, equalTo(emptySet()))
+    }
+
+    @Test
     fun `tracked wrap preserves hard line breaks as logical cursor positions`() {
         val maxWidth = MapViewerTextViews.measure("Alpha beta").width + 1.0
 

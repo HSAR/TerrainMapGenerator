@@ -218,7 +218,7 @@ internal class MapViewerSidebar(
         relayout(layoutViewportWidth(), layoutViewportHeight())
     }
 
-    private fun renderContent(parent: Container, itemWidth: Double) {
+    private fun renderContent(parent: Container, itemWidth: Double, contentViewportHeight: Double) {
         val buttonWidth = 120.0
         val addButton = parent.container()
         addButton.xy(itemWidth - buttonWidth, 0.0)

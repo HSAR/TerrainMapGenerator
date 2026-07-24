@@ -82,7 +82,7 @@ class MapViewerDialogWindowTest {
             contentHeight = { 0.0 },
             actions = emptyList(),
             onClose = {},
-            renderContent = { _, _ -> },
+            renderContent = { _, _, _ -> },
             mode = MapViewerDialogMode.FLOATING,
         )
 
@@ -108,7 +108,7 @@ class MapViewerDialogWindowTest {
             contentHeight = { 0.0 },
             actions = emptyList(),
             onClose = {},
-            renderContent = { _, _ -> },
+            renderContent = { _, _, _ -> },
             mode = MapViewerDialogMode.FLOATING,
         )
 
@@ -140,7 +140,7 @@ class MapViewerDialogWindowTest {
             contentHeight = { 0.0 },
             actions = emptyList(),
             onClose = {},
-            renderContent = { _, _ -> },
+            renderContent = { _, _, _ -> },
             mode = MapViewerDialogMode.FLOATING,
         )
 
@@ -161,7 +161,7 @@ class MapViewerDialogWindowTest {
             contentHeight = { 0.0 },
             actions = emptyList(),
             onClose = {},
-            renderContent = { _, _ -> },
+            renderContent = { _, _, _ -> },
             mode = MapViewerDialogMode.MODAL,
         )
 
@@ -184,7 +184,7 @@ class MapViewerDialogWindowTest {
             contentHeight = { 0.0 },
             actions = emptyList(),
             onClose = {},
-            renderContent = { _, _ -> },
+            renderContent = { _, _, _ -> },
             mode = MapViewerDialogMode.FLOATING,
         )
 
@@ -208,7 +208,7 @@ class MapViewerDialogWindowTest {
             contentHeight = { 0.0 },
             actions = emptyList(),
             onClose = {},
-            renderContent = { _, _ -> },
+            renderContent = { _, _, _ -> },
             mode = MapViewerDialogMode.FLOATING,
         )
 
@@ -232,7 +232,7 @@ class MapViewerDialogWindowTest {
             contentHeight = { 0.0 },
             actions = emptyList(),
             onClose = {},
-            renderContent = { _, _ -> renderCount++ },
+            renderContent = { _, _, _ -> renderCount++ },
             mode = MapViewerDialogMode.FLOATING,
         )
 
@@ -264,7 +264,7 @@ class MapViewerDialogWindowTest {
                 preferredHeight = 300.0,
                 contentHeight = { 0.0 },
                 onClose = {},
-                renderContent = { _, _ -> },
+                renderContent = { _, _, _ -> },
                 dialogManager = manager,
             ).also { it.show(700, 600) }
         }
@@ -300,7 +300,7 @@ class MapViewerDialogWindowTest {
             preferredHeight = 300.0,
             contentHeight = { 0.0 },
             onClose = {},
-            renderContent = { _, _ -> renderCount++ },
+            renderContent = { _, _, _ -> renderCount++ },
             dialogManager = manager,
         )
         window.show(800, 600)
@@ -344,7 +344,7 @@ class MapViewerDialogWindowTest {
             contentHeight = { 0.0 },
             actions = emptyList(),
             onClose = {},
-            renderContent = { _, _ -> renderCount++ },
+            renderContent = { _, _, _ -> renderCount++ },
             mode = MapViewerDialogMode.FLOATING,
         )
 

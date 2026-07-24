@@ -27,7 +27,7 @@ internal class MapViewerGunrepDialog(
             contentHeight = { contentHeight() },
             actions = listOf(MapViewerDialogAction("Dismiss") { close() }),
             onClose = ::close,
-            renderContent = { parent, width ->
+            renderContent = { parent, width, _ ->
                 MapViewerTextViews.leftBox(parent, "Attacker: ${resolution.attackerName}", width, 34.0)
                 MapViewerTextViews.leftBox(parent, "Weapons: ${weaponSummary()}", width, 34.0) { y = 40.0 }
                 MapViewerTextViews.leftBox(parent, "Rolls:", width, 34.0) { y = 80.0 }

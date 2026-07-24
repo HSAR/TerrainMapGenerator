@@ -111,7 +111,7 @@ internal class MapViewerTacticalDialog(
         window?.refresh()
     }
 
-    private fun renderContent(parent: Container, width: Double) {
+    private fun renderContent(parent: Container, width: Double, contentViewportHeight: Double) {
         var top = renderSectionHeader(parent, "Ready Weapons", 0.0, width)
         report.weapons.forEach { weapon ->
             val row = parent.container().xy(0.0, top)
