@@ -19,10 +19,10 @@ internal class MapViewerStyledTextInput(
         y = y,
     )
 
-    var text: String = inputField.text
+    var text: String
+        get() = inputField.text
         set(value) {
             inputField.text = value
-            field = value
         }
 
     val controller get() = inputField.controller

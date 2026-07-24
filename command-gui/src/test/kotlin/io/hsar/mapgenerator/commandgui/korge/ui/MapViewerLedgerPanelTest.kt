@@ -1,11 +1,26 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import korlibs.korge.view.Container
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.greaterThanOrEqualTo
 import org.junit.jupiter.api.Test
 
 class MapViewerLedgerPanelTest {
+    @Test
+    fun `styled text input returns the current input text`() {
+        val input = MapViewerStyledTextInput(
+            parent = Container(),
+            width = 100.0,
+            height = 24.0,
+            initialText = "Turn 1",
+        )
+
+        input.text = "Custom turn"
+
+        assertThat(input.text, equalTo("Custom turn"))
+    }
+
     @Test
     fun `ledger panel tabs show turns then settings`() {
         assertThat(LedgerPanelTab.entries.map { it.label }, equalTo(listOf("Turns", "Settings")))
