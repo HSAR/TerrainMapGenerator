@@ -478,6 +478,7 @@ internal object SensorDetection {
     }
 
     fun navrepIdentificationText(
+        observer: UnitSnapshot,
         checks: List<SensorVisibilityCheck>,
         contactNumbers: Map<MapPlacedObjectId, Int>,
         mapWidth: Int,
@@ -490,9 +491,13 @@ internal object SensorDetection {
             .joinToString(" ") { check ->
                 val position = formatPosition(check.unit, mapWidth, mapHeight, gridLayer)
                 if (check.unit.id in previouslyDetectedIds) {
-                    "Contact Sierra ${contactNumbers.getValue(check.unit.id)} at $position bearing ${formatBearing(check.unit.facingDegrees)} ${check.unit.identificationClause()}."
+                    "Contact Sierra ${contactNumbers.getValue(check.unit.id)} at $position bearing ${formatBearing(check.unit.facingDegrees)} ${
+                        check.unit.navrepIdentificationClause(
+                            observer
+                        )
+                    }."
                 } else {
-                    "Contact detected at extreme range at $position ${check.unit.identificationClause()}."
+                    "Contact detected at $position ${check.unit.navrepIdentificationClause(observer)}."
                 }
             }
 
@@ -516,6 +521,9 @@ internal object SensorDetection {
 
     private fun UnitSnapshot.identificationClause(verb: String = "is"): String =
         "$verb identified as ${affiliationDescription()} ${identificationDescription()}"
+
+    private fun UnitSnapshot.navrepIdentificationClause(observer: UnitSnapshot): String =
+        "is identified as ${if (template.affiliation == observer.template.affiliation) "allied" else affiliationDescription()} ${identificationDescription()}"
 
     private fun UnitSnapshot.affiliationDescription(): String =
         when (template.affiliation) {
@@ -669,8 +677,11 @@ internal object SensorDetection {
             append(" bearing ")
             append(formatBearing(observer.facingDegrees))
             if (visibleChecks.isEmpty()) {
-                append(". ")
-                append(emptySummaryText)
+                append('.')
+                if (emptySummaryText.isNotBlank()) {
+                    append(' ')
+                    append(emptySummaryText)
+                }
             } else {
                 append(". ")
                 visibleChecks.forEachIndexed { index, check ->

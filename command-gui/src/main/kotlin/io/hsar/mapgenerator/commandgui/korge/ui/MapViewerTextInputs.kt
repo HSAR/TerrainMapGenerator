@@ -54,6 +54,7 @@ internal object MapViewerTextInputs {
 
             var currentLogicalText = text
             var currentSoftBreakIndexes = emptySet<Int>()
+            var previousVisualText: String
             var applyingTrackedWrap = false
             var scrollState = MapViewerScrollState(0.0, 0.0)
             var scrollbarLayer: Container? = null
@@ -62,6 +63,7 @@ internal object MapViewerTextInputs {
             val initialTrackedText = trackedValue(text).also {
                 currentSoftBreakIndexes = it.softBreakIndexes
             }
+            previousVisualText = initialTrackedText.text
             val visualLineHeight = MapViewerTextViews.measure("Mg", role, textSize).height.coerceAtLeast(textSize)
             val input = inputHost.uiTextInput(initialTrackedText.text, Size2D(width - 4.0, height - 4.0)).apply {
                 skin = ViewRenderer { }
@@ -195,7 +197,12 @@ internal object MapViewerTextInputs {
                         input.text,
                         currentSoftBreakIndexes,
                     )
-                    currentLogicalText = MapViewerInputTextWrap.unwrapSoft(input.text, currentSoftBreakIndexes)
+                    currentLogicalText = MapViewerInputTextWrap.logicalTextAfterEdit(
+                        previousVisualText = previousVisualText,
+                        currentVisualText = input.text,
+                        previousLogicalText = currentLogicalText,
+                        previousSoftBreakIndexes = currentSoftBreakIndexes,
+                    )
                     val tracked = trackedValue(currentLogicalText)
                     currentSoftBreakIndexes = tracked.softBreakIndexes
                     if (wrapWords && tracked.text != input.text) {
@@ -208,6 +215,7 @@ internal object MapViewerTextInputs {
                         applyingTrackedWrap = false
                     }
                 }
+                previousVisualText = input.text
                 visibleText.text = input.text
                 updateScrollState()
                 renderScrollbar()
@@ -224,6 +232,7 @@ internal object MapViewerTextInputs {
                     trackedValue(value).also {
                         currentSoftBreakIndexes = it.softBreakIndexes
                         input.text = it.text
+                        previousVisualText = it.text
                         visibleText.text = it.text
                         updateScrollState()
                         renderScrollbar()
@@ -308,6 +317,32 @@ internal object MapViewerInputTextWrap {
             .mapIndexed { index, character -> if (character == '\n' && index in softBreakIndexes) ' ' else character }
             .joinToString("")
 
+    fun logicalTextAfterEdit(
+        previousVisualText: String,
+        currentVisualText: String,
+        previousLogicalText: String,
+        previousSoftBreakIndexes: Set<Int>,
+    ): String {
+        if (previousVisualText == currentVisualText) return previousLogicalText
+
+        val prefixLength = commonPrefixLength(previousVisualText, currentVisualText)
+        val suffixLength = commonSuffixLength(previousVisualText, currentVisualText, prefixLength)
+        val previousSuffixStart = previousVisualText.length - suffixLength
+        val currentSuffixStart = currentVisualText.length - suffixLength
+        val logicalPrefix = unwrapSoftSegment(
+            text = previousVisualText.substring(0, prefixLength),
+            offset = 0,
+            softBreakIndexes = previousSoftBreakIndexes,
+        )
+        val insertedText = currentVisualText.substring(prefixLength, currentSuffixStart)
+        val logicalSuffix = unwrapSoftSegment(
+            text = previousVisualText.substring(previousSuffixStart),
+            offset = previousSuffixStart,
+            softBreakIndexes = previousSoftBreakIndexes,
+        )
+        return logicalPrefix + insertedText + logicalSuffix
+    }
+
     fun logicalIndexForVisualIndex(visualIndex: Int, visualText: String, softBreakIndexes: Set<Int>): Int =
         visualIndex.coerceIn(0, visualText.length)
 
@@ -337,6 +372,23 @@ internal object MapViewerInputTextWrap {
             }
             .joinToString("\n")
     }
+
+    private fun commonPrefixLength(first: String, second: String): Int =
+        first.zip(second).takeWhile { (left, right) -> left == right }.count()
+
+    private fun commonSuffixLength(first: String, second: String, prefixLength: Int): Int =
+        first.asSequence()
+            .drop(prefixLength)
+            .toList()
+            .asReversed()
+            .zip(second.asSequence().drop(prefixLength).toList().asReversed())
+            .takeWhile { (left, right) -> left == right }
+            .count()
+
+    private fun unwrapSoftSegment(text: String, offset: Int, softBreakIndexes: Set<Int>): String =
+        text.mapIndexed { index, character ->
+            if (character == '\n' && index + offset in softBreakIndexes) ' ' else character
+        }.joinToString("")
 
     private fun breakWord(
         word: String,

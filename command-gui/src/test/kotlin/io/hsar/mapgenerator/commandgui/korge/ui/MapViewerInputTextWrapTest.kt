@@ -52,6 +52,25 @@ class MapViewerInputTextWrapTest {
     }
 
     @Test
+    fun `editing a wrapped visual value preserves soft breaks outside the edit`() {
+        val previous = MapViewerInputTextWrap.wrapTracked(
+            "Alpha beta gamma delta",
+            MapViewerTextViews.measure("Alpha beta").width + 1.0,
+        )
+        val currentVisual = previous.text.replace("gamma", "pasted gamma")
+
+        assertThat(
+            MapViewerInputTextWrap.logicalTextAfterEdit(
+                previousVisualText = previous.text,
+                currentVisualText = currentVisual,
+                previousLogicalText = "Alpha beta gamma delta",
+                previousSoftBreakIndexes = previous.softBreakIndexes,
+            ),
+            equalTo("Alpha beta pasted gamma delta"),
+        )
+    }
+
+    @Test
     fun `tracked wrap preserves hard line breaks as logical cursor positions`() {
         val maxWidth = MapViewerTextViews.measure("Alpha beta").width + 1.0
 

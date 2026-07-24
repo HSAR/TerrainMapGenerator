@@ -983,7 +983,7 @@ class SensorDetectionTest {
             unitClass = "CA",
             x = 0.5,
             y = 0.5,
-            affiliation = UnitAffiliation.Friend,
+            affiliation = UnitAffiliation.Hostile,
         )
         val contact = unit(
             id = "00000000-0000-0000-0000-000000000077",
@@ -992,7 +992,7 @@ class SensorDetectionTest {
             templateName = "Roma",
             x = 0.5034,
             y = 0.5,
-            affiliation = UnitAffiliation.Friend,
+            affiliation = UnitAffiliation.Hostile,
         )
         val check = SensorDetection.visibilityChecks(
             observer = observer,
@@ -1005,16 +1005,18 @@ class SensorDetectionTest {
 
         assertThat(
             SensorDetection.navrepIdentificationText(
+                observer = observer,
                 checks = listOf(check),
                 contactNumbers = mapOf(contact.id to 4),
                 mapWidth = 1_000,
                 mapHeight = 1_000,
             ),
-            equalTo("Contact detected at extreme range at 503.4 500 is identified as allied Roma-class BC Florence."),
+            equalTo("Contact detected at 503.4 500 is identified as allied Roma-class BC Florence."),
         )
 
         assertThat(
             SensorDetection.navrepIdentificationText(
+                observer = observer,
                 checks = listOf(check),
                 contactNumbers = mapOf(contact.id to 4),
                 mapWidth = 1_000,

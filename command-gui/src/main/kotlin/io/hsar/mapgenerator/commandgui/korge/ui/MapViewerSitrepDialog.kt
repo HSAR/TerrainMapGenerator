@@ -638,7 +638,7 @@ internal class MapViewerSitrepDialog(
                     includedIds = report.visibleChecks.map { it.unit.id }.toSet() -
                             newlyIdentifiedChecks.map { it.unit.id }.toSet(),
                     candidateFilter = reportMode.candidateFilter(observer.template.affiliation),
-                    emptySummaryText = reportMode.emptySummaryText,
+                    emptySummaryText = "",
                     sensorReportMode = reportMode.sensorReportMode,
                     ecmIntensity = ecmIntensity,
                 )
@@ -647,6 +647,7 @@ internal class MapViewerSitrepDialog(
                 ensureSierraContactNumber(check.unit.id)
             }
             val identificationText = SensorDetection.navrepIdentificationText(
+                observer = observer,
                 checks = newlyIdentifiedChecks,
                 contactNumbers = sierraContactNumbers,
                 mapWidth = unitQueryService.mapWidth,
