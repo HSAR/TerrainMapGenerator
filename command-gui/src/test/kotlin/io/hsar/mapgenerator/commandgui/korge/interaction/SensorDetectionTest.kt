@@ -177,7 +177,7 @@ class SensorDetectionTest {
                 mapHeight = 1_000,
                 emptySummaryText = "No hostile contacts to report.",
             ),
-            equalTo("Contact Master 1 at 500 500, range 0U is Uncoded-class UKN."),
+            equalTo("Contact Master 1 at 500 500, range 0U is unaffiliated Uncoded-class UKN."),
         )
     }
 
@@ -882,6 +882,19 @@ class SensorDetectionTest {
             identificationText,
             equalTo("Contact detected at extreme range as Master 1 at 510 500 is identified as enemy DD Contact-class DD."),
         )
+
+        assertThat(
+            SensorDetection.scirepText(
+                checks = listOf(check),
+                identifiedIds = emptySet(),
+                contactNumbers = mapOf(contact.id to 1),
+                mapWidth = 1_000,
+                mapHeight = 1_000,
+                emptySummaryText = "No hostile contacts to report.",
+                previouslyDetectedIds = setOf(contact.id),
+            ),
+            equalTo("Contact Sierra 1 has position 510 500, range 10U."),
+        )
     }
 
     @Test
@@ -997,6 +1010,17 @@ class SensorDetectionTest {
                 mapHeight = 1_000,
             ),
             equalTo("Contact detected at extreme range at 503.4 500 is identified as allied Roma-class BC Florence."),
+        )
+
+        assertThat(
+            SensorDetection.navrepIdentificationText(
+                checks = listOf(check),
+                contactNumbers = mapOf(contact.id to 4),
+                mapWidth = 1_000,
+                mapHeight = 1_000,
+                previouslyDetectedIds = setOf(contact.id),
+            ),
+            equalTo("Contact Sierra 4 at 503.4 500 bearing unknown is identified as allied Roma-class BC Florence."),
         )
     }
 

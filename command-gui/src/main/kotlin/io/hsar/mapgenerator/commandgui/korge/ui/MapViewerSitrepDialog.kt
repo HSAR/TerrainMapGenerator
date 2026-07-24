@@ -59,7 +59,7 @@ internal class MapViewerSitrepDialog(
 
     private var window: MapViewerDialogWindow? = null
     private var reportMode = ReportMode.SCIREP
-    private val reportStatesByMode = mutableMapOf<ReportMode, UnitReportState>()
+    private val sharedReportState by lazy { initialReportState(ReportMode.SCIREP) }
     private val reportLock = Any()
     private val pendingReports = ConcurrentLinkedQueue<PendingReport>()
     private var reportGeneration = 0L
@@ -302,7 +302,11 @@ internal class MapViewerSitrepDialog(
         if (currentReport.unidentifiedChecks.isEmpty()) {
             MapViewerTextViews.leftBox(
                 parent = parent,
-                text = "No unidentified contacts remain.",
+                text = if (reportMode == ReportMode.NAVREP) {
+                    "Detected ships are shown in SCIREP."
+                } else {
+                    "No unidentified contacts remain."
+                },
                 width = width,
                 height = ROW_HEIGHT,
                 size = SMALL_TEXT_SIZE,
@@ -498,8 +502,7 @@ internal class MapViewerSitrepDialog(
         requestReportRefresh()
     }
 
-    private fun currentReportState(): UnitReportState =
-        reportStatesByMode.getOrPut(reportMode) { initialReportState(reportMode) }
+    private fun currentReportState(): UnitReportState = sharedReportState
 
     private fun ensureSierraContactNumber(unitId: MapPlacedObjectId) {
         if (unitId in sierraContactNumbers) return
@@ -622,21 +625,41 @@ internal class MapViewerSitrepDialog(
             ecmIntensity = ecmIntensity,
         )
         if (reportMode != ReportMode.SCIREP) {
+            val newlyIdentifiedChecks = report.visibleChecks.filter {
+                it.unit.id !in previousContactState.identifiedIds
+            }
+            val positionReport = if (newlyIdentifiedChecks.isEmpty()) {
+                report
+            } else {
+                SensorDetection.visibilityReport(
+                    observer = observer,
+                    unitQueryService = unitQueryService,
+                    gridLayer = gridLayer,
+                    includedIds = report.visibleChecks.map { it.unit.id }.toSet() -
+                            newlyIdentifiedChecks.map { it.unit.id }.toSet(),
+                    candidateFilter = reportMode.candidateFilter(observer.template.affiliation),
+                    emptySummaryText = reportMode.emptySummaryText,
+                    sensorReportMode = reportMode.sensorReportMode,
+                    ecmIntensity = ecmIntensity,
+                )
+            }
             report.trackableChecks().forEach { check ->
                 ensureSierraContactNumber(check.unit.id)
             }
             val identificationText = SensorDetection.navrepIdentificationText(
-                checks = report.visibleChecks.filter { it.unit.id !in previousContactState.identifiedIds },
+                checks = newlyIdentifiedChecks,
                 contactNumbers = sierraContactNumbers,
                 mapWidth = unitQueryService.mapWidth,
                 mapHeight = unitQueryService.mapHeight,
                 gridLayer = gridLayer,
+                previouslyDetectedIds = previousContactState.sensorContactIds,
             )
             return report.copy(
-                displayText = listOf(report.displayText, identificationText)
+                unidentifiedChecks = emptyList(),
+                displayText = listOf(positionReport.displayText, identificationText)
                     .filter { it.isNotBlank() }
                     .joinToString(" "),
-                copyText = listOf(report.copyText, identificationText)
+                copyText = listOf(positionReport.copyText, identificationText)
                     .filter { it.isNotBlank() }
                     .joinToString(" "),
             )
@@ -668,7 +691,11 @@ internal class MapViewerSitrepDialog(
                     lowConfidenceContacts[check.unit.id] = matchingLost
                 }
             }
-        (scirepReport.visibleChecks + scirepReport.unidentifiedChecks).forEach { check ->
+        (
+                report.trackableChecks() +
+                        scirepReport.visibleChecks +
+                        scirepReport.unidentifiedChecks
+                ).distinctBy { it.unit.id }.forEach { check ->
             ensureSierraContactNumber(check.unit.id)
         }
         val newlyLost = previousContactState.sensorContactIds
@@ -725,6 +752,7 @@ internal class MapViewerSitrepDialog(
             gridLayer = gridLayer,
             emptySummaryText = reportMode.emptySummaryText,
             identificationAnnouncements = scirepReport.visibleChecks.filter { it.unit.id !in previousContactState.identifiedIds },
+            previouslyDetectedIds = previousContactState.sensorContactIds,
             lostContacts = newlyLost.filter { it.contactId !in matchedLostContactIds },
             lowConfidenceContacts = lowConfidenceContacts,
             sensorConditionsPoor = reportMode == ReportMode.SCIREP && observer.sensorOptionEnabled(IN_NEBULA_KEY),

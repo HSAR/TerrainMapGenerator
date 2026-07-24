@@ -383,6 +383,7 @@ internal object SensorDetection {
         gridLayer: GridLayer? = null,
         emptySummaryText: String,
         identificationAnnouncements: List<SensorVisibilityCheck> = emptyList(),
+        previouslyDetectedIds: Set<MapPlacedObjectId> = emptySet(),
         lostContacts: List<SitrepLostContact> = emptyList(),
         lowConfidenceContacts: Map<MapPlacedObjectId, SitrepLostContact> = emptyMap(),
         sensorConditionsPoor: Boolean = false,
@@ -397,10 +398,16 @@ internal object SensorDetection {
                     val lowConfidence = lowConfidenceContacts[check.unit.id]
                     val designation = if (check.unit.id in identifiedIds) "Master" else "Sierra"
                     val newlyIdentified = check.unit.id in newlyIdentifiedIds
+                    val newlyDetected = check.unit.id !in previouslyDetectedIds
+                    val compactUnidentified = check.unit.id !in identifiedIds && !newlyDetected && lowConfidence == null
                     val opening = if (lowConfidence != null) {
                         "New contact tentatively designated $designation ${contactNumbers.getValue(check.unit.id)} from last known position"
-                    } else if (newlyIdentified && check.unit.id in identifiedIds) {
+                    } else if (newlyIdentified && newlyDetected && check.unit.id in identifiedIds) {
                         "Contact detected at extreme range as Master ${contactNumbers.getValue(check.unit.id)}"
+                    } else if (newlyIdentified && check.unit.id in identifiedIds) {
+                        "Contact Master ${contactNumbers.getValue(check.unit.id)}"
+                    } else if (compactUnidentified) {
+                        "Contact Sierra ${contactNumbers.getValue(check.unit.id)}"
                     } else if (check.unit.id !in identifiedIds) {
                         val contactPrefix = if (check.unit.customProperties.booleanProperty("activeSensors")) {
                             "Contact actively radiating"
@@ -420,7 +427,7 @@ internal object SensorDetection {
                         newlyIdentified -> check.unit.identificationClause()
 
                         check.unit.id in identifiedIds ->
-                            "is ${check.unit.identificationDescription()}"
+                            "is ${check.unit.affiliationDescription()} ${check.unit.identificationDescription()}"
 
                         else -> "has unknown ${check.unit.unknownClassificationBracket()} classification"
                     }
@@ -428,7 +435,12 @@ internal object SensorDetection {
                         contactId = check.unit.id,
                         sierraNumber = contactNumbers.getValue(check.unit.id),
                         opening = opening,
-                        clauses = if (newlyIdentified && lowConfidence == null) {
+                        clauses = if (compactUnidentified) {
+                            listOf(
+                                "has position ${formatPosition(check.unit, mapWidth, mapHeight, gridLayer)},",
+                                "range ${formatDistance(check.distanceUnits)}U",
+                            )
+                        } else if (newlyIdentified && lowConfidence == null) {
                             listOf(
                                 "at ${formatPosition(check.unit, mapWidth, mapHeight, gridLayer)}",
                                 classification,
@@ -471,11 +483,17 @@ internal object SensorDetection {
         mapWidth: Int,
         mapHeight: Int,
         gridLayer: GridLayer? = null,
+        previouslyDetectedIds: Set<MapPlacedObjectId> = emptySet(),
     ): String =
         checks
             .sortedBy { contactNumbers.getValue(it.unit.id) }
             .joinToString(" ") { check ->
-                "Contact detected at extreme range at ${formatPosition(check.unit, mapWidth, mapHeight, gridLayer)} ${check.unit.identificationClause()}."
+                val position = formatPosition(check.unit, mapWidth, mapHeight, gridLayer)
+                if (check.unit.id in previouslyDetectedIds) {
+                    "Contact Sierra ${contactNumbers.getValue(check.unit.id)} at $position bearing ${formatBearing(check.unit.facingDegrees)} ${check.unit.identificationClause()}."
+                } else {
+                    "Contact detected at extreme range at $position ${check.unit.identificationClause()}."
+                }
             }
 
     fun combineScirepContactSegments(segments: List<ScirepContactSegment>): String =
