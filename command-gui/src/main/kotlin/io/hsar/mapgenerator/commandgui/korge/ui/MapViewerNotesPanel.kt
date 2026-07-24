@@ -124,7 +124,7 @@ internal class MapViewerNotesPanel(
                 restored = restoredPanelDialog,
             ),
             preferredWidth = MapViewerNotesPanelLayoutBuilder.PANEL_WIDTH,
-            preferredHeight = PREFERRED_DIALOG_HEIGHT,
+            preferredHeight = preferredDialogHeight(),
             contentMinimumWidth = { CONTENT_MINIMUM_WIDTH },
             contentHeight = ::contentHeight,
             onClose = ::closeDialog,
@@ -192,7 +192,6 @@ internal class MapViewerNotesPanel(
             item = MapViewerUniversalListItem(
                 title = note.title.ifBlank { "Untitled Note" },
                 subtitle = note.body.lineSequence().firstOrNull().orEmpty(),
-                trailingLabel = note.referencedObjectIds.size.toString(),
             ),
             width = width,
             top = top,
@@ -242,6 +241,9 @@ internal class MapViewerNotesPanel(
                     noteStore.snapshots().size * (ROW_HEIGHT + ROW_GAP)
                 }
 
+    private fun preferredDialogHeight(): Double =
+        contentHeight(MapViewerNotesPanelLayoutBuilder.PANEL_WIDTH)
+
     private fun layoutViewportWidth(): Int =
         overlay.stage?.views?.actualVirtualWidth ?: 0
 
@@ -250,7 +252,6 @@ internal class MapViewerNotesPanel(
 
     companion object {
         const val Z_INDEX = 10_000.0
-        const val PREFERRED_DIALOG_HEIGHT = 520.0
         const val CONTENT_MINIMUM_WIDTH = 320.0
         const val CREATE_BUTTON_WIDTH = 140.0
         const val CONTROL_HEIGHT = 40.0
