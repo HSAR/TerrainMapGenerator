@@ -396,8 +396,11 @@ internal object SensorDetection {
                 checks.map { check ->
                     val lowConfidence = lowConfidenceContacts[check.unit.id]
                     val designation = if (check.unit.id in identifiedIds) "Master" else "Sierra"
+                    val newlyIdentified = check.unit.id in newlyIdentifiedIds
                     val opening = if (lowConfidence != null) {
                         "New contact tentatively designated $designation ${contactNumbers.getValue(check.unit.id)} from last known position"
+                    } else if (newlyIdentified && check.unit.id in identifiedIds) {
+                        "Contact detected at extreme range as Master ${contactNumbers.getValue(check.unit.id)}"
                     } else if (check.unit.id !in identifiedIds) {
                         val contactPrefix = if (check.unit.customProperties.booleanProperty("activeSensors")) {
                             "Contact actively radiating"
@@ -412,11 +415,9 @@ internal object SensorDetection {
                         check.ecmContact == EcmSensorContact.FAINT_TRACK -> "is faint sensor track"
                         check.ecmContact == EcmSensorContact.SENSOR_GHOST -> "is sensor ghost"
                         check.unit.id in identifiedIds && lowConfidence != null ->
-                            "was identified as ${check.unit.identificationDescription()}"
+                            check.unit.identificationClause("was")
 
-                        check.unit.id in newlyIdentifiedIds ->
-                            (if (lowConfidence != null) "was identified as " else "is identified as ") +
-                                    check.unit.identificationDescription()
+                        newlyIdentified -> check.unit.identificationClause()
 
                         check.unit.id in identifiedIds ->
                             "is ${check.unit.identificationDescription()}"
@@ -427,18 +428,25 @@ internal object SensorDetection {
                         contactId = check.unit.id,
                         sierraNumber = contactNumbers.getValue(check.unit.id),
                         opening = opening,
-                        clauses = listOf(
-                            "at ${
-                                lowConfidence?.let { formatPosition(it.lastSeenPosition, mapWidth, mapHeight, gridLayer) } ?: formatPosition(
-                                    check.unit,
-                                    mapWidth,
-                                    mapHeight,
-                                    gridLayer
-                                )
-                            }, " +
-                                    "range ${formatDistance(lowConfidence?.lastSeenRangeUnits ?: check.distanceUnits)}U",
-                            classification,
-                        ),
+                        clauses = if (newlyIdentified && lowConfidence == null) {
+                            listOf(
+                                "at ${formatPosition(check.unit, mapWidth, mapHeight, gridLayer)}",
+                                classification,
+                            )
+                        } else {
+                            listOf(
+                                "at ${
+                                    lowConfidence?.let { formatPosition(it.lastSeenPosition, mapWidth, mapHeight, gridLayer) } ?: formatPosition(
+                                        check.unit,
+                                        mapWidth,
+                                        mapHeight,
+                                        gridLayer
+                                    )
+                                }, " +
+                                        "range ${formatDistance(lowConfidence?.lastSeenRangeUnits ?: check.distanceUnits)}U",
+                                classification,
+                            )
+                        },
                     )
                 } + lostContacts.map { lost ->
                     ScirepContactSegment(
@@ -456,6 +464,19 @@ internal object SensorDetection {
         }
         return (conditions + report).joinToString(" ")
     }
+
+    fun navrepIdentificationText(
+        checks: List<SensorVisibilityCheck>,
+        contactNumbers: Map<MapPlacedObjectId, Int>,
+        mapWidth: Int,
+        mapHeight: Int,
+        gridLayer: GridLayer? = null,
+    ): String =
+        checks
+            .sortedBy { contactNumbers.getValue(it.unit.id) }
+            .joinToString(" ") { check ->
+                "Contact detected at extreme range at ${formatPosition(check.unit, mapWidth, mapHeight, gridLayer)} ${check.unit.identificationClause()}."
+            }
 
     fun combineScirepContactSegments(segments: List<ScirepContactSegment>): String =
         segments
@@ -475,11 +496,23 @@ internal object SensorDetection {
                 }
             }
 
+    private fun UnitSnapshot.identificationClause(verb: String = "is"): String =
+        "$verb identified as ${affiliationDescription()} ${identificationDescription()}"
+
+    private fun UnitSnapshot.affiliationDescription(): String =
+        when (template.affiliation) {
+            UnitAffiliation.Friend -> "allied"
+            UnitAffiliation.Hostile -> "enemy"
+            UnitAffiliation.Neutral -> "neutral"
+            UnitAffiliation.Unknown -> "unknown"
+            null -> "unaffiliated"
+        }
+
     private fun UnitSnapshot.identificationDescription(): String =
         buildString {
             append(template.name.ifBlank { "Unknown" })
             append("-class ")
-            append(SENSOR_UNIT_CLASS_NAMES[unitClassLabel()] ?: "Unknown")
+            append(unitClassLabel() ?: "UKN")
             if (name.isNotBlank() && name != template.name) {
                 append(' ')
                 append(displayName())

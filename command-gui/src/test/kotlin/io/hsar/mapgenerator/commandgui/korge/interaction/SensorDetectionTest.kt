@@ -177,7 +177,7 @@ class SensorDetectionTest {
                 mapHeight = 1_000,
                 emptySummaryText = "No hostile contacts to report.",
             ),
-            equalTo("Contact Master 1 at 500 500, range 0U is Uncoded-class Unknown."),
+            equalTo("Contact Master 1 at 500 500, range 0U is Uncoded-class UKN."),
         )
     }
 
@@ -840,6 +840,7 @@ class SensorDetectionTest {
             unitClass = "DD",
             x = 0.51,
             y = 0.5,
+            affiliation = UnitAffiliation.Hostile,
         )
 
         val check = SensorDetection.visibilityChecks(
@@ -879,7 +880,7 @@ class SensorDetectionTest {
 
         assertThat(
             identificationText,
-            equalTo("Contact Master 1 at 510 500, range 10U is identified as DD Contact-class destroyer."),
+            equalTo("Contact detected at extreme range as Master 1 at 510 500 is identified as enemy DD Contact-class DD."),
         )
     }
 
@@ -956,7 +957,46 @@ class SensorDetectionTest {
                 emptySummaryText = "No hostile contacts to report.",
                 identificationAnnouncements = listOf(check),
             ),
-            equalTo("Contact Master 9 at 503.4 500, range 3.4U is identified as Sword-class escort carrier Zweihander."),
+            equalTo("Contact detected at extreme range as Master 9 at 503.4 500 is identified as unaffiliated Sword-class CVE Zweihander."),
+        )
+    }
+
+    @Test
+    fun `navrep reports first-time allied identification with Sierra number and class data`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-000000000076",
+            instanceName = "Observer",
+            unitClass = "CA",
+            x = 0.5,
+            y = 0.5,
+            affiliation = UnitAffiliation.Friend,
+        )
+        val contact = unit(
+            id = "00000000-0000-0000-0000-000000000077",
+            instanceName = "Florence",
+            unitClass = "BC",
+            templateName = "Roma",
+            x = 0.5034,
+            y = 0.5,
+            affiliation = UnitAffiliation.Friend,
+        )
+        val check = SensorDetection.visibilityChecks(
+            observer = observer,
+            candidates = listOf(observer, contact),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+            sensorReportMode = SensorReportMode.NAVREP,
+        ).single()
+
+        assertThat(
+            SensorDetection.navrepIdentificationText(
+                checks = listOf(check),
+                contactNumbers = mapOf(contact.id to 4),
+                mapWidth = 1_000,
+                mapHeight = 1_000,
+            ),
+            equalTo("Contact detected at extreme range at 503.4 500 is identified as allied Roma-class BC Florence."),
         )
     }
 
