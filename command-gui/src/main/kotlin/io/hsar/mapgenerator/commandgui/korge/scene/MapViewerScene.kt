@@ -758,6 +758,7 @@ internal class MapViewerScene(
                                 }
                             },
                             turnOriginProvider = actionHistory::turnOriginFor,
+                            onTurnOriginReset = actionHistory::resetTurnOrigin,
                             sitrepTurnNumberProvider = ::currentTurnNumber,
                             tacticalTurnNumberProvider = ::currentTurnNumber,
                             tacticalFireUsageProvider = { key -> tacticalFirePersistence.usage(key) },

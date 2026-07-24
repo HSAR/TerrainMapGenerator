@@ -327,6 +327,7 @@ internal data class DeleteNoteAction(
 internal class MapActionHistory {
     private val undoStack = ArrayDeque<LedgerEntry>()
     private val redoStack = ArrayDeque<LedgerEntry>()
+    private val overriddenTurnOrigins = mutableMapOf<MapPlacedObjectId, MapCoordinate>()
 
     val canUndo: Boolean
         get() = undoStack.isNotEmpty()
@@ -406,12 +407,21 @@ internal class MapActionHistory {
     fun record(action: LedgerEntry) {
         undoStack.addLast(action)
         redoStack.clear()
+        if (action is AddTurnLedgerEntry) overriddenTurnOrigins.clear()
     }
+
+    fun resetTurnOrigin(unitId: MapPlacedObjectId, coordinate: MapCoordinate) {
+        overriddenTurnOrigins[unitId] = coordinate
+    }
+
+    internal fun overriddenTurnOriginFor(unitId: MapPlacedObjectId): MapCoordinate? =
+        overriddenTurnOrigins[unitId]
 
     fun undo(controller: LedgerController): Boolean {
         val action = undoStack.removeLastOrNull() ?: return false
         action.undo(controller)
         redoStack.addLast(action)
+        overriddenTurnOrigins.clear()
         return true
     }
 
@@ -419,6 +429,7 @@ internal class MapActionHistory {
         val action = redoStack.removeLastOrNull() ?: return false
         action.redo(controller)
         undoStack.addLast(action)
+        overriddenTurnOrigins.clear()
         return true
     }
 
@@ -426,12 +437,14 @@ internal class MapActionHistory {
         undoStack.removeLastOrNull()?.also { action ->
             action.undo(controller)
             redoStack.addLast(action)
+            overriddenTurnOrigins.clear()
         }
 
     fun redoEntry(controller: LedgerController): LedgerEntry? =
         redoStack.removeLastOrNull()?.also { action ->
             action.redo(controller)
             undoStack.addLast(action)
+            overriddenTurnOrigins.clear()
         }
 
     fun revertToLedgerIndex(index: Int, controller: LedgerController): List<LedgerEntry> =

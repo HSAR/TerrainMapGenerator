@@ -87,12 +87,15 @@ internal data class ScirepContactSegment(
 )
 
 internal fun UnitSnapshot.isNavrepUnit(): Boolean =
-    unitClassLabel() in NAVREP_ELIGIBLE_CLASSES
+    unitClassLabel() in NAVREP_ELIGIBLE_CLASSES || (unitClassLabel().needsMassFallback() && mass()?.let { it >= 0 } == true)
 
 internal fun UnitSnapshot.sitrepValidationError(): String? {
-    val unitClass = unitClassLabel() ?: return "This unit has no unitClass setting."
-    return unitClass.takeUnless { it in SENSOR_UNIT_CLASS_NAMES }
-        ?.let { "The unitClass value \"$it\" is not recognised." }
+    val unitClass = unitClassLabel()
+    if (unitClass.needsMassFallback() && mass()?.let { it >= 0 } != true) {
+        return if (unitClass == null) "This unit has no unitClass setting."
+        else "The unitClass value \"$unitClass\" is not recognised."
+    }
+    return null
 }
 
 internal fun UnitSnapshot.displayName(): String =
@@ -101,12 +104,12 @@ internal fun UnitSnapshot.displayName(): String =
 internal fun UnitSnapshot.navrepMenuLabel(): String =
     buildString {
         append(displayName())
-        unitClassLabel()?.let { append(" [").append(it).append(']') }
+        append(" [").append(hullCode()).append(']')
     }
 
 internal fun UnitSnapshot.navrepReportLabel(): String =
     buildString {
-        unitClassLabel()?.let { append(it).append(' ') }
+        append(hullCode()).append(' ')
         append(displayName())
     }
 
@@ -115,8 +118,19 @@ internal fun UnitSnapshot.unitClassLabel(): String? =
         ?: template.customProperties.stringProperty(UNIT_CLASS_KEY))
         ?.uppercase()
 
+private fun UnitSnapshot.hullCode(): String = unitClassLabel() ?: UNKNOWN_HULL_CODE
+
+private fun UnitSnapshot.mass(): Int? =
+    (customProperties.stringProperty(OlympiadDawnShip.MASS_KEY)
+        ?: template.customProperties.stringProperty(OlympiadDawnShip.MASS_KEY))
+        ?.toIntOrNull()
+
+private fun String?.needsMassFallback(): Boolean =
+    this == null || this == UNKNOWN_HULL_CODE || this == "AK" || this == "MV" || this !in SENSOR_UNIT_CLASS_NAMES
+
 private const val UNIT_CLASS_KEY = "unitClass"
-internal val NAVREP_ELIGIBLE_CLASSES = setOf("FF", "F", "DD", "CL", "CA", "CVE", "CVL", "BC")
+private const val UNKNOWN_HULL_CODE = "UKN"
+internal val NAVREP_ELIGIBLE_CLASSES = setOf("FF", "F", "DD", "CL", "CA", "CVE", "CVL", "CV", "BC")
 internal val SENSOR_UNIT_CLASS_NAMES = mapOf(
     "FF" to "frigate",
     "F" to "fighter",
@@ -128,6 +142,7 @@ internal val SENSOR_UNIT_CLASS_NAMES = mapOf(
     "CV" to "carrier",
     "BC" to "battlecruiser",
     "AK" to "Cargo Ship",
+    "MV" to "Cargo Ship",
 )
 internal val SENSOR_UNIT_CLASS_BRACKETS = mapOf(
     "F" to "lightweight",
@@ -277,7 +292,7 @@ internal object SensorDetection {
             distanceUnits = distanceUnits,
             identificationRangeUnits = degraded.identification,
             detectionRangeUnits = degraded.detection,
-            baseDetectionRangeUnits = candidate.unitClassLabel().baseDetectionRangeUnits(),
+            baseDetectionRangeUnits = candidate.effectiveSensorBand().baseDetectionRangeUnits,
             notes = if (candidate.transmissionInScope()) notes + "Transmitting in scope: automatically detected." else notes,
             naturalVisible = naturalVisible,
             naturalDetected = naturalDetected,
@@ -464,27 +479,39 @@ internal object SensorDetection {
         buildString {
             append(template.name.ifBlank { "Unknown" })
             append("-class ")
-            append(SENSOR_UNIT_CLASS_NAMES[unitClassLabel()] ?: "unknown")
+            append(SENSOR_UNIT_CLASS_NAMES[unitClassLabel()] ?: "Unknown")
             if (name.isNotBlank() && name != template.name) {
                 append(' ')
                 append(displayName())
             }
         }
 
-    private fun UnitSnapshot.unknownClassificationBracket(): String =
-        mass()?.let {
-            when {
-                it in 0..29 -> "lightweight"
-                it in 30..59 -> "midweight"
-                it >= 60 -> "heavyweight"
-                else -> "unknown"
-            }
-        } ?: SENSOR_UNIT_CLASS_BRACKETS[unitClassLabel()] ?: "unknown"
+    private fun UnitSnapshot.unknownClassificationBracket(): String = effectiveSensorBand().label
 
-    private fun UnitSnapshot.mass(): Int? =
-        (customProperties.stringProperty(OlympiadDawnShip.MASS_KEY)
-            ?: template.customProperties.stringProperty(OlympiadDawnShip.MASS_KEY))
-            ?.toIntOrNull()
+    private enum class SensorBand(
+        val baseDetectionRangeUnits: Double,
+        val observerModifier: Double,
+        val label: String,
+    ) {
+        LIGHTWEIGHT(6.0, 2.0 / 3.0, "lightweight"),
+        MIDWEIGHT(12.0, 1.0, "midweight"),
+        HEAVYWEIGHT(24.0, 1.5, "heavyweight"),
+    }
+
+    private fun UnitSnapshot.effectiveSensorBand(): SensorBand {
+        val classBand = when (unitClassLabel()) {
+            "FF", "F" -> SensorBand.LIGHTWEIGHT
+            "DD", "CL" -> SensorBand.MIDWEIGHT
+            "CA", "CVE", "CVL", "CV", "BC" -> SensorBand.HEAVYWEIGHT
+            else -> null
+        }
+        return classBand ?: when (mass()) {
+            in 0..29 -> SensorBand.LIGHTWEIGHT
+            in 30..59 -> SensorBand.MIDWEIGHT
+            in 60..Int.MAX_VALUE -> SensorBand.HEAVYWEIGHT
+            else -> SensorBand.LIGHTWEIGHT
+        }
+    }
 
     private data class SensorRanges(val identification: Double, val detection: Double)
 
@@ -494,8 +521,10 @@ internal object SensorDetection {
         ecmIntensity: Int,
         observerProfile: SensorObserverProfile?,
     ): SensorRanges? {
-        val base = unitClassLabel().baseDetectionRangeUnits()
-        val observerModifier = (observerProfile?.unitClass ?: observer.unitClassLabel()).sensorRangeModifier()
+        val base = effectiveSensorBand().baseDetectionRangeUnits
+        val observerModifier = observerProfile?.unitClass
+            ?.let { observerProfile.unitClassSensorBand().observerModifier }
+            ?: observer.effectiveSensorBand().observerModifier
         val activeSensors = observerProfile?.activeSensors ?: observer.activeSensors()
 
         val bandOffset = buildList {
@@ -518,7 +547,6 @@ internal object SensorDetection {
 
         val observerSensorModifier = buildList {
             if (sensorReportMode == SensorReportMode.SCIREP && activeSensors) add(1)
-            if (sensorReportMode == SensorReportMode.NAVREP && observer.customProperties.booleanProperty("activeWarp")) add(2)
             if (sensorReportMode == SensorReportMode.NAVREP && observer.customProperties.booleanProperty("inNebula")) add(-1)
             if (ecmIntensity > 0) add(-ecmBandPenalty(ecmIntensity, activeSensors))
         }.sum()
@@ -654,19 +682,12 @@ internal object SensorDetection {
     private fun formatBearing(facingDegrees: Int?): String =
         facingDegrees?.toString() ?: "unknown"
 
-    private fun String?.baseDetectionRangeUnits(): Double =
-        when (this) {
-            "FF", "F" -> 6.0
-            "DD", "CL" -> 12.0
-            "CA", "CVE", "CVL", "BC" -> 24.0
-            else -> 6.0
-        }
-
-    private fun String?.sensorRangeModifier(): Double =
-        when (this) {
-            "FF", "F" -> 2.0 / 3.0
-            "CA", "CVE", "CVL", "BC" -> 1.5
-            else -> 1.0
+    private fun SensorObserverProfile.unitClassSensorBand(): SensorBand =
+        when (unitClass) {
+            "FF", "F" -> SensorBand.LIGHTWEIGHT
+            "DD", "CL" -> SensorBand.MIDWEIGHT
+            "CA", "CVE", "CVL", "CV", "BC" -> SensorBand.HEAVYWEIGHT
+            else -> SensorBand.MIDWEIGHT
         }
 
     private fun String?.sensorRangeSummary(): String =

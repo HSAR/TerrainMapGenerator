@@ -80,6 +80,139 @@ class SensorDetectionTest {
     }
 
     @Test
+    fun `unknown and cargo hulls use mass bands while recognised classes win`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-0000000000b1",
+            instanceName = "Observer",
+            unitClass = "XX",
+            x = 0.5,
+            y = 0.5,
+            customProperties = mapOf(OlympiadDawnShip.MASS_KEY to "70"),
+        )
+        val lightweightUnknown = unit(
+            id = "00000000-0000-0000-0000-0000000000b2",
+            instanceName = "Unknown light",
+            unitClass = "XX",
+            x = 0.51,
+            y = 0.5,
+            customProperties = mapOf(OlympiadDawnShip.MASS_KEY to "20"),
+        )
+        val midweightCargo = unit(
+            id = "00000000-0000-0000-0000-0000000000b3",
+            instanceName = "Cargo mid",
+            unitClass = "AK",
+            x = 0.52,
+            y = 0.5,
+            customProperties = mapOf(OlympiadDawnShip.MASS_KEY to "40"),
+        )
+        val heavyweightMerchant = unit(
+            id = "00000000-0000-0000-0000-0000000000b4",
+            instanceName = "Merchant heavy",
+            unitClass = "MV",
+            x = 0.53,
+            y = 0.5,
+            customProperties = mapOf(OlympiadDawnShip.MASS_KEY to "70"),
+        )
+        val recognisedClass = unit(
+            id = "00000000-0000-0000-0000-0000000000b5",
+            instanceName = "Class wins",
+            unitClass = "FF",
+            x = 0.54,
+            y = 0.5,
+            customProperties = mapOf(OlympiadDawnShip.MASS_KEY to "70"),
+        )
+
+        val checks = SensorDetection.visibilityChecks(
+            observer = observer,
+            candidates = listOf(observer, lightweightUnknown, midweightCargo, heavyweightMerchant, recognisedClass),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+        ).associateBy { it.unit.id }
+
+        assertThat(checks[lightweightUnknown.id]!!.baseDetectionRangeUnits, equalTo(6.0))
+        assertThat(checks[lightweightUnknown.id]!!.identificationRangeUnits, equalTo(9.0))
+        assertThat(checks[midweightCargo.id]!!.baseDetectionRangeUnits, equalTo(12.0))
+        assertThat(checks[heavyweightMerchant.id]!!.baseDetectionRangeUnits, equalTo(24.0))
+        assertThat(checks[recognisedClass.id]!!.baseDetectionRangeUnits, equalTo(6.0))
+    }
+
+    @Test
+    fun `missing hull code uses UKN and unknown full text`() {
+        val missing = unit(
+            id = "00000000-0000-0000-0000-0000000000b6",
+            instanceName = "Uncoded",
+            unitClass = null,
+            templateUnitClass = null,
+            x = 0.5,
+            y = 0.5,
+            customProperties = mapOf(OlympiadDawnShip.MASS_KEY to "40"),
+        )
+
+        assertThat(missing.navrepMenuLabel(), equalTo("Uncoded [UKN]"))
+        assertThat(missing.navrepReportLabel(), equalTo("UKN Uncoded"))
+        assertThat(missing.sitrepValidationError(), equalTo(null))
+        assertThat(missing.isNavrepUnit(), equalTo(true))
+
+        val observer = unit(
+            id = "00000000-0000-0000-0000-0000000000b7",
+            instanceName = "Observer",
+            unitClass = "FF",
+            x = 0.5,
+            y = 0.5,
+        )
+        val check = SensorDetection.visibilityChecks(
+            observer = observer,
+            candidates = listOf(observer, missing),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+        ).single()
+        assertThat(
+            SensorDetection.scirepText(
+                checks = listOf(check),
+                identifiedIds = setOf(missing.id),
+                contactNumbers = mapOf(missing.id to 1),
+                mapWidth = 1_000,
+                mapHeight = 1_000,
+                emptySummaryText = "No hostile contacts to report.",
+            ),
+            equalTo("Contact Master 1 at 500 500, range 0U is Uncoded-class Unknown."),
+        )
+    }
+
+    @Test
+    fun `invalid fallback mass keeps the default lightweight band`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-0000000000b9",
+            instanceName = "Observer",
+            unitClass = "FF",
+            x = 0.5,
+            y = 0.5,
+        )
+        val target = unit(
+            id = "00000000-0000-0000-0000-0000000000ba",
+            instanceName = "Unknown",
+            unitClass = "XX",
+            x = 0.51,
+            y = 0.5,
+            customProperties = mapOf(OlympiadDawnShip.MASS_KEY to "not-a-number"),
+        )
+
+        assertThat(target.sitrepValidationError(), equalTo("The unitClass value \"XX\" is not recognised."))
+        assertThat(
+            SensorDetection.visibilityChecks(
+                observer = observer,
+                candidates = listOf(observer, target),
+                mapWidth = 1_000,
+                mapHeight = 1_000,
+                mapUnitsPerPixel = 1.0,
+            ).single().baseDetectionRangeUnits,
+            equalTo(6.0),
+        )
+    }
+
+    @Test
     fun `navrep contact detection respects sensor modifiers from custom properties`() {
         val observer = unit(
             id = "00000000-0000-0000-0000-000000000010",
@@ -178,20 +311,21 @@ class SensorDetectionTest {
     }
 
     @Test
-    fun `nebula and active warp affect navrep ranges by their configured bands`() {
+    fun `nebula affects observer range while warp affects target signature in navrep`() {
         val observer = unit(
             id = "00000000-0000-0000-0000-000000000019",
             instanceName = "Observer",
             unitClass = "CA",
             x = 0.5,
             y = 0.5,
-            customProperties = mapOf("inNebula" to "true", "activeWarp" to "true"),
+            customProperties = mapOf("inNebula" to "true"),
         )
         val target = unit(
             id = "00000000-0000-0000-0000-00000000001a",
             instanceName = "Target",
             unitClass = "CL",
             x = 0.53,
+            customProperties = mapOf("activeWarp" to "true"),
             y = 0.5,
         )
 
@@ -783,7 +917,7 @@ class SensorDetectionTest {
                 mapHeight = 1_000,
                 emptySummaryText = "No hostile contacts to report.",
             ),
-            equalTo("Contact detected at extreme range as Sierra 1 at 510 500, range 10U has unknown midweight classification."),
+            equalTo("Contact detected at extreme range as Sierra 1 at 510 500, range 10U has unknown lightweight classification."),
         )
     }
 
@@ -842,6 +976,7 @@ class SensorDetectionTest {
                     "CV" to "carrier",
                     "BC" to "battlecruiser",
                     "AK" to "Cargo Ship",
+                    "MV" to "Cargo Ship",
                 ),
             ),
         )

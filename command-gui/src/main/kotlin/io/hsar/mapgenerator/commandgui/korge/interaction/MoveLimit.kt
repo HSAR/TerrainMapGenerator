@@ -37,6 +37,7 @@ internal object MoveLimit {
 }
 
 internal fun MapActionHistory.turnOriginFor(unitId: MapPlacedObjectId): MapCoordinate? {
+    overriddenTurnOriginFor(unitId)?.let { return it }
     val entries = appliedEntries
     val markerIndex = entries.indexOfLast { it is AddTurnLedgerEntry }
     val boundaryObjects = LedgerReplay.replay(entries.take(markerIndex + 1)).objects

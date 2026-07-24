@@ -67,6 +67,7 @@ internal class MapPlacedUnitManager(
     private val onUnitEdited: (UnitSnapshot, UnitSnapshot) -> Unit = { _, _ -> },
     private val onUnitsChanged: () -> Unit = {},
     private val turnOriginProvider: (MapPlacedObjectId) -> MapCoordinate? = { null },
+    private val onTurnOriginReset: (MapPlacedObjectId, MapCoordinate) -> Unit = { _, _ -> },
     private val sitrepTurnNumberProvider: () -> Int = { 1 },
     private val sitrepContactStateProvider: (Int, MapPlacedObjectId) -> SitrepContactState = { _, _ -> SitrepContactState() },
     private val sitrepPreviousContactStateProvider: (Int, MapPlacedObjectId) -> SitrepContactState = { _, _ -> SitrepContactState() },
@@ -1709,9 +1710,10 @@ internal class MapPlacedUnitManager(
     private fun constrainMove(snapshot: UnitSnapshot, requested: MapCoordinate, overrideMoveLimit: Boolean = false): MapCoordinate =
         MoveLimit.parse(snapshot.template.customProperties)
             ?.let { limit ->
-                turnOriginProvider(snapshot.id)?.let { origin ->
-                    MoveLimit.constrain(origin, requested, limit, mapWidth, mapHeight, mapUnitsPerPixel, overrideMoveLimit)
-                }
+                requested.takeIf { overrideMoveLimit }?.also { onTurnOriginReset(snapshot.id, it) }
+                    ?: turnOriginProvider(snapshot.id)?.let { origin ->
+                        MoveLimit.constrain(origin, requested, limit, mapWidth, mapHeight, mapUnitsPerPixel)
+                    }
             }
             ?: requested
 

@@ -160,7 +160,7 @@ internal class MapViewerSitrepDialog(
         val secondOption = if (reportMode == ReportMode.SCIREP) {
             "Active Sensors" to ACTIVE_SENSORS_KEY
         } else {
-            "Active Warp" to ACTIVE_WARP_KEY
+            "In Warp" to ACTIVE_WARP_KEY
         }
         renderSensorOption(
             parent = parent,

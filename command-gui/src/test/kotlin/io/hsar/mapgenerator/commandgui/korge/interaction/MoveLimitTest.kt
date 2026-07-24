@@ -52,6 +52,21 @@ class MoveLimitTest {
     }
 
     @Test
+    fun `shift override resets the movement origin until the next turn`() {
+        val history = MapActionHistory()
+        val unitId = MapPlacedObjectId(UUID.randomUUID())
+        val template = MapViewerUnitTemplate(id = UnitTemplateId(UUID.randomUUID()), name = "Unit", bitmap = Bitmap32(1, 1))
+        history.record(CreateObjectAction(unit(unitId, template, MapCoordinate(0.1, 0.2))))
+        history.record(AddTurnLedgerEntry("Turn 1"))
+
+        history.resetTurnOrigin(unitId, MapCoordinate(0.8, 0.9))
+
+        assertThat(history.turnOriginFor(unitId), equalTo(MapCoordinate(0.8, 0.9)))
+        history.record(AddTurnLedgerEntry("Turn 2"))
+        assertThat(history.turnOriginFor(unitId), equalTo(MapCoordinate(0.1, 0.2)))
+    }
+
+    @Test
     fun `move-limit override retains the requested destination`() {
         val origin = MapCoordinate(0.5, 0.5)
         val requested = MapCoordinate(0.9, 0.9)
