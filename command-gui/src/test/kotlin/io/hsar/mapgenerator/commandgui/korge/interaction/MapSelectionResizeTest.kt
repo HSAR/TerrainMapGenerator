@@ -13,6 +13,7 @@ import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import java.awt.Color
 import java.util.*
+import kotlin.math.abs
 
 class MapSelectionResizeTest {
     @Test
@@ -174,6 +175,59 @@ class MapSelectionResizeTest {
     }
 
     @Test
+    fun `shift resize locks a rectangle to a square`() {
+        val rectangle = DrawingSnapshot(
+            id = id("00000000-0000-0000-0000-000000000141"),
+            drawing = RectangleDrawing(
+                start = MapDrawingPoint(0.2, 0.2),
+                end = MapDrawingPoint(0.4, 0.4),
+                color = Color.RED,
+            ),
+        )
+
+        val resized = MapSelectionResize.resizeSnapshots(
+            originalSnapshots = listOf(rectangle),
+            bounds = MapSelectionBounds(0.2, 0.2, 0.4, 0.4),
+            grabbedCorner = ScreenSelectionCorner.BOTTOM_RIGHT,
+            anchor = MapCoordinate(0.2, 0.2),
+            draggedCorner = MapCoordinate(0.6, 0.5),
+            shiftHeld = true,
+        ).single() as DrawingSnapshot
+
+        val resizedRectangle = resized.drawing as RectangleDrawing
+        assertPoint(resizedRectangle.start, 0.2, 0.2)
+        assertPoint(resizedRectangle.end, 0.6, 0.6)
+        assertThat(abs(resizedRectangle.end.x - resizedRectangle.start.x), closeTo(abs(resizedRectangle.end.y - resizedRectangle.start.y), 0.0001))
+    }
+
+    @Test
+    fun `shift resize locks an oval to a circle`() {
+        val oval = DrawingSnapshot(
+            id = id("00000000-0000-0000-0000-000000000142"),
+            drawing = OvalDrawing(
+                center = MapDrawingPoint(0.3, 0.3),
+                xRadius = 0.1,
+                yRadius = 0.1,
+                color = Color.RED,
+            ),
+        )
+
+        val resized = MapSelectionResize.resizeSnapshots(
+            originalSnapshots = listOf(oval),
+            bounds = MapSelectionBounds(0.2, 0.2, 0.4, 0.4),
+            grabbedCorner = ScreenSelectionCorner.BOTTOM_RIGHT,
+            anchor = MapCoordinate(0.2, 0.2),
+            draggedCorner = MapCoordinate(0.6, 0.5),
+            shiftHeld = true,
+        ).single() as DrawingSnapshot
+
+        val resizedOval = resized.drawing as OvalDrawing
+        assertPoint(resizedOval.center, 0.4, 0.4)
+        assertThat(resizedOval.xRadius, closeTo(0.2, 0.0001))
+        assertThat(resizedOval.yRadius, closeTo(0.2, 0.0001))
+    }
+
+    @Test
     fun `single rotated rectangle resize follows the rectangle local axes`() {
         val rectangle = DrawingSnapshot(
             id = id("00000000-0000-0000-0000-000000000107"),
@@ -218,6 +272,37 @@ class MapSelectionResizeTest {
     }
 
     @Test
+    fun `shift rotated rectangle resize preserves rotation and locks to a square`() {
+        val rectangle = DrawingSnapshot(
+            id = id("00000000-0000-0000-0000-000000000143"),
+            drawing = RectangleDrawing(
+                start = MapDrawingPoint(0.0, 0.0),
+                end = MapDrawingPoint(2.0, 1.0),
+                color = Color.RED,
+                rotationDegrees = 30.0,
+            ),
+        )
+
+        val originalFixedCorner = rectangle.selectionCorner(ScreenSelectionCorner.BOTTOM_LEFT)
+        val resized = MapSelectionResize.resizeSnapshots(
+            originalSnapshots = listOf(rectangle),
+            bounds = MapSelectionBounds(0.0, 0.0, 2.0, 1.0),
+            grabbedCorner = ScreenSelectionCorner.TOP_RIGHT,
+            anchor = MapCoordinate(0.0, 1.0),
+            draggedCorner = MapCoordinate(2.0, 3.0),
+            originalFixedCorner = originalFixedCorner,
+            selectionSize = 1,
+            aspectRatio = 1.0,
+            shiftHeld = true,
+        )
+            .single() as DrawingSnapshot
+
+        val rotated = resized.drawing as RectangleDrawing
+        assertThat(rotated.rotationDegrees, closeTo(30.0, 0.0001))
+        assertThat(abs(rotated.end.x - rotated.start.x), closeTo(abs(rotated.end.y - rotated.start.y), 0.0001))
+    }
+
+    @Test
     fun `center anchored rotated rectangle resize keeps center fixed and follows local axes`() {
         val rectangle = DrawingSnapshot(
             id = id("00000000-0000-0000-0000-000000000108"),
@@ -251,6 +336,38 @@ class MapSelectionResizeTest {
             DrawingSnapshot(rectangle.id, rotated).selectionCorner(ScreenSelectionCorner.BOTTOM_LEFT),
             MapCoordinate(0.5, -2.5),
         )
+    }
+
+    @Test
+    fun `shift rotated oval center resize keeps the center fixed and locks to a circle`() {
+        val oval = DrawingSnapshot(
+            id = id("00000000-0000-0000-0000-000000000144"),
+            drawing = OvalDrawing(
+                center = MapDrawingPoint(1.0, 0.5),
+                xRadius = 1.0,
+                yRadius = 0.5,
+                color = Color.RED,
+                rotationDegrees = 30.0,
+            ),
+        )
+
+        val resized = MapSelectionResize.resizeSnapshots(
+            originalSnapshots = listOf(oval),
+            bounds = MapSelectionBounds(0.0, 0.0, 2.0, 1.0),
+            grabbedCorner = ScreenSelectionCorner.TOP_RIGHT,
+            anchor = MapCoordinate(1.0, 0.5),
+            draggedCorner = MapCoordinate(1.7, 2.0),
+            originalFixedCorner = oval.selectionCorner(ScreenSelectionCorner.BOTTOM_LEFT),
+            selectionSize = 1,
+            aspectRatio = 1.0,
+            shiftHeld = true,
+        )
+            .single() as DrawingSnapshot
+
+        val rotated = resized.drawing as OvalDrawing
+        assertPoint(rotated.center, 1.0, 0.5)
+        assertThat(rotated.rotationDegrees, closeTo(30.0, 0.0001))
+        assertThat(rotated.xRadius, closeTo(rotated.yRadius, 0.0001))
     }
 
     @Test

@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test
 import java.awt.Color
 import java.util.*
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -162,6 +163,32 @@ class MapSelectionControllerTest {
 
         val resized = objectController.snapshot(drawing.id) as DrawingSnapshot
         assertThat(resized.drawing != drawing.drawing, equalTo(true))
+    }
+
+    @Test
+    fun `shift resize propagates to rectangles and locks them to squares`() {
+        val objectController = objectController()
+        val drawing = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000145")),
+            drawing = RectangleDrawing(
+                start = MapDrawingPoint(0.2, 0.2),
+                end = MapDrawingPoint(0.4, 0.4),
+                color = Color.RED,
+            ),
+        )
+        objectController.createObject(drawing)
+        val selectionController = selectionController(
+            objectController = objectController,
+            objectAt = { MapPlacedObjectSelection(MapPlacedObjectSelectionKind.DRAWING, drawing.id, 0.0) },
+        )
+        selectionController.selectOnly(drawing.id)
+
+        selectionController.beginLeftDrag(resizeHandleCenterFor(listOf(objectController.snapshot(drawing.id) as DrawingSnapshot)))
+        selectionController.update(Vector2D(600.0, 100.0), leftHeld = true, shiftHeld = true)
+
+        val resized = objectController.snapshot(drawing.id) as DrawingSnapshot
+        val rectangle = resized.drawing as RectangleDrawing
+        assertThat(abs(rectangle.end.x - rectangle.start.x), closeTo(abs(rectangle.end.y - rectangle.start.y), 0.0001))
     }
 
     @Test

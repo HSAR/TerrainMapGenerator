@@ -30,18 +30,27 @@ internal object LedgerReplay {
             override fun createUnitTemplate(snapshot: UnitTemplateSnapshot) {
                 templates.removeAll { it.id == snapshot.id }
                 templates.add(snapshot.index.coerceIn(0, templates.size), snapshot)
+                replaceUnitsUsingTemplate(snapshot)
             }
 
             override fun replaceUnitTemplate(snapshot: UnitTemplateSnapshot) {
                 val index = templates.indexOfFirst { it.id == snapshot.id }
-                if (index >= 0) templates[index] = snapshot.copy(index = index)
+                if (index >= 0) {
+                    val updated = snapshot.copy(index = index)
+                    templates[index] = updated
+                    replaceUnitsUsingTemplate(updated)
+                }
             }
 
             override fun applyUnitTemplateEdit(id: UnitTemplateId, changes: Map<String, JsonNode?>): UnitTemplateSnapshot? {
                 val index = templates.indexOfFirst { it.id == id }
                 return templates.getOrNull(index)
                     ?.let { MapViewerUnitTemplatePatch.apply(it, changes) }
-                    ?.also { templates[index] = it.copy(index = index) }
+                    ?.also {
+                        val updated = it.copy(index = index)
+                        templates[index] = updated
+                        replaceUnitsUsingTemplate(updated)
+                    }
             }
 
             override fun deleteUnitTemplate(id: UnitTemplateId): UnitTemplateSnapshot? =
@@ -90,6 +99,14 @@ internal object LedgerReplay {
                     val reordered = ids.associateWith(notes::getValue)
                     notes.clear()
                     notes.putAll(reordered)
+                }
+            }
+
+            private fun replaceUnitsUsingTemplate(snapshot: UnitTemplateSnapshot) {
+                objects.entries.toList().forEach { (id, objectSnapshot) ->
+                    if (objectSnapshot is UnitSnapshot && objectSnapshot.unitTemplateId == snapshot.id) {
+                        objects[id] = objectSnapshot.copy(template = snapshot.template)
+                    }
                 }
             }
         }

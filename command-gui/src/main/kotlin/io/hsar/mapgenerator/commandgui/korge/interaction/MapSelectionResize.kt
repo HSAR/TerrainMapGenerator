@@ -71,10 +71,26 @@ internal object MapSelectionResize {
         originalFixedCorner: MapCoordinate? = null,
         selectionSize: Int = originalSnapshots.size,
         aspectRatio: Double = 1.0,
+        shiftHeld: Boolean = false,
     ): List<MapPlacedObjectSnapshot> {
+        val effectiveDraggedCorner = originalSnapshots
+            .singleOrNull()
+            ?.let { snapshot ->
+                (snapshot as? DrawingSnapshot)
+                    ?.drawing
+                    ?.constrainedDraggedCorner(
+                        anchor = anchor,
+                        draggedCorner = draggedCorner,
+                        originalFixedCorner = originalFixedCorner,
+                        selectionSize = selectionSize,
+                        shiftHeld = shiftHeld,
+                        aspectRatio = aspectRatio,
+                    )
+            }
+            ?: draggedCorner
         val originalCorner = bounds.coordinate(grabbedCorner)
-        val scaleX = scale(draggedCorner.x, anchor.x, originalCorner.x)
-        val scaleY = scale(draggedCorner.y, anchor.y, originalCorner.y)
+        val scaleX = scale(effectiveDraggedCorner.x, anchor.x, originalCorner.x)
+        val scaleY = scale(effectiveDraggedCorner.y, anchor.y, originalCorner.y)
 
         return originalSnapshots.map { snapshot ->
             when (snapshot) {
@@ -92,7 +108,7 @@ internal object MapSelectionResize {
                         bounds = bounds,
                         grabbedCorner = grabbedCorner,
                         anchor = anchor,
-                        draggedCorner = draggedCorner,
+                        draggedCorner = effectiveDraggedCorner,
                         originalFixedCorner = originalFixedCorner,
                         scaleX = scaleX,
                         scaleY = scaleY,
@@ -103,6 +119,54 @@ internal object MapSelectionResize {
             }
         }
     }
+
+    private fun MapDrawing.constrainedDraggedCorner(
+        anchor: MapCoordinate,
+        draggedCorner: MapCoordinate,
+        originalFixedCorner: MapCoordinate?,
+        selectionSize: Int,
+        shiftHeld: Boolean,
+        aspectRatio: Double,
+    ): MapCoordinate =
+        when {
+            !shiftHeld || selectionSize != 1 -> draggedCorner
+            this is RectangleDrawing && rotationDegrees != 0.0 ->
+                constrainedRotatedDraggedCorner(
+                    anchor,
+                    draggedCorner,
+                    originalFixedCorner,
+                    MapDrawingGeometry.center(start, end),
+                    rotationDegrees,
+                    aspectRatio,
+                )
+
+            this is OvalDrawing && rotationDegrees != 0.0 ->
+                constrainedRotatedDraggedCorner(anchor, draggedCorner, originalFixedCorner, center, rotationDegrees, aspectRatio)
+
+            this is RectangleDrawing || this is OvalDrawing ->
+                MapDrawingGeometry.squareEnd(anchor.toDrawingPoint(), draggedCorner.toDrawingPoint(), aspectRatio).toCoordinate()
+
+            else -> draggedCorner
+        }
+
+    private fun constrainedRotatedDraggedCorner(
+        anchor: MapCoordinate,
+        draggedCorner: MapCoordinate,
+        originalFixedCorner: MapCoordinate?,
+        center: MapDrawingPoint,
+        rotationDegrees: Double,
+        aspectRatio: Double,
+    ): MapCoordinate =
+        when {
+            anchor.isCloseTo(center) ->
+                anchor.constrainedRotatedDelta(draggedCorner, rotationDegrees, aspectRatio)
+
+            originalFixedCorner != null ->
+                originalFixedCorner.constrainedRotatedDelta(draggedCorner, rotationDegrees, aspectRatio)
+
+            else ->
+                MapDrawingGeometry.squareEnd(anchor.toDrawingPoint(), draggedCorner.toDrawingPoint(), aspectRatio).toCoordinate()
+        }
 
     private fun useCenterAnchor(selectionSize: Int, altHeld: Boolean): Boolean =
         if (selectionSize == 1) altHeld else !altHeld
@@ -278,6 +342,24 @@ internal object MapSelectionResize {
         aspectRatio: Double,
     ): MapDrawingPoint =
         MapDrawingPoint(x, y).rotateAround(pivot, rotationDegrees, aspectRatio)
+
+    private fun MapCoordinate.constrainedRotatedDelta(
+        draggedCorner: MapCoordinate,
+        rotationDegrees: Double,
+        aspectRatio: Double,
+    ): MapCoordinate {
+        val origin = MapDrawingPoint(0.0, 0.0)
+        val localDelta = MapDrawingPoint(
+            x = draggedCorner.x - x,
+            y = draggedCorner.y - y,
+        ).rotateAround(origin, -rotationDegrees, aspectRatio)
+        val constrainedLocalDelta = MapDrawingGeometry.squareEnd(origin, localDelta, aspectRatio)
+        val constrainedWorldDelta = constrainedLocalDelta.rotateAround(origin, rotationDegrees, aspectRatio)
+        return MapCoordinate(
+            x = x + constrainedWorldDelta.x,
+            y = y + constrainedWorldDelta.y,
+        )
+    }
 
     private fun MapCoordinate.midpoint(other: MapCoordinate): MapCoordinate =
         MapCoordinate(

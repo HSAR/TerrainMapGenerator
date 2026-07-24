@@ -113,7 +113,7 @@ internal class MapSelectionController(
     }
 
     fun update(pointer: Vector2D, leftHeld: Boolean, shiftHeld: Boolean = false) {
-        resizeState?.let { updateResize(it, pointer, leftHeld) }
+        resizeState?.let { updateResize(it, pointer, leftHeld, shiftHeld) }
         pivotState?.let { updatePivot(it, pointer, leftHeld, shiftHeld) }
         moveState?.let { updateGroupMove(it, pointer, leftHeld, shiftHeld) }
         boxState?.let { updateBoxSelection(it, pointer, leftHeld) }
@@ -283,7 +283,7 @@ internal class MapSelectionController(
         publish()
     }
 
-    private fun updateResize(state: ResizeState, pointer: Vector2D, leftHeld: Boolean) {
+    private fun updateResize(state: ResizeState, pointer: Vector2D, leftHeld: Boolean, shiftHeld: Boolean) {
         if (!leftHeld) {
             commitResize(state)
             resizeState = null
@@ -291,7 +291,7 @@ internal class MapSelectionController(
             return
         }
 
-        applyResize(state, pointer)
+        applyResize(state, pointer, shiftHeld)
         publish()
     }
 
@@ -306,7 +306,7 @@ internal class MapSelectionController(
             .forEach(objectController::previewObject)
     }
 
-    private fun applyResize(state: ResizeState, pointer: Vector2D) {
+    private fun applyResize(state: ResizeState, pointer: Vector2D, shiftHeld: Boolean = false) {
         val resizedSelection = MapSelectionResize.resizeSnapshots(
             originalSnapshots = state.selectedSnapshots,
             bounds = state.originalBounds,
@@ -315,6 +315,7 @@ internal class MapSelectionController(
             draggedCorner = coordinateSpace.screenToMap(pointer, viewportProvider()),
             originalFixedCorner = state.originalFixedCorner,
             aspectRatio = coordinateSpace.aspectRatio,
+            shiftHeld = shiftHeld,
         )
         val templateSizes = resizedSelection
             .filterIsInstance<GraphicSnapshot>()
