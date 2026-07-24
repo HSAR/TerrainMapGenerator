@@ -106,6 +106,11 @@ internal class MapViewerNoteDialog(
             targetKey = note.id,
             blocksScreenPoint = { point -> window?.blocksScreenPoint(point) == true },
             isTextInputActive = { isTextInputActive },
+            sync = { payload ->
+                (payload as? MapPlacedObjectSnapshot)
+                    ?.takeIf { it.id in referencedObjectIds }
+                    ?.let { window?.refresh() }
+            },
             persistedDialog = { window?.persistedDialog() },
             close = ::close,
         )

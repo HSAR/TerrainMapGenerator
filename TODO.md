@@ -21,3 +21,4 @@
 - Can't delete unit types in the new operation screen
 - Importing unit types with the same name, even if different affiliations, to the new operation screen doesn't work
 - Collapsed unit types list is not a universal list
+- Text box cursor drifts away from correct characters especially over multiple lines

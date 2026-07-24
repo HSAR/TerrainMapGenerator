@@ -754,6 +754,7 @@ internal class MapViewerScene(
                                 MapPlacedObjectPatch.diff(before, after)
                                     .takeIf { it.isNotEmpty() }
                                     ?.let { recordLedgerEntry(EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before))) }
+                                dialogManager.broadcast(after)
                             },
                             onUnitsChanged = {
                                 if (selectionControllerReady && !startupReplayInProgress) {

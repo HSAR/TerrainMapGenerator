@@ -18,7 +18,7 @@ internal class MapViewerTacticalDialog(
     private val root: Container,
     private val dialogManager: MapViewerDialogManager,
     private val dialogKey: Any,
-    private val unitName: String,
+    private var unitName: String,
     private val reportProvider: () -> TacticalTargetingReport?,
     private val dialogName: String = "Tactical",
     private val fireActionLabel: String = "Fire",
@@ -109,6 +109,12 @@ internal class MapViewerTacticalDialog(
 
     fun refreshPresentation() {
         window?.refresh()
+    }
+
+    fun refreshUnitName(name: String) {
+        if (unitName == name) return
+        unitName = name
+        window?.refreshTitle()
     }
 
     private fun renderContent(parent: Container, width: Double, contentViewportHeight: Double) {

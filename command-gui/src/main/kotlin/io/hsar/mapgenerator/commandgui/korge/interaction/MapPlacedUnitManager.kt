@@ -822,7 +822,12 @@ internal class MapPlacedUnitManager(
         openUnitEditDialogs.values.forEach(MapViewerUnitEditDialog::refreshShipStatus)
 
     private fun refreshTacticalDialogs() =
-        tacticalDialogs.values.toList().forEach(MapViewerTacticalDialog::refresh)
+        tacticalDialogs.forEach { (unitId, dialog) ->
+            units.firstOrNull { it.id == unitId }
+                ?.snapshot()
+                ?.let { snapshot -> dialog.refreshUnitName(snapshot.displayName()) }
+            dialog.refresh()
+        }
 
     private fun updateLinkedSquadronHealth(fighter: PlacedUnit, remaining: Int) {
         val status = OlympiadDawnShip.squadronStatus(fighter.snapshot(), units.map { it.snapshot() }) ?: return
