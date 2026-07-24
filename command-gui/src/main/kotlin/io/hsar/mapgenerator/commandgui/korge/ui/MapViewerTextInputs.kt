@@ -32,6 +32,7 @@ internal object MapViewerTextInputs {
         wrapWords: Boolean = false,
         selectEndWhenClickBelowText: Boolean = false,
         scrollable: Boolean = false,
+        onLogicalTextUpdated: (String) -> Unit = {},
         frameStyle: (Boolean) -> UiFrameStyle = MapViewerUiBoxes::defaultStyle,
     ): MapViewerInputField =
         parent.container().let { field ->
@@ -57,6 +58,7 @@ internal object MapViewerTextInputs {
             var scrollState = MapViewerScrollState(0.0, 0.0)
             var scrollbarLayer: Container? = null
             var scrollDragState: InputScrollDragState? = null
+            var selectionBeforeRejectedChange: InputSelection? = null
             val initialTrackedText = trackedValue(text).also {
                 currentSoftBreakIndexes = it.softBreakIndexes
             }
@@ -65,6 +67,13 @@ internal object MapViewerTextInputs {
                 skin = ViewRenderer { }
                 padding = Margin(4f, 6f, 4f, 6f)
                 controller.textColor = RGBA(255, 255, 255, 0)
+                controller.acceptTextChange = { _, newText ->
+                    MapViewerTextInputContent.isAccepted(newText).also { accepted ->
+                        if (!accepted) {
+                            selectionBeforeRejectedChange = InputSelection(controller.selectionStart, controller.selectionEnd)
+                        }
+                    }
+                }
                 font = MapViewerKorgeFonts.font(role)
                 this.textSize = textSize
                 mouse {
@@ -167,6 +176,12 @@ internal object MapViewerTextInputs {
                 visibleText.y = -scrollState.offset
                 renderScrollbar()
             }
+            input.addUpdater {
+                selectionBeforeRejectedChange?.let { selection ->
+                    input.controller.select(selection.start, selection.end)
+                    selectionBeforeRejectedChange = null
+                }
+            }
 
             input.controller.onTextUpdated.add {
                 if (!applyingTrackedWrap) {
@@ -196,6 +211,7 @@ internal object MapViewerTextInputs {
                 visibleText.text = input.text
                 updateScrollState()
                 renderScrollbar()
+                onLogicalTextUpdated(currentLogicalText)
             }
 
             MapViewerInputField(
@@ -212,6 +228,7 @@ internal object MapViewerTextInputs {
                         updateScrollState()
                         renderScrollbar()
                     }
+                    onLogicalTextUpdated(currentLogicalText)
                 },
             ).also {
                 updateScrollState()
@@ -222,6 +239,11 @@ internal object MapViewerTextInputs {
     private data class InputScrollDragState(
         val pointerY: Double,
         val offset: Double,
+    )
+
+    private data class InputSelection(
+        val start: Int,
+        val end: Int,
     )
 }
 
@@ -235,6 +257,13 @@ internal object MapViewerInputClickPlacement {
         localY > textTop + visualText.lines().size.coerceAtLeast(1) * lineHeight
 
     private const val TEXT_TOP = 2.0
+}
+
+internal object MapViewerTextInputContent {
+    fun isAccepted(text: String): Boolean =
+        text.none { character -> character.isISOControl() && character !in LAYOUT_WHITESPACE }
+
+    private val LAYOUT_WHITESPACE = setOf('\t', '\n', '\r')
 }
 
 internal object MapViewerInputTextWrap {

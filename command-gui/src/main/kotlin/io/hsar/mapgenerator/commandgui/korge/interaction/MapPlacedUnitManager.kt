@@ -62,6 +62,7 @@ internal class MapPlacedUnitManager(
     private val isHigherPriorityDragInProgress: () -> Boolean = { false },
     private val noteReferenceMenuActionsProvider: (MapPlacedObjectSnapshot) -> List<MapPlacedObjectMenuAction> = { emptyList() },
     private val onMovePreviewChanged: (MapObjectMovePreview?) -> Unit = {},
+    private val onUnitDroppedIntoNoteReferenceZone: (Vector2D, MapPlacedObjectId) -> Boolean = { _, _ -> false },
     private val onObjectMoved: (MapPlacedObjectSnapshot, MapPlacedObjectSnapshot) -> Unit = { _, _ -> },
     private val onObjectDeleted: (MapPlacedObjectSnapshot) -> Unit = {},
     private val onUnitEdited: (UnitSnapshot, UnitSnapshot) -> Unit = { _, _ -> },
@@ -562,6 +563,14 @@ internal class MapPlacedUnitManager(
             return
         }
         if (!leftHeld) {
+            if (onUnitDroppedIntoNoteReferenceZone(pointer, state.unit.id)) {
+                upsert(state.originalSnapshot)
+                state.preview.container.removeFromParent()
+                state.unit.view.visible = true
+                onMovePreviewChanged(null)
+                dragState = null
+                return
+            }
             val updatedSnapshot = state.unit.snapshot()
             if (updatedSnapshot != state.originalSnapshot) {
                 onObjectMoved(state.originalSnapshot, updatedSnapshot)

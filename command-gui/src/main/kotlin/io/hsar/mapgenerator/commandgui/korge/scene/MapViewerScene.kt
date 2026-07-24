@@ -738,6 +738,9 @@ internal class MapViewerScene(
                             onMovePreviewChanged = { preview ->
                                 objectMovePreview = preview
                             },
+                            onUnitDroppedIntoNoteReferenceZone = { point, unitId ->
+                                notesPanel?.addDroppedReferences(point, setOf(unitId)) == true
+                            },
                             onObjectMoved = { before, after ->
                                 MapPlacedObjectPatch.diff(before, after)
                                     .takeIf { it.isNotEmpty() }

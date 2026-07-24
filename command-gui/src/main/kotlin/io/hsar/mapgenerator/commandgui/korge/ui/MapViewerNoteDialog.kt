@@ -156,11 +156,9 @@ internal class MapViewerNoteDialog(
             wrapWords = true,
             selectEndWhenClickBelowText = true,
             scrollable = true,
+            onLogicalTextUpdated = { bodyValue = it },
         ).also { input ->
             input.onClick { input.focus() }
-            input.controller.onTextUpdated.add {
-                bodyValue = input.text
-            }
             input.controller.onReturnPressed.add {
                 it.insertText("\n")
             }
