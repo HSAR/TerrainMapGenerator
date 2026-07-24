@@ -382,6 +382,7 @@ internal object SensorDetection {
         mapHeight: Int,
         gridLayer: GridLayer? = null,
         emptySummaryText: String,
+        observerAffiliation: UnitAffiliation? = null,
         identificationAnnouncements: List<SensorVisibilityCheck> = emptyList(),
         previouslyDetectedIds: Set<MapPlacedObjectId> = emptySet(),
         lostContacts: List<SitrepLostContact> = emptyList(),
@@ -422,12 +423,12 @@ internal object SensorDetection {
                         check.ecmContact == EcmSensorContact.FAINT_TRACK -> "is faint sensor track"
                         check.ecmContact == EcmSensorContact.SENSOR_GHOST -> "is sensor ghost"
                         check.unit.id in identifiedIds && lowConfidence != null ->
-                            check.unit.identificationClause("was")
+                            check.unit.identificationClause("was", observerAffiliation)
 
-                        newlyIdentified -> check.unit.identificationClause()
+                        newlyIdentified -> check.unit.identificationClause(observerAffiliation = observerAffiliation)
 
                         check.unit.id in identifiedIds ->
-                            "is ${check.unit.affiliationDescription()} ${check.unit.identificationDescription()}"
+                            "is ${check.unit.affiliationDescription(observerAffiliation)} ${check.unit.identificationDescription()}"
 
                         else -> "has unknown ${check.unit.unknownClassificationBracket()} classification"
                     }
@@ -442,7 +443,7 @@ internal object SensorDetection {
                             )
                         } else if (newlyIdentified && lowConfidence == null) {
                             listOf(
-                                "at ${formatPosition(check.unit, mapWidth, mapHeight, gridLayer)}",
+                                "at ${formatPosition(check.unit, mapWidth, mapHeight, gridLayer)}, range ${formatDistance(check.distanceUnits)}U",
                                 classification,
                             )
                         } else {
@@ -519,15 +520,18 @@ internal object SensorDetection {
                 }
             }
 
-    private fun UnitSnapshot.identificationClause(verb: String = "is"): String =
-        "$verb identified as ${affiliationDescription()} ${identificationDescription()}"
+    private fun UnitSnapshot.identificationClause(
+        verb: String = "is",
+        observerAffiliation: UnitAffiliation? = null,
+    ): String =
+        "$verb identified as ${affiliationDescription(observerAffiliation)} ${identificationDescription()}"
 
     private fun UnitSnapshot.navrepIdentificationClause(observer: UnitSnapshot): String =
         "is identified as ${if (template.affiliation == observer.template.affiliation) "allied" else affiliationDescription()} ${identificationDescription()}"
 
-    private fun UnitSnapshot.affiliationDescription(): String =
+    private fun UnitSnapshot.affiliationDescription(observerAffiliation: UnitAffiliation? = null): String =
         when (template.affiliation) {
-            UnitAffiliation.Friend -> "allied"
+            UnitAffiliation.Friend -> if (observerAffiliation == UnitAffiliation.Hostile) "enemy" else "allied"
             UnitAffiliation.Hostile -> "enemy"
             UnitAffiliation.Neutral -> "neutral"
             UnitAffiliation.Unknown -> "unknown"

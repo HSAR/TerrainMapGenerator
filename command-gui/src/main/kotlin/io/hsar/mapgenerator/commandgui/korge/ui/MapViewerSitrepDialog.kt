@@ -95,7 +95,6 @@ internal class MapViewerSitrepDialog(
             return false
         }
         val stage = root.stage ?: return false
-        requestReportRefresh()
         window = MapViewerDialogWindow(
             root = root,
             title = title(),
@@ -129,6 +128,7 @@ internal class MapViewerSitrepDialog(
             close = ::close,
         )
         window?.show(stage.views.actualVirtualWidth, stage.views.actualVirtualHeight)
+        requestReportRefresh()
         return true
     }
 
@@ -774,6 +774,7 @@ internal class MapViewerSitrepDialog(
             mapHeight = unitQueryService.mapHeight,
             gridLayer = gridLayer,
             emptySummaryText = reportMode.emptySummaryText,
+            observerAffiliation = observer.template.affiliation,
             identificationAnnouncements = scirepReport.visibleChecks.filter { it.unit.id !in previousContactState.identifiedIds },
             previouslyDetectedIds = previousContactState.sensorContactIds,
             lostContacts = newlyLost.filter { it.contactId !in matchedLostContactIds },

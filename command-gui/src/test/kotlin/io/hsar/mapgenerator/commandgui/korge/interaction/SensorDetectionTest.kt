@@ -976,7 +976,7 @@ class SensorDetectionTest {
 
         assertThat(
             identificationText,
-            equalTo("Contact detected at extreme range as Master 1 at 510 500 is identified as enemy DD Contact-class DD."),
+            equalTo("Contact detected at extreme range as Master 1 at 510 500, range 10U is identified as enemy DD Contact-class DD."),
         )
 
         assertThat(
@@ -1066,7 +1066,52 @@ class SensorDetectionTest {
                 emptySummaryText = "No hostile contacts to report.",
                 identificationAnnouncements = listOf(check),
             ),
-            equalTo("Contact detected at extreme range as Master 9 at 503.4 500 is identified as unaffiliated Sword-class CVE Zweihander."),
+            equalTo("Contact detected at extreme range as Master 9 at 503.4 500, range 3.4U is identified as unaffiliated Sword-class CVE Zweihander."),
+        )
+    }
+
+    @Test
+    fun `scirep reports a friend contact as enemy to a hostile observer`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-000000000078",
+            instanceName = "Hostile Observer",
+            unitClass = "CA",
+            x = 0.5,
+            y = 0.5,
+            affiliation = UnitAffiliation.Hostile,
+        )
+        val contact = unit(
+            id = "00000000-0000-0000-0000-000000000079",
+            instanceName = "Friend Contact",
+            unitClass = "DD",
+            templateName = "Contact",
+            x = 0.5034,
+            y = 0.5,
+            affiliation = UnitAffiliation.Friend,
+        )
+        val check = SensorDetection.visibilityChecks(
+            observer = observer,
+            candidates = listOf(observer, contact),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            mapUnitsPerPixel = 1.0,
+            candidateFilter = { true },
+        ).single()
+
+        val text = SensorDetection.scirepText(
+            checks = listOf(check),
+            identifiedIds = setOf(contact.id),
+            contactNumbers = mapOf(contact.id to 1),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            emptySummaryText = "No hostile contacts to report.",
+            observerAffiliation = observer.template.affiliation,
+            identificationAnnouncements = listOf(check),
+        )
+
+        assertThat(
+            text,
+            equalTo("Contact detected at extreme range as Master 1 at 503.4 500, range 3.4U is identified as enemy Contact-class DD Friend Contact."),
         )
     }
 

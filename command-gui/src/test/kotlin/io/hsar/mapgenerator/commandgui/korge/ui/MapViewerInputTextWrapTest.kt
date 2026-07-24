@@ -17,6 +17,13 @@ class MapViewerInputTextWrapTest {
     }
 
     @Test
+    fun `wrap preserves a trailing space while the next word is being typed`() {
+        val maxWidth = MapViewerTextViews.measure("Alpha").width
+
+        assertThat(MapViewerInputTextWrap.wrap("Alpha ", maxWidth), equalTo("Alpha "))
+    }
+
+    @Test
     fun `wrap preserves explicit new lines`() {
         val maxWidth = MapViewerTextViews.measure("Alpha beta").width + 1.0
 

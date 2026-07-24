@@ -360,7 +360,7 @@ internal object MapViewerInputTextWrap {
         role: MapViewerFontRole,
         size: Double,
     ): String {
-        if (line.isBlank() || maxWidth <= 0.0 || fits(line, maxWidth, role, size)) {
+        if (line.isBlank() || line.endsWith(' ') || maxWidth <= 0.0 || fits(line, maxWidth, role, size)) {
             return line
         }
 

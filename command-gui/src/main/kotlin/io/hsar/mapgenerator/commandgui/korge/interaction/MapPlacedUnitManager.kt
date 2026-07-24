@@ -1005,6 +1005,7 @@ internal class MapPlacedUnitManager(
             restored: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog? = null,
         ) {
             val snapshot = unit.snapshot()
+            unitQueryService = UnitQueryService(units.map { it.snapshot() }, mapWidth, mapHeight, mapUnitsPerPixel)
             val turnNumber = sitrepTurnNumberProvider()
             MapViewerSitrepDialog(
                 root = root,
