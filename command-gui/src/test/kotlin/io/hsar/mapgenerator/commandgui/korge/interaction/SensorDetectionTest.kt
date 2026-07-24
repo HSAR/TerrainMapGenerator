@@ -505,7 +505,7 @@ class SensorDetectionTest {
                 emptySummaryText = "No hostile contacts to report.",
                 sensorConditionsPoor = true,
             ),
-            equalTo("Poor sensor conditions due to nebular interference. Contact actively radiating at extreme range as Sierra 1 at 510 500, range 10U has unknown midweight classification."),
+            equalTo("Poor sensor conditions due to nebular interference. Contact actively radiating as Sierra 1 at 510 500, range 10U has unknown midweight classification."),
         )
     }
 
@@ -1066,7 +1066,7 @@ class SensorDetectionTest {
                 emptySummaryText = "No hostile contacts to report.",
                 identificationAnnouncements = listOf(check),
             ),
-            equalTo("Contact detected at extreme range as Master 9 at 503.4 500, range 3.4U is identified as unaffiliated Sword-class CVE Zweihander."),
+            equalTo("Contact detected as Master 9 at 503.4 500, range 3.4U is identified as unaffiliated Sword-class CVE Zweihander."),
         )
     }
 
@@ -1111,7 +1111,27 @@ class SensorDetectionTest {
 
         assertThat(
             text,
-            equalTo("Contact detected at extreme range as Master 1 at 503.4 500, range 3.4U is identified as enemy Contact-class DD Friend Contact."),
+            equalTo("Contact detected as Master 1 at 503.4 500, range 3.4U is identified as enemy Contact-class DD Friend Contact."),
+        )
+    }
+
+    @Test
+    fun `SCIREP omits extreme range wording for close newly detected contacts`() {
+        val contact = unit("00000000-0000-0000-0000-0000000000ba", "Close Contact", "CL", 0.505, 0.5)
+        val check = SensorVisibilityCheck(contact, false, true, 5.0, 6.0, 12.0, 12.0, emptyList())
+
+        val text = SensorDetection.scirepText(
+            checks = listOf(check),
+            identifiedIds = emptySet(),
+            contactNumbers = mapOf(contact.id to 1),
+            mapWidth = 1_000,
+            mapHeight = 1_000,
+            emptySummaryText = "No hostile contacts to report.",
+        )
+
+        assertThat(
+            text,
+            equalTo("Contact detected as Sierra 1 at 505 500, range 5U has unknown midweight classification."),
         )
     }
 

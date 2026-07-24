@@ -401,10 +401,11 @@ internal object SensorDetection {
                     val newlyIdentified = check.unit.id in newlyIdentifiedIds
                     val newlyDetected = check.unit.id !in previouslyDetectedIds
                     val compactUnidentified = check.unit.id !in identifiedIds && !newlyDetected && lowConfidence == null
+                    val rangeDescriptor = if (check.distanceUnits > check.identificationRangeUnits) " at extreme range" else ""
                     val opening = if (lowConfidence != null) {
                         "New contact tentatively designated $designation ${contactNumbers.getValue(check.unit.id)} from last known position"
                     } else if (newlyIdentified && newlyDetected && check.unit.id in identifiedIds) {
-                        "Contact detected at extreme range as Master ${contactNumbers.getValue(check.unit.id)}"
+                        "Contact detected$rangeDescriptor as Master ${contactNumbers.getValue(check.unit.id)}"
                     } else if (newlyIdentified && check.unit.id in identifiedIds) {
                         "Contact Master ${contactNumbers.getValue(check.unit.id)}"
                     } else if (compactUnidentified) {
@@ -415,7 +416,7 @@ internal object SensorDetection {
                         } else {
                             "Contact detected"
                         }
-                        "$contactPrefix at extreme range as Sierra ${contactNumbers.getValue(check.unit.id)}"
+                        "$contactPrefix$rangeDescriptor as Sierra ${contactNumbers.getValue(check.unit.id)}"
                     } else {
                         "Contact Master ${contactNumbers.getValue(check.unit.id)}"
                     }
