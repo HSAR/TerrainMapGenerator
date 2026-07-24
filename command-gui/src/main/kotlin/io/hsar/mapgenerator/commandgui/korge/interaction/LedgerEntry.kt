@@ -62,6 +62,7 @@ internal data class UnitSnapshot(
 internal data class DrawingSnapshot(
     override val id: MapPlacedObjectId,
     val drawing: MapDrawing,
+    val customProperties: Map<String, String> = emptyMap(),
 ) : MapPlacedObjectSnapshot {
     override val name: String
         get() = drawing.name

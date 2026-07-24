@@ -63,11 +63,13 @@ internal data class OvalDrawing(
 internal data class PlacedDrawing(
     override val id: MapPlacedObjectId,
     var drawing: MapDrawing,
+    var customProperties: Map<String, String> = emptyMap(),
 ) : MapPlacedObject {
     override fun snapshot(): DrawingSnapshot =
         DrawingSnapshot(
             id = id,
             drawing = drawing,
+            customProperties = customProperties,
         )
 
     override fun containsMapCoordinate(

@@ -25,6 +25,7 @@ internal class MapDrawingStore {
             committedDrawings[index] = PlacedDrawing(
                 id = snapshot.id,
                 drawing = snapshot.drawing,
+                customProperties = snapshot.customProperties,
             )
         } else {
             committedDrawings += PlacedDrawing(
@@ -37,7 +38,7 @@ internal class MapDrawingStore {
 
     fun replaceAll(snapshots: List<DrawingSnapshot>) {
         committedDrawings.clear()
-        committedDrawings += snapshots.map { PlacedDrawing(it.id, it.drawing) }
+        committedDrawings += snapshots.map { PlacedDrawing(it.id, it.drawing, it.customProperties) }
         activePreview = null
     }
 

@@ -37,6 +37,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedGraphicManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectPatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSelectionResolver
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedUnitManager
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapSelectionController
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapSelectionOverlayView
@@ -49,7 +50,9 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.ReplayedLedger
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.displayName
 import io.hsar.mapgenerator.commandgui.korge.interaction.turnOriginFor
+import io.hsar.mapgenerator.commandgui.korge.interaction.withDisplayName
 import io.hsar.mapgenerator.commandgui.korge.launch.LaunchBackgroundGenerationSegments
 import io.hsar.mapgenerator.commandgui.korge.launch.LaunchBackgroundTileGenerator
 import io.hsar.mapgenerator.commandgui.korge.launch.LaunchTopographyBackground
@@ -72,6 +75,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerGraphicSidebar
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerKorgeFonts
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerLedgerPanel
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerNotesPanel
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerObjectNameDialog
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerSidebar
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerToolbar
@@ -711,6 +715,24 @@ internal class MapViewerScene(
                         val deferredContextMenuActions = ContextMenuDeferredActionRunner(sceneLayers.ui)
                         dialogManager = MapViewerDialogManager { currentViewport }
 
+                        fun openObjectNameDialog(snapshot: MapPlacedObjectSnapshot) {
+                            MapViewerObjectNameDialog(
+                                root = sceneLayers.ui,
+                                dialogManager = dialogManager,
+                                dialogKey = snapshot.id,
+                                initialName = snapshot.displayName(),
+                                onSaved = { name ->
+                                    val updated = snapshot.withDisplayName(name)
+                                    MapPlacedObjectPatch.diff(snapshot, updated)
+                                        .takeIf { it.isNotEmpty() }
+                                        ?.let { changes ->
+                                            objectController.updateObject(updated)
+                                            recordLedgerEntry(EditObjectAction(snapshot.id, changes, MapPlacedObjectPatch.diff(updated, snapshot)))
+                                        }
+                                },
+                            ).open()
+                        }
+
                         unitManager = MapPlacedUnitManager(
                             root = sceneLayers.ui,
                             unitLayer = iconLayer,
@@ -796,6 +818,9 @@ internal class MapViewerScene(
                             mapHeight = renderedMap.bitmap.height,
                             viewportProvider = { currentViewport },
                             contextMenuManager = contextMenuManager,
+                            onEditNameRequested = { snapshot ->
+                                deferredContextMenuActions.launch { openObjectNameDialog(snapshot) }
+                            },
                             canInteract = { effectiveTool() == MapViewerTool.SELECT },
                             isHigherPriorityDragInProgress = { unitManager.isDragging || drawingManager.isDragging },
                             noteReferenceMenuActionsProvider = { snapshot ->
@@ -825,6 +850,9 @@ internal class MapViewerScene(
                             currentTool = { currentTool },
                             drawingStore = drawingStore,
                             contextMenuManager = contextMenuManager,
+                            onEditNameRequested = { snapshot ->
+                                deferredContextMenuActions.launch { openObjectNameDialog(snapshot) }
+                            },
                             isHigherPriorityDragCandidateUnderPointer = { point ->
                                 unitManager.hasDragCandidate(point)
                             },

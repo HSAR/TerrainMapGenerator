@@ -345,6 +345,7 @@ private class RuntimeLedgerReplayer(
             is SavedDrawingObjectDto -> DrawingSnapshot(
                 id = MapPlacedObjectId(id),
                 drawing = drawing.toRuntimeDrawing(),
+                customProperties = customProperties,
             )
             is SavedGraphicObjectDto -> {
                 val template = graphicTemplatesById[graphicTemplateId]

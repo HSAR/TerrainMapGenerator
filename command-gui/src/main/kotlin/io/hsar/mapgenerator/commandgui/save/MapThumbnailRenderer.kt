@@ -10,6 +10,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.displayName
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridLabelStyle
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLayoutBuilder
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
@@ -179,6 +180,18 @@ internal class MapThumbnailRenderer {
         ).forEach { segment ->
             drawLine(segment.start, segment.end, mapImage, geometry, viewport)
         }
+        snapshot.displayName()?.let { name ->
+            val points = MapDrawingOutlineBuilder.build(
+                drawing = snapshot.drawing,
+                zoom = viewport.zoom,
+                coordinateSpace = MapCoordinateSpace(geometry, mapImage.width, mapImage.height),
+            ).flatMap { listOf(it.start, it.end) }
+            if (points.isNotEmpty()) {
+                val centerX = (points.minOf(MapDrawingPoint::x) + points.maxOf(MapDrawingPoint::x)) * 0.5
+                val top = points.minOf(MapDrawingPoint::y)
+                drawObjectLabel(name, MapCoordinate(centerX, top).toScreen(mapImage, geometry, viewport))
+            }
+        }
     }
 
     private fun Graphics2D.drawUnit(
@@ -216,6 +229,9 @@ internal class MapThumbnailRenderer {
             height.roundToInt(),
             null
         )
+        snapshot.displayName()?.let { name ->
+            drawObjectLabel(name, Point(center.x, center.y - height * 0.5))
+        }
     }
 
     private fun Graphics2D.drawLine(
@@ -282,6 +298,13 @@ internal class MapThumbnailRenderer {
         )
     }
 
+    private fun Graphics2D.drawObjectLabel(text: String, anchor: Point) {
+        font = Font(Font.SANS_SERIF, Font.PLAIN, THUMBNAIL_LABEL_TEXT_SIZE)
+        color = Palette.Colours.WHITE
+        val metrics = fontMetrics
+        drawString(text, (anchor.x - metrics.stringWidth(text) * 0.5).toFloat(), (anchor.y - LABEL_GAP).toFloat())
+    }
+
     private fun measureGridText(text: String, style: GridLabelStyle): Rectangle {
         val font = Font(Font.SANS_SERIF, if (style.role.name == "STRONG") Font.BOLD else Font.PLAIN, style.size.roundToInt().coerceAtLeast(1))
         val context = BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB).createGraphics()
@@ -345,6 +368,8 @@ internal class MapThumbnailRenderer {
         const val DEFAULT_THUMBNAIL_WIDTH = 512
         const val TURN_THUMBNAIL_ASPECT_RATIO = 16.0 / 9.0
         const val THUMBNAIL_DRAWING_STROKE = 2.0f
+        const val THUMBNAIL_LABEL_TEXT_SIZE = 12
+        const val LABEL_GAP = 3.0
         const val FACING_ALPHA = 160
         const val DESTROYED_ALPHA = 160
     }

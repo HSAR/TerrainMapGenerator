@@ -25,6 +25,7 @@ internal class MapDrawingManager(
     private val currentTool: () -> MapViewerTool,
     private val drawingStore: MapDrawingStore,
     private val contextMenuManager: ContextMenuManager,
+    private val onEditNameRequested: (io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot) -> Unit = {},
     private val isHigherPriorityDragCandidateUnderPointer: (Vector2D) -> Boolean = { false },
     private val isHigherPriorityDragInProgress: () -> Boolean = { false },
     private val canInteractWithDrawings: () -> Boolean = { true },
@@ -125,6 +126,10 @@ internal class MapDrawingManager(
             target = drawing,
             screenPoint = point,
             actions = listOf(
+                io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectMenuAction(
+                    label = "Edit Name",
+                    onSelected = { onEditNameRequested(drawing.snapshot()) },
+                ),
                 io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectMenuAction(
                     label = "Delete",
                     onSelected = { onObjectDeleted(drawing.snapshot()) },

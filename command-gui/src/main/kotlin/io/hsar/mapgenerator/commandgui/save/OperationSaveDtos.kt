@@ -215,9 +215,30 @@ internal class SavedUnitObjectDto(
     }
 }
 
-internal data class SavedDrawingObjectDto(
+internal class SavedDrawingObjectDto(
     val drawing: DrawingSaveDto,
-) : SavedMapObjectDto
+) : SavedMapObjectDto {
+    private val customPropertiesByKey = linkedMapOf<String, String>()
+
+    constructor(drawing: DrawingSaveDto, customProperties: Map<String, String>) : this(drawing) {
+        customPropertiesByKey.putAll(customProperties.filterKeys { it !in KNOWN_PROPERTIES })
+    }
+
+    @get:JsonIgnore
+    val customProperties: Map<String, String> get() = customPropertiesByKey
+
+    @JsonAnySetter
+    fun setCustomProperty(key: String, value: JsonNode?) {
+        if (key !in KNOWN_PROPERTIES) customPropertiesByKey[key] = CustomPropertyJson.toStringValue(value)
+    }
+
+    @JsonAnyGetter
+    fun customPropertiesForSerialization(): Map<String, String> = customProperties
+
+    private companion object {
+        val KNOWN_PROPERTIES = setOf("type", "drawing")
+    }
+}
 
 internal class SavedGraphicObjectDto(
     val graphicTemplateId: UUID,

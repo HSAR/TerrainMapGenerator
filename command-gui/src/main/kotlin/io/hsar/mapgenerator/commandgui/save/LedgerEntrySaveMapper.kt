@@ -121,6 +121,7 @@ internal class LedgerEntrySaveMapper(
 
             is DrawingSnapshot -> SavedDrawingObjectDto(
                 drawing = drawing.toDto(),
+                customProperties = customProperties,
             )
             is GraphicSnapshot -> SavedGraphicObjectDto(
                 graphicTemplateId = graphicTemplateId.value,

@@ -166,4 +166,55 @@ class MapPlacedObjectPatchTest {
 
         assertThat(MapPlacedObjectPatch.apply(before, patch), equalTo(after))
     }
+
+    @Test
+    fun `drawing display name custom property can be applied and reversed`() {
+        val before = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000006")),
+            drawing = RectangleDrawing(MapDrawingPoint(0.1, 0.1), MapDrawingPoint(0.2, 0.2), Color.RED),
+            customProperties = mapOf("displayName" to "Old name"),
+        )
+        val after = before.copy(customProperties = mapOf("displayName" to "New name"))
+
+        val forward = MapPlacedObjectPatch.diff(before, after)
+        val backward = MapPlacedObjectPatch.diff(after, before)
+
+        assertThat(forward["displayName"], equalTo(TextNode("New name")))
+        assertThat(MapPlacedObjectPatch.apply(before, forward), equalTo(after))
+        assertThat(MapPlacedObjectPatch.apply(after, backward), equalTo(before))
+    }
+
+    @Test
+    fun `drawing display name can be cleared by a custom property patch`() {
+        val before = DrawingSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000007")),
+            drawing = RectangleDrawing(MapDrawingPoint(0.1, 0.1), MapDrawingPoint(0.2, 0.2), Color.RED),
+            customProperties = mapOf("displayName" to "Temporary"),
+        )
+
+        val after = MapPlacedObjectPatch.apply(before, mapOf("displayName" to null)) as DrawingSnapshot
+
+        assertThat(after.customProperties, equalTo(emptyMap()))
+    }
+
+    @Test
+    fun `graphic display name custom property can be applied and reversed`() {
+        val templateId = GraphicTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000020"))
+        val before = GraphicSnapshot(
+            id = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000008")),
+            graphicTemplateId = templateId,
+            template = MapViewerGraphicTemplate(templateId, "Graphic", Bitmap32(4, 4)),
+            instanceName = "Graphic",
+            mapCoordinate = MapCoordinate(0.5, 0.5),
+            normalizedWidth = 0.1,
+            normalizedHeight = 0.1,
+        )
+        val after = before.copy(customProperties = mapOf("displayName" to "Objective"))
+
+        val forward = MapPlacedObjectPatch.diff(before, after)
+        val backward = MapPlacedObjectPatch.diff(after, before)
+
+        assertThat(MapPlacedObjectPatch.apply(before, forward), equalTo(after))
+        assertThat(MapPlacedObjectPatch.apply(after, backward), equalTo(before))
+    }
 }

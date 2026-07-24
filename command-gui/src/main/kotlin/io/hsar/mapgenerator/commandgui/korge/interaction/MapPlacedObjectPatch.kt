@@ -47,7 +47,8 @@ internal object MapPlacedObjectPatch {
 
     private fun drawingDiff(before: DrawingSnapshot, after: DrawingSnapshot): Map<String, JsonNode?> {
         if (before.drawing::class != after.drawing::class) {
-            return mapOf("drawing" to toNode(after.drawing))
+            return mapOf("drawing" to toNode(after.drawing)) +
+                    CustomPropertyJson.diff(before.customProperties, after.customProperties, DRAWING_PATCH_FIELDS)
         }
 
         return buildMap<String, JsonNode?> {
@@ -78,6 +79,7 @@ internal object MapPlacedObjectPatch {
                     putIfChanged("color", before.drawing.color, after.drawing.color)
                 }
             }
+            putAll(CustomPropertyJson.diff(before.customProperties, after.customProperties, DRAWING_PATCH_FIELDS))
         }
     }
 
@@ -105,8 +107,11 @@ internal object MapPlacedObjectPatch {
             }
         }
 
-    private fun applyDrawing(snapshot: DrawingSnapshot, changes: Map<String, JsonNode?>) =
-        snapshot.copy(drawing = changes.entries.fold(snapshot.drawing) { current, (key, value) ->
+    private fun applyDrawing(snapshot: DrawingSnapshot, changes: Map<String, JsonNode?>): DrawingSnapshot {
+        val drawingChanges = changes.filterKeys { it in DRAWING_PATCH_FIELDS }
+        val propertyChanges = changes.filterKeys { it !in DRAWING_PATCH_FIELDS }
+        return snapshot.copy(
+            drawing = drawingChanges.entries.fold(snapshot.drawing) { current, (key, value) ->
             when {
                 key == "drawing" -> fromNode(value.requireValue())
                 current is FreeformDrawing && key == "points" -> current.copy(points = fromNode(value.requireValue()))
@@ -125,7 +130,12 @@ internal object MapPlacedObjectPatch {
                 current is OvalDrawing && key == "color" -> current.copy(color = value.requireValue().asText().toColor())
                 else -> current
             }
-        })
+            },
+            customProperties = propertyChanges.entries.fold(snapshot.customProperties) { properties, (key, value) ->
+                properties.applyCustomPropertyPatch(key, value)
+            },
+        )
+    }
 
     private fun applyGraphic(snapshot: GraphicSnapshot, changes: Map<String, JsonNode?>) =
         changes.entries.fold(snapshot) { current, (key, value) ->
@@ -187,6 +197,8 @@ internal object MapPlacedObjectPatch {
         "normalizedWidth",
         "normalizedHeight",
     )
+
+    private val DRAWING_PATCH_FIELDS = setOf("drawing", "points", "color", "start", "end", "rotationDegrees", "center", "xRadius", "yRadius")
 
     private val GRAPHIC_PATCH_FIELDS = setOf("graphicTemplateId", "instanceName", "mapCoordinate", "normalizedWidth", "normalizedHeight")
 }

@@ -98,6 +98,7 @@ class OperationSaveRoundTripTest {
                 rotationDegrees = 25.0,
                 color = java.awt.Color.RED,
             ),
+            customProperties = mapOf("displayName" to "Survey zone"),
         )
         val createdNote = MapNoteSnapshot(
             id = MapNoteId(UUID.fromString("00000000-0000-0000-0000-0000000000a1")),

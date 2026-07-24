@@ -1,9 +1,12 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import korlibs.event.MouseButton
+import korlibs.image.text.TextAlignment
 import korlibs.korge.view.Container
 import korlibs.korge.view.Image
+import korlibs.korge.view.Text
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
 import korlibs.korge.view.image
@@ -18,6 +21,7 @@ internal class MapPlacedGraphicManager(
     private val mapHeight: Int,
     private val viewportProvider: () -> CameraViewport,
     private val contextMenuManager: ContextMenuManager,
+    private val onEditNameRequested: (GraphicSnapshot) -> Unit = {},
     private val noteReferenceMenuActionsProvider: (MapPlacedObjectSnapshot) -> List<MapPlacedObjectMenuAction> = { emptyList() },
     private val canInteract: () -> Boolean = { true },
     private val isHigherPriorityDragInProgress: () -> Boolean = { false },
@@ -71,7 +75,10 @@ internal class MapPlacedGraphicManager(
         contextMenuManager.open(
             target = target,
             screenPoint = screenPoint,
-            actions = listOf(MapPlacedObjectMenuAction("Delete", { onObjectDeleted(target.snapshot) })) +
+            actions = listOf(
+                MapPlacedObjectMenuAction("Edit Name", { onEditNameRequested(target.snapshot) }),
+                MapPlacedObjectMenuAction("Delete", { onObjectDeleted(target.snapshot) }),
+            ) +
                     noteReferenceMenuActionsProvider(target.snapshot),
         )
         return true
@@ -144,6 +151,12 @@ internal class MapPlacedGraphicManager(
         placed.view.scaleY = worldHeight / placed.snapshot.template.bitmap.height
         placed.view.x = world.x - worldWidth * 0.5
         placed.view.y = world.y - worldHeight * 0.5
+        placed.labelView?.let { label ->
+            val bounds = MapViewerTextViews.measure(label.text, size = LABEL_TEXT_SIZE)
+            label.setTextBounds(korlibs.math.geom.Rectangle(0.0, 0.0, bounds.width, bounds.height))
+            label.x = world.x - bounds.width * 0.5
+            label.y = world.y - worldHeight * 0.5 - bounds.height - LABEL_GAP
+        }
     }
 
     private class PlacedGraphic(
@@ -151,6 +164,11 @@ internal class MapPlacedGraphicManager(
         val container: Container,
     ) : MapPlacedObject {
         var view: Image = container.image(snapshot.template.bitmap)
+        var labelView: Text? = null
+
+        init {
+            rebuild()
+        }
         override val id: MapPlacedObjectId get() = snapshot.id
         override fun snapshot(): MapPlacedObjectSnapshot = snapshot
         override fun containsMapCoordinate(mapCoordinate: MapCoordinate, tolerance: Double, coordinateSpace: MapCoordinateSpace?): Boolean =
@@ -164,6 +182,16 @@ internal class MapPlacedGraphicManager(
         fun rebuild() {
             container.removeChildren()
             view = container.image(snapshot.template.bitmap)
+            labelView = snapshot.displayName()?.let { displayName ->
+                MapViewerTextViews.box(
+                    parent = container,
+                    text = displayName,
+                    width = 1.0,
+                    height = 1.0,
+                    size = LABEL_TEXT_SIZE,
+                    alignment = TextAlignment.MIDDLE_CENTER,
+                )
+            }
         }
     }
 
@@ -171,6 +199,8 @@ internal class MapPlacedGraphicManager(
 
     private companion object {
         const val HIT_TOLERANCE = 8.0
+        const val LABEL_TEXT_SIZE = 18.0
+        const val LABEL_GAP = 4.0
     }
 }
 
