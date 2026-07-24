@@ -1726,7 +1726,14 @@ internal class MapPlacedUnitManager(
             ?.let { limit ->
                 requested.takeIf { overrideMoveLimit }?.also { onTurnOriginReset(snapshot.id, it) }
                     ?: turnOriginProvider(snapshot.id)?.let { origin ->
-                        MoveLimit.constrain(origin, requested, limit, mapWidth, mapHeight, mapUnitsPerPixel)
+                        MoveLimit.constrain(
+                            origin,
+                            requested,
+                            MoveLimit.withWarpMultiplier(limit, snapshot.customProperties),
+                            mapWidth,
+                            mapHeight,
+                            mapUnitsPerPixel,
+                        )
                     }
             }
             ?: requested

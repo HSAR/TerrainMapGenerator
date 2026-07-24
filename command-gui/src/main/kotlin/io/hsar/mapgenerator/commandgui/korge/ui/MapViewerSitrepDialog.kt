@@ -224,7 +224,15 @@ internal class MapViewerSitrepDialog(
         synchronized(reportLock) {
             val before = observer
             val enabled = !before.sensorOptionEnabled(key)
-            val after = before.copy(customProperties = before.customProperties + (key to enabled.toString()))
+            val after = before.copy(
+                customProperties = before.customProperties + when {
+                    key == MAXIMUM_WARP_KEY && enabled -> mapOf(MAXIMUM_WARP_KEY to "true", ACTIVE_WARP_KEY to "true")
+                    key == ACTIVE_WARP_KEY && !enabled && before.sensorOptionEnabled(MAXIMUM_WARP_KEY) ->
+                        mapOf(ACTIVE_WARP_KEY to "false", MAXIMUM_WARP_KEY to "false")
+
+                    else -> mapOf(key to enabled.toString())
+                },
+            )
             onObserverCustomPropertiesChanged(before, after)
             observer = after
             unitQueryService = unitQueryService.replacing(after)

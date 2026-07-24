@@ -4,6 +4,8 @@ import kotlin.math.hypot
 
 internal object MoveLimit {
     const val PROPERTY_KEY = "moveLimit"
+    private const val ACTIVE_WARP_KEY = "activeWarp"
+    private const val MAXIMUM_WARP_KEY = "maximumWarp"
 
     fun parse(properties: Map<String, String>): Double? =
         properties[PROPERTY_KEY]
@@ -16,6 +18,13 @@ internal object MoveLimit {
             ?.takeIf { parse(mapOf(PROPERTY_KEY to it)) == null }
             ?.let { properties - PROPERTY_KEY }
             ?: properties
+
+    fun withWarpMultiplier(limit: Double, properties: Map<String, String>): Double =
+        limit * when {
+            properties.booleanProperty(MAXIMUM_WARP_KEY) -> 20.0
+            properties.booleanProperty(ACTIVE_WARP_KEY) -> 10.0
+            else -> 1.0
+        }
 
     fun constrain(
         origin: MapCoordinate,
@@ -35,6 +44,12 @@ internal object MoveLimit {
         return MapCoordinate(origin.x + dx * scale, origin.y + dy * scale)
     }
 }
+
+private fun Map<String, String>.booleanProperty(key: String): Boolean =
+    entries.firstOrNull { it.key.equals(key, ignoreCase = true) }
+        ?.value
+        ?.trim()
+        ?.lowercase() in setOf("true", "yes", "1", "on")
 
 internal fun MapActionHistory.turnOriginFor(unitId: MapPlacedObjectId): MapCoordinate? {
     overriddenTurnOriginFor(unitId)?.let { return it }

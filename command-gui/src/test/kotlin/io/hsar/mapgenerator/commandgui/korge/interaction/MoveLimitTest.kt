@@ -6,7 +6,6 @@ import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
-import java.util.*
 
 class MoveLimitTest {
     @Test
@@ -17,6 +16,14 @@ class MoveLimitTest {
         assertThat(MoveLimit.sanitize(mapOf("moveLimit" to "NaN", "other" to "value")), equalTo(mapOf("other" to "value")))
         assertThat(MoveLimit.sanitize(mapOf("moveLimit" to "Infinity")), equalTo(emptyMap()))
         assertThat(MoveLimit.sanitize(mapOf("moveLimit" to "-1")), equalTo(emptyMap()))
+    }
+
+    @Test
+    fun `applies warp movement multipliers without changing the base limit`() {
+        assertThat(MoveLimit.withWarpMultiplier(2.5, emptyMap()), equalTo(2.5))
+        assertThat(MoveLimit.withWarpMultiplier(2.5, mapOf("activeWarp" to "true")), equalTo(25.0))
+        assertThat(MoveLimit.withWarpMultiplier(2.5, mapOf("activeWarp" to "true", "maximumWarp" to "true")), equalTo(50.0))
+        assertThat(MoveLimit.withWarpMultiplier(2.5, mapOf("maximumWarp" to "true")), equalTo(50.0))
     }
 
     @Test
