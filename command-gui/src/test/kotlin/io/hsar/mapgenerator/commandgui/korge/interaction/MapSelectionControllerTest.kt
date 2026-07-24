@@ -6,6 +6,7 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
+import io.hsar.mapgenerator.commandgui.nextTestUuid
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import korlibs.korge.view.Container
@@ -470,6 +471,7 @@ class MapSelectionControllerTest {
             ),
             graphicManager = graphicManager,
             drawingStore = MapDrawingStore(),
+            uuidGenerator = ::nextTestUuid,
         )
 
     private fun graphicManager() =

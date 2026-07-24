@@ -29,6 +29,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
+import io.hsar.mapgenerator.commandgui.nextTestUuid
 import io.hsar.mapgenerator.grid.ReferenceSystem
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
@@ -128,7 +129,7 @@ class OperationSaveRoundTripTest {
             DeleteNoteAction(editedNote),
         )
 
-        val writer = OperationSaveWriter(uuidGenerator = UUID::randomUUID)
+        val writer = OperationSaveWriter(uuidGenerator = ::nextTestUuid)
         val firstSave = writer.write(
             request(
                 operationId = operationId,
@@ -228,7 +229,7 @@ class OperationSaveRoundTripTest {
             assetSource = iconSource,
         )
 
-        val firstSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val firstSave = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
@@ -243,7 +244,7 @@ class OperationSaveRoundTripTest {
         assertThat(firstTemplate.bitmap.getRgba(0, 0), equalTo(RGBA(255, 0, 0, 255)))
         assertThat(firstTemplate.bitmap.getRgba(1, 0), equalTo(RGBA(0, 0, 255, 255)))
 
-        val secondSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val secondSave = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = firstLoaded.operationId,
                 operationName = firstLoaded.operationName,
@@ -304,7 +305,7 @@ class OperationSaveRoundTripTest {
             customProperties = mapOf("callsign" to "R1", "morale" to "steady"),
         )
 
-        val firstSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val firstSave = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
@@ -328,7 +329,7 @@ class OperationSaveRoundTripTest {
             equalTo(unit.customProperties),
         )
 
-        val secondSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val secondSave = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = loaded.operationId,
                 operationName = loaded.operationName,
@@ -363,7 +364,7 @@ class OperationSaveRoundTripTest {
             normalizedHeight = 0.08,
         )
 
-        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val savePath = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
@@ -468,7 +469,7 @@ class OperationSaveRoundTripTest {
             assetSource = iconSource,
         )
 
-        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val savePath = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
@@ -518,7 +519,7 @@ class OperationSaveRoundTripTest {
             assetSource = secondSource,
         )
 
-        val firstSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val firstSave = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
@@ -532,7 +533,7 @@ class OperationSaveRoundTripTest {
         )
 
         val loaded = OperationSaveLoader().load(firstSave)
-        val secondSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val secondSave = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = loaded.operationId,
                 operationName = loaded.operationName,
@@ -592,7 +593,7 @@ class OperationSaveRoundTripTest {
         val before = UnitTemplateSnapshot(template.id, template, 0)
         val after = before.copy(template = before.template.copy(name = "S", affiliation = UnitAffiliation.Unknown))
 
-        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val savePath = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
@@ -634,7 +635,7 @@ class OperationSaveRoundTripTest {
             ),
         )
 
-        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val savePath = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
@@ -666,7 +667,7 @@ class OperationSaveRoundTripTest {
             ),
         )
 
-        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val savePath = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
@@ -686,7 +687,7 @@ class OperationSaveRoundTripTest {
         val thumbnail = BufferedImage(320, 180, BufferedImage.TYPE_INT_RGB).also {
             it.setRGB(10, 10, Color.RED.rgb)
         }
-        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val savePath = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = UUID.fromString("00000000-0000-0000-0000-0000000000d3"),
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
@@ -719,7 +720,7 @@ class OperationSaveRoundTripTest {
         }
         ImageIO.write(jpgImage, "jpg", jpgFile.toFile())
 
-        val firstSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val firstSave = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = UUID.fromString("00000000-0000-0000-0000-0000000000f4"),
                 mapImage = jpgImage,
@@ -730,7 +731,7 @@ class OperationSaveRoundTripTest {
         )
 
         val loaded = OperationSaveLoader().load(firstSave)
-        val secondSave = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val secondSave = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = loaded.operationId,
                 operationName = loaded.operationName,
@@ -750,7 +751,7 @@ class OperationSaveRoundTripTest {
 
     @Test
     fun `grid colour saves as map hex value and loads into settings`() {
-        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val savePath = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = UUID.fromString("00000000-0000-0000-0000-0000000000f5"),
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),

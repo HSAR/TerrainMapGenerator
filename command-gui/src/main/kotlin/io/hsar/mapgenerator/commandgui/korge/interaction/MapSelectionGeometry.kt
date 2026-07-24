@@ -110,6 +110,7 @@ internal fun MapPlacedObjectSnapshot.selectionFrame(
     when (this) {
         is UnitSnapshot -> selectionBounds(coordinateSpace)
             .let { ScreenSelectionFrame.fromBounds(it, coordinateSpace, viewport) }
+            .expanded(screenPadding)
 
         is GraphicSnapshot -> selectionBounds(coordinateSpace)
             .let { ScreenSelectionFrame.fromBounds(it, coordinateSpace, viewport) }

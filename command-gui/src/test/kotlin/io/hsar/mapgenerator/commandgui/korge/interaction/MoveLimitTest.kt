@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.nextTestUuid
 import korlibs.image.bitmap.Bitmap32
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
@@ -36,9 +37,9 @@ class MoveLimitTest {
     @Test
     fun `uses the latest turn boundary or current-turn creation as the origin`() {
         val history = MapActionHistory()
-        val existingId = MapPlacedObjectId(UUID.randomUUID())
-        val createdId = MapPlacedObjectId(UUID.randomUUID())
-        val template = MapViewerUnitTemplate(id = UnitTemplateId(UUID.randomUUID()), name = "Unit", bitmap = Bitmap32(1, 1))
+        val existingId = MapPlacedObjectId(nextTestUuid())
+        val createdId = MapPlacedObjectId(nextTestUuid())
+        val template = MapViewerUnitTemplate(id = UnitTemplateId(nextTestUuid()), name = "Unit", bitmap = Bitmap32(1, 1))
         val existing = unit(existingId, template, MapCoordinate(0.1, 0.2))
         val created = unit(createdId, template, MapCoordinate(0.6, 0.7))
 
@@ -54,8 +55,8 @@ class MoveLimitTest {
     @Test
     fun `shift override resets the movement origin until the next turn`() {
         val history = MapActionHistory()
-        val unitId = MapPlacedObjectId(UUID.randomUUID())
-        val template = MapViewerUnitTemplate(id = UnitTemplateId(UUID.randomUUID()), name = "Unit", bitmap = Bitmap32(1, 1))
+        val unitId = MapPlacedObjectId(nextTestUuid())
+        val template = MapViewerUnitTemplate(id = UnitTemplateId(nextTestUuid()), name = "Unit", bitmap = Bitmap32(1, 1))
         history.record(CreateObjectAction(unit(unitId, template, MapCoordinate(0.1, 0.2))))
         history.record(AddTurnLedgerEntry("Turn 1"))
 

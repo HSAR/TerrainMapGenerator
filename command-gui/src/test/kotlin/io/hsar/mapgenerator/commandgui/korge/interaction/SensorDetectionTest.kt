@@ -849,6 +849,7 @@ class SensorDetectionTest {
             mapWidth = 1_000,
             mapHeight = 1_000,
             mapUnitsPerPixel = 1.0,
+            candidateFilter = { true },
         ).single()
 
         assertThat(check.distanceUnits, closeTo(10.0, 0.0001))
@@ -1134,7 +1135,7 @@ class SensorDetectionTest {
             text,
             equalTo(
                 "New contact tentatively designated Master 4 from last known position " +
-                        "at 520 500, range 28.3U was identified as DD Contact-class destroyer. " +
+                        "at 520 500, range 28.3U was identified as unaffiliated DD Contact-class DD. " +
                         "Contact Sierra 6 lost.",
             ),
         )

@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.nextTestUuid
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -123,7 +124,7 @@ class OlympiadDawnShipTest {
             """{"hull":{"points":2,"rows":1},"armour":[[1,0]],"systems":[{"name":"drive","id":"drive"}],"class":"Scout","name":"Test"}""",
         )
         val template = MapViewerUnitTemplate(
-            id = UnitTemplateId(java.util.UUID.randomUUID()),
+            id = UnitTemplateId(nextTestUuid()),
             name = "Test",
             bitmap = korlibs.image.bitmap.Bitmap32(2, 2),
             customProperties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),
@@ -179,12 +180,12 @@ class OlympiadDawnShipTest {
             """{"hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"hangar","id":"hangar-1"}],"class":"Carrier","name":"Carrier","fighters":[{"name":"fighters","type":"standard","id":"squadron-1","mods":[],"hangar":"hangar-1"}]}""",
         )
         val carrierTemplate = MapViewerUnitTemplate(
-            id = UnitTemplateId(java.util.UUID.randomUUID()),
+            id = UnitTemplateId(nextTestUuid()),
             name = "Carrier",
             bitmap = korlibs.image.bitmap.Bitmap32(2, 2),
             customProperties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),
         )
-        val carrierId = MapPlacedObjectId(java.util.UUID.randomUUID())
+        val carrierId = MapPlacedObjectId(nextTestUuid())
         val carrierProperties = OlympiadDawnShip.instanceProperties(carrierTemplate)
         val squadronId = OlympiadDawnShip.definition(carrierProperties)!!.fighters.single().id
         val carrier = UnitSnapshot(
@@ -200,13 +201,13 @@ class OlympiadDawnShipTest {
             customProperties = carrierProperties,
         )
         val fighterTemplate = MapViewerUnitTemplate(
-            id = UnitTemplateId(java.util.UUID.randomUUID()),
+            id = UnitTemplateId(nextTestUuid()),
             name = "Fighter",
             bitmap = korlibs.image.bitmap.Bitmap32(2, 2),
             customProperties = mapOf("unitClass" to "F"),
         )
         val fighter = UnitSnapshot(
-            id = MapPlacedObjectId(java.util.UUID.randomUUID()),
+            id = MapPlacedObjectId(nextTestUuid()),
             unitTemplateId = fighterTemplate.id,
             template = fighterTemplate,
             instanceName = "Fighter 1",
@@ -218,11 +219,11 @@ class OlympiadDawnShipTest {
             customProperties = mapOf(OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to squadronId),
         )
         val unrelated = fighter.copy(
-            id = MapPlacedObjectId(java.util.UUID.randomUUID()),
+            id = MapPlacedObjectId(nextTestUuid()),
             customProperties = mapOf("unitClass" to "DD", OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to squadronId),
         )
         val statuses = OlympiadDawnShip.fighterLaunchStatuses(carrier, listOf(carrier, fighter, unrelated))
-        val duplicateCarrier = carrier.copy(id = MapPlacedObjectId(java.util.UUID.randomUUID()))
+        val duplicateCarrier = carrier.copy(id = MapPlacedObjectId(nextTestUuid()))
         val squadronStatus = OlympiadDawnShip.squadronStatus(fighter, listOf(carrier, fighter))!!
         val damagedCarrier = carrier.copy(
             customProperties = OlympiadDawnShip.updatedSquadronProperties(carrier, squadronStatus.squadronId, 3)!!,
@@ -252,7 +253,7 @@ class OlympiadDawnShipTest {
             """{"hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"hangar","id":"hangar-1"}],"class":"Carrier","name":"Carrier","fighters":[{"type":"standard","id":"squadron-1","hangar":"hangar-1"}]}""",
         )
         val template = MapViewerUnitTemplate(
-            id = UnitTemplateId(java.util.UUID.randomUUID()),
+            id = UnitTemplateId(nextTestUuid()),
             name = "Carrier",
             bitmap = korlibs.image.bitmap.Bitmap32(2, 2),
             customProperties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),

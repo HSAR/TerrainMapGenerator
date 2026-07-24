@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.save
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.geometryFor
+import io.hsar.mapgenerator.commandgui.nextTestUuid
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
@@ -103,7 +104,7 @@ class OperationSaveWriterTest {
     @Test
     fun `additional data json is written when provided`() {
         val payload = """{"custom":"value"}""".toByteArray()
-        val savePath = OperationSaveWriter(uuidGenerator = UUID::randomUUID).write(
+        val savePath = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
             request(
                 operationId = UUID.fromString("00000000-0000-0000-0000-0000000000ee"),
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
@@ -158,7 +159,7 @@ class OperationSaveWriterTest {
 
     @Test
     fun `game json stores normalized camera center`() {
-        val writer = OperationSaveWriter()
+        val writer = OperationSaveWriter(uuidGenerator = ::nextTestUuid)
         val mapImage = BufferedImage(400, 200, BufferedImage.TYPE_INT_RGB)
         val geometry = geometryFor(mapImage)
         val viewport = CameraViewport(
@@ -173,7 +174,7 @@ class OperationSaveWriterTest {
 
         val savePath = writer.write(
             request(
-                operationId = UUID.randomUUID(),
+                operationId = nextTestUuid(),
                 mapImage = mapImage,
                 mapSource = null,
                 ledgerEntries = emptyList(),
@@ -192,7 +193,7 @@ class OperationSaveWriterTest {
 
     @Test
     fun `default save directory is under documents operational command tool`() {
-        val writer = OperationSaveWriter()
+        val writer = OperationSaveWriter(uuidGenerator = ::nextTestUuid)
 
         val directory = writer.defaultSaveDirectory()
 
@@ -201,7 +202,7 @@ class OperationSaveWriterTest {
 
     @Test
     fun `default storage directory is under documents operational command tool`() {
-        val writer = OperationSaveWriter()
+        val writer = OperationSaveWriter(uuidGenerator = ::nextTestUuid)
 
         val directory = writer.defaultStorageDirectory()
 
@@ -210,7 +211,7 @@ class OperationSaveWriterTest {
 
     @Test
     fun `default save name uses the full operation name and first eight id digits`() {
-        val writer = OperationSaveWriter()
+        val writer = OperationSaveWriter(uuidGenerator = ::nextTestUuid)
 
         val path = writer.defaultSavePath(
             operationName = "Test Operation",
@@ -223,7 +224,7 @@ class OperationSaveWriterTest {
 
     @Test
     fun `default storage creates saves folder and versioned settings file`() {
-        val writer = OperationSaveWriter(storage = OperationToolStorage(tempDir))
+        val writer = OperationSaveWriter(uuidGenerator = ::nextTestUuid, storage = OperationToolStorage(tempDir))
 
         writer.ensureDefaultStorage()
 

@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.save
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.geometryFor
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
+import io.hsar.mapgenerator.commandgui.nextTestUuid
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -22,7 +23,7 @@ class OperationSaveCatalogueTest {
 
     @Test
     fun `catalogue sorts saves by most recently updated first`() {
-        val writer = OperationSaveWriter()
+        val writer = OperationSaveWriter(uuidGenerator = ::nextTestUuid)
         val mapImage = BufferedImage(128, 64, BufferedImage.TYPE_INT_RGB)
 
         writer.write(
@@ -52,7 +53,7 @@ class OperationSaveCatalogueTest {
 
     @Test
     fun `catalogue skips broken saves without failing`() {
-        val writer = OperationSaveWriter()
+        val writer = OperationSaveWriter(uuidGenerator = ::nextTestUuid)
         val mapImage = BufferedImage(128, 64, BufferedImage.TYPE_INT_RGB)
 
         writer.write(
