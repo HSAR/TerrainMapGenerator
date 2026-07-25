@@ -68,6 +68,26 @@ class OlympiadDawnShipTest {
     }
 
     @Test
+    fun `imported template properties preserve explicit unit class and mass overrides`() {
+        val cargoShip = OlympiadDawnShip.parse(
+            """{"hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"magazine","id":"mag-1","capacity":3}],"mass":10,"class":"Armed Cargo Ship Freighter","name":"Cargo"}""",
+        )
+
+        val properties = OlympiadDawnShip.importedTemplateProperties(
+            mapOf(
+                OlympiadDawnShip.UNIT_CLASS_KEY to "MV",
+                OlympiadDawnShip.MASS_KEY to "12",
+                OlympiadDawnShip.magazinePropertyKey("mag-1") to "1",
+            ),
+            cargoShip,
+        )
+
+        assertThat(properties[OlympiadDawnShip.UNIT_CLASS_KEY], equalTo("MV"))
+        assertThat(properties[OlympiadDawnShip.MASS_KEY], equalTo("12"))
+        assertThat(properties[OlympiadDawnShip.magazinePropertyKey("mag-1")], equalTo("1"))
+    }
+
+    @Test
     fun `accepts ships without armour`() {
         val definition = OlympiadDawnShip.parse(
             """{"hull":{"points":1,"rows":1},"armour":[],"systems":[],"weapons":[],"class":"Scout","name":"Test"}""",

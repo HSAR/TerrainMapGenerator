@@ -671,6 +671,52 @@ class OperationSaveRoundTripTest {
     }
 
     @Test
+    fun `edited imported ship template unitClass override round trips through the save file`() {
+        val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000d6")
+        val definition = io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip.parse(
+            """{"hull":{"points":1,"rows":1},"armour":[],"systems":[],"mass":10,"class":"Armed Cargo Ship Freighter","name":"Cargo"}""",
+        )
+        val template = MapViewerUnitTemplate(
+            id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000037")),
+            name = "Cargo",
+            bitmap = Bitmap32(4, 4) { _, _ -> RGBA(255, 0, 0, 255) },
+            customProperties = io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),
+        )
+        val before = UnitTemplateSnapshot(template.id, template, 0)
+        val after = before.copy(
+            template = before.template.copy(
+                customProperties = io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip.importedTemplateProperties(
+                    before.template.customProperties + ("unitClass" to "MV"),
+                    definition,
+                ),
+            ),
+        )
+
+        val savePath = OperationSaveWriter(uuidGenerator = ::nextTestUuid).write(
+            request(
+                operationId = operationId,
+                mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                ledgerEntries = listOf(
+                    CreateUnitTemplateAction(before),
+                    EditUnitTemplateAction(
+                        id = before.id,
+                        forward = io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplatePatch.diff(before, after).forward,
+                        backward = io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplatePatch.diff(before, after).backward,
+                        beforeSnapshot = before,
+                        afterSnapshot = after,
+                    ),
+                ),
+            ),
+            tempDir.resolve("edit-imported-template-unit-class-save.oct.zip"),
+        )
+
+        val loaded = OperationSaveLoader().load(savePath)
+        val edit = loaded.ledgerEntries.filterIsInstance<EditUnitTemplateAction>().single()
+        assertThat(edit.afterSnapshot?.template?.customProperties?.get("unitClass"), equalTo("MV"))
+    }
+
+    @Test
     fun `drawing colour round trips through the save file`() {
         val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000d1")
         val drawing = DrawingSnapshot(

@@ -50,6 +50,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.ReplayedLedger
 import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.canStartPlacementDrag
 import io.hsar.mapgenerator.commandgui.korge.interaction.displayName
 import io.hsar.mapgenerator.commandgui.korge.interaction.turnOriginFor
 import io.hsar.mapgenerator.commandgui.korge.interaction.withDisplayName
@@ -447,6 +448,9 @@ internal class MapViewerScene(
                             } else {
                                 currentTool
                             }
+
+                        fun canStartPlacementDrag(): Boolean =
+                            effectiveTool().canStartPlacementDrag()
 
                         fun renderTurnThumbnailAsset(): GeneratedImageAsset {
                             val assetId = UUID.randomUUID()
@@ -984,17 +988,21 @@ internal class MapViewerScene(
                                 unitManager.replaceUnitTemplate(after)
                             },
                             onTransientNotice = { message -> transientNotice?.show(message) },
-                            canStartUnitDrag = { effectiveTool() == MapViewerTool.SELECT },
+                            canStartUnitDrag = ::canStartPlacementDrag,
                             initialUnitTemplates = emptyList(),
                         )
                         graphicSidebar = MapViewerGraphicSidebar(
                             root = sceneLayers.ui,
                             dialogManager = dialogManager,
                             contextMenuManager = contextMenuManager,
+                            canEdit = { !isReadOnly() },
+                            canStartGraphicDrag = ::canStartPlacementDrag,
                             onGraphicDropped = { template, screenPoint ->
-                                unitManager.resolvePlacement(screenPoint)?.let { coordinate ->
-                                    objectController.createGraphic(template, coordinate)
-                                        .also { recordLedgerEntry(CreateObjectAction(it)) }
+                                if (!isReadOnly()) {
+                                    unitManager.resolvePlacement(screenPoint)?.let { coordinate ->
+                                        objectController.createGraphic(template, coordinate)
+                                            .also { recordLedgerEntry(CreateObjectAction(it)) }
+                                    }
                                 }
                             },
                             onTemplateCreated = { snapshot -> recordLedgerEntry(CreateGraphicTemplateAction(snapshot)) },

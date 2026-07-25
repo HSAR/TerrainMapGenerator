@@ -5,3 +5,6 @@ internal enum class MapViewerTool {
     MEASURE,
     DRAW,
 }
+
+internal fun MapViewerTool.canStartPlacementDrag(): Boolean =
+    this == MapViewerTool.SELECT

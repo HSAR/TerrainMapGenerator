@@ -213,7 +213,7 @@ internal object OlympiadDawnShip {
         properties: Map<String, String>,
         definition: OlympiadDawnShipDefinition,
     ): Map<String, String> =
-        (properties - UNIT_CLASS_KEY - MASS_KEY) + mapOf(
+        mapOf(
             DEFINITION_KEY to definition.sourceJson,
             DEFAULT_DAMAGE_KEY to encodeDamage(intactDamage()),
         ) + buildMap {
@@ -222,7 +222,7 @@ internal object OlympiadDawnShip {
             definition.systems.filter { it.capacity != null }.forEach { system ->
                 put(magazinePropertyKey(system.id), system.capacity.toString())
             }
-        }
+        } + (properties - DEFINITION_KEY - DEFAULT_DAMAGE_KEY)
 
     fun importedMoveLimit(definition: OlympiadDawnShipDefinition): Double =
         definition.systems.count { it.name == "Impulse Drive" } / 2.0

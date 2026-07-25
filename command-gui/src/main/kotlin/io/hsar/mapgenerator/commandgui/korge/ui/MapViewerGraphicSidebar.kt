@@ -28,6 +28,8 @@ internal class MapViewerGraphicSidebar(
     private val onTemplateDeleted: (GraphicTemplateSnapshot) -> Unit,
     private val onTemplateEdited: (GraphicTemplateSnapshot, GraphicTemplateSnapshot) -> Unit,
     private val onTransientNotice: (String) -> Unit = {},
+    private val canEdit: () -> Boolean = { true },
+    private val canStartGraphicDrag: () -> Boolean = { true },
 ) {
     private val overlay = root.container()
     private val toggleButton = overlay.container()
@@ -70,6 +72,7 @@ internal class MapViewerGraphicSidebar(
     }
 
     fun addTemplate(snapshot: GraphicTemplateSnapshot, notify: Boolean = true) {
+        if (notify && !canEdit()) return
         templates.removeAll { it.id == snapshot.id }
         templates.add(snapshot.index.coerceIn(0, templates.size), snapshot)
         dialogWindow?.refresh()
@@ -77,6 +80,7 @@ internal class MapViewerGraphicSidebar(
     }
 
     fun replaceTemplate(snapshot: GraphicTemplateSnapshot, notify: Boolean = true): GraphicTemplateSnapshot? {
+        if (notify && !canEdit()) return null
         val index = templates.indexOfFirst { it.id == snapshot.id }
         if (index < 0) return null
         val before = templates[index]
@@ -87,7 +91,7 @@ internal class MapViewerGraphicSidebar(
     }
 
     fun removeTemplate(id: GraphicTemplateId, notify: Boolean = true): GraphicTemplateSnapshot? =
-        templates.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let { index ->
+        if (notify && !canEdit()) null else templates.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let { index ->
             templates.removeAt(index).also {
                 dialogWindow?.refresh()
                 if (notify) onTemplateDeleted(it)
@@ -100,7 +104,7 @@ internal class MapViewerGraphicSidebar(
         val state = drag ?: return
         state.preview.xy(pointer.x + PREVIEW_OFFSET, pointer.y + PREVIEW_OFFSET)
         if (leftHeld) return
-        if (!blocksScreenPoint(pointer)) onGraphicDropped(state.template, pointer)
+        if (canEdit() && !blocksScreenPoint(pointer)) onGraphicDropped(state.template, pointer)
         state.preview.removeFromParent()
         drag = null
     }
@@ -196,6 +200,7 @@ internal class MapViewerGraphicSidebar(
     }
 
     private fun beginDrag(template: GraphicTemplateSnapshot) {
+        if (!canStartGraphicDrag()) return
         dragLayer.removeChildren()
         val preview = dragLayer.container()
         MapViewerUiBoxes.imageBox(preview, template.template.bitmap, PREVIEW_WIDTH, PREVIEW_HEIGHT)
