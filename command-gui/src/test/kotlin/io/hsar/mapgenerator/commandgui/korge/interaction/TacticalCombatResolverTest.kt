@@ -33,6 +33,20 @@ class TacticalCombatResolverTest {
     }
 
     @Test
+    fun `torpedo firepower rolls one die per surviving torpedo`() {
+        val torpedo = weapon(torpedo = true).copy(quantity = 3)
+        val resolution = TacticalCombatResolver.resolve(
+            ship(),
+            listOf(torpedo),
+            listOf(TacticalWeaponContribution(torpedo.key, torpedo.name, "F", 3)),
+            rollD6 = { 4 },
+        )
+
+        assertThat(resolution.diceRolled, equalTo(3))
+        assertThat(resolution.damage, equalTo(12))
+    }
+
+    @Test
     fun `interception removes incoming weapons before their attack resolves`() {
         val salvo = weapon(salvo = true).copy(key = "salvo")
         val beam = weapon().copy(key = "beam")

@@ -199,6 +199,20 @@ class LedgerEntryHistoryTest {
     }
 
     @Test
+    fun `ledger entries describe the change for undo feedback`() {
+        val note = MapNoteSnapshot(
+            id = MapNoteId(UUID.randomUUID()),
+            title = "Deployment plan",
+            body = "",
+        )
+
+        assertThat(AddTurnLedgerEntry("Turn 2").changeDescription(), equalTo("added Turn 2"))
+        assertThat(CreateNoteAction(note).changeDescription(), equalTo("created note Deployment plan"))
+        assertThat(DeleteNoteAction(note).changeDescription(), equalTo("deleted note Deployment plan"))
+        assertThat(ReorderNotesAction(emptyList(), emptyList()).changeDescription(), equalTo("reordered notes"))
+    }
+
+    @Test
     fun `batch ledger entries undo and redo children as one action`() {
         val history = MapActionHistory()
         val controller = TestLedgerController()

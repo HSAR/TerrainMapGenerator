@@ -210,11 +210,13 @@ internal object TacticalTargetingResolver {
         }
     }
 
-    private fun weaponFirepower(weapon: TacticalWeaponStatus, range: Double): Int = when {
+    private fun weaponFirepower(weapon: TacticalWeaponStatus, range: Double): Int = singleWeaponFirepower(weapon, range) * weapon.quantity
+
+    private fun singleWeaponFirepower(weapon: TacticalWeaponStatus, range: Double): Int = when {
         weapon.fighterWeapon && range > FIGHTER_WEAPON_RANGE_U + RANGE_EPSILON -> 0
         weapon.pointDefense -> if (range < OlympiadDawnBeamRules.RANGE_BAND_SIZE_U) 1 else 0
         weapon.submunition -> OlympiadDawnBeamRules.firepowerAtRange(3, range)
-        weapon.beamClass != null -> OlympiadDawnBeamRules.firepowerAtRange(weapon.beamClass, range) * weapon.quantity
+        weapon.beamClass != null -> OlympiadDawnBeamRules.firepowerAtRange(weapon.beamClass, range)
         weapon.torpedo && range <= 12.0 -> 1
         (weapon.salvo || weapon.salvoRack) && range <= 12.0 -> 6
         else -> 0

@@ -68,7 +68,8 @@ internal object TacticalCombatResolver {
                     dieResults += TacticalDieResult(weapon.name, value, resolved, reducedDamage(resolved.coerceAtMost(contribution.firepower)))
                 }
 
-                weapon.torpedo -> roll().let { value ->
+                weapon.torpedo -> repeat(contribution.firepower.coerceAtLeast(0)) {
+                    val value = roll()
                     val resolved = (value + attackModifier).coerceIn(1, 6)
                     val inflicted = resolved.takeIf { it >= 4 } ?: 0
                     dieResults += TacticalDieResult(weapon.name, value, resolved, reducedDamage(inflicted))

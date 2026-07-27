@@ -18,6 +18,7 @@ import kotlin.collections.forEachIndexed
 import kotlin.collections.lastIndex
 import kotlin.collections.toList
 import kotlin.let
+import kotlin.text.trimEnd
 
 internal data class MapPlacedObjectId(
     val value: UUID,
@@ -145,6 +146,30 @@ internal interface LedgerEntry {
 
     fun redo(controller: LedgerController)
 }
+
+internal fun LedgerEntry.changeDescription(): String =
+    when (this) {
+        is CreateObjectAction -> "created ${snapshot.name}"
+        is DeleteObjectAction -> "deleted ${snapshot.name}"
+        is EditObjectAction -> "edited an item"
+        is BatchLedgerEntry -> "changed ${entries.size} items"
+        is AddTurnLedgerEntry -> "added ${name}"
+        is CreateUnitTemplateAction -> "created unit template ${snapshot.template.name}"
+        is DeleteUnitTemplateAction -> "deleted unit template ${snapshot.template.name}"
+        is EditUnitTemplateAction -> "edited unit template ${afterSnapshot?.template?.name ?: beforeSnapshot?.template?.name ?: ""}"
+            .trimEnd()
+
+        is CreateGraphicTemplateAction -> "created graphic template ${snapshot.template.name}"
+        is DeleteGraphicTemplateAction -> "deleted graphic template ${snapshot.template.name}"
+        is EditGraphicTemplateAction -> "edited graphic template ${afterSnapshot?.template?.name ?: beforeSnapshot?.template?.name ?: ""}"
+            .trimEnd()
+
+        is CreateNoteAction -> "created note ${snapshot.title}"
+        is EditNoteAction -> "edited a note"
+        is DeleteNoteAction -> "deleted note ${snapshot.title}"
+        is ReorderNotesAction -> "reordered notes"
+        else -> "changed an item"
+    }
 
 internal data class CreateObjectAction(
     val snapshot: MapPlacedObjectSnapshot,

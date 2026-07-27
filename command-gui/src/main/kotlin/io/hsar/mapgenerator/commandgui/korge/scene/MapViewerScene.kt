@@ -51,6 +51,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.TurnPanelMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.canStartPlacementDrag
+import io.hsar.mapgenerator.commandgui.korge.interaction.changeDescription
 import io.hsar.mapgenerator.commandgui.korge.interaction.displayName
 import io.hsar.mapgenerator.commandgui.korge.interaction.turnOriginFor
 import io.hsar.mapgenerator.commandgui.korge.interaction.withDisplayName
@@ -1098,6 +1099,7 @@ internal class MapViewerScene(
                             val wasReadOnly = turnMode is TurnPanelMode.ReadOnly
                             actionHistory.undoEntry(ledgerController)?.let {
                                 autosaveController.enqueue(it)
+                                transientNotice?.show("Undid: ${it.changeDescription()}")
                                 if (wasReadOnly && !actionHistory.canRedo) {
                                     turnMode = TurnPanelMode.Edit
                                 }
@@ -1109,6 +1111,7 @@ internal class MapViewerScene(
                             val wasReadOnly = turnMode is TurnPanelMode.ReadOnly
                             actionHistory.redoEntry(ledgerController)?.let {
                                 autosaveController.enqueue(it)
+                                transientNotice?.show("Redid: ${it.changeDescription()}")
                                 if (wasReadOnly && !actionHistory.canRedo) {
                                     turnMode = TurnPanelMode.Edit
                                 }

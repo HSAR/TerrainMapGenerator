@@ -157,6 +157,30 @@ class TacticalTargetingResolverTest {
     }
 
     @Test
+    fun `torpedo fighter squadrons contribute one torpedo per remaining fighter`() {
+        val definition = OlympiadDawnShip.parse(
+            """{"name":"Carrier","class":"Carrier","hull":{"points":1,"rows":1},"armour":[],"systems":[],"fighters":[{"type":"torpedo","id":"squadron"}]}""",
+        )
+        val carrier = ship(1, "Carrier", 0.5, 0.5, affiliation = UnitAffiliation.Friend, definition = definition).copy(
+            customProperties = mapOf(
+                OlympiadDawnShip.DEFINITION_KEY to definition.sourceJson,
+                OlympiadDawnShip.DAMAGE_KEY to OlympiadDawnShip.encodeDamage(OlympiadDawnShipDamage(remainingFighters = mapOf("squadron" to 3))),
+            ),
+        )
+        val sourceProperties = mapOf("unitClass" to "F", OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to "squadron")
+        val source = UnitSnapshot(
+            objectId(2), UnitTemplateId(uuid(102)), template(2, sourceProperties, UnitAffiliation.Friend), "Torpedo Fighters", false, null,
+            MapCoordinate(0.5, 0.5), 0.01, 0.01, sourceProperties,
+        )
+        val target = ship(3, "Hostile Ship", 0.5, 0.499, affiliation = UnitAffiliation.Hostile)
+
+        val report = resolve(source, listOf(carrier, source, target))
+
+        assertThat(report.weapons.single().quantity, equalTo(3))
+        assertThat(report.targets.single().firepower, equalTo(3))
+    }
+
+    @Test
     fun `operational ECM modules provide automatic and manual targeting solutions`() {
         val definition = OlympiadDawnShip.parse(
             """{"name":"ECM Ship","class":"Frigate","hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"ecm","id":"ecm-1"},{"name":"ecm","id":"ecm-2"}]}""",
