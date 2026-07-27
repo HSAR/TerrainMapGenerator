@@ -712,20 +712,20 @@ internal class MapViewerSitrepDialog(
                 gridLayer,
             )
             val conditionsText = report.displayText.substringBefore(observerPositionText).trim()
-            val lostContactText = lostContacts.joinToString(" ") { "${SensorDetection.lostContactText(it)}." }
+            val lostContactText = lostContacts.joinToString("\n") { "${SensorDetection.lostContactText(it)}." }
             val reportText = if (report.visibleChecks.isEmpty() && lostContacts.isEmpty()) {
                 report.displayText
             } else {
-                listOf(conditionsText, observerPositionText).filter { it.isNotBlank() }.joinToString(" ")
+                listOf(conditionsText, observerPositionText).filter { it.isNotBlank() }.joinToString("\n")
             }
             return report.copy(
                 unidentifiedChecks = emptyList(),
                 displayText = listOf(reportText, identificationText, lostContactText)
                     .filter { it.isNotBlank() }
-                    .joinToString(" "),
+                    .joinToString("\n"),
                 copyText = listOf(reportText, identificationText, lostContactText)
                     .filter { it.isNotBlank() }
-                    .joinToString(" "),
+                    .joinToString("\n"),
             )
         }
 

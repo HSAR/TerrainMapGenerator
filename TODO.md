@@ -17,8 +17,6 @@
 - `java.lang.IllegalStateException: Epsilon X square index 100 is outside supported designators.`
     - Input boxes should clamp to min/max permitted values when user input would violate them.
 - Generic perf pass on all dynamically sized panels, these should not rebuild trees or force redraw per frame when scrolling
-- Dialog shadows should not draw over other dialogs
 - Can't delete unit types in the new operation screen
 - Collapsed unit types list is not a universal list
-- Text box cursor drifts away from correct characters especially over multiple lines
 - Text selection highlight geometry not correct

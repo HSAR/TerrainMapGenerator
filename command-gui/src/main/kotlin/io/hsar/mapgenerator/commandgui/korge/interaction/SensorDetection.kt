@@ -332,7 +332,7 @@ internal object SensorDetection {
             if (observer.customProperties.booleanProperty("inNebula")) add(NEBULAR_INTERFERENCE_CONDITIONS)
             if (ecmIntensity > 0) add(ELECTRONIC_WARFARE_CONDITIONS)
         } else emptyList()
-        val displayText = (navrepConditions + reportText).joinToString(" ")
+        val displayText = (navrepConditions + reportText).joinToString("\n")
         return SitrepVisibilityReport(
             displayText = displayText,
             copyText = displayText,
@@ -464,7 +464,7 @@ internal object SensorDetection {
             if (sensorConditionsPoor) add(NEBULAR_INTERFERENCE_CONDITIONS)
             if (electronicWarfare) add(ELECTRONIC_WARFARE_CONDITIONS)
         }
-        return (conditions + report).joinToString(" ")
+        return (conditions + report).joinToString("\n")
     }
 
     fun lostContactText(lost: SitrepLostContact): String =
@@ -503,7 +503,7 @@ internal object SensorDetection {
     ): String =
         checks
             .sortedBy { contactNumbers.getValue(it.unit.id) }
-            .joinToString(" ") { check ->
+            .joinToString("\n") { check ->
                 val position = formatPosition(check.unit, mapWidth, mapHeight, gridLayer)
                 if (check.unit.id in previouslyDetectedIds) {
                     "Contact Sierra ${contactNumbers.getValue(check.unit.id)} at $position bearing ${formatBearing(check.unit.facingDegrees)} ${
@@ -522,7 +522,7 @@ internal object SensorDetection {
             .groupBy { it.contactId }
             .values
             .sortedBy { contactSegments -> contactSegments.minOf { it.sierraNumber } }
-            .joinToString(" ") { contactSegments ->
+            .joinToString("\n") { contactSegments ->
                 val first = contactSegments.first()
                 val clauses = contactSegments.flatMap { it.clauses }
                 buildString {
@@ -706,14 +706,14 @@ internal object SensorDetection {
             if (visibleChecks.isEmpty()) {
                 append('.')
                 if (emptySummaryText.isNotBlank()) {
-                    append(' ')
+                    append('\n')
                     append(emptySummaryText)
                 }
             } else {
-                append(". ")
+                append(".\n")
                 visibleChecks.forEachIndexed { index, check ->
                     if (index > 0) {
-                        append(' ')
+                        append('\n')
                     }
                     append(check.unit.navrepReportLabel())
                     append(" has position ")

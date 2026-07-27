@@ -462,8 +462,8 @@ class SensorDetectionTest {
         assertThat(
             report.displayText,
             equalTo(
-                "Poor sensor conditions due to nebular interference. Poor sensor conditions due to electronic warfare. " +
-                        "Position 500 500 bearing unknown. No contacts.",
+                "Poor sensor conditions due to nebular interference.\nPoor sensor conditions due to electronic warfare.\n" +
+                        "Position 500 500 bearing unknown.\nNo contacts.",
             ),
         )
     }
@@ -505,7 +505,7 @@ class SensorDetectionTest {
                 emptySummaryText = "No hostile contacts to report.",
                 sensorConditionsPoor = true,
             ),
-            equalTo("Poor sensor conditions due to nebular interference. Contact actively radiating as Sierra 1 at 510 500, range 10U has unknown midweight classification."),
+            equalTo("Poor sensor conditions due to nebular interference.\nContact actively radiating as Sierra 1 at 510 500, range 10U has unknown midweight classification."),
         )
     }
 
@@ -578,8 +578,8 @@ class SensorDetectionTest {
         assertThat(
             text,
             equalTo(
-                "Poor sensor conditions due to nebular interference. Poor sensor conditions due to electronic warfare. " +
-                        "Contact detected at extreme range as Sierra 1 at 500 500, range 5U is faint sensor track. " +
+                "Poor sensor conditions due to nebular interference.\nPoor sensor conditions due to electronic warfare.\n" +
+                        "Contact detected at extreme range as Sierra 1 at 500 500, range 5U is faint sensor track.\n" +
                         "Contact detected at extreme range as Sierra 2 at 500 500, range 7U is sensor ghost.",
             ),
         )
@@ -1260,7 +1260,7 @@ class SensorDetectionTest {
         assertThat(
             text,
             equalTo(
-                "Contact Sierra 1 at D8 39-48 range 18U is identified as a Sword-class heavy cruiser. " +
+                "Contact Sierra 1 at D8 39-48 range 18U is identified as a Sword-class heavy cruiser.\n" +
                         "Contact Sierra 2 has unknown classification.",
             ),
         )
@@ -1315,7 +1315,7 @@ class SensorDetectionTest {
             text,
             equalTo(
                 "New contact tentatively designated Master 4 from last known position " +
-                        "at 520 500, range 28.3U was identified as unaffiliated DD Contact-class DD. " +
+                        "at 520 500, range 28.3U was identified as unaffiliated DD Contact-class DD.\n" +
                         "Contact Sierra 6 lost was previously identified as unaffiliated DD Contact-class DD.",
             ),
         )
