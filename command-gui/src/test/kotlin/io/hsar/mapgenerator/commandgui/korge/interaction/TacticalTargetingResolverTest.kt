@@ -19,12 +19,13 @@ class TacticalTargetingResolverTest {
             affiliation = UnitAffiliation.Neutral,
             weapons = """[{"id":"wide","name":"beam","class":3,"leftArc":"F","numArcs":2},{"id":"forward","name":"beam","class":2,"leftArc":"F","numArcs":1}]""",
         )
-        val forward = ship(2, "Forward", 0.5, 0.495)
+        val forward = ship(2, "Forward", 0.5, 0.495, unitClass = "FF")
         val starboard = ship(3, "Starboard", 0.504, 0.499)
 
         val report = resolve(source, listOf(starboard, forward))
 
         assertThat(report.targets.map(TacticalTarget::targetName), equalTo(listOf("Forward", "Starboard")))
+        assertThat(report.targets.map(TacticalTarget::shipClass), equalTo(listOf("FF", "Frigate")))
         assertThat(report.targets.map(TacticalTarget::firepower), equalTo(listOf(5, 3)))
         assertThat(report.targets.first().contributions.map(TacticalWeaponContribution::weaponKey), equalTo(listOf("wide", "forward")))
         assertThat(report.targets.first().rangeU, closeTo(5.0, 0.0001))
@@ -112,6 +113,7 @@ class TacticalTargetingResolverTest {
         )
 
         assertThat(report.targets.map(TacticalTarget::targetName), equalTo(listOf("Fighter")))
+        assertThat(report.targets.single().shipClass, equalTo("F"))
         assertThat(report.targets.single().contributions.single().weaponKey, equalTo("beam"))
     }
 
@@ -183,8 +185,10 @@ class TacticalTargetingResolverTest {
         affiliation: UnitAffiliation? = UnitAffiliation.Hostile,
         weapons: String = """[{"id":"beam","name":"beam","class":3,"leftArc":"F","numArcs":6}]""",
         definition: OlympiadDawnShipDefinition = definition(weapons),
+        unitClass: String? = null,
     ): UnitSnapshot {
-        val properties = mapOf(OlympiadDawnShip.DEFINITION_KEY to definition.sourceJson)
+        val properties = mapOf(OlympiadDawnShip.DEFINITION_KEY to definition.sourceJson) +
+                unitClass?.let { mapOf("unitClass" to it) }.orEmpty()
         return UnitSnapshot(
             id = objectId(id),
             unitTemplateId = UnitTemplateId(uuid(id + 100)),

@@ -39,6 +39,7 @@ internal data class TacticalTarget(
     val firepower: Int,
     val contributions: List<TacticalWeaponContribution>,
     val manualEcm: Boolean = false,
+    val shipClass: String? = null,
 )
 
 internal data class TacticalTargetingReport(
@@ -204,6 +205,7 @@ internal object TacticalTargetingResolver {
                 arcs = it.map(TacticalWeaponContribution::arc).distinct(),
                 firepower = it.sumOf(TacticalWeaponContribution::firepower),
                 contributions = it,
+                shipClass = target.unitClassLabel() ?: target.shipDefinition()?.shipClass,
             )
         }
     }

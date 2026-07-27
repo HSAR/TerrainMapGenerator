@@ -159,13 +159,13 @@ internal class MapViewerTacticalDialog(
             MapViewerTextViews.leftBox(emptyState, "No available targets", width, ROW_HEIGHT) { x = TEXT_INSET }
             return
         }
-        report.targets.forEachIndexed { index, target ->
+        report.targets.forEach { target ->
             val expanded = target.targetId == expandedTargetId
             val panel = parent.container().xy(0.0, top)
             MapViewerCollapsiblePanel.header(
                 panel, width, ROW_HEIGHT,
-                if (target.manualEcm) "${index + 1}. ${target.targetName} | ECM" else
-                    "${index + 1}. ${target.targetName} | ${formatRange(target.rangeU)}U | ${target.firepower} FP",
+                if (target.manualEcm) "${target.shipClassPrefix()}${target.targetName} | ECM" else
+                    "${target.shipClassPrefix()}${target.targetName} | ${formatRange(target.rangeU)}U | ${target.firepower} FP",
                 expanded,
             ) {
                 expandedTargetId = if (expanded) null else target.targetId
@@ -227,6 +227,8 @@ internal class MapViewerTacticalDialog(
             val rounds = magazineRemaining ?: 0
             "$name - $rounds ${if (rounds == 1) "Round" else "Rounds"} Remaining"
         } else name
+
+    private fun TacticalTarget.shipClassPrefix(): String = shipClass?.let { "$it " }.orEmpty()
 
     private fun selectableWeaponKeys(): Set<String> = expandedTargetId
         ?.let { targetId -> report.targets.firstOrNull { it.targetId == targetId } }
