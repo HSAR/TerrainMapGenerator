@@ -624,7 +624,15 @@ internal class MapViewerSitrepDialog(
             sensorReportMode = reportMode.sensorReportMode,
             ecmIntensity = ecmIntensity,
         )
-        reportState.sensorContactIds += assessment.trackableChecks().map { it.unit.id }
+        val destroyedContactIds = assessment.trackableChecks()
+            .filter { it.unit.destroyed }
+            .map { it.unit.id }
+            .toSet()
+        reportState.sensorContactIds += assessment.trackableChecks()
+            .filterNot { it.unit.destroyed }
+            .map { it.unit.id }
+        reportState.sensorContactIds.removeAll(destroyedContactIds)
+        reportState.identifiedIds.removeAll(destroyedContactIds)
         reportState.identifiedIds.removeAll(
             assessment.trackableChecks().filter { it.ecmContact != io.hsar.mapgenerator.commandgui.korge.interaction.EcmSensorContact.NONE }
                 .map { it.unit.id },
@@ -647,6 +655,26 @@ internal class MapViewerSitrepDialog(
             ecmIntensity = ecmIntensity,
         )
         if (reportMode != ReportMode.SCIREP) {
+            val currentChecksById = assessment.trackableChecks().associateBy { it.unit.id }
+            val lostContacts = previousContactState.sensorContactIds
+                .filter { it !in currentChecksById || currentChecksById.getValue(it).unit.destroyed }
+                .mapNotNull { contactId ->
+                    previousContactState.lastSeenContacts[contactId]
+                        ?.let { lost ->
+                            val currentCheck = currentChecksById[contactId]
+                            lost.copy(
+                                wasFriendly = lost.wasFriendly || currentCheck?.unit?.template?.affiliation?.let {
+                                    it == observer.template.affiliation
+                                } == true,
+                                lostDueToEnemyAction = lost.wasIdentified &&
+                                        (lost.wasFriendly || currentCheck?.unit?.template?.affiliation?.let {
+                                            it == observer.template.affiliation
+                                        } == true) &&
+                                        currentCheck?.destroyedWithinIdentificationRange() == true,
+                            )
+                        }
+                }
+                .filter { it.wasIdentified && it.wasFriendly }
             report.trackableChecks().forEach { check ->
                 ensureSierraContactNumber(check.unit.id)
             }
@@ -662,10 +690,10 @@ internal class MapViewerSitrepDialog(
             )
             return report.copy(
                 unidentifiedChecks = emptyList(),
-                displayText = listOf(report.displayText, identificationText)
+                displayText = listOf(report.displayText, identificationText, lostContacts.joinToString(" ") { SensorDetection.lostContactText(it) })
                     .filter { it.isNotBlank() }
                     .joinToString(" "),
-                copyText = listOf(report.copyText, identificationText)
+                copyText = listOf(report.copyText, identificationText, lostContacts.joinToString(" ") { SensorDetection.lostContactText(it) })
                     .filter { it.isNotBlank() }
                     .joinToString(" "),
             )
@@ -680,10 +708,14 @@ internal class MapViewerSitrepDialog(
             },
         )
 
-        val physicallyDetectedIds = report.trackableChecks().mapTo(mutableSetOf()) { it.unit.id }
+        val currentChecksById = report.trackableChecks().associateBy { it.unit.id }
+        val activeTrackableChecks = currentChecksById.values.filterNot { it.unit.destroyed }
+        val physicallyDetectedIds = currentChecksById.values
+            .filterNot { it.unit.destroyed }
+            .mapTo(mutableSetOf()) { it.unit.id }
         val matchedLostContactIds = mutableSetOf<MapPlacedObjectId>()
         val lowConfidenceContacts = mutableMapOf<MapPlacedObjectId, SitrepLostContact>()
-        report.trackableChecks()
+        activeTrackableChecks
             .filter { it.unit.id !in sierraContactNumbers }
             .forEach { check ->
                 val matchingLost = (previousContactState.lostContacts + reportState.lostContacts)
@@ -698,7 +730,7 @@ internal class MapViewerSitrepDialog(
                 }
             }
         (
-                report.trackableChecks() +
+                activeTrackableChecks +
                         scirepReport.visibleChecks +
                         scirepReport.unidentifiedChecks
                 ).distinctBy { it.unit.id }.forEach { check ->
@@ -708,6 +740,19 @@ internal class MapViewerSitrepDialog(
             .filter { it !in physicallyDetectedIds }
             .mapNotNull { contactId ->
                 previousContactState.lastSeenContacts[contactId]
+                    ?.let { lost ->
+                        val currentCheck = currentChecksById[contactId]
+                        lost.copy(
+                            wasFriendly = lost.wasFriendly || currentCheck?.unit?.template?.affiliation?.let {
+                                it == observer.template.affiliation
+                            } == true,
+                            lostDueToEnemyAction = lost.wasIdentified &&
+                                    (lost.wasFriendly || currentCheck?.unit?.template?.affiliation?.let {
+                                        it == observer.template.affiliation
+                                    } == true) &&
+                                    currentCheck?.destroyedWithinIdentificationRange() == true,
+                        )
+                    }
                     ?: previousContactState.lastSeenPositions[contactId]?.let { position ->
                         previousContactState.sierraContactNumbers[contactId]?.let { number ->
                             SitrepLostContact(
@@ -723,7 +768,7 @@ internal class MapViewerSitrepDialog(
         val historicalLost = (previousContactState.lostContacts + reportState.lostContacts + newlyLost)
             .filterNot { it.contactId in matchedLostContactIds }
             .distinctBy { it.contactId }
-        val currentLastSeen = report.trackableChecks()
+        val currentLastSeen = activeTrackableChecks
             .filter { it.unit.id in reportState.sensorContactIds }
             .associate { check ->
                 check.unit.id to SitrepLostContact(
@@ -732,6 +777,8 @@ internal class MapViewerSitrepDialog(
                     lastSeenPosition = check.unit.mapCoordinate,
                     lastSeenRangeUnits = check.distanceUnits,
                     wasIdentified = check.unit.id in identifiedIds,
+                    wasFriendly = observer.template.affiliation != null &&
+                            check.unit.template.affiliation == observer.template.affiliation,
                     unitTypeName = check.unit.template.name,
                     unitClassCode = check.unit.unitClassLabel(),
                 )
@@ -760,13 +807,16 @@ internal class MapViewerSitrepDialog(
             observerAffiliation = observer.template.affiliation,
             identificationAnnouncements = scirepReport.visibleChecks.filter { it.unit.id !in previousContactState.identifiedIds },
             previouslyDetectedIds = previousContactState.sensorContactIds,
-            lostContacts = newlyLost.filter { it.contactId !in matchedLostContactIds },
+            lostContacts = newlyLost.filter { it.contactId !in matchedLostContactIds && !(it.wasIdentified && it.wasFriendly) },
             lowConfidenceContacts = lowConfidenceContacts,
             sensorConditionsPoor = reportMode == ReportMode.SCIREP && observer.sensorOptionEnabled(IN_NEBULA_KEY),
             electronicWarfare = ecmIntensity > 0,
         )
         return scirepReport.copy(displayText = scirepText, copyText = scirepText)
     }
+
+    private fun io.hsar.mapgenerator.commandgui.korge.interaction.SensorVisibilityCheck.destroyedWithinIdentificationRange(): Boolean =
+        unit.destroyed && distanceUnits <= identificationRangeUnits
 
     private fun reportRowLabel(check: io.hsar.mapgenerator.commandgui.korge.interaction.SensorVisibilityCheck): String =
         SensorDetection.hiddenContactLabel(

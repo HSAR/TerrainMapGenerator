@@ -1,7 +1,9 @@
 package io.hsar.mapgenerator.commandgui.save
 
+import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepContactState
+import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepLostContact
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -134,6 +136,30 @@ class SitrepContactPersistenceTest {
         assertThat(
             persistence.stateFor(SitrepContactKey(2, observer)),
             equalTo(state.copy(usedSierraContactNumbers = setOf(7))),
+        )
+    }
+
+    @Test
+    fun `lost contact routing metadata survives persistence`() {
+        val observer = id("00000000-0000-0000-0000-000000000030")
+        val contact = id("00000000-0000-0000-0000-000000000031")
+        val key = SitrepContactKey(1, observer)
+        val lost = SitrepLostContact(
+            contactId = contact,
+            sierraNumber = 3,
+            lastSeenPosition = MapCoordinate(0.4, 0.5),
+            lastSeenRangeUnits = 4.0,
+            wasIdentified = true,
+            wasFriendly = true,
+            lostDueToEnemyAction = true,
+        )
+        val persistence = SitrepContactPersistence.fromJson(null)
+
+        persistence.update(key, SitrepContactState(lostContacts = listOf(lost)))
+
+        assertThat(
+            SitrepContactPersistence.fromJson(persistence.toJson()).stateFor(key).lostContacts,
+            equalTo(listOf(lost)),
         )
     }
 

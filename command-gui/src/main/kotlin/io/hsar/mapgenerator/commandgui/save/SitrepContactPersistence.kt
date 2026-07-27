@@ -84,6 +84,7 @@ internal class SitrepContactPersistence private constructor(
                                     }
                                     state.lastSeenContacts[contactId]?.let { lastSeen ->
                                         put("rangeUnits", lastSeen.lastSeenRangeUnits)
+                                        put("friendly", lastSeen.wasFriendly)
                                         lastSeen.unitTypeName?.let { put("unitTypeName", it) }
                                         lastSeen.unitClassCode?.let { put("unitClassCode", it) }
                                     }
@@ -100,6 +101,8 @@ internal class SitrepContactPersistence private constructor(
                                     put("y", lost.lastSeenPosition.y)
                                     put("rangeUnits", lost.lastSeenRangeUnits)
                                     put("identified", lost.wasIdentified)
+                                    put("friendly", lost.wasFriendly)
+                                    put("lostDueToEnemyAction", lost.lostDueToEnemyAction)
                                     lost.unitTypeName?.let { put("unitTypeName", it) }
                                     lost.unitClassCode?.let { put("unitClassCode", it) }
                                 }
@@ -158,6 +161,7 @@ internal class SitrepContactPersistence private constructor(
                                 lastSeenPosition = position,
                                 lastSeenRangeUnits = contact.path("rangeUnits").doubleValue(),
                                 wasIdentified = unitId in identifiedIds,
+                                wasFriendly = contact.path("friendly").booleanValue(),
                                 unitTypeName = contact.path("unitTypeName").textValue(),
                                 unitClassCode = contact.path("unitClassCode").textValue(),
                             )
@@ -175,6 +179,8 @@ internal class SitrepContactPersistence private constructor(
                         lastSeenPosition = MapCoordinate(lost.path("x").doubleValue(), lost.path("y").doubleValue()),
                         lastSeenRangeUnits = lost.path("rangeUnits").doubleValue(),
                         wasIdentified = lost.path("identified").booleanValue(),
+                        wasFriendly = lost.path("friendly").booleanValue(),
+                        lostDueToEnemyAction = lost.path("lostDueToEnemyAction").booleanValue(),
                         unitTypeName = lost.path("unitTypeName").textValue(),
                         unitClassCode = lost.path("unitClassCode").textValue(),
                     )

@@ -75,6 +75,8 @@ internal data class SitrepLostContact(
     val lastSeenPosition: MapCoordinate,
     val lastSeenRangeUnits: Double,
     val wasIdentified: Boolean,
+    val wasFriendly: Boolean = false,
+    val lostDueToEnemyAction: Boolean = false,
     val unitTypeName: String? = null,
     val unitClassCode: String? = null,
 )
@@ -449,7 +451,7 @@ internal object SensorDetection {
                     ScirepContactSegment(
                         contactId = lost.contactId,
                         sierraNumber = lost.sierraNumber,
-                        opening = "Contact Sierra ${lost.sierraNumber} lost",
+                        opening = lostContactText(lost),
                         clauses = emptyList(),
                     )
                 },
@@ -461,6 +463,9 @@ internal object SensorDetection {
         }
         return (conditions + report).joinToString(" ")
     }
+
+    fun lostContactText(lost: SitrepLostContact): String =
+        "Contact Sierra ${lost.sierraNumber} lost" + if (lost.lostDueToEnemyAction) " due to enemy action" else ""
 
     fun navrepIdentificationText(
         observer: UnitSnapshot,

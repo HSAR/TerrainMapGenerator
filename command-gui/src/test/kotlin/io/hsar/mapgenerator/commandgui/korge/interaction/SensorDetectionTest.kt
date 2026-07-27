@@ -1318,6 +1318,39 @@ class SensorDetectionTest {
         )
     }
 
+    @Test
+    fun `lost contact text adds enemy action only when recorded`() {
+        val contactId = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000092"))
+
+        assertThat(
+            SensorDetection.lostContactText(
+                SitrepLostContact(
+                    contactId = contactId,
+                    sierraNumber = 7,
+                    lastSeenPosition = MapCoordinate(0.5, 0.5),
+                    lastSeenRangeUnits = 3.0,
+                    wasIdentified = true,
+                    wasFriendly = true,
+                    lostDueToEnemyAction = true,
+                ),
+            ),
+            equalTo("Contact Sierra 7 lost due to enemy action"),
+        )
+        assertThat(
+            SensorDetection.lostContactText(
+                SitrepLostContact(
+                    contactId = contactId,
+                    sierraNumber = 8,
+                    lastSeenPosition = MapCoordinate(0.5, 0.5),
+                    lastSeenRangeUnits = 6.0,
+                    wasIdentified = true,
+                    wasFriendly = true,
+                ),
+            ),
+            equalTo("Contact Sierra 8 lost"),
+        )
+    }
+
     private fun unit(
         id: String,
         instanceName: String,
