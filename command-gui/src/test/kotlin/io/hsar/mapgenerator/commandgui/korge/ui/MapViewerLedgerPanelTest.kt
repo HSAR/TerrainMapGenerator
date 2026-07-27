@@ -1,14 +1,16 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.view.Container
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.greaterThanOrEqualTo
 import org.junit.jupiter.api.Test
 
+@OptIn(KorgeExperimental::class)
 class MapViewerLedgerPanelTest {
     @Test
-    fun `styled text input returns the current input text`() {
+    fun `styled text input keeps controller edits in the displayed value`() {
         val input = MapViewerStyledTextInput(
             parent = Container(),
             width = 100.0,
@@ -17,8 +19,10 @@ class MapViewerLedgerPanelTest {
         )
 
         input.text = "Custom turn"
+        input.controller.select(7, 7)
+        input.controller.insertText("edited ")
 
-        assertThat(input.text, equalTo("Custom turn"))
+        assertThat(input.text, equalTo("Custom edited turn"))
     }
 
     @Test
