@@ -84,6 +84,10 @@ internal class MapViewerNotesPanel(
     fun addDroppedReferences(point: Vector2D, objectIds: Set<MapPlacedObjectId>): Boolean =
         noteDialogs.any { dialog -> dialog.addReferencesAt(point, objectIds) }
 
+    fun updateReferenceDropTargets(point: Vector2D?, objectIds: Set<MapPlacedObjectId>) {
+        noteDialogs.forEach { dialog -> dialog.updateReferenceDropTarget(point, objectIds) }
+    }
+
     fun openNote(noteId: MapNoteId): Boolean =
         noteStore.snapshot(noteId)?.let { openNote(it) } ?: false
 

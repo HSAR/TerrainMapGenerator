@@ -1361,6 +1361,13 @@ internal class MapViewerScene(
                                 }
                             }
                             if (!escapeMenuOpen) {
+                                val draggedReferenceIds = selectionController.selectedIds()
+                                    .takeIf { leftHeld && selectionController.isMovingSelection }
+                                    ?: emptySet()
+                                notesPanel?.updateReferenceDropTargets(
+                                    point = pointer.takeIf { draggedReferenceIds.isNotEmpty() },
+                                    objectIds = draggedReferenceIds,
+                                )
                                 if (previousLeftHeld &&
                                     !leftHeld &&
                                     selectionController.isMovingSelection &&
@@ -1370,6 +1377,8 @@ internal class MapViewerScene(
                                 } else {
                                     selectionController.update(pointer, leftHeld, shiftHeld = input.keys[Key.SHIFT])
                                 }
+                            } else {
+                                notesPanel?.updateReferenceDropTargets(null, emptySet())
                             }
 
                             transientNotice?.update(now)

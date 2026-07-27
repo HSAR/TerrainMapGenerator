@@ -38,7 +38,8 @@ internal class MapViewerNoteDialog(
     private var titleInput: MapViewerInputField? = null
     private var bodyInput: MapViewerInputField? = null
     private var window: MapViewerDialogWindow? = null
-    private var referenceDropTargetBounds: ScreenBounds? = null
+    private var referenceDropTarget: Container? = null
+    private var isReferenceDropTargetActive = false
     private var referencesExpanded = false
     private val referenceReorderController = MapViewerUniversalList.reorderController<MapPlacedObjectId, MapPlacedObjectId, Unit>(
         parent = root,
@@ -179,7 +180,7 @@ internal class MapViewerNoteDialog(
     }
 
     fun addReferencesAt(point: korlibs.math.geom.Vector2D, objectIds: Set<MapPlacedObjectId>): Boolean {
-        if (readOnly() || objectIds.isEmpty() || referenceDropTargetBounds?.contains(point) != true) {
+        if (!canAddReferencesAt(point, objectIds)) {
             return false
         }
 
@@ -193,10 +194,28 @@ internal class MapViewerNoteDialog(
         return true
     }
 
+    fun updateReferenceDropTarget(point: korlibs.math.geom.Vector2D?, objectIds: Set<MapPlacedObjectId>) {
+        val active = point?.let { canAddReferencesAt(it, objectIds) } == true
+        if (active != isReferenceDropTargetActive) {
+            isReferenceDropTargetActive = active
+            window?.refresh()
+        }
+    }
+
+    private fun canAddReferencesAt(point: korlibs.math.geom.Vector2D, objectIds: Set<MapPlacedObjectId>): Boolean =
+        MapViewerNoteReferenceDropTarget.canCreateReference(
+            readOnly = readOnly(),
+            draggedObjectIds = objectIds,
+            referencedObjectIds = referencedObjectIds,
+            pointerInDropTarget = referenceDropTarget?.getGlobalBounds()?.let { bounds ->
+                point.x in bounds.left..bounds.right && point.y in bounds.top..bounds.bottom
+            } == true,
+        )
+
     private fun renderReferenceControls(parent: Container, itemWidth: Double, top: Double) {
         referenceReorderController.beginRender()
         renderReferencesHeader(parent, itemWidth, top)
-        referenceDropTargetBounds = null
+        referenceDropTarget = null
         if (!referencesExpanded) {
             return
         }
@@ -204,14 +223,7 @@ internal class MapViewerNoteDialog(
         val dropTarget = parent.container()
         dropTarget.xy(0.0, top + CONTROL_HEIGHT + ROW_GAP)
         renderReferenceDropTarget(dropTarget, itemWidth, DROP_TARGET_HEIGHT)
-        referenceDropTargetBounds = dropTarget.getGlobalBounds().let { bounds ->
-            ScreenBounds(
-                left = bounds.left,
-                top = bounds.top,
-                width = bounds.width,
-                height = bounds.height,
-            )
-        }
+        referenceDropTarget = dropTarget
         referencedObjectIds.forEachIndexed { index, id ->
             renderReferenceRow(
                 parent = parent,
@@ -236,8 +248,10 @@ internal class MapViewerNoteDialog(
     }
 
     private fun renderReferenceDropTarget(parent: Container, width: Double, height: Double) {
-        parent.solidRect(width, height, korlibs.image.color.RGBA(80, 80, 80, 190))
-        parent.solidRect(width - 2.0, height - 2.0, korlibs.image.color.RGBA(45, 45, 45, 210)) {
+        val border = if (isReferenceDropTargetActive) RGBA(60, 170, 80, 220) else RGBA(80, 80, 80, 190)
+        val fill = if (isReferenceDropTargetActive) RGBA(25, 100, 45, 220) else RGBA(45, 45, 45, 210)
+        parent.solidRect(width, height, border)
+        parent.solidRect(width - 2.0, height - 2.0, fill) {
             x = 1.0
             y = 1.0
         }
