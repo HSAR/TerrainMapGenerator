@@ -177,7 +177,7 @@ class SensorDetectionTest {
                 mapHeight = 1_000,
                 emptySummaryText = "No hostile contacts to report.",
             ),
-            equalTo("Contact Master 1 at 500 500, range 0U is unaffiliated Uncoded-class UKN."),
+            equalTo("Contact Master 1 at 500 500, range 0U was previously identified as unaffiliated Uncoded-class UKN."),
         )
     }
 
@@ -989,7 +989,7 @@ class SensorDetectionTest {
                 emptySummaryText = "No hostile contacts to report.",
                 previouslyDetectedIds = setOf(contact.id),
             ),
-            equalTo("Contact Sierra 1 has position 510 500, range 10U."),
+            equalTo("Contact detected at extreme range as Sierra 1 at 510 500, range 10U has unknown midweight classification."),
         )
     }
 
@@ -1040,6 +1040,7 @@ class SensorDetectionTest {
             x = 0.5,
             y = 0.5,
         )
+
         val contact = unit(
             id = "00000000-0000-0000-0000-000000000073",
             instanceName = "Zweihander",
@@ -1067,6 +1068,19 @@ class SensorDetectionTest {
                 identificationAnnouncements = listOf(check),
             ),
             equalTo("Contact detected as Master 9 at 503.4 500, range 3.4U is identified as unaffiliated Sword-class CVE Zweihander."),
+        )
+
+        assertThat(
+            SensorDetection.scirepText(
+                checks = listOf(check),
+                identifiedIds = setOf(contact.id),
+                contactNumbers = mapOf(contact.id to 9),
+                mapWidth = 1_000,
+                mapHeight = 1_000,
+                emptySummaryText = "No hostile contacts to report.",
+                previouslyDetectedIds = setOf(contact.id),
+            ),
+            equalTo("Contact Master 9 at 503.4 500, range 3.4U was previously identified as unaffiliated Sword-class CVE Zweihander."),
         )
     }
 
@@ -1182,8 +1196,9 @@ class SensorDetectionTest {
                 mapWidth = 1_000,
                 mapHeight = 1_000,
                 previouslyDetectedIds = setOf(contact.id),
+                previouslyIdentifiedIds = setOf(contact.id),
             ),
-            equalTo("Contact Sierra 4 at 503.4 500 bearing unknown is identified as allied Roma-class BC Florence."),
+            equalTo("Contact Sierra 4 at 503.4 500 bearing unknown was previously identified as allied Roma-class BC Florence."),
         )
     }
 

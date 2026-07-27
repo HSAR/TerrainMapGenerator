@@ -82,7 +82,7 @@ internal class MapDrawingView(
 
     private companion object {
         private const val SCREEN_STROKE_WIDTH = 3.0
-        private const val LABEL_TEXT_SIZE = 18.0
+        private const val LABEL_TEXT_SIZE = 24.0
         private const val LABEL_GAP = 4.0
     }
 }

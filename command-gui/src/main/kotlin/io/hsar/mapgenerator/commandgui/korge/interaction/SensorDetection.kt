@@ -400,16 +400,11 @@ internal object SensorDetection {
                     val designation = if (check.unit.id in identifiedIds) "Master" else "Sierra"
                     val newlyIdentified = check.unit.id in newlyIdentifiedIds
                     val newlyDetected = check.unit.id !in previouslyDetectedIds
-                    val compactUnidentified = check.unit.id !in identifiedIds && !newlyDetected && lowConfidence == null
                     val rangeDescriptor = if (check.distanceUnits > check.identificationRangeUnits) " at extreme range" else ""
                     val opening = if (lowConfidence != null) {
                         "New contact tentatively designated $designation ${contactNumbers.getValue(check.unit.id)} from last known position"
                     } else if (newlyIdentified && newlyDetected && check.unit.id in identifiedIds) {
                         "Contact detected$rangeDescriptor as Master ${contactNumbers.getValue(check.unit.id)}"
-                    } else if (newlyIdentified && check.unit.id in identifiedIds) {
-                        "Contact Master ${contactNumbers.getValue(check.unit.id)}"
-                    } else if (compactUnidentified) {
-                        "Contact Sierra ${contactNumbers.getValue(check.unit.id)}"
                     } else if (check.unit.id !in identifiedIds) {
                         val contactPrefix = if (check.unit.customProperties.booleanProperty("activeSensors")) {
                             "Contact actively radiating"
@@ -429,7 +424,7 @@ internal object SensorDetection {
                         newlyIdentified -> check.unit.identificationClause(observerAffiliation = observerAffiliation)
 
                         check.unit.id in identifiedIds ->
-                            "is ${check.unit.affiliationDescription(observerAffiliation)} ${check.unit.identificationDescription()}"
+                            check.unit.identificationClause("was previously", observerAffiliation)
 
                         else -> "has unknown ${check.unit.unknownClassificationBracket()} classification"
                     }
@@ -437,30 +432,18 @@ internal object SensorDetection {
                         contactId = check.unit.id,
                         sierraNumber = contactNumbers.getValue(check.unit.id),
                         opening = opening,
-                        clauses = if (compactUnidentified) {
-                            listOf(
-                                "has position ${formatPosition(check.unit, mapWidth, mapHeight, gridLayer)},",
-                                "range ${formatDistance(check.distanceUnits)}U",
-                            )
-                        } else if (newlyIdentified && lowConfidence == null) {
-                            listOf(
-                                "at ${formatPosition(check.unit, mapWidth, mapHeight, gridLayer)}, range ${formatDistance(check.distanceUnits)}U",
-                                classification,
-                            )
-                        } else {
-                            listOf(
-                                "at ${
-                                    lowConfidence?.let { formatPosition(it.lastSeenPosition, mapWidth, mapHeight, gridLayer) } ?: formatPosition(
-                                        check.unit,
-                                        mapWidth,
-                                        mapHeight,
-                                        gridLayer
-                                    )
-                                }, " +
-                                        "range ${formatDistance(lowConfidence?.lastSeenRangeUnits ?: check.distanceUnits)}U",
-                                classification,
-                            )
-                        },
+                        clauses = listOf(
+                            "at ${
+                                lowConfidence?.let { formatPosition(it.lastSeenPosition, mapWidth, mapHeight, gridLayer) } ?: formatPosition(
+                                    check.unit,
+                                    mapWidth,
+                                    mapHeight,
+                                    gridLayer
+                                )
+                            }, " +
+                                    "range ${formatDistance(lowConfidence?.lastSeenRangeUnits ?: check.distanceUnits)}U",
+                            classification,
+                        ),
                     )
                 } + lostContacts.map { lost ->
                     ScirepContactSegment(
@@ -487,6 +470,7 @@ internal object SensorDetection {
         mapHeight: Int,
         gridLayer: GridLayer? = null,
         previouslyDetectedIds: Set<MapPlacedObjectId> = emptySet(),
+        previouslyIdentifiedIds: Set<MapPlacedObjectId> = emptySet(),
     ): String =
         checks
             .sortedBy { contactNumbers.getValue(it.unit.id) }
@@ -495,7 +479,8 @@ internal object SensorDetection {
                 if (check.unit.id in previouslyDetectedIds) {
                     "Contact Sierra ${contactNumbers.getValue(check.unit.id)} at $position bearing ${formatBearing(check.unit.facingDegrees)} ${
                         check.unit.navrepIdentificationClause(
-                            observer
+                            observer,
+                            wasPreviouslyIdentified = check.unit.id in previouslyIdentifiedIds,
                         )
                     }."
                 } else {
@@ -527,8 +512,13 @@ internal object SensorDetection {
     ): String =
         "$verb identified as ${affiliationDescription(observerAffiliation)} ${identificationDescription()}"
 
-    private fun UnitSnapshot.navrepIdentificationClause(observer: UnitSnapshot): String =
-        "is identified as ${if (template.affiliation == observer.template.affiliation) "allied" else affiliationDescription()} ${identificationDescription()}"
+    private fun UnitSnapshot.navrepIdentificationClause(
+        observer: UnitSnapshot,
+        wasPreviouslyIdentified: Boolean = false,
+    ): String =
+        "${if (wasPreviouslyIdentified) "was previously" else "is"} identified as ${
+            if (template.affiliation == observer.template.affiliation) "allied" else affiliationDescription()
+        } ${identificationDescription()}"
 
     private fun UnitSnapshot.affiliationDescription(observerAffiliation: UnitAffiliation? = null): String =
         when (template.affiliation) {

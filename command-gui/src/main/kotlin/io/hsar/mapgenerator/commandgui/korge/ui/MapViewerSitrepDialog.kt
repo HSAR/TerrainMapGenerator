@@ -647,42 +647,25 @@ internal class MapViewerSitrepDialog(
             ecmIntensity = ecmIntensity,
         )
         if (reportMode != ReportMode.SCIREP) {
-            val newlyIdentifiedChecks = report.visibleChecks.filter {
-                it.unit.id !in previousContactState.identifiedIds
-            }
-            val positionReport = if (newlyIdentifiedChecks.isEmpty()) {
-                report
-            } else {
-                SensorDetection.visibilityReport(
-                    observer = observer,
-                    unitQueryService = unitQueryService,
-                    gridLayer = gridLayer,
-                    includedIds = report.visibleChecks.map { it.unit.id }.toSet() -
-                            newlyIdentifiedChecks.map { it.unit.id }.toSet(),
-                    candidateFilter = reportMode.candidateFilter(observer.template.affiliation),
-                    emptySummaryText = "",
-                    sensorReportMode = reportMode.sensorReportMode,
-                    ecmIntensity = ecmIntensity,
-                )
-            }
             report.trackableChecks().forEach { check ->
                 ensureSierraContactNumber(check.unit.id)
             }
             val identificationText = SensorDetection.navrepIdentificationText(
                 observer = observer,
-                checks = newlyIdentifiedChecks,
+                checks = report.visibleChecks,
                 contactNumbers = sierraContactNumbers,
                 mapWidth = unitQueryService.mapWidth,
                 mapHeight = unitQueryService.mapHeight,
                 gridLayer = gridLayer,
                 previouslyDetectedIds = previousContactState.sensorContactIds,
+                previouslyIdentifiedIds = previousContactState.identifiedIds,
             )
             return report.copy(
                 unidentifiedChecks = emptyList(),
-                displayText = listOf(positionReport.displayText, identificationText)
+                displayText = listOf(report.displayText, identificationText)
                     .filter { it.isNotBlank() }
                     .joinToString(" "),
-                copyText = listOf(positionReport.copyText, identificationText)
+                copyText = listOf(report.copyText, identificationText)
                     .filter { it.isNotBlank() }
                     .joinToString(" "),
             )

@@ -152,10 +152,13 @@ internal class MapPlacedGraphicManager(
         placed.view.x = world.x - worldWidth * 0.5
         placed.view.y = world.y - worldHeight * 0.5
         placed.labelView?.let { label ->
-            val bounds = MapViewerTextViews.measure(label.text, size = LABEL_TEXT_SIZE)
+            val zoom = viewportProvider().zoom.coerceAtLeast(0.0001)
+            val size = LABEL_TEXT_SIZE / zoom
+            val bounds = MapViewerTextViews.measure(label.text, size = size)
+            label.textSize = size
             label.setTextBounds(korlibs.math.geom.Rectangle(0.0, 0.0, bounds.width, bounds.height))
             label.x = world.x - bounds.width * 0.5
-            label.y = world.y - worldHeight * 0.5 - bounds.height - LABEL_GAP
+            label.y = world.y - worldHeight * 0.5 - bounds.height - LABEL_GAP / zoom
         }
     }
 
@@ -199,7 +202,7 @@ internal class MapPlacedGraphicManager(
 
     private companion object {
         const val HIT_TOLERANCE = 8.0
-        const val LABEL_TEXT_SIZE = 18.0
+        const val LABEL_TEXT_SIZE = 24.0
         const val LABEL_GAP = 4.0
     }
 }
