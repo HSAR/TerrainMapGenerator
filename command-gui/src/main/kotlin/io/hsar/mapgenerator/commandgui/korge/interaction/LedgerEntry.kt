@@ -18,6 +18,14 @@ import kotlin.collections.forEachIndexed
 import kotlin.collections.lastIndex
 import kotlin.collections.toList
 import kotlin.let
+import kotlin.takeIf
+import kotlin.takeUnless
+import kotlin.text.Regex
+import kotlin.text.format
+import kotlin.text.ifBlank
+import kotlin.text.isNotBlank
+import kotlin.text.lowercase
+import kotlin.text.take
 import kotlin.text.trimEnd
 
 internal data class MapPlacedObjectId(
@@ -147,29 +155,152 @@ internal interface LedgerEntry {
     fun redo(controller: LedgerController)
 }
 
-internal fun LedgerEntry.changeDescription(): String =
+internal enum class LedgerActionDirection {
+    Undo,
+    Redo,
+}
+
+internal fun LedgerEntry.changeDescription(
+    direction: LedgerActionDirection,
+    objectSnapshot: (MapPlacedObjectId) -> MapPlacedObjectSnapshot? = { null },
+): String =
     when (this) {
-        is CreateObjectAction -> "created ${snapshot.name}"
-        is DeleteObjectAction -> "deleted ${snapshot.name}"
-        is EditObjectAction -> "edited an item"
-        is BatchLedgerEntry -> "changed ${entries.size} items"
-        is AddTurnLedgerEntry -> "added ${name}"
-        is CreateUnitTemplateAction -> "created unit template ${snapshot.template.name}"
-        is DeleteUnitTemplateAction -> "deleted unit template ${snapshot.template.name}"
-        is EditUnitTemplateAction -> "edited unit template ${afterSnapshot?.template?.name ?: beforeSnapshot?.template?.name ?: ""}"
-            .trimEnd()
+        is CreateObjectAction -> if (direction == LedgerActionDirection.Undo) "removed ${snapshot.objectDescription()}" else "created ${snapshot.objectDescription()}"
+        is DeleteObjectAction -> if (direction == LedgerActionDirection.Undo) "restored ${snapshot.objectDescription()}" else "deleted ${snapshot.objectDescription()}"
+        is EditObjectAction -> objectSnapshot(objectId)
+            ?.editDescription(if (direction == LedgerActionDirection.Undo) backward else forward)
+            ?: "edited an item"
 
-        is CreateGraphicTemplateAction -> "created graphic template ${snapshot.template.name}"
-        is DeleteGraphicTemplateAction -> "deleted graphic template ${snapshot.template.name}"
-        is EditGraphicTemplateAction -> "edited graphic template ${afterSnapshot?.template?.name ?: beforeSnapshot?.template?.name ?: ""}"
-            .trimEnd()
+        is BatchLedgerEntry -> entries.firstOrNull()
+            ?.changeDescription(direction, objectSnapshot)
+            ?.let { first -> if (entries.size == 1) first else "$first and ${entries.size - 1} other item${if (entries.size == 2) "" else "s"}" }
+            ?: "changed no items"
 
-        is CreateNoteAction -> "created note ${snapshot.title}"
-        is EditNoteAction -> "edited a note"
-        is DeleteNoteAction -> "deleted note ${snapshot.title}"
+        is AddTurnLedgerEntry -> if (direction == LedgerActionDirection.Undo) "removed $name" else "added $name"
+        is CreateUnitTemplateAction -> if (direction == LedgerActionDirection.Undo) "removed unit template ${snapshot.template.name}" else "created unit template ${snapshot.template.name}"
+        is DeleteUnitTemplateAction -> if (direction == LedgerActionDirection.Undo) "restored unit template ${snapshot.template.name}" else "deleted unit template ${snapshot.template.name}"
+        is EditUnitTemplateAction -> editDescription(
+            item = "unit template ${afterSnapshot?.template?.name ?: beforeSnapshot?.template?.name ?: ""}".trimEnd(),
+            changes = if (direction == LedgerActionDirection.Undo) backward else forward,
+        )
+
+        is CreateGraphicTemplateAction -> if (direction == LedgerActionDirection.Undo) "removed graphic template ${snapshot.template.name}" else "created graphic template ${snapshot.template.name}"
+        is DeleteGraphicTemplateAction -> if (direction == LedgerActionDirection.Undo) "restored graphic template ${snapshot.template.name}" else "deleted graphic template ${snapshot.template.name}"
+        is EditGraphicTemplateAction -> editDescription(
+            item = "graphic template ${afterSnapshot?.template?.name ?: beforeSnapshot?.template?.name ?: ""}".trimEnd(),
+            changes = if (direction == LedgerActionDirection.Undo) backward else forward,
+        )
+
+        is CreateNoteAction -> if (direction == LedgerActionDirection.Undo) "removed note ${snapshot.title}" else "created note ${snapshot.title}"
+        is EditNoteAction -> editDescription("note", if (direction == LedgerActionDirection.Undo) backward else forward)
+        is DeleteNoteAction -> if (direction == LedgerActionDirection.Undo) "restored note ${snapshot.title}" else "deleted note ${snapshot.title}"
         is ReorderNotesAction -> "reordered notes"
         else -> "changed an item"
     }
+
+private fun editDescription(item: String, changes: Map<String, JsonNode?>): String =
+    changes.entries
+        .sortedBy { it.key }
+        .mapNotNull { (key, value) -> value?.takeUnless(JsonNode::isNull)?.let { "$key to ${it.safeDisplayValue()}" } ?: "removed $key" }
+        .joinToString(", ")
+        .takeIf(String::isNotBlank)
+        ?.let { "$item: $it" }
+        ?: "edited $item"
+
+private fun MapPlacedObjectSnapshot.objectDescription(): String =
+    when (this) {
+        is UnitSnapshot -> "unit ${instanceName.ifBlank { template.name }} (${template.name})"
+        is GraphicSnapshot -> "graphic ${instanceName.ifBlank { template.name }} (${template.name})"
+        is DrawingSnapshot -> drawing.name
+    }
+
+private fun MapPlacedObjectSnapshot.editDescription(changes: Map<String, JsonNode?>): String =
+    when (this) {
+        is UnitSnapshot -> objectDescription() + ": " + unitChangeDescriptions(changes).joinToString(", ")
+        is GraphicSnapshot -> objectDescription() + ": " + graphicChangeDescriptions(changes).joinToString(", ")
+        is DrawingSnapshot -> objectDescription() + ": " + drawingChangeDescriptions(changes).joinToString(", ")
+    }
+
+private fun UnitSnapshot.unitChangeDescriptions(changes: Map<String, JsonNode?>): List<String> =
+    buildList {
+        if ("instanceName" in changes) add("renamed to $instanceName")
+        if ("unitTemplateId" in changes) add("type set to ${template.name}")
+        if ("destroyed" in changes) add(if (destroyed) "marked destroyed" else "marked active")
+        if ("facingDegrees" in changes) add("facing ${facingDegrees?.let { "$it°" } ?: "unset"}")
+        if ("affiliation" in changes) add("affiliation set to ${template.affiliation?.name?.lowercase() ?: "unset"}")
+        if ("mapCoordinate" in changes) add("moved to ${mapCoordinate.formatNoticeCoordinate()}")
+        if ("normalizedWidth" in changes || "normalizedHeight" in changes) add("size set to ${normalizedWidth.formatNoticeNumber()} × ${normalizedHeight.formatNoticeNumber()}")
+        addAll(customPropertyChangeDescriptions(changes, UNIT_PATCH_FIELDS))
+    }.ifEmpty { listOf("updated") }
+
+private fun GraphicSnapshot.graphicChangeDescriptions(changes: Map<String, JsonNode?>): List<String> =
+    buildList {
+        if ("instanceName" in changes) add("renamed to $instanceName")
+        if ("graphicTemplateId" in changes) add("type set to ${template.name}")
+        if ("mapCoordinate" in changes) add("moved to ${mapCoordinate.formatNoticeCoordinate()}")
+        if ("normalizedWidth" in changes || "normalizedHeight" in changes) add("size set to ${normalizedWidth.formatNoticeNumber()} × ${normalizedHeight.formatNoticeNumber()}")
+        addAll(customPropertyChangeDescriptions(changes, GRAPHIC_PATCH_FIELDS))
+    }.ifEmpty { listOf("updated") }
+
+private fun DrawingSnapshot.drawingChangeDescriptions(changes: Map<String, JsonNode?>): List<String> =
+    buildList {
+        when (drawing) {
+            is io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing ->
+                if ("points" in changes) add("points set to ${drawing.points.size}")
+
+            is io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing -> {
+                if ("start" in changes) add("start set to ${drawing.start.formatNoticeCoordinate()}")
+                if ("end" in changes) add("end set to ${drawing.end.formatNoticeCoordinate()}")
+            }
+
+            is io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing -> {
+                if ("start" in changes || "end" in changes) add("bounds set to ${drawing.start.formatNoticeCoordinate()}–${drawing.end.formatNoticeCoordinate()}")
+                if ("rotationDegrees" in changes) add("rotation set to ${drawing.rotationDegrees.formatNoticeNumber()}°")
+            }
+
+            is io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing -> {
+                if ("center" in changes) add("centre set to ${drawing.center.formatNoticeCoordinate()}")
+                if ("xRadius" in changes || "yRadius" in changes) add("radii set to ${drawing.xRadius.formatNoticeNumber()} × ${drawing.yRadius.formatNoticeNumber()}")
+                if ("rotationDegrees" in changes) add("rotation set to ${drawing.rotationDegrees.formatNoticeNumber()}°")
+            }
+        }
+        if ("color" in changes) add("colour set to ${drawing.color.toNoticeColour()}")
+        if ("drawing" in changes) add("shape set to ${drawing.name}")
+        addAll(customPropertyChangeDescriptions(changes, DRAWING_PATCH_FIELDS))
+    }.ifEmpty { listOf("updated") }
+
+private fun customPropertyChangeDescriptions(changes: Map<String, JsonNode?>, reservedKeys: Set<String>): List<String> =
+    changes.entries
+        .filterNot { (key, _) -> key in reservedKeys }
+        .sortedBy { it.key }
+        .map { (key, value) ->
+            value?.takeUnless(JsonNode::isNull)
+                ?.safeDisplayValue()
+                ?.let { "$key set to $it" }
+                ?: "removed $key"
+        }
+
+private fun MapCoordinate.formatNoticeCoordinate() =
+    "(${x.formatNoticeNumber()}, ${y.formatNoticeNumber()})"
+
+private fun io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint.formatNoticeCoordinate() =
+    "(${x.formatNoticeNumber()}, ${y.formatNoticeNumber()})"
+
+private fun Double.formatNoticeNumber() = "%.3f".format(java.util.Locale.ROOT, this).trimEnd('0').trimEnd('.')
+
+private fun java.awt.Color.toNoticeColour() = "#%02X%02X%02X%02X".format(alpha, red, green, blue)
+
+private fun JsonNode.safeDisplayValue(): String =
+    asText()
+        .let { value -> if (UUID_PATTERN.containsMatchIn(value)) "redacted" else value }
+        .take(MAX_NOTICE_VALUE_LENGTH)
+        .let { value -> if (value.length == MAX_NOTICE_VALUE_LENGTH) "$value…" else value }
+
+private val UUID_PATTERN = Regex("""[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}""")
+private const val MAX_NOTICE_VALUE_LENGTH = 80
+private val UNIT_PATCH_FIELDS = setOf("unitTemplateId", "instanceName", "destroyed", "facingDegrees", "affiliation", "mapCoordinate", "normalizedWidth", "normalizedHeight")
+private val DRAWING_PATCH_FIELDS = setOf("drawing", "points", "color", "start", "end", "rotationDegrees", "center", "xRadius", "yRadius")
+private val GRAPHIC_PATCH_FIELDS = setOf("graphicTemplateId", "instanceName", "mapCoordinate", "normalizedWidth", "normalizedHeight")
 
 internal data class CreateObjectAction(
     val snapshot: MapPlacedObjectSnapshot,
@@ -206,6 +337,18 @@ internal data class EditObjectAction(
 
     override fun redo(controller: LedgerController) {
         controller.applyObjectEdit(objectId, forward)
+    }
+
+    companion object {
+        fun fromSnapshots(before: MapPlacedObjectSnapshot, after: MapPlacedObjectSnapshot): EditObjectAction {
+            val forward = MapPlacedObjectPatch.diff(before, after)
+            val backward = MapPlacedObjectPatch.diff(after, before)
+            return EditObjectAction(
+                objectId = before.id,
+                forward = forward,
+                backward = backward,
+            )
+        }
     }
 }
 
@@ -337,6 +480,18 @@ internal data class EditNoteAction(
 
     override fun redo(controller: LedgerController) {
         controller.applyNoteEdit(id, forward)
+    }
+
+    companion object {
+        fun fromSnapshots(before: MapNoteSnapshot, after: MapNoteSnapshot): EditNoteAction {
+            val forward = MapNotePatch.diff(before, after)
+            val backward = MapNotePatch.diff(after, before)
+            return EditNoteAction(
+                id = before.id,
+                forward = forward,
+                backward = backward,
+            )
+        }
     }
 }
 

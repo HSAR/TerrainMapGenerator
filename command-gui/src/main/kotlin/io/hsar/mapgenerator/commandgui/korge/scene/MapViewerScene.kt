@@ -24,6 +24,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.EditGraphicTemplateActi
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.FireArcDisplayMode
+import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerActionDirection
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerController
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerReplay
@@ -732,7 +733,7 @@ internal class MapViewerScene(
                                         .takeIf { it.isNotEmpty() }
                                         ?.let { changes ->
                                             objectController.updateObject(updated)
-                                            recordLedgerEntry(EditObjectAction(snapshot.id, changes, MapPlacedObjectPatch.diff(updated, snapshot)))
+                                            recordLedgerEntry(EditObjectAction.fromSnapshots(snapshot, updated))
                                         }
                                 },
                             ).open()
@@ -771,7 +772,7 @@ internal class MapViewerScene(
                             onObjectMoved = { before, after ->
                                 MapPlacedObjectPatch.diff(before, after)
                                     .takeIf { it.isNotEmpty() }
-                                    ?.let { recordLedgerEntry(EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before))) }
+                                    ?.let { recordLedgerEntry(EditObjectAction.fromSnapshots(before, after)) }
                             },
                             onObjectDeleted = { snapshot ->
                                 objectController.deleteObject(snapshot.id)
@@ -780,7 +781,7 @@ internal class MapViewerScene(
                             onUnitEdited = { before, after ->
                                 MapPlacedObjectPatch.diff(before, after)
                                     .takeIf { it.isNotEmpty() }
-                                    ?.let { recordLedgerEntry(EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before))) }
+                                    ?.let { recordLedgerEntry(EditObjectAction.fromSnapshots(before, after)) }
                                 dialogManager.broadcast(after)
                             },
                             onUnitsChanged = {
@@ -837,7 +838,7 @@ internal class MapViewerScene(
                             onObjectMoved = { before, after ->
                                 MapPlacedObjectPatch.diff(before, after)
                                     .takeIf { it.isNotEmpty() }
-                                    ?.let { recordLedgerEntry(EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before))) }
+                                    ?.let { recordLedgerEntry(EditObjectAction.fromSnapshots(before, after)) }
                             },
                             onObjectDeleted = { snapshot ->
                                 objectController.deleteObject(snapshot.id)
@@ -875,7 +876,7 @@ internal class MapViewerScene(
                             onObjectMoved = { before, after ->
                                 MapPlacedObjectPatch.diff(before, after)
                                     .takeIf { it.isNotEmpty() }
-                                    ?.let { recordLedgerEntry(EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before))) }
+                                    ?.let { recordLedgerEntry(EditObjectAction.fromSnapshots(before, after)) }
                             },
                             onObjectDeleted = { snapshot ->
                                 objectController.deleteObject(snapshot.id)
@@ -1099,7 +1100,7 @@ internal class MapViewerScene(
                             val wasReadOnly = turnMode is TurnPanelMode.ReadOnly
                             actionHistory.undoEntry(ledgerController)?.let {
                                 autosaveController.enqueue(it)
-                                transientNotice?.show("Undid: ${it.changeDescription()}")
+                                transientNotice?.show("Undid: ${it.changeDescription(LedgerActionDirection.Undo, objectController::snapshot)}")
                                 if (wasReadOnly && !actionHistory.canRedo) {
                                     turnMode = TurnPanelMode.Edit
                                 }
@@ -1111,7 +1112,7 @@ internal class MapViewerScene(
                             val wasReadOnly = turnMode is TurnPanelMode.ReadOnly
                             actionHistory.redoEntry(ledgerController)?.let {
                                 autosaveController.enqueue(it)
-                                transientNotice?.show("Redid: ${it.changeDescription()}")
+                                transientNotice?.show("Redid: ${it.changeDescription(LedgerActionDirection.Redo, objectController::snapshot)}")
                                 if (wasReadOnly && !actionHistory.canRedo) {
                                     turnMode = TurnPanelMode.Edit
                                 }

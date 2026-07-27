@@ -206,10 +206,47 @@ class LedgerEntryHistoryTest {
             body = "",
         )
 
-        assertThat(AddTurnLedgerEntry("Turn 2").changeDescription(), equalTo("added Turn 2"))
-        assertThat(CreateNoteAction(note).changeDescription(), equalTo("created note Deployment plan"))
-        assertThat(DeleteNoteAction(note).changeDescription(), equalTo("deleted note Deployment plan"))
-        assertThat(ReorderNotesAction(emptyList(), emptyList()).changeDescription(), equalTo("reordered notes"))
+        assertThat(AddTurnLedgerEntry("Turn 2").changeDescription(LedgerActionDirection.Redo), equalTo("added Turn 2"))
+        assertThat(CreateNoteAction(note).changeDescription(LedgerActionDirection.Undo), equalTo("removed note Deployment plan"))
+        assertThat(DeleteNoteAction(note).changeDescription(LedgerActionDirection.Redo), equalTo("deleted note Deployment plan"))
+        assertThat(ReorderNotesAction(emptyList(), emptyList()).changeDescription(LedgerActionDirection.Redo), equalTo("reordered notes"))
+    }
+
+    @Test
+    fun objectEditDescriptionsIdentifyUnitsAndDestinationValuesWithoutUuids() {
+        val id = MapPlacedObjectId(UUID.randomUUID())
+        val templateId = UnitTemplateId(UUID.randomUUID())
+        val before = UnitSnapshot(
+            id = id,
+            unitTemplateId = templateId,
+            template = MapViewerUnitTemplate(templateId, "Destroyer", Bitmap32(1, 1)),
+            instanceName = "Falcon",
+            destroyed = false,
+            facingDegrees = 45,
+            mapCoordinate = MapCoordinate(0.0, 0.0),
+            normalizedWidth = 1.0,
+            normalizedHeight = 1.0,
+            customProperties = mapOf("callsign" to "old"),
+        )
+        val after = before.copy(
+            facingDegrees = 90,
+            mapCoordinate = MapCoordinate(0.25, 0.5),
+            customProperties = mapOf("callsign" to "d8f60d05-5f7d-469f-8ec5-848ea44e0ef0"),
+        )
+        val action = EditObjectAction.fromSnapshots(before, after)
+
+        assertThat(
+            action.changeDescription(LedgerActionDirection.Redo) { after },
+            equalTo("unit Falcon (Destroyer): facing 90°, moved to (0.25, 0.5), callsign set to redacted"),
+        )
+        assertThat(
+            action.changeDescription(LedgerActionDirection.Undo) { before },
+            equalTo("unit Falcon (Destroyer): facing 45°, moved to (0, 0), callsign set to old"),
+        )
+        assertThat(
+            BatchLedgerEntry(listOf(action, action)).changeDescription(LedgerActionDirection.Redo) { after },
+            equalTo("unit Falcon (Destroyer): facing 90°, moved to (0.25, 0.5), callsign set to redacted and 1 other item"),
+        )
     }
 
     @Test

@@ -17,9 +17,9 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditNoteAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
+import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerActionDirection
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteId
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapNotePatch
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectPatch
@@ -28,6 +28,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.changeDescription
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
 import io.hsar.mapgenerator.commandgui.nextTestUuid
 import io.hsar.mapgenerator.grid.ReferenceSystem
@@ -114,19 +115,11 @@ class OperationSaveRoundTripTest {
         val ledger = listOf(
             CreateUnitTemplateAction(UnitTemplateSnapshot(unitTemplate.id, unitTemplate, 0)),
             CreateObjectAction(createdUnit),
-            EditObjectAction(
-                objectId = createdUnit.id,
-                forward = MapPlacedObjectPatch.diff(createdUnit, movedUnit),
-                backward = MapPlacedObjectPatch.diff(movedUnit, createdUnit),
-            ),
+            EditObjectAction.fromSnapshots(createdUnit, movedUnit),
             CreateObjectAction(createdDrawing),
             DeleteObjectAction(createdDrawing),
             CreateNoteAction(createdNote),
-            EditNoteAction(
-                id = createdNote.id,
-                forward = MapNotePatch.diff(createdNote, editedNote),
-                backward = MapNotePatch.diff(editedNote, createdNote),
-            ),
+            EditNoteAction.fromSnapshots(createdNote, editedNote),
             DeleteNoteAction(editedNote),
         )
 
@@ -146,6 +139,10 @@ class OperationSaveRoundTripTest {
         assertThat(
             loaded.ledgerEntries.filterIsInstance<CreateUnitTemplateAction>().single().snapshot.template.affiliation,
             equalTo(UnitAffiliation.Neutral),
+        )
+        assertThat(
+            loaded.ledgerEntries.filterIsInstance<EditObjectAction>().single().changeDescription(LedgerActionDirection.Redo) { movedUnit },
+            equalTo("unit Alpha 2 (Alpha): renamed to Alpha 2, marked destroyed, facing 135°, moved to (0.5, 0.4)"),
         )
         val secondSave = writer.write(
             request(
@@ -429,6 +426,10 @@ class OperationSaveRoundTripTest {
         val replayedUnit = replayed.objects.single() as UnitSnapshot
 
         assertThat(replayedUnit.template.affiliation, equalTo(UnitAffiliation.Hostile))
+        assertThat(
+            loaded.ledgerEntries.filterIsInstance<EditObjectAction>().single().changeDescription(LedgerActionDirection.Redo) { edited },
+            equalTo("unit Recon 1 (Recon): affiliation set to hostile"),
+        )
     }
 
     @Test

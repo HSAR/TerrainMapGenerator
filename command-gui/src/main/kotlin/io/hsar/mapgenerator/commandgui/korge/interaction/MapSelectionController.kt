@@ -344,7 +344,7 @@ internal class MapSelectionController(
             val after = objectController.snapshot(before.id) ?: return@mapNotNull null
             MapPlacedObjectPatch.diff(before, after)
                 .takeIf { it.isNotEmpty() }
-                ?.let { EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before)) }
+                ?.let { EditObjectAction.fromSnapshots(before, after) }
         }
         recordBatch(actions)
     }
@@ -354,7 +354,7 @@ internal class MapSelectionController(
             val after = objectController.snapshot(before.id) ?: return@mapNotNull null
             MapPlacedObjectPatch.diff(before, after)
                 .takeIf { it.isNotEmpty() }
-                ?.let { EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before)) }
+                ?.let { EditObjectAction.fromSnapshots(before, after) }
         }
         val templateActions = state.originalSnapshots
             .filterIsInstance<GraphicSnapshot>()
@@ -404,7 +404,7 @@ internal class MapSelectionController(
             val after = objectController.snapshot(before.id) ?: return@mapNotNull null
             MapPlacedObjectPatch.diff(before, after)
                 .takeIf { it.isNotEmpty() }
-                ?.let { EditObjectAction(before.id, it, MapPlacedObjectPatch.diff(after, before)) }
+                ?.let { EditObjectAction.fromSnapshots(before, after) }
         }
         recordBatch(actions)
     }

@@ -213,7 +213,7 @@ internal class MapViewerNotesPanel(
                 noteStore.upsert(after)
                 MapNotePatch.diff(before, after)
                     .takeIf { it.isNotEmpty() }
-                    ?.let { forward -> onLedgerEntry(EditNoteAction(before.id, forward, MapNotePatch.diff(after, before))) }
+                    ?.let { onLedgerEntry(EditNoteAction.fromSnapshots(before, after)) }
                 dialogWindow?.refresh()
             },
             onDeleted = { snapshot ->
