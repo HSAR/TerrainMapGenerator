@@ -231,6 +231,7 @@ internal class MapPlacedUnitManager(
                     unit.customProperties += OlympiadDawnShip.instanceProperties(snapshot.template)
                 }
                 unit.updateTemplate(snapshot.template)
+            unit.customProperties = MoveLimit.withCalculatedValue(unit.snapshot()).customProperties
             }
         if (affiliationChanged && fireArcDisplayMode in setOf(FireArcDisplayMode.FriendliesOfSelected, FireArcDisplayMode.HostilesOfSelected)) {
             units.forEach { it.updateFacingOverlay() }
@@ -355,7 +356,7 @@ internal class MapPlacedUnitManager(
             normalizedWidth = unitSize.normalizedWidth,
             normalizedHeight = unitSize.normalizedHeight,
             customProperties = customProperties,
-        )
+        ).let(MoveLimit::withCalculatedValue)
     }
 
     fun upsert(snapshot: UnitSnapshot) = upsert(snapshot, notify = true)
@@ -378,7 +379,7 @@ internal class MapPlacedUnitManager(
     }
 
     private fun upsert(inputSnapshot: UnitSnapshot, notify: Boolean, syncDialog: Boolean = notify) {
-        val snapshot = normalizeFighterLink(inputSnapshot)
+        val snapshot = normalizeFighterLink(inputSnapshot).let(MoveLimit::withCalculatedValue)
         val unitSize = worldUnitSize(snapshot.template.bitmap)
         val existing = units.firstOrNull { it.id == snapshot.id }
         if (existing != null) {
@@ -756,7 +757,11 @@ internal class MapPlacedUnitManager(
                 val prospectiveUnits = units.map { existing ->
                     if (existing.id == unit.id) prospectiveSnapshot else existing.snapshot()
                 }
-                val savedCustomProperties = OlympiadDawnShip.validatedFighterProperties(prospectiveSnapshot, prospectiveUnits)
+                val savedCustomProperties = MoveLimit.withCalculatedValue(
+                    prospectiveSnapshot.copy(
+                        customProperties = OlympiadDawnShip.validatedFighterProperties(prospectiveSnapshot, prospectiveUnits),
+                    ),
+                ).customProperties
                 val invalidFighterLink = savedCustomProperties != customProperties
                 val customPropertiesChanged = savedCustomProperties != session.baselineSnapshot.customProperties
                 if (nameChanged || positionChanged || destroyedChanged || facingChanged || affiliationChanged || customPropertiesChanged) {
@@ -838,7 +843,9 @@ internal class MapPlacedUnitManager(
 
     private fun updateShipDamage(unit: PlacedUnit, damage: OlympiadDawnShipDamage) {
         val before = unit.snapshot()
-        val customProperties = before.customProperties + (OlympiadDawnShip.DAMAGE_KEY to OlympiadDawnShip.encodeDamage(damage))
+        val customProperties = MoveLimit.withCalculatedValue(
+            before.copy(customProperties = before.customProperties + (OlympiadDawnShip.DAMAGE_KEY to OlympiadDawnShip.encodeDamage(damage))),
+        ).customProperties
         if (customProperties == before.customProperties) return
         unit.customProperties = customProperties
         openUnitEditDialogs[unit.id]?.syncShipDamage(damage)
@@ -1021,11 +1028,12 @@ internal class MapPlacedUnitManager(
                     onSitrepContactStateChanged(turnNumber, snapshot.id, state)
                 },
                 onObserverCustomPropertiesChanged = { before, after ->
-                    unit.customProperties = after.customProperties
+                    val storedAfter = MoveLimit.withCalculatedValue(after)
+                    unit.customProperties = storedAfter.customProperties
                     unit.updateStateOverlay()
                     notifyUnitStateChanged()
-                    onUnitEdited(before, after)
-                    dialogManager.broadcast(after)
+                    onUnitEdited(before, storedAfter)
+                    dialogManager.broadcast(storedAfter)
                 },
                 ecmIntensityProvider = ::ecmIntensityAt,
                 onTransientNotice = onTransientNotice,
@@ -1723,14 +1731,14 @@ internal class MapPlacedUnitManager(
         constrainMove(unit.snapshot(), requested, overrideMoveLimit)
 
     private fun constrainMove(snapshot: UnitSnapshot, requested: MapCoordinate, overrideMoveLimit: Boolean = false): MapCoordinate =
-        MoveLimit.parse(snapshot.template.customProperties)
+        MoveLimit.forUnit(snapshot)
             ?.let { limit ->
                 requested.takeIf { overrideMoveLimit }?.also { onTurnOriginReset(snapshot.id, it) }
                     ?: turnOriginProvider(snapshot.id)?.let { origin ->
                         MoveLimit.constrain(
                             origin,
                             requested,
-                            MoveLimit.withWarpMultiplier(limit, snapshot.customProperties),
+                            limit,
                             mapWidth,
                             mapHeight,
                             mapUnitsPerPixel,

@@ -531,8 +531,7 @@ internal class MapViewerUnitCreateDialog(
     private fun templateProperties(): Map<String, String> =
         if (shipImportEnabled) {
             shipDefinition?.let { definition ->
-                OlympiadDawnShip.importedTemplateProperties(customPropertiesEditor.properties(), definition) +
-                        (MoveLimit.PROPERTY_KEY to OlympiadDawnShip.importedMoveLimit(definition).toString())
+                OlympiadDawnShip.importedTemplateProperties(customPropertiesEditor.properties(), definition)
             }
                 ?: customPropertiesEditor.properties() + initialShipProperties
         } else {

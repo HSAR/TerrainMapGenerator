@@ -4,6 +4,7 @@ import kotlin.math.hypot
 
 internal object MoveLimit {
     const val PROPERTY_KEY = "moveLimit"
+    private const val FIGHTER_MOVE_LIMIT = 12.0
     private const val ACTIVE_WARP_KEY = "activeWarp"
     private const val MAXIMUM_WARP_KEY = "maximumWarp"
 
@@ -25,6 +26,29 @@ internal object MoveLimit {
             properties.booleanProperty(ACTIVE_WARP_KEY) -> 10.0
             else -> 1.0
         }
+
+    fun forUnit(snapshot: UnitSnapshot): Double? {
+        return baseForUnit(snapshot)?.let { limit -> withWarpMultiplier(limit, snapshot.customProperties) }
+    }
+
+    fun withCalculatedValue(snapshot: UnitSnapshot): UnitSnapshot =
+        baseForUnit(snapshot)
+            ?.let { limit -> snapshot.copy(customProperties = snapshot.customProperties + (PROPERTY_KEY to limit.toString())) }
+            ?: snapshot
+
+    private fun baseForUnit(snapshot: UnitSnapshot): Double? =
+        when {
+            snapshot.unitClassLabel() == "F" -> FIGHTER_MOVE_LIMIT
+            else -> baseForShip(snapshot) ?: parse(snapshot.template.customProperties)
+        }
+
+    private fun baseForShip(snapshot: UnitSnapshot): Double? =
+        (OlympiadDawnShip.definition(snapshot.customProperties) ?: OlympiadDawnShip.definition(snapshot.template.customProperties))
+            ?.let { definition ->
+                val damage = OlympiadDawnShip.instanceDamage(snapshot.customProperties, definition)
+                val silentRunningMultiplier = if (snapshot.customProperties.booleanProperty("silentRunning")) 0.5 else 1.0
+                definition.systems.count { it.name == "Impulse Drive" && it.id !in damage.destroyedSystems } / 2.0 * silentRunningMultiplier
+            }
 
     fun constrain(
         origin: MapCoordinate,

@@ -51,7 +51,7 @@ class OlympiadDawnShipTest {
         val properties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition)
         assertThat(properties[OlympiadDawnShip.UNIT_CLASS_KEY], equalTo("CA"))
         assertThat(properties[OlympiadDawnShip.MASS_KEY], equalTo("55"))
-        assertThat(OlympiadDawnShip.importedMoveLimit(definition), equalTo(1.0))
+        assertThat(properties.containsKey("moveLimit"), equalTo(false))
     }
 
     @Test

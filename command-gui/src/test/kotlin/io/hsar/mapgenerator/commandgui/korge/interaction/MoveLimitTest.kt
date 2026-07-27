@@ -27,6 +27,71 @@ class MoveLimitTest {
     }
 
     @Test
+    fun `derives ship movement from operational drives before silent running and warp`() {
+        val definition = OlympiadDawnShip.parse(
+            """{"hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"drive","thrust":2,"id":"drive-a"},{"name":"drive","thrust":1,"id":"drive-b"}],"class":"Scout","name":"Test"}""",
+        )
+        val properties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition)
+        val template = MapViewerUnitTemplate(UnitTemplateId(nextTestUuid()), "Ship", Bitmap32(1, 1), customProperties = properties)
+        val unit = unit(MapPlacedObjectId(nextTestUuid()), template, MapCoordinate(0.1, 0.2)).copy(
+            customProperties = properties + mapOf("silentRunning" to "true", "activeWarp" to "true"),
+        )
+
+        assertThat(MoveLimit.forUnit(unit), equalTo(7.5))
+        assertThat(MoveLimit.withCalculatedValue(unit).customProperties[MoveLimit.PROPERTY_KEY], equalTo("0.75"))
+    }
+
+    @Test
+    fun `excludes destroyed drives and ignores stale ship move limits`() {
+        val definition = OlympiadDawnShip.parse(
+            """{"hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"drive","thrust":2,"id":"drive-a"},{"name":"drive","thrust":1,"id":"drive-b"}],"class":"Scout","name":"Test"}""",
+        )
+        val properties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition)
+        val template = MapViewerUnitTemplate(UnitTemplateId(nextTestUuid()), "Ship", Bitmap32(1, 1), customProperties = properties + (MoveLimit.PROPERTY_KEY to "99"))
+        val unit = unit(MapPlacedObjectId(nextTestUuid()), template, MapCoordinate(0.1, 0.2)).copy(
+            customProperties = properties + mapOf(
+                OlympiadDawnShip.DAMAGE_KEY to OlympiadDawnShip.encodeDamage(
+                    OlympiadDawnShipDamage(destroyedSystems = setOf("drive-a-1")),
+                ),
+                "maximumWarp" to "true",
+            ),
+        )
+
+        assertThat(MoveLimit.forUnit(unit), equalTo(20.0))
+        assertThat(MoveLimit.withCalculatedValue(unit).customProperties[MoveLimit.PROPERTY_KEY], equalTo("1.0"))
+
+        val immobilized = unit.copy(
+            customProperties = properties + (OlympiadDawnShip.DAMAGE_KEY to OlympiadDawnShip.encodeDamage(
+                OlympiadDawnShipDamage(destroyedSystems = setOf("drive-a-1", "drive-a-2", "drive-b")),
+            )),
+        )
+        assertThat(MoveLimit.forUnit(immobilized), equalTo(0.0))
+    }
+
+    @Test
+    fun `retains legacy movement limits for non-ship units`() {
+        val template = MapViewerUnitTemplate(UnitTemplateId(nextTestUuid()), "Unit", Bitmap32(1, 1), customProperties = mapOf(MoveLimit.PROPERTY_KEY to "2.5"))
+
+        assertThat(MoveLimit.forUnit(unit(MapPlacedObjectId(nextTestUuid()), template, MapCoordinate(0.1, 0.2))), equalTo(2.5))
+    }
+
+    @Test
+    fun `stores twelve units for fighters and applies warp multipliers`() {
+        val template = MapViewerUnitTemplate(
+            UnitTemplateId(nextTestUuid()),
+            "Fighter",
+            Bitmap32(1, 1),
+            customProperties = mapOf("unitClass" to "F"),
+        )
+        val fighter = unit(MapPlacedObjectId(nextTestUuid()), template, MapCoordinate(0.1, 0.2)).copy(
+            customProperties = mapOf("activeWarp" to "true"),
+        )
+
+        assertThat(MoveLimit.withCalculatedValue(fighter).customProperties[MoveLimit.PROPERTY_KEY], equalTo("12.0"))
+        assertThat(MoveLimit.forUnit(fighter), equalTo(120.0))
+    }
+
+    @Test
     fun `projects an over-limit request onto the move limit radius`() {
         val constrained = MoveLimit.constrain(
             origin = MapCoordinate(0.5, 0.5),
