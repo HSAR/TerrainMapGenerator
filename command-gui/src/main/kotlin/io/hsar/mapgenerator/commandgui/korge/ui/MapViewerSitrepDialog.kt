@@ -9,6 +9,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepVisibilityReport
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitQueryService
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
+import io.hsar.mapgenerator.commandgui.korge.interaction.displayName
 import io.hsar.mapgenerator.commandgui.korge.interaction.unitClassLabel
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.image.Palette
@@ -21,6 +22,22 @@ import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.concurrent.thread
+
+internal object SitrepSectionLayout {
+    fun rowsHeight(rowCount: Int, rowHeight: Double, rowGap: Double, emptyRowTopInset: Double): Double =
+        if (rowCount <= 0) emptyRowTopInset + rowHeight
+        else (rowCount * rowHeight) + ((rowCount - 1) * rowGap)
+
+    fun sectionHeight(
+        rowCount: Int,
+        headerHeight: Double,
+        headerToRowsGap: Double,
+        rowHeight: Double,
+        rowGap: Double,
+        emptyRowTopInset: Double,
+    ): Double =
+        headerHeight + headerToRowsGap + rowsHeight(rowCount, rowHeight, rowGap, emptyRowTopInset)
+}
 
 internal class MapViewerSitrepDialog(
     private val root: Container,
@@ -315,7 +332,7 @@ internal class MapViewerSitrepDialog(
             }
         }
 
-        currentTop += sectionHeight(currentReport.visibleChecks.size)
+        currentTop += rowsHeight(currentReport.visibleChecks.size)
         currentTop += CONTACT_SECTION_GAP
 
         renderUnidentifiedHeader(parent, width, currentTop)
@@ -347,7 +364,7 @@ internal class MapViewerSitrepDialog(
             }
         }
 
-        currentTop += sectionHeight(currentReport.unidentifiedChecks.size)
+        currentTop += rowsHeight(currentReport.unidentifiedChecks.size)
         currentTop += CONTACT_SECTION_GAP
 
         renderHiddenHeader(parent, width, currentTop)
@@ -688,12 +705,25 @@ internal class MapViewerSitrepDialog(
                 previouslyDetectedIds = previousContactState.sensorContactIds,
                 previouslyIdentifiedIds = previousContactState.identifiedIds,
             )
+            val observerPositionText = SensorDetection.navrepObserverPositionText(
+                observer,
+                unitQueryService.mapWidth,
+                unitQueryService.mapHeight,
+                gridLayer,
+            )
+            val conditionsText = report.displayText.substringBefore(observerPositionText).trim()
+            val lostContactText = lostContacts.joinToString(" ") { "${SensorDetection.lostContactText(it)}." }
+            val reportText = if (report.visibleChecks.isEmpty() && lostContacts.isEmpty()) {
+                report.displayText
+            } else {
+                listOf(conditionsText, observerPositionText).filter { it.isNotBlank() }.joinToString(" ")
+            }
             return report.copy(
                 unidentifiedChecks = emptyList(),
-                displayText = listOf(report.displayText, identificationText, lostContacts.joinToString(" ") { SensorDetection.lostContactText(it) })
+                displayText = listOf(reportText, identificationText, lostContactText)
                     .filter { it.isNotBlank() }
                     .joinToString(" "),
-                copyText = listOf(report.copyText, identificationText, lostContacts.joinToString(" ") { SensorDetection.lostContactText(it) })
+                copyText = listOf(reportText, identificationText, lostContactText)
                     .filter { it.isNotBlank() }
                     .joinToString(" "),
             )
@@ -751,6 +781,11 @@ internal class MapViewerSitrepDialog(
                                         it == observer.template.affiliation
                                     } == true) &&
                                     currentCheck?.destroyedWithinIdentificationRange() == true,
+                            destroyedByFriendlyAction = lost.wasIdentified &&
+                                    !(lost.wasFriendly || currentCheck?.unit?.template?.affiliation?.let {
+                                        it == observer.template.affiliation
+                                    } == true) &&
+                                    currentCheck?.destroyedWithinIdentificationRange() == true,
                         )
                     }
                     ?: previousContactState.lastSeenPositions[contactId]?.let { position ->
@@ -779,8 +814,10 @@ internal class MapViewerSitrepDialog(
                     wasIdentified = check.unit.id in identifiedIds,
                     wasFriendly = observer.template.affiliation != null &&
                             check.unit.template.affiliation == observer.template.affiliation,
+                    identifiedAffiliation = check.unit.lostContactAffiliationDescription(),
                     unitTypeName = check.unit.template.name,
                     unitClassCode = check.unit.unitClassLabel(),
+                    unitInstanceName = check.unit.displayName().takeIf { it != check.unit.template.name },
                 )
             }
         val calculatedContactState = SitrepContactState(
@@ -818,6 +855,15 @@ internal class MapViewerSitrepDialog(
     private fun io.hsar.mapgenerator.commandgui.korge.interaction.SensorVisibilityCheck.destroyedWithinIdentificationRange(): Boolean =
         unit.destroyed && distanceUnits <= identificationRangeUnits
 
+    private fun UnitSnapshot.lostContactAffiliationDescription(): String =
+        when (template.affiliation) {
+            UnitAffiliation.Friend -> if (observer.template.affiliation == UnitAffiliation.Hostile) "enemy" else "allied"
+            UnitAffiliation.Hostile -> "enemy"
+            UnitAffiliation.Neutral -> "neutral"
+            UnitAffiliation.Unknown -> "unknown"
+            null -> "unaffiliated"
+        }
+
     private fun reportRowLabel(check: io.hsar.mapgenerator.commandgui.korge.interaction.SensorVisibilityCheck): String =
         SensorDetection.hiddenContactLabel(
             observer = observer,
@@ -853,11 +899,17 @@ internal class MapViewerSitrepDialog(
     }
 
     private fun sectionHeight(rowCount: Int): Double =
-        if (rowCount <= 0) {
-            HEADER_HEIGHT + HEADER_TO_ROWS_GAP + EMPTY_ROW_TOP_INSET + ROW_HEIGHT
-        } else {
-            HEADER_HEIGHT + HEADER_TO_ROWS_GAP + (rowCount * ROW_HEIGHT) + ((rowCount - 1) * ROW_GAP)
-        }
+        SitrepSectionLayout.sectionHeight(
+            rowCount,
+            HEADER_HEIGHT,
+            HEADER_TO_ROWS_GAP,
+            ROW_HEIGHT,
+            ROW_GAP,
+            EMPTY_ROW_TOP_INSET,
+        )
+
+    private fun rowsHeight(rowCount: Int): Double =
+        SitrepSectionLayout.rowsHeight(rowCount, ROW_HEIGHT, ROW_GAP, EMPTY_ROW_TOP_INSET)
 
     private fun rowControlsWidth(): Double =
         ROW_INSET + CHECKBOX_SIZE * 2.0 + CHECKBOX_GAP + CHECKBOX_LABEL_GAP

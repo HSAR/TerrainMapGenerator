@@ -85,8 +85,10 @@ internal class SitrepContactPersistence private constructor(
                                     state.lastSeenContacts[contactId]?.let { lastSeen ->
                                         put("rangeUnits", lastSeen.lastSeenRangeUnits)
                                         put("friendly", lastSeen.wasFriendly)
+                                        lastSeen.identifiedAffiliation?.let { put("identifiedAffiliation", it) }
                                         lastSeen.unitTypeName?.let { put("unitTypeName", it) }
                                         lastSeen.unitClassCode?.let { put("unitClassCode", it) }
+                                        lastSeen.unitInstanceName?.let { put("unitInstanceName", it) }
                                     }
                                 }
                             }
@@ -103,8 +105,11 @@ internal class SitrepContactPersistence private constructor(
                                     put("identified", lost.wasIdentified)
                                     put("friendly", lost.wasFriendly)
                                     put("lostDueToEnemyAction", lost.lostDueToEnemyAction)
+                                    put("destroyedByFriendlyAction", lost.destroyedByFriendlyAction)
+                                    lost.identifiedAffiliation?.let { put("identifiedAffiliation", it) }
                                     lost.unitTypeName?.let { put("unitTypeName", it) }
                                     lost.unitClassCode?.let { put("unitClassCode", it) }
+                                    lost.unitInstanceName?.let { put("unitInstanceName", it) }
                                 }
                             }
                     }
@@ -162,8 +167,10 @@ internal class SitrepContactPersistence private constructor(
                                 lastSeenRangeUnits = contact.path("rangeUnits").doubleValue(),
                                 wasIdentified = unitId in identifiedIds,
                                 wasFriendly = contact.path("friendly").booleanValue(),
+                                identifiedAffiliation = contact.path("identifiedAffiliation").textValue(),
                                 unitTypeName = contact.path("unitTypeName").textValue(),
                                 unitClassCode = contact.path("unitClassCode").textValue(),
+                                unitInstanceName = contact.path("unitInstanceName").textValue(),
                             )
                         }
                     }
@@ -181,8 +188,11 @@ internal class SitrepContactPersistence private constructor(
                         wasIdentified = lost.path("identified").booleanValue(),
                         wasFriendly = lost.path("friendly").booleanValue(),
                         lostDueToEnemyAction = lost.path("lostDueToEnemyAction").booleanValue(),
+                        destroyedByFriendlyAction = lost.path("destroyedByFriendlyAction").booleanValue(),
+                        identifiedAffiliation = lost.path("identifiedAffiliation").textValue(),
                         unitTypeName = lost.path("unitTypeName").textValue(),
                         unitClassCode = lost.path("unitClassCode").textValue(),
+                        unitInstanceName = lost.path("unitInstanceName").textValue(),
                     )
                 }
                 usedSierraNumbers += sierraNumbers.values

@@ -152,6 +152,11 @@ class SitrepContactPersistenceTest {
             wasIdentified = true,
             wasFriendly = true,
             lostDueToEnemyAction = true,
+            destroyedByFriendlyAction = false,
+            identifiedAffiliation = "allied",
+            unitTypeName = "Hoplite",
+            unitClassCode = "DD",
+            unitInstanceName = "Dealer's Choice",
         )
         val persistence = SitrepContactPersistence.fromJson(null)
 

@@ -1295,6 +1295,9 @@ class SensorDetectionTest {
             lastSeenPosition = MapCoordinate(0.52, 0.5),
             lastSeenRangeUnits = 28.3,
             wasIdentified = true,
+            identifiedAffiliation = "unaffiliated",
+            unitTypeName = "DD Contact",
+            unitClassCode = "DD",
         )
 
         val text = SensorDetection.scirepText(
@@ -1313,7 +1316,7 @@ class SensorDetectionTest {
             equalTo(
                 "New contact tentatively designated Master 4 from last known position " +
                         "at 520 500, range 28.3U was identified as unaffiliated DD Contact-class DD. " +
-                        "Contact Sierra 6 lost.",
+                        "Contact Sierra 6 lost was previously identified as unaffiliated DD Contact-class DD.",
             ),
         )
     }
@@ -1332,9 +1335,13 @@ class SensorDetectionTest {
                     wasIdentified = true,
                     wasFriendly = true,
                     lostDueToEnemyAction = true,
+                    identifiedAffiliation = "allied",
+                    unitTypeName = "Hoplite",
+                    unitClassCode = "DD",
+                    unitInstanceName = "Dealer's Choice",
                 ),
             ),
-            equalTo("Contact Sierra 7 lost due to enemy action"),
+            equalTo("Contact Sierra 7 lost due to enemy action was previously identified as allied Hoplite-class DD Dealer's Choice"),
         )
         assertThat(
             SensorDetection.lostContactText(
@@ -1345,9 +1352,44 @@ class SensorDetectionTest {
                     lastSeenRangeUnits = 6.0,
                     wasIdentified = true,
                     wasFriendly = true,
+                    identifiedAffiliation = "allied",
+                    unitTypeName = "Hoplite",
+                    unitClassCode = "DD",
                 ),
             ),
-            equalTo("Contact Sierra 8 lost"),
+            equalTo("Contact Sierra 8 lost was previously identified as allied Hoplite-class DD"),
+        )
+        assertThat(
+            SensorDetection.lostContactText(
+                SitrepLostContact(
+                    contactId = contactId,
+                    sierraNumber = 9,
+                    lastSeenPosition = MapCoordinate(0.5, 0.5),
+                    lastSeenRangeUnits = 6.0,
+                    wasIdentified = true,
+                    destroyedByFriendlyAction = true,
+                    identifiedAffiliation = "enemy",
+                    unitTypeName = "Hoplite",
+                    unitClassCode = "DD",
+                ),
+            ),
+            equalTo("Contact Sierra 9 lost, destroyed by friendly action was previously identified as enemy Hoplite-class DD"),
+        )
+    }
+
+    @Test
+    fun `navrep observer position text does not repeat a contact entry`() {
+        val observer = unit(
+            id = "00000000-0000-0000-0000-000000000093",
+            instanceName = "FF Observer",
+            unitClass = "FF",
+            x = 0.5,
+            y = 0.5,
+        )
+
+        assertThat(
+            SensorDetection.navrepObserverPositionText(observer, 1_000, 1_000),
+            equalTo("Position 500 500 bearing unknown."),
         )
     }
 

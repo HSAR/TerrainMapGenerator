@@ -75,10 +75,13 @@ internal data class SitrepLostContact(
     val lastSeenPosition: MapCoordinate,
     val lastSeenRangeUnits: Double,
     val wasIdentified: Boolean,
-    val wasFriendly: Boolean = false,
-    val lostDueToEnemyAction: Boolean = false,
     val unitTypeName: String? = null,
     val unitClassCode: String? = null,
+    val wasFriendly: Boolean = false,
+    val lostDueToEnemyAction: Boolean = false,
+    val destroyedByFriendlyAction: Boolean = false,
+    val identifiedAffiliation: String? = null,
+    val unitInstanceName: String? = null,
 )
 
 internal data class ScirepContactSegment(
@@ -465,7 +468,28 @@ internal object SensorDetection {
     }
 
     fun lostContactText(lost: SitrepLostContact): String =
-        "Contact Sierra ${lost.sierraNumber} lost" + if (lost.lostDueToEnemyAction) " due to enemy action" else ""
+        buildString {
+            append("Contact Sierra ${lost.sierraNumber} lost")
+            if (lost.lostDueToEnemyAction) append(" due to enemy action")
+            else if (lost.destroyedByFriendlyAction) append(", destroyed by friendly action")
+            if (lost.wasIdentified) {
+                append(" was previously identified as ")
+                append(lost.identifiedAffiliation ?: if (lost.wasFriendly) "allied" else "unknown")
+                append(' ')
+                append(lost.unitTypeName?.ifBlank { "Unknown" } ?: "Unknown")
+                append("-class ")
+                append(lost.unitClassCode ?: "UKN")
+                lost.unitInstanceName?.takeIf { it.isNotBlank() }?.let { append(' ').append(it) }
+            }
+        }
+
+    fun navrepObserverPositionText(
+        observer: UnitSnapshot,
+        mapWidth: Int,
+        mapHeight: Int,
+        gridLayer: GridLayer? = null,
+    ): String =
+        "Position ${formatPosition(observer, mapWidth, mapHeight, gridLayer)} bearing ${formatBearing(observer.facingDegrees)}."
 
     fun navrepIdentificationText(
         observer: UnitSnapshot,
@@ -678,10 +702,7 @@ internal object SensorDetection {
         emptySummaryText: String,
     ): String =
         buildString {
-            append("Position ")
-            append(formatPosition(observer, mapWidth, mapHeight, gridLayer))
-            append(" bearing ")
-            append(formatBearing(observer.facingDegrees))
+            append(navrepObserverPositionText(observer, mapWidth, mapHeight, gridLayer).trimEnd('.'))
             if (visibleChecks.isEmpty()) {
                 append('.')
                 if (emptySummaryText.isNotBlank()) {
