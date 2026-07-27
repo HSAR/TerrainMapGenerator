@@ -11,6 +11,7 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingView
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
+import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.korge.interaction.ContextMenuDeferredActionRunner
 import io.hsar.mapgenerator.commandgui.korge.interaction.ContextMenuManager
@@ -783,6 +784,16 @@ internal class MapViewerScene(
                                     .takeIf { it.isNotEmpty() }
                                     ?.let { recordLedgerEntry(EditObjectAction.fromSnapshots(before, after)) }
                                 dialogManager.broadcast(after)
+                            },
+                            onTacticalUnitsEdited = { edits ->
+                                edits
+                                    .mapNotNull { (before, after) ->
+                                        MapPlacedObjectPatch.diff(before, after)
+                                            .takeIf { it.isNotEmpty() }
+                                            ?.let { EditObjectAction.fromSnapshots(before, after) }
+                                    }
+                                    .takeIf { it.isNotEmpty() }
+                                    ?.let { entries -> recordLedgerEntry(BatchLedgerEntry(entries)) }
                             },
                             onUnitsChanged = {
                                 if (selectionControllerReady && !startupReplayInProgress) {

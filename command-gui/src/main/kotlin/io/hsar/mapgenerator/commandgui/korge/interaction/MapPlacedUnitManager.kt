@@ -66,6 +66,7 @@ internal class MapPlacedUnitManager(
     private val onObjectMoved: (MapPlacedObjectSnapshot, MapPlacedObjectSnapshot) -> Unit = { _, _ -> },
     private val onObjectDeleted: (MapPlacedObjectSnapshot) -> Unit = {},
     private val onUnitEdited: (UnitSnapshot, UnitSnapshot) -> Unit = { _, _ -> },
+    private val onTacticalUnitsEdited: (List<Pair<UnitSnapshot, UnitSnapshot>>) -> Unit = {},
     private val onUnitsChanged: () -> Unit = {},
     private val turnOriginProvider: (MapPlacedObjectId) -> MapCoordinate? = { null },
     private val onTurnOriginReset: (MapPlacedObjectId, MapCoordinate) -> Unit = { _, _ -> },
@@ -99,6 +100,7 @@ internal class MapPlacedUnitManager(
     private val editSessions = mutableMapOf<MapPlacedObjectId, UnitEditSession>()
     private val tacticalDialogs = mutableMapOf<MapPlacedObjectId, MapViewerTacticalDialog>()
     private val tacticalSelectedTargetIds = mutableMapOf<MapPlacedObjectId, MapPlacedObjectId>()
+    private var tacticalEditBaselines: MutableMap<MapPlacedObjectId, UnitSnapshot>? = null
     private val openUnitEditDialogs = mutableMapOf<MapPlacedObjectId, MapViewerUnitEditDialog>()
     private var fullVisualRebuildCount = 0
     private var facingGeometryRebuildCount = 0
@@ -841,6 +843,10 @@ internal class MapPlacedUnitManager(
             ?.let { properties -> updateShipDamage(carrier, OlympiadDawnShip.shipDamage(carrier.snapshot().copy(customProperties = properties)) ?: return) }
     }
 
+    private fun reportUnitEdited(before: UnitSnapshot, after: UnitSnapshot) {
+        tacticalEditBaselines?.putIfAbsent(before.id, before) ?: onUnitEdited(before, after)
+    }
+
     private fun updateShipDamage(unit: PlacedUnit, damage: OlympiadDawnShipDamage) {
         val before = unit.snapshot()
         val customProperties = MoveLimit.withCalculatedValue(
@@ -851,7 +857,7 @@ internal class MapPlacedUnitManager(
         openUnitEditDialogs[unit.id]?.syncShipDamage(damage)
         syncEditDialog(unit)
         notifyUnitStateChanged()
-        onUnitEdited(before, unit.snapshot())
+        reportUnitEdited(before, unit.snapshot())
     }
 
     private fun initialReferenceFields(unit: PlacedUnit): GridReferenceFields {
@@ -1160,10 +1166,12 @@ internal class MapPlacedUnitManager(
                 ).also(onEcmActivation)
             }
             val beforeFiring = unit.snapshot()
+            tacticalEditBaselines = linkedMapOf()
             unit.customProperties = TacticalTurnMarker.update(updatedProperties, usageKey.turnNumber, updatedUsage, activation)
-            if (unit.customProperties != beforeFiring.customProperties) onUnitEdited(beforeFiring, unit.snapshot())
+            if (unit.customProperties != beforeFiring.customProperties) reportUnitEdited(beforeFiring, unit.snapshot())
             onTacticalFireUsageChanged(usageKey, updatedUsage)
             if (target.manualEcm) {
+                completeTacticalEditBatch()
                 notifyUnitStateChanged()
                 return TacticalFireResolution(
                     attackerName = unit.snapshot().displayName(),
@@ -1191,6 +1199,7 @@ internal class MapPlacedUnitManager(
                 ecmLevelsByWeaponKey = ecmLevelsFor(unit.snapshot(), resolutionTarget.snapshot(), report.weapons, contributions),
             )
             val outcome = applyTacticalDamage(resolutionTarget, resolution.damage)
+            completeTacticalEditBatch()
             notifyUnitStateChanged()
             return resolution.copy(
                 attackerName = unit.snapshot().displayName(),
@@ -1198,6 +1207,18 @@ internal class MapPlacedUnitManager(
                 targetDestroyed = outcome.targetDestroyed,
                 ecmActivations = listOfNotNull(activation),
             )
+        }
+
+        private fun reportUnitEdited(before: UnitSnapshot, after: UnitSnapshot) {
+            tacticalEditBaselines?.putIfAbsent(before.id, before) ?: onUnitEdited(before, after)
+        }
+
+        private fun completeTacticalEditBatch() {
+            tacticalEditBaselines
+                ?.mapNotNull { (id, before) -> units.firstOrNull { it.id == id }?.snapshot()?.let { after -> before to after } }
+                ?.takeIf { it.isNotEmpty() }
+                ?.let(onTacticalUnitsEdited)
+            tacticalEditBaselines = null
         }
 
         private fun applyTacticalDamage(target: PlacedUnit, hits: Int): TacticalDamageOutcome {
@@ -1321,7 +1342,7 @@ internal class MapPlacedUnitManager(
             }
             val beforeFiring = defender.snapshot()
             defender.customProperties = TacticalTurnMarker.update(defender.customProperties, key.turnNumber, updatedUsage, activation)
-            if (defender.customProperties != beforeFiring.customProperties) onUnitEdited(beforeFiring, defender.snapshot())
+            if (defender.customProperties != beforeFiring.customProperties) reportUnitEdited(beforeFiring, defender.snapshot())
             onTacticalFireUsageChanged(key, updatedUsage)
             pending.interceptedDamage = defence.damage
             units.firstOrNull { it.id == pending.attackerId }
@@ -1346,6 +1367,7 @@ internal class MapPlacedUnitManager(
                 ecmLevelsByWeaponKey = ecmLevelsFor(attacker, defender.snapshot(), pending.incomingWeapons, reduced),
             )
             val outcome = applyTacticalDamage(defender, attack.damage)
+            completeTacticalEditBatch()
             notifyUnitStateChanged()
             return attack.copy(attackerName = attacker.displayName(), fightersDestroyed = outcome.fightersDestroyed, targetDestroyed = outcome.targetDestroyed)
         }
@@ -1399,7 +1421,7 @@ internal class MapPlacedUnitManager(
             unit.destroyed = true
             unit.updateStateOverlay()
             syncEditDialog(unit)
-            onUnitEdited(before, unit.snapshot())
+            reportUnitEdited(before, unit.snapshot())
         }
 
         override fun moveBy(mapDelta: MapCoordinateDelta) {
