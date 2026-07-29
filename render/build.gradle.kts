@@ -1,5 +1,3 @@
-import jdk.tools.jlink.resources.plugins
-
 plugins {
     id("terrain.kotlin-jvm")
     id("org.jetbrains.compose")
@@ -33,6 +31,19 @@ compose.desktop {
             packageName = "TerrainMapGenerator"
             packageVersion = "0.0.1"
         }
+    }
+}
+
+listOf(
+    "runComposeGui" to "compose",
+    "runKorgeGui" to "korge",
+).forEach { (taskName, viewer) ->
+    tasks.register<JavaExec>(taskName) {
+        group = "application"
+        description = "Launches the $viewer map viewer with its development arguments."
+        classpath = sourceSets.main.get().runtimeClasspath
+        mainClass.set("io.hsar.mapgenerator.commandline.MainKt")
+        args("show-gui", "--viewer", viewer)
     }
 }
 

@@ -12,13 +12,13 @@ The repository uses the checked-in Gradle wrapper and a Java 21 toolchain:
 Launch the legacy viewer:
 
 ```powershell
-.\gradlew.bat :render:run --args="show-gui --viewer=korge"
+.\gradlew.bat :render:run --args="show-gui --viewer korge"
 ```
 
 Launch the Compose Desktop viewer:
 
 ```powershell
-.\gradlew.bat :render:run --args="show-gui --viewer=compose"
+.\gradlew.bat :render:run --args="show-gui --viewer compose"
 ```
 
 Build the self-contained portable Windows archive:

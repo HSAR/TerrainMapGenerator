@@ -1,5 +1,3 @@
-import jdk.tools.jlink.resources.plugins
-
 plugins {
     id("org.jetbrains.compose") version "1.11.1" apply false
 }

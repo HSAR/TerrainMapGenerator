@@ -7,8 +7,10 @@ import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasItem
 import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertDoesNotThrow
 import java.awt.image.BufferedImage
 import java.io.File
+import java.util.Collections.emptyList
 import javax.imageio.ImageIO
 
 class MainTest {
@@ -35,6 +37,17 @@ class MainTest {
             .parse("--metres-per-pixel", "12.5")
 
         assertThat(command.configuredMetresPerPixel, equalTo(12.5))
+    }
+
+    @Test
+    fun `GUI launcher accepts the compose viewer option`() {
+        val commander = JCommander.newBuilder()
+            .addCommand(LaunchGuiCommand.name, LaunchGuiCommand)
+            .build()
+
+        assertDoesNotThrow {
+            commander.parse("show-gui", "--viewer", "compose")
+        }
     }
 
     @Test

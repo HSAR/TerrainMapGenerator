@@ -1,8 +1,10 @@
 package io.hsar.mapgenerator.commandgui.compose
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,9 +20,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -33,6 +39,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,12 +52,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -61,6 +69,10 @@ import androidx.compose.ui.window.application
 import io.hsar.mapgenerator.commandgui.MapViewerBackend
 import io.hsar.mapgenerator.commandgui.MapViewerBackendProvider
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
+import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
+import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
+import io.hsar.mapgenerator.commandgui.MapViewerSavedMap
+import io.hsar.mapgenerator.commandgui.MapViewerSavedOperation
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.MapViewport
@@ -69,10 +81,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
-import java.io.ByteArrayOutputStream
-import java.io.File
 import java.awt.FileDialog
 import java.awt.Frame
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Collections.emptyList
 import javax.imageio.ImageIO
 import kotlin.math.roundToInt
 
@@ -85,9 +100,10 @@ class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
         initialSetupInputs: MapViewerSetupInputs,
     ) = application {
         var workspaceMode by remember { mutableStateOf(WorkspaceMode.DOCKED) }
+        var windowTitle by remember { mutableStateOf(MapViewerSettings().windowTitle()) }
 
         Window(
-            title = initialSettings.windowTitle(),
+            title = windowTitle,
             onCloseRequest = ::exitApplication,
         ) {
             MenuBar {
@@ -113,6 +129,7 @@ class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
                     workspaceMode = workspaceMode,
                     awtWindow = window,
                     onWorkspaceModeChanged = { workspaceMode = it },
+                    onTitleChanged = { windowTitle = it },
                 )
             }
         }
@@ -132,19 +149,245 @@ private fun ComposeMapViewer(
     workspaceMode: WorkspaceMode,
     awtWindow: java.awt.Window,
     onWorkspaceModeChanged: (WorkspaceMode) -> Unit,
+    onTitleChanged: (String) -> Unit,
 ) {
-    var settings by remember { mutableStateOf(initialSettings) }
-    var renderData by remember {
+    val suppliedMap = remember {
+        initialSetupInputs.mapImage
+            ?: initialSetupInputs.mapImagePath?.let { path -> runCatching { ImageIO.read(File(path)) }.getOrNull() }
+    }
+    var activeMap by remember {
         mutableStateOf(
-            (
-                    initialSetupInputs.mapImage
-                        ?: initialSetupInputs.mapImagePath?.let { path -> runCatching { ImageIO.read(File(path)) }.getOrNull() }
-                    )?.let { MapViewerRenderData(it) },
+            suppliedMap?.let {
+                ComposeActiveMap(
+                    settings = initialSettings,
+                    renderData = MapViewerRenderData(it),
+                )
+            },
         )
     }
+    val repository = remember { MapViewerSaveRepository() }
+
+    LaunchedEffect(activeMap?.settings?.operationName) {
+        onTitleChanged(activeMap?.settings?.windowTitle() ?: MapViewerSettings().windowTitle())
+    }
+
+    activeMap?.let { map ->
+        key(map) {
+            ViewerWorkspace(
+                renderMap = renderMap,
+                initialMap = map,
+                workspaceMode = workspaceMode,
+                awtWindow = awtWindow,
+                onWorkspaceModeChanged = onWorkspaceModeChanged,
+                onReturnToLaunchpad = { activeMap = null },
+            )
+        }
+    } ?: ComposeLaunchpad(
+        repository = repository,
+        awtWindow = awtWindow,
+        onCreateOperation = {
+            activeMap = ComposeActiveMap(settings = initialSettings)
+        },
+        onMapLoaded = { loaded ->
+            activeMap = ComposeActiveMap(
+                settings = loaded.settings,
+                renderData = loaded.renderData,
+                camera = loaded.camera,
+                sourcePath = loaded.operation.path.toString(),
+            )
+        },
+    )
+}
+
+private data class ComposeActiveMap(
+    val settings: MapViewerSettings,
+    val renderData: MapViewerRenderData? = null,
+    val camera: MapViewerSavedCamera? = null,
+    val sourcePath: String? = null,
+)
+
+@Composable
+private fun ComposeLaunchpad(
+    repository: MapViewerSaveRepository,
+    awtWindow: java.awt.Window,
+    onCreateOperation: () -> Unit,
+    onMapLoaded: (MapViewerSavedMap) -> Unit,
+) {
+    var saves by remember { mutableStateOf<List<MapViewerSavedOperation>>(emptyList()) }
+    var refreshing by remember { mutableStateOf(true) }
+    var loadingPath by remember { mutableStateOf<String?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun refresh() {
+        if (refreshing && saves.isNotEmpty()) return
+        refreshing = true
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { repository.list() } }
+                .onSuccess {
+                    saves = it
+                    errorMessage = null
+                }
+                .onFailure { errorMessage = "Could not list saves: ${it.message ?: it::class.simpleName}" }
+            refreshing = false
+        }
+    }
+
+    fun load(path: java.nio.file.Path) {
+        if (loadingPath != null) return
+        loadingPath = path.toString()
+        errorMessage = null
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { repository.loadMap(path) } }
+                .onSuccess(onMapLoaded)
+                .onFailure { errorMessage = "Could not load ${path.fileName}: ${it.message ?: it::class.simpleName}" }
+            loadingPath = null
+        }
+    }
+
+    fun browse() {
+        FileDialog(awtWindow as? Frame, "Open operation save", FileDialog.LOAD).also { dialog ->
+            dialog.directory = repository.savesDirectory.toString()
+            dialog.file = "*.zip"
+            dialog.isVisible = true
+            val fileName = dialog.file ?: return
+            load(File(dialog.directory, fileName).toPath())
+        }
+    }
+
+    LaunchedEffect(Unit) { refresh() }
+
+    Surface(Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Operational Command Tool", style = MaterialTheme.typography.headlineLarge)
+                Text(
+                    "Compose launchpad",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onCreateOperation) {
+                    Text("Create new operation")
+                }
+                OutlinedButton(onClick = ::browse, enabled = loadingPath == null) {
+                    Text("Browse for save")
+                }
+                OutlinedButton(onClick = ::refresh, enabled = !refreshing) {
+                    Text(if (refreshing) "Refreshing…" else "Refresh")
+                }
+            }
+            errorMessage?.let { message ->
+                Text(message, color = MaterialTheme.colorScheme.error)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Ongoing operations", style = MaterialTheme.typography.headlineSmall)
+                Spacer(Modifier.weight(1f))
+                if (refreshing || loadingPath != null) {
+                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                }
+            }
+            if (!refreshing && saves.isEmpty()) {
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Text(
+                        "No saved operations were found in\n${repository.savesDirectory}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(saves, key = { it.path.toString() }) { save ->
+                        SavedOperationCard(
+                            operation = save,
+                            loading = loadingPath == save.path.toString(),
+                            enabled = loadingPath == null,
+                            onClick = { load(save.path) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SavedOperationCard(
+    operation: MapViewerSavedOperation,
+    loading: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val thumbnail = remember(operation.thumbnail) { operation.thumbnail?.toImageBitmap() }
+    Card(
+        modifier = Modifier.fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().height(116.dp).padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier.size(width = 160.dp, height = 96.dp)
+                    .background(MaterialTheme.colorScheme.surface),
+                contentAlignment = Alignment.Center,
+            ) {
+                thumbnail?.let {
+                    Image(
+                        bitmap = it,
+                        contentDescription = "${operation.operationName} map preview",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                } ?: Text("No preview", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(operation.operationName, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "Updated ${SAVE_DATE_FORMAT.format(operation.updatedAt.atZone(ZoneId.systemDefault()))}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    operation.path.fileName.toString(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (loading) CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.dp)
+            else Text("Open", color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+private val SAVE_DATE_FORMAT = DateTimeFormatter.ofPattern("d MMM uuuu, HH:mm")
+
+@Composable
+private fun ViewerWorkspace(
+    renderMap: (MapViewerSettings) -> MapViewerRenderData,
+    initialMap: ComposeActiveMap,
+    workspaceMode: WorkspaceMode,
+    awtWindow: java.awt.Window,
+    onWorkspaceModeChanged: (WorkspaceMode) -> Unit,
+    onReturnToLaunchpad: () -> Unit,
+) {
+    var settings by remember { mutableStateOf(initialMap.settings) }
+    var renderData by remember { mutableStateOf(initialMap.renderData) }
     var rendering by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf("") }
-    val eventLog = remember { mutableStateListOf("Compose viewer started") }
+    val eventLog = remember {
+        mutableStateListOf(
+            initialMap.sourcePath?.let { "Loaded ${File(it).name} at map level" }
+                ?: "Compose viewer started",
+        )
+    }
     val scope = rememberCoroutineScope()
     fun openMap() {
         FileDialog(awtWindow as? Frame, "Open map image", FileDialog.LOAD).also { dialog ->
@@ -190,6 +433,7 @@ private fun ComposeMapViewer(
                 onRender = ::render,
                 onOpenMap = ::openMap,
                 onWorkspaceModeChanged = onWorkspaceModeChanged,
+                onReturnToLaunchpad = onReturnToLaunchpad,
             )
             HorizontalDivider()
             Row(Modifier.weight(1f)) {
@@ -198,6 +442,7 @@ private fun ComposeMapViewer(
                     renderData?.let {
                         MapCanvas(
                             renderData = it,
+                            savedCamera = initialMap.camera,
                             modifier = Modifier.fillMaxSize(),
                         )
                     } ?: EmptyMap(onRender = ::render, rendering = rendering)
@@ -231,11 +476,15 @@ private fun ViewerToolbar(
     onRender: () -> Unit,
     onOpenMap: () -> Unit,
     onWorkspaceModeChanged: (WorkspaceMode) -> Unit,
+    onReturnToLaunchpad: () -> Unit,
 ) = Row(
     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
     horizontalArrangement = Arrangement.spacedBy(8.dp),
     verticalAlignment = Alignment.CenterVertically,
 ) {
+    OutlinedButton(onClick = onReturnToLaunchpad) {
+        Text("Launchpad")
+    }
     Button(onClick = onRender, enabled = !rendering) {
         Text(if (rendering) "Rendering…" else "Generate map")
     }
@@ -377,7 +626,11 @@ private data class ComposeRasterTile(
 
 @Composable
 @OptIn(ExperimentalComposeUiApi::class)
-private fun MapCanvas(renderData: MapViewerRenderData, modifier: Modifier = Modifier) {
+private fun MapCanvas(
+    renderData: MapViewerRenderData,
+    savedCamera: MapViewerSavedCamera? = null,
+    modifier: Modifier = Modifier,
+) {
     val tiles = remember(renderData.baseImage) {
         RasterTileSet.from(renderData.baseImage).tiles.map { tile ->
             ComposeRasterTile(
@@ -393,8 +646,22 @@ private fun MapCanvas(renderData: MapViewerRenderData, modifier: Modifier = Modi
     val worldHeight = remember(renderData.baseImage) { renderData.baseImage.height * 1.66 }
     val mapOffsetX = remember(renderData.baseImage) { (worldWidth - renderData.baseImage.width) / 2.0 }
     val mapOffsetY = remember(renderData.baseImage) { (worldHeight - renderData.baseImage.height) / 2.0 }
-    var viewport by remember(renderData.baseImage) {
-        mutableStateOf(MapViewport.centered(worldWidth, worldHeight))
+    var viewport by remember(renderData.baseImage, savedCamera) {
+        mutableStateOf(
+            savedCamera?.let { camera ->
+                MapViewport(
+                    center = ViewerPoint(
+                        mapOffsetX + camera.x * renderData.baseImage.width,
+                        mapOffsetY + camera.y * renderData.baseImage.height,
+                    ),
+                    zoom = camera.zoom.coerceIn(MapViewerSettings.MIN_ZOOM, MapViewerSettings.MAX_ZOOM),
+                    viewportWidth = 1,
+                    viewportHeight = 1,
+                    worldWidth = worldWidth,
+                    worldHeight = worldHeight,
+                )
+            } ?: MapViewport.centered(worldWidth, worldHeight),
+        )
     }
 
     Canvas(
