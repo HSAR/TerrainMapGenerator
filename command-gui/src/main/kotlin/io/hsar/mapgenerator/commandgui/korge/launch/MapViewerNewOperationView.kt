@@ -19,6 +19,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerChevron
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerChevronDirection
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerCollapsiblePanel
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerCornerBrackets
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDebouncer
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogSpacing
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDropdownMenu
@@ -184,6 +185,9 @@ internal class MapViewerNewOperationView(
     private var preparedMapPreview: MapPreview? = null
     private var nativeDropTargetInstallScheduled = false
     private var closed = false
+    private val coordinateBoundsDebouncer = MapViewerDebouncer<Unit>(COORDINATE_BOUNDS_DELAY_MILLISECONDS) {
+        clampCoordinateInputsToBounds()
+    }
 
     init {
         layer.zIndex = Z_INDEX
@@ -201,6 +205,7 @@ internal class MapViewerNewOperationView(
             consumePendingUnitIconLoads()
             consumePendingUnitTypeImports()
             transientNotice.update()
+            coordinateBoundsDebouncer.flush()
             updatePreviewIfNeeded()
         }
         layer.mouse {
@@ -216,6 +221,7 @@ internal class MapViewerNewOperationView(
 
     fun close() {
         closed = true
+        coordinateBoundsDebouncer.cancel()
         nativeDropTargetComponent?.dropTarget = null
         referenceSystemDropdown.close()
         transientNotice.dispose()
@@ -1417,7 +1423,27 @@ internal class MapViewerNewOperationView(
             captureInputs()
             mapPreviewDirty = true
             refreshLaunchButton()
+            coordinateBoundsDebouncer.schedule(Unit)
         }
+    }
+
+    private fun clampCoordinateInputsToBounds() {
+        val gridConfiguration = parseGridConfiguration() ?: return
+        val unitsPerPixel = currentUnitsPerPixel() ?: return
+        val (width, height) = mapImage?.image?.let { it.width to it.height } ?: DEFAULT_GRID_WIDTH to DEFAULT_GRID_HEIGHT
+        val clamped = gridConfiguration.clampedToGridBounds(width, height, unitsPerPixel)
+        if (clamped == gridConfiguration) return
+
+        coordinateSystemInputs[coordinateSystemSelection] = currentCoordinateInputs().copy(
+            gridStartXText = clamped.formatStartX(),
+            gridStartYText = clamped.formatStartY(),
+        )
+        coordinateInputFields[coordinateSystemSelection]?.let { fields ->
+            fields.gridStartX.text = clamped.formatStartX()
+            fields.gridStartY.text = clamped.formatStartY()
+        }
+        mapPreviewDirty = true
+        refreshLaunchButton()
     }
 
     private fun chooseRasterImageFile(): File? =
@@ -1546,6 +1572,7 @@ internal class MapViewerNewOperationView(
         const val DROP_TARGET_HEIGHT = 64.0
         const val ROW_HEIGHT = 44.0
         const val IMPORT_BATCH_SIZE = 8
+        const val COORDINATE_BOUNDS_DELAY_MILLISECONDS = 350L
         const val UNIT_GROUP_HEADER_HEIGHT = 36.0
         const val UNIT_GROUP_GAP = 8.0
         const val UNIT_DROP_HEADER_HEIGHT = 36.0

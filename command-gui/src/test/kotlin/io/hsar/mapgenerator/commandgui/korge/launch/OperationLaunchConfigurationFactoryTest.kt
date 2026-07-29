@@ -73,6 +73,19 @@ class OperationLaunchConfigurationFactoryTest {
     }
 
     @Test
+    fun `epsilon grid configuration clamps starts so every visible designator is supported`() {
+        val configuration = GridConfiguration(
+            mapId = "EPSILON",
+            referenceSystem = ReferenceSystem.EPSILON,
+            startX = ReferenceSystem.EPSILON.coordFromLineNumber(99.0, ReferenceSystem.EPSILON.gridScale),
+            startY = ReferenceSystem.EPSILON.coordFromLineNumber(1.0, ReferenceSystem.EPSILON.gridScale),
+        ).clampedToGridBounds(width = 1_000, height = 1_000, unitsPerPixel = 0.05)
+
+        assertThat(configuration.referenceSystem.formatCoord(configuration.startX, CoordAxis.X, ReferenceSystem.EPSILON.gridScale), equalTo("98"))
+        assertThat(configuration.referenceSystem.formatCoord(configuration.startY, CoordAxis.Y, ReferenceSystem.EPSILON.gridScale), equalTo("C"))
+    }
+
+    @Test
     fun `grid configuration translation preserves line numbers for epsilon input display`() {
         val translated = translateGridConfiguration(
             gridConfiguration = GridConfiguration(

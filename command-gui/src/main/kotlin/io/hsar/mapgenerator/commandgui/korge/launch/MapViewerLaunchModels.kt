@@ -12,11 +12,15 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.OPERATION_START_TURN_NAME
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.grid.Coord
+import io.hsar.mapgenerator.grid.CoordAxis
+import io.hsar.mapgenerator.grid.EpsilonGridDesignators
 import io.hsar.mapgenerator.grid.GridLayerBuilder
 import io.hsar.mapgenerator.grid.ReferenceSystem
 import java.awt.image.BufferedImage
 import java.io.File
 import java.util.*
+import kotlin.math.log10
+import kotlin.math.pow
 
 internal enum class MapViewerLaunchState {
     LAUNCHPAD,
@@ -179,6 +183,38 @@ internal fun translateGridConfiguration(
             gridScale = referenceSystem.gridScale,
         ),
     )
+
+internal fun GridConfiguration.clampedToGridBounds(
+    width: Int,
+    height: Int,
+    unitsPerPixel: Double,
+): GridConfiguration {
+    val pixelsPerLine = referenceSystem.gridScale / unitsPerPixel
+    val verticalLineCount = (width / pixelsPerLine).toInt()
+    val horizontalLineCount = (height / pixelsPerLine).toInt()
+    fun clamp(coord: Coord, axis: CoordAxis): Coord =
+        coord.lineNumber(referenceSystem.gridScale)
+            .coerceIn(
+                if (axis == CoordAxis.Y) horizontalLineCount.toDouble() else 0.0,
+                referenceSystem.maximumGridLineNumber(axis)
+                    .let { maximumLineNumber ->
+                        if (axis == CoordAxis.X) maximumLineNumber - verticalLineCount else maximumLineNumber
+                    }
+                    .toDouble(),
+            )
+            .let { lineNumber -> referenceSystem.coordFromLineNumber(lineNumber, referenceSystem.gridScale) }
+
+    return copy(startX = clamp(startX, CoordAxis.X), startY = clamp(startY, CoordAxis.Y))
+}
+
+private fun ReferenceSystem.maximumGridLineNumber(axis: CoordAxis): Int =
+    when (this) {
+        ReferenceSystem.MGRS -> 10.0.pow(5 - log10(gridScale.toDouble()).toInt()).toInt() - 1
+        ReferenceSystem.EPSILON -> when (axis) {
+            CoordAxis.X -> EpsilonGridDesignators.MAX_X_SQUARES - 1
+            CoordAxis.Y -> EpsilonGridDesignators.MAX_Y_SQUARES - 1
+        }
+    }
 
 internal object OperationLaunchConfigurationFactory {
     fun create(
