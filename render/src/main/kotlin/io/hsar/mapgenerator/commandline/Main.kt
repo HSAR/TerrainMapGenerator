@@ -6,6 +6,7 @@ import com.beust.jcommander.Parameters
 import io.hsar.mapgenerator.TerrainMapGenerator
 import io.hsar.mapgenerator.commandgui.GridColourSelector
 import io.hsar.mapgenerator.commandgui.MapLayer
+import io.hsar.mapgenerator.commandgui.MapViewerBackend
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.MapViewerFrame
 import io.hsar.mapgenerator.commandgui.MapViewerLayer
@@ -35,6 +36,13 @@ import kotlin.system.exitProcess
 @Parameters(commandDescription = "Generates terrain maps and opens the KorGE map viewer.")
 object LaunchGuiCommand : Command("show-gui") {
     @Parameter(
+        names = ["--viewer"],
+        description = "Viewer backend to launch: korge or compose.",
+        required = false,
+    )
+    private var viewer: String = MapViewerBackend.KORGE.cliName
+
+    @Parameter(
         names = ["--map"],
         description = "Path to a map image to prefill the create new operation screen.",
         required = false,
@@ -56,6 +64,7 @@ object LaunchGuiCommand : Command("show-gui") {
             renderMap = ::renderViewerImage,
             initialSettings = viewerSettings(staticLayers),
             initialSetupInputs = initialSetupInputs(mapPath, staticImagePaths),
+            backend = MapViewerBackend.fromCliName(viewer),
         ).showWindow()
     }
 

@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
+import io.hsar.mapgenerator.commandgui.ViewerPoint
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
 import korlibs.math.geom.Vector2D
@@ -13,7 +14,7 @@ internal data class MapViewerPersistedDialog(
     val draft: JsonNode? = null,
     val minimized: Boolean = false,
     val pinned: Boolean = false,
-    val pinAnchor: Vector2D? = null,
+    val pinAnchor: ViewerPoint? = null,
 ) {
     fun toJson(): ObjectNode = OperationSaveJson.objectMapper.createObjectNode().apply {
         put("type", type)
@@ -42,7 +43,7 @@ internal data class MapViewerPersistedDialog(
             if (node.path("type").textValue() == null || values.any { !it.isNumber }) return null
             val pinAnchor = node.path("pinAnchor")
                 .takeIf { it.isObject && it.path("x").isNumber && it.path("y").isNumber }
-                ?.let { Vector2D(it.path("x").doubleValue(), it.path("y").doubleValue()) }
+                ?.let { ViewerPoint(it.path("x").doubleValue(), it.path("y").doubleValue()) }
             return MapViewerPersistedDialog(
                 type = node.path("type").textValue(),
                 targetId = node.path("targetId").textValue(),

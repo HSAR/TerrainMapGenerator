@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import com.fasterxml.jackson.databind.JsonNode
+import io.hsar.mapgenerator.commandgui.ViewerPoint
 import io.hsar.mapgenerator.commandgui.korge.scene.MapViewerSceneLayers
 import korlibs.image.color.RGBA
 import korlibs.korge.input.mouse
@@ -33,7 +34,15 @@ internal data class MapViewerDialogPersistence(
         pinned: Boolean,
         pinAnchor: Vector2D?,
     ): MapViewerPersistedDialog =
-        MapViewerPersistedDialog(type, targetId, bounds, draft(), minimized, pinned, pinAnchor)
+        MapViewerPersistedDialog(
+            type,
+            targetId,
+            bounds,
+            draft(),
+            minimized,
+            pinned,
+            pinAnchor?.let { ViewerPoint(it.x, it.y) },
+        )
 }
 
 internal class MapViewerDialogWindow(
@@ -114,7 +123,9 @@ internal class MapViewerDialogWindow(
         minimized = persistence.restored?.minimized == true && hasViewerWindowControls()
         pinned = persistence.restored?.let { it.pinned && it.pinAnchor != null } == true &&
                 hasViewerWindowControls()
-        pinAnchor = persistence.restored?.pinAnchor.takeIf { pinned }
+        pinAnchor = persistence.restored?.pinAnchor
+            .takeIf { pinned }
+            ?.let { Vector2D(it.x, it.y) }
         lastViewport = dialogManager?.viewport()
         installInputHandlers()
         if (minimized && !pinned) dock()

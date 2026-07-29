@@ -1,10 +1,16 @@
 # Command GUI Notes
 
 - `command-gui/src/main/kotlin/io/hsar/mapgenerator/commandgui/MapViewerFrame.kt` is the public viewer entry point for generated map images and should not depend on `render/`.
+- `MapViewerFrame` is also the backend compatibility facade. The Compose implementation is loaded from `command-gui-compose` through
+  `MapViewerBackendProvider`; keep Compose/Skia types out of the facade and shared save models.
+- `command-gui-compose` owns the modern Compose Desktop window, Material controls and tiled Canvas renderer. It must remain a single Compose
+  rendering surface; AWT interop is reserved for native operating-system dialogs.
 - `command-gui/src/main/kotlin/io/hsar/mapgenerator/commandgui/korge/scene/MapViewerScene.kt` owns KorGE window setup, camera world wiring and scene-level composition.
+- KorGE is the compatibility backend while workflows move to Compose. New reusable behavior belongs in engine-neutral packages rather than
+  under `korge/`.
 - `command-gui/src/main/kotlin/io/hsar/mapgenerator/commandgui/korge/overlay/GridOverlayLayout.kt` is the source of truth for sticky axis labels, fade behaviour, major/fine grid
   switching and live reference overlays.
-    - Use the JVM-specific KorGE Maven artifact; KorGE 5.4 currently works better for Maven-launched Windows GUI runs than KorGE 6.0's JNI OpenGL path.
+    - Keep the JVM-specific KorGE 5.4 dependency for the compatibility backend until that backend is removed; do not upgrade it as part of Compose work.
     - When working in KorGE, consult the entrypoint docs first: https://docs.korge.org/entrypoint/
     - All `command-gui` bitmaps handed to KorGE views should be premultiplied before upload; call `premultipliedIfRequired()` after loading, trimming or composing bitmap content.
     - The map viewer uses scroll-wheel zoom; keep the active seed stable across rerenders so graph and contour layers stay consistent for a single session.

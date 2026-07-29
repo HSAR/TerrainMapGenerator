@@ -1,11 +1,12 @@
 package io.hsar.mapgenerator.commandgui.save
 
+import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
+import io.hsar.mapgenerator.commandgui.ViewerPoint
 import io.hsar.mapgenerator.commandgui.korge.interaction.EcmActivation
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogBounds
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog
-import korlibs.math.geom.Vector2D
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -93,7 +94,7 @@ class OperationAdditionalDataTest {
             bounds = MapViewerDialogBounds(10.0, 20.0, 300.0, 400.0),
             minimized = true,
             pinned = true,
-            pinAnchor = Vector2D(123.0, 456.0),
+            pinAnchor = ViewerPoint(123.0, 456.0),
         )
         val data = OperationAdditionalData.fromJson(null)
 
@@ -108,9 +109,54 @@ class OperationAdditionalDataTest {
 
         assertThat(restored.minimized, equalTo(true))
         assertThat(restored.pinned, equalTo(true))
-        assertThat(restored.pinAnchor, equalTo(Vector2D(123.0, 456.0)))
+        assertThat(restored.pinAnchor, equalTo(ViewerPoint(123.0, 456.0)))
         assertThat(legacy?.minimized, equalTo(false))
         assertThat(legacy?.pinned, equalTo(false))
         assertThat(legacy?.pinAnchor, equalTo(null))
+    }
+
+    @Test
+    fun `version two workspace state round trips while legacy dialogs remain present`() {
+        // Arrange
+        val dialog = MapViewerPersistedDialog(
+            type = "notes",
+            bounds = MapViewerDialogBounds(10.0, 20.0, 300.0, 400.0),
+        )
+        val data = OperationAdditionalData.fromJson("""{"custom":"keep"}""".toByteArray())
+        val state = UiSessionState(
+            dialogs = listOf(dialog),
+            workspaceMode = MapViewerWorkspaceMode.DOCKED,
+            dockPanels = listOf(
+                DockPanelSessionState(
+                    region = "right",
+                    size = 320.0,
+                    tabIds = listOf("notes", "unit-edit:1"),
+                    activeTabId = "notes",
+                    collapsed = false,
+                ),
+            ),
+        )
+
+        // Act
+        data.updateUiState(state)
+        val json = data.toJsonOrNull()!!
+        val restored = OperationAdditionalData.fromJson(json).uiState()
+
+        // Assert
+        assertThat(restored, equalTo(state))
+        assertThat(OperationSaveJson.objectMapper.readTree(json).path("uiState").path("schemaVersion").intValue(), equalTo(2))
+        assertThat(restored.dialogs.single(), equalTo(dialog))
+        assertThat(String(json).contains("\"custom\" : \"keep\""), equalTo(true))
+    }
+
+    @Test
+    fun `unversioned workspace state defaults to floating compatibility mode`() {
+        // Arrange / Act
+        val restored = OperationAdditionalData.fromJson(
+            """{"uiState":{"selectedTool":"SELECT","selectedObjectIds":[],"dialogs":[]}}""".toByteArray(),
+        ).uiState()
+
+        // Assert
+        assertThat(restored.workspaceMode, equalTo(MapViewerWorkspaceMode.FLOATING))
     }
 }
