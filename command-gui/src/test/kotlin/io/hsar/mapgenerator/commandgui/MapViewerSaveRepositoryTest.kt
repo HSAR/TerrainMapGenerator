@@ -1,8 +1,15 @@
 package io.hsar.mapgenerator.commandgui
 
+import com.fasterxml.jackson.databind.node.TextNode
+import io.hsar.mapgenerator.commandgui.save.AddTurnEntrySaveDto
 import io.hsar.mapgenerator.commandgui.save.CameraSaveDto
+import io.hsar.mapgenerator.commandgui.save.CreateNoteEntrySaveDto
+import io.hsar.mapgenerator.commandgui.save.EditNoteEntrySaveDto
 import io.hsar.mapgenerator.commandgui.save.GameSaveDto
+import io.hsar.mapgenerator.commandgui.save.LedgerEntrySaveDto
+import io.hsar.mapgenerator.commandgui.save.LedgerFileDto
 import io.hsar.mapgenerator.commandgui.save.MapSaveDto
+import io.hsar.mapgenerator.commandgui.save.NoteSaveDto
 import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
 import korlibs.io.lang.use
 import org.apache.batik.ext.awt.image.GraphicsUtil.createGraphics
@@ -17,6 +24,7 @@ import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
+import java.util.*
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.imageio.ImageIO
@@ -52,9 +60,49 @@ class MapViewerSaveRepositoryTest {
         assertThat(loaded.camera?.x ?: 0.0, closeTo(0.25, 0.0001))
         assertThat(loaded.camera?.y ?: 0.0, closeTo(0.75, 0.0001))
         assertThat(loaded.camera?.zoom ?: 0.0, closeTo(1.5, 0.0001))
+        assertThat(loaded.ledger, equalTo(MapViewerLedgerReplay.EMPTY))
     }
 
-    private fun writeMapSave(fileName: String, name: String, updatedAt: String): Path {
+    @Test
+    fun `replays persisted ledger into a neutral timeline and current state`() {
+        val noteId = UUID.fromString("00000000-0000-0000-0000-000000000020")
+        val path = writeMapSave(
+            fileName = "with-ledger.zip",
+            name = "Ledger Operation",
+            updatedAt = "2026-07-29T12:00:00Z",
+            ledgerEntries = listOf(
+                AddTurnEntrySaveDto("Operation Start"),
+                CreateNoteEntrySaveDto(NoteSaveDto(noteId, "Initial", "First body")),
+                EditNoteEntrySaveDto(
+                    id = noteId,
+                    forward = mapOf("title" to TextNode.valueOf("Updated"), "body" to TextNode.valueOf("Latest body")),
+                    backward = mapOf("title" to TextNode.valueOf("Initial"), "body" to TextNode.valueOf("First body")),
+                ),
+            ),
+        )
+
+        val replay = MapViewerSaveRepository(savesDirectory).loadMap(path).ledger
+
+        assertThat(
+            replay.entries.map { it.kind }, equalTo(
+                listOf(
+                    MapViewerLedgerEntryKind.TURN,
+                    MapViewerLedgerEntryKind.NOTE,
+                    MapViewerLedgerEntryKind.NOTE,
+                )
+            )
+        )
+        assertThat(replay.entries.first().turnName, equalTo("Operation Start"))
+        assertThat(replay.notes.single().title, equalTo("Updated"))
+        assertThat(replay.notes.single().body, equalTo("Latest body"))
+    }
+
+    private fun writeMapSave(
+        fileName: String,
+        name: String,
+        updatedAt: String,
+        ledgerEntries: List<LedgerEntrySaveDto>? = null,
+    ): Path {
         val mapAssetId = "00000000-0000-0000-0000-000000000010"
         val thumbnailAssetId = "00000000-0000-0000-0000-000000000011"
         val image = BufferedImage(120, 80, BufferedImage.TYPE_INT_RGB).apply {
@@ -86,6 +134,12 @@ class MapViewerSaveRepositoryTest {
                 zip.write("game.json", OperationSaveJson.objectMapper.writeValueAsBytes(game))
                 zip.write("assets/$mapAssetId.png", image.toPng())
                 zip.write("assets/$thumbnailAssetId.png", image.toPng())
+                ledgerEntries?.let {
+                    zip.write(
+                        "ledger.json",
+                        OperationSaveJson.objectMapper.writeValueAsBytes(LedgerFileDto(it)),
+                    )
+                }
             }
         }
     }

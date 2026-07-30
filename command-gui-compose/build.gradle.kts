@@ -7,6 +7,7 @@ plugins {
 dependencies {
     implementation(project(":command-gui"))
     implementation(compose.desktop.currentOs)
+    implementation(libs.compose.resources)
     implementation(libs.compose.material3)
     implementation(libs.log4j.api)
     runtimeOnly(libs.log4j.core)

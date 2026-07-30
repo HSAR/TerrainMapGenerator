@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.save
 
+import com.sun.org.apache.bcel.internal.util.Args.require
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.GridColourSelector
 import io.hsar.mapgenerator.commandgui.MapLayer
@@ -47,11 +48,13 @@ import io.hsar.mapgenerator.commandgui.korge.launch.GridConfiguration
 import io.hsar.mapgenerator.commandgui.korge.launch.defaultGridConfiguration
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
 import io.hsar.mapgenerator.grid.CoordAxis
+import korlibs.io.lang.use
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.nio.file.Path
 import java.time.Instant
 import java.util.*
+import java.util.Collections.emptyList
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import javax.imageio.ImageIO
@@ -119,7 +122,7 @@ internal class OperationSaveLoader {
                 seed = operationUuid.mostSignificantBits xor operationUuid.leastSignificantBits,
             )
 
-            val replayed = RuntimeLedgerReplayer(zip).replay(save.ledger.entries)
+            val ledgerEntries = RuntimeLedgerReplayer(zip).replay(save.ledger.entries)
             LoadedOperation(
                 operationId = operationUuid,
                 operationName = save.game.name,
@@ -129,7 +132,7 @@ internal class OperationSaveLoader {
                 camera = save.game.camera,
                 mapImage = mapImage,
                 mapAssetSource = mapAssetSource,
-                ledgerEntries = replayed.ledgerEntries,
+                ledgerEntries = ledgerEntries,
                 generatedImageAssets = loadTurnThumbnailAssets(zip, save.ledger.entries),
                 additionalDataJson = save.additionalDataJson,
             )
@@ -227,11 +230,7 @@ private data class AssetBytes(
     val bytes: ByteArray,
 )
 
-private data class ReplayedLedger(
-    val ledgerEntries: List<LedgerEntry>,
-)
-
-private class RuntimeLedgerReplayer(
+internal class RuntimeLedgerReplayer(
     private val zip: ZipFile,
 ) {
     private val templatesById = mutableMapOf<UUID, MapViewerUnitTemplate>()
@@ -239,10 +238,8 @@ private class RuntimeLedgerReplayer(
     private val templateOrder = mutableListOf<UUID>()
     private val templateAssetsByAssetId = mutableMapOf<String, LoadedTemplateAsset>()
 
-    fun replay(entries: List<LedgerEntrySaveDto>): ReplayedLedger {
-        val runtimeEntries = entries.mapNotNull(::toRuntimeEntry)
-        return ReplayedLedger(ledgerEntries = runtimeEntries)
-    }
+    fun replay(entries: List<LedgerEntrySaveDto>): List<LedgerEntry> =
+        entries.mapNotNull(::toRuntimeEntry)
 
     private fun toRuntimeEntry(entry: LedgerEntrySaveDto): LedgerEntry? =
         when (entry) {

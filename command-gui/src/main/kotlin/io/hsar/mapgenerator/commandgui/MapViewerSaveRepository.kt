@@ -2,11 +2,12 @@ package io.hsar.mapgenerator.commandgui
 
 import com.sun.org.apache.bcel.internal.util.Args.require
 import io.hsar.mapgenerator.commandgui.save.GameSaveDto
+import io.hsar.mapgenerator.commandgui.save.LedgerFileDto
 import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
 import io.hsar.mapgenerator.commandgui.save.OperationToolStorage
+import io.hsar.mapgenerator.commandgui.save.RuntimeLedgerReplayer
 import io.hsar.mapgenerator.grid.CoordAxis
 import io.hsar.mapgenerator.grid.GridLayerBuilder
-import korlibs.io.lang.use
 import java.awt.image.BufferedImage
 import java.nio.file.Files
 import java.nio.file.Path
@@ -38,6 +39,7 @@ data class MapViewerSavedMap(
     val settings: MapViewerSettings,
     val renderData: MapViewerRenderData,
     val camera: MapViewerSavedCamera?,
+    val ledger: MapViewerLedgerReplay = MapViewerLedgerReplay.EMPTY,
 )
 
 /**
@@ -112,6 +114,11 @@ class MapViewerSaveRepository(
                 settings = settings,
                 renderData = MapViewerRenderData(baseImage = mapImage, gridLayer = grid),
                 camera = game.camera?.let { MapViewerSavedCamera(it.x, it.y, it.zoom) },
+                ledger = zip.readLedgerEntries()
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { RuntimeLedgerReplayer(zip).replay(it) }
+                    ?.let(::replayForViewer)
+                    ?: MapViewerLedgerReplay.EMPTY,
             )
         }
 
@@ -136,6 +143,12 @@ class MapViewerSaveRepository(
             ?.let(::getInputStream)
             ?.use { OperationSaveJson.objectMapper.readValue(it, GameSaveDto::class.java) }
             ?: error("Save does not contain $GAME_JSON")
+
+    private fun ZipFile.readLedgerEntries() =
+        getEntry(LEDGER_JSON)
+            ?.let(::getInputStream)
+            ?.use { OperationSaveJson.objectMapper.readValue(it, LedgerFileDto::class.java).entries }
+            .orEmpty()
 
     private fun ZipFile.readImageAsset(assetId: String): BufferedImage =
         readImageAssetOrNull(assetId) ?: error("Unable to decode image asset $assetId")
@@ -164,6 +177,7 @@ class MapViewerSaveRepository(
 
     private companion object {
         const val GAME_JSON = "game.json"
+        const val LEDGER_JSON = "ledger.json"
         val SUPPORTED_FORMAT_VERSIONS = setOf(5, 6)
     }
 }

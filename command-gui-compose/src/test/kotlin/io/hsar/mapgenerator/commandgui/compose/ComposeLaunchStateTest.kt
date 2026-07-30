@@ -1,5 +1,8 @@
 package io.hsar.mapgenerator.commandgui.compose
 
+import io.hsar.mapgenerator.commandgui.MapViewerLedgerEntryKind
+import io.hsar.mapgenerator.commandgui.MapViewerLedgerEntrySummary
+import io.hsar.mapgenerator.commandgui.MapViewerLedgerReplay
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSavedMap
 import io.hsar.mapgenerator.commandgui.MapViewerSavedOperation
@@ -14,6 +17,21 @@ import java.time.Instant
 import java.util.*
 
 class ComposeLaunchStateTest {
+
+    @Test
+    fun `navigates between all three launchpad screens`() {
+        val state = ComposeLaunchState()
+
+        state.showNewOperation()
+        val newOperationScreen = state.screen
+        state.returnToLaunchpad()
+        val mainScreen = state.screen
+        state.showExistingOperations()
+
+        assertThat(newOperationScreen, equalTo(ComposeLaunchScreen.NEW_OPERATION))
+        assertThat(mainScreen, equalTo(ComposeLaunchScreen.MAIN))
+        assertThat(state.screen, equalTo(ComposeLaunchScreen.EXISTING_OPERATIONS))
+    }
 
     @Test
     fun `creates an operation and returns to launchpad`() {
@@ -44,6 +62,16 @@ class ComposeLaunchStateTest {
             settings = MapViewerSettings(operationName = "Loaded Operation"),
             renderData = MapViewerRenderData(image),
             camera = null,
+            ledger = MapViewerLedgerReplay.EMPTY.copy(
+                entries = listOf(
+                    MapViewerLedgerEntrySummary(
+                        index = 0,
+                        kind = MapViewerLedgerEntryKind.TURN,
+                        description = "added Operation Start",
+                        turnName = "Operation Start",
+                    ),
+                ),
+            ),
         )
         val state = ComposeLaunchState()
 
@@ -51,5 +79,6 @@ class ComposeLaunchStateTest {
 
         assertThat(state.activeMap?.renderData?.baseImage, equalTo(image))
         assertThat(state.activeMap?.sourcePath, equalTo(path.toString()))
+        assertThat(state.activeMap?.ledger?.entries, equalTo(loaded.ledger.entries))
     }
 }

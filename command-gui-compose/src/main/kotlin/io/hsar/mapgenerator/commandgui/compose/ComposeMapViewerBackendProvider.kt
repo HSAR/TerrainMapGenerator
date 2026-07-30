@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.compose
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -24,18 +25,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -60,15 +60,26 @@ import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
 import io.hsar.mapgenerator.commandgui.MapViewerBackend
 import io.hsar.mapgenerator.commandgui.MapViewerBackendProvider
+import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayLayoutBuilder
+import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayRequest
+import io.hsar.mapgenerator.commandgui.MapViewerLedgerReplay
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
+import io.hsar.mapgenerator.commandgui.MapViewerReplayObjectKind
 import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
 import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
 import io.hsar.mapgenerator.commandgui.MapViewerSavedMap
@@ -101,9 +112,11 @@ class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
     ) = application {
         var workspaceMode by remember { mutableStateOf(WorkspaceMode.DOCKED) }
         var windowTitle by remember { mutableStateOf(MapViewerSettings().windowTitle()) }
+        val windowState = rememberWindowState(placement = COMPOSE_INITIAL_WINDOW_PLACEMENT)
 
         Window(
             title = windowTitle,
+            state = windowState,
             onCloseRequest = ::exitApplication,
         ) {
             MenuBar {
@@ -121,7 +134,7 @@ class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
                 }
             }
 
-            MaterialTheme(colorScheme = darkColorScheme()) {
+            NordTheme {
                 ComposeMapViewer(
                     renderMap = renderMap,
                     initialSettings = initialSettings,
@@ -130,6 +143,7 @@ class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
                     awtWindow = window,
                     onWorkspaceModeChanged = { workspaceMode = it },
                     onTitleChanged = { windowTitle = it },
+                    onExit = ::exitApplication,
                 )
             }
         }
@@ -150,6 +164,7 @@ private fun ComposeMapViewer(
     awtWindow: java.awt.Window,
     onWorkspaceModeChanged: (WorkspaceMode) -> Unit,
     onTitleChanged: (String) -> Unit,
+    onExit: () -> Unit,
 ) {
     val suppliedMap = remember {
         initialSetupInputs.mapImage
@@ -157,18 +172,16 @@ private fun ComposeMapViewer(
     }
     val launchState = remember {
         ComposeLaunchState(
-            suppliedMap?.let {
-                ComposeActiveMap(
-                    settings = initialSettings,
-                    renderData = MapViewerRenderData(it),
-                )
-            },
+            initialScreen = if (suppliedMap == null) ComposeLaunchScreen.MAIN else ComposeLaunchScreen.NEW_OPERATION,
         )
     }
     val repository = remember { MapViewerSaveRepository() }
 
-    LaunchedEffect(launchState.activeMap?.settings?.operationName) {
-        onTitleChanged(launchState.activeMap?.settings?.windowTitle() ?: MapViewerSettings().windowTitle())
+    LaunchedEffect(launchState.activeMap?.settings?.operationName, launchState.screen) {
+        onTitleChanged(
+            launchState.activeMap?.settings?.windowTitle()
+                ?: "Operational Command Tool - ${launchState.screen.windowTitle}",
+        )
     }
 
     launchState.activeMap?.let { map ->
@@ -182,31 +195,65 @@ private fun ComposeMapViewer(
                 onReturnToLaunchpad = launchState::returnToLaunchpad,
             )
         }
-    } ?: ComposeLaunchpad(
-        repository = repository,
-        awtWindow = awtWindow,
-        onCreateOperation = {
-            launchState.createOperation(
-                initialSettings.copy(operationName = initialSettings.operationName ?: "New Operation"),
-            )
-        },
-        onMapLoaded = launchState::openSavedMap,
-    )
+    } ?: when (launchState.screen) {
+        ComposeLaunchScreen.MAIN -> ComposeMainLaunchpad(
+            onNewOperation = launchState::showNewOperation,
+            onExistingOperations = launchState::showExistingOperations,
+            onExit = onExit,
+        )
+
+        ComposeLaunchScreen.NEW_OPERATION -> ComposeNewOperationScreen(
+            renderMap = renderMap,
+            initialSettings = initialSettings,
+            initialMap = suppliedMap,
+            initialMapPath = initialSetupInputs.mapImagePath,
+            awtWindow = awtWindow,
+            onBack = launchState::returnToLaunchpad,
+            onLaunch = launchState::createOperation,
+        )
+
+        ComposeLaunchScreen.EXISTING_OPERATIONS -> ComposeExistingOperationsScreen(
+            repository = repository,
+            awtWindow = awtWindow,
+            onBack = launchState::returnToLaunchpad,
+            onMapLoaded = launchState::openSavedMap,
+        )
+    }
 }
+
+internal val COMPOSE_INITIAL_WINDOW_PLACEMENT = WindowPlacement.Maximized
 
 internal data class ComposeActiveMap(
     val settings: MapViewerSettings,
     val renderData: MapViewerRenderData? = null,
     val camera: MapViewerSavedCamera? = null,
     val sourcePath: String? = null,
+    val ledger: MapViewerLedgerReplay = MapViewerLedgerReplay.EMPTY,
 )
 
-internal class ComposeLaunchState(initialMap: ComposeActiveMap? = null) {
-    var activeMap by mutableStateOf(initialMap)
+internal enum class ComposeLaunchScreen(val windowTitle: String) {
+    MAIN("Launchpad"),
+    NEW_OPERATION("New Operation"),
+    EXISTING_OPERATIONS("Ongoing Operations"),
+}
+
+internal class ComposeLaunchState(initialScreen: ComposeLaunchScreen = ComposeLaunchScreen.MAIN) {
+    var screen by mutableStateOf(initialScreen)
         private set
 
-    fun createOperation(settings: MapViewerSettings) {
-        activeMap = ComposeActiveMap(settings = settings)
+    var activeMap by mutableStateOf<ComposeActiveMap?>(null)
+        private set
+
+    fun showNewOperation() {
+        screen = ComposeLaunchScreen.NEW_OPERATION
+    }
+
+    fun showExistingOperations() {
+        screen = ComposeLaunchScreen.EXISTING_OPERATIONS
+    }
+
+    fun createOperation(settings: MapViewerSettings, renderData: MapViewerRenderData? = null) {
+        activeMap = ComposeActiveMap(settings = settings, renderData = renderData)
     }
 
     fun openSavedMap(loaded: MapViewerSavedMap) {
@@ -215,19 +262,257 @@ internal class ComposeLaunchState(initialMap: ComposeActiveMap? = null) {
             renderData = loaded.renderData,
             camera = loaded.camera,
             sourcePath = loaded.operation.path.toString(),
+            ledger = loaded.ledger,
         )
     }
 
     fun returnToLaunchpad() {
         activeMap = null
+        screen = ComposeLaunchScreen.MAIN
     }
 }
 
 @Composable
-private fun ComposeLaunchpad(
+private fun ComposeMainLaunchpad(
+    onNewOperation: () -> Unit,
+    onExistingOperations: () -> Unit,
+    onExit: () -> Unit,
+) = CommandLaunchScreen(title = "Launchpad") {
+    CommandPanel(Modifier.width(460.dp)) {
+        Text(
+            "WELCOME, COMMANDER.",
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            style = MaterialTheme.typography.headlineSmall,
+        )
+        CommandButton(
+            onClick = onNewOperation,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+        ) {
+            Text("NEW OPERATION")
+        }
+        CommandButton(
+            onClick = onExistingOperations,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+        ) {
+            Text("ONGOING OPERATIONS")
+        }
+        CommandButton(
+            onClick = onExit,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+        ) {
+            Text("EXIT")
+        }
+    }
+}
+
+@Composable
+private fun ComposeNewOperationScreen(
+    renderMap: (MapViewerSettings) -> MapViewerRenderData,
+    initialSettings: MapViewerSettings,
+    initialMap: java.awt.image.BufferedImage?,
+    initialMapPath: String?,
+    awtWindow: java.awt.Window,
+    onBack: () -> Unit,
+    onLaunch: (MapViewerSettings, MapViewerRenderData?) -> Unit,
+) {
+    var operationName by remember { mutableStateOf(initialSettings.operationName.orEmpty()) }
+    var mapImage by remember { mutableStateOf(initialMap) }
+    var mapName by remember { mutableStateOf(initialMapPath?.let(::File)?.name ?: if (initialMap == null) "" else "Provided map") }
+    var referenceSystem by remember { mutableStateOf(initialSettings.referenceSystem) }
+    var mapId by remember { mutableStateOf(initialSettings.mapId.orEmpty()) }
+    var startX by remember { mutableStateOf(initialSettings.gridStartX?.format().orEmpty()) }
+    var startY by remember { mutableStateOf(initialSettings.gridStartY?.format().orEmpty()) }
+    var unitsPerPixel by remember { mutableStateOf(initialSettings.unitsPerPixel.toString()) }
+    var loadingMap by remember { mutableStateOf(false) }
+    var launching by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun chooseMap() {
+        FileDialog(awtWindow as? Frame, "Choose map image", FileDialog.LOAD).also { dialog ->
+            dialog.file = "*.png;*.jpg;*.jpeg"
+            dialog.isVisible = true
+            val fileName = dialog.file ?: return
+            val file = File(dialog.directory, fileName)
+            loadingMap = true
+            scope.launch {
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        ImageIO.read(file) ?: error("The selected file is not a supported image.")
+                    }
+                }.onSuccess {
+                    mapImage = it
+                    mapName = file.name
+                    errorMessage = null
+                }.onFailure {
+                    errorMessage = "Could not open ${file.name}: ${it.message ?: it::class.simpleName}"
+                }
+                loadingMap = false
+            }
+        }
+    }
+
+    fun launch() {
+        val image = mapImage ?: return
+        val scale = unitsPerPixel.toDoubleOrNull()?.takeIf { it > 0.0 }
+        if (operationName.isBlank() || scale == null) {
+            errorMessage = "Enter an operation name and a positive map scale."
+            return
+        }
+        val parsedStartX = startX.takeIf(String::isNotBlank)?.let {
+            runCatching { referenceSystem.parseCoord(it, io.hsar.mapgenerator.grid.CoordAxis.X, referenceSystem.gridScale) }.getOrNull()
+        }
+        val parsedStartY = startY.takeIf(String::isNotBlank)?.let {
+            runCatching { referenceSystem.parseCoord(it, io.hsar.mapgenerator.grid.CoordAxis.Y, referenceSystem.gridScale) }.getOrNull()
+        }
+        if ((startX.isNotBlank() && parsedStartX == null) || (startY.isNotBlank() && parsedStartY == null)) {
+            errorMessage = "Starting coordinates are not valid for ${referenceSystem.name}."
+            return
+        }
+        val mapLayer = io.hsar.mapgenerator.commandgui.StaticImageLayer(COMPOSE_OPERATION_MAP_ID, "Map")
+        val settings = initialSettings.copy(
+            operationName = operationName.trim(),
+            availableLayers = listOf(mapLayer, io.hsar.mapgenerator.commandgui.MapLayer.GRID),
+            enabledLayerIds = setOf(mapLayer.id, io.hsar.mapgenerator.commandgui.MapLayer.GRID.id),
+            staticLayerImages = mapOf(mapLayer.id to image),
+            mapId = mapId.trim().takeIf(String::isNotBlank),
+            referenceSystem = referenceSystem,
+            gridStartX = parsedStartX,
+            gridStartY = parsedStartY,
+            unitsPerPixel = scale,
+            width = image.width,
+            height = image.height,
+        )
+        launching = true
+        errorMessage = null
+        scope.launch {
+            runCatching { withContext(Dispatchers.Default) { renderMap(settings) } }
+                .onSuccess { onLaunch(settings, it) }
+                .onFailure { errorMessage = "Could not prepare operation: ${it.message ?: it::class.simpleName}" }
+            launching = false
+        }
+    }
+
+    CommandLaunchScreen(title = "New Operation", onBack = onBack) {
+        CommandPanel(Modifier.fillMaxSize().commandPanelWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("OPERATIONAL DETAILS", style = MaterialTheme.typography.headlineSmall)
+                Spacer(Modifier.weight(1f))
+                if (loadingMap || launching) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(22.dp),
+            ) {
+                Column(
+                    modifier = Modifier.weight(0.9f).fillMaxHeight().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    OutlinedTextField(
+                        value = operationName,
+                        onValueChange = { operationName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Operation Name") },
+                        singleLine = true,
+                    )
+                    Text("MAP IMAGE", style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CommandButton(onClick = ::chooseMap, enabled = !loadingMap && !launching) {
+                            Text("CHOOSE MAP IMAGE")
+                        }
+                        Text(
+                            mapName.ifBlank { "No map selected" },
+                            color = if (mapImage == null) MaterialTheme.colorScheme.error else CommandColours.Backing,
+                        )
+                    }
+                    Text("COORDINATE SYSTEM", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        io.hsar.mapgenerator.grid.ReferenceSystem.entries.forEach { system ->
+                            CommandButton(
+                                onClick = { referenceSystem = system },
+                                enabled = !launching,
+                            ) {
+                                Text(if (system == referenceSystem) "[ ${system.name} ]" else system.name)
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = mapId,
+                        onValueChange = { mapId = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Map ID") },
+                        singleLine = true,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = startX,
+                            onValueChange = { startX = it },
+                            modifier = Modifier.weight(1f),
+                            label = { Text("Starting X") },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = startY,
+                            onValueChange = { startY = it },
+                            modifier = Modifier.weight(1f),
+                            label = { Text("Starting Y") },
+                            singleLine = true,
+                        )
+                    }
+                    OutlinedTextField(
+                        value = unitsPerPixel,
+                        onValueChange = { unitsPerPixel = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Metres Per Pixel") },
+                        singleLine = true,
+                    )
+                }
+                Box(
+                    modifier = Modifier.weight(1.1f).fillMaxHeight()
+                        .background(CommandColours.Main)
+                        .border(1.dp, CommandColours.Light),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    mapImage?.let {
+                        Image(
+                            bitmap = remember(it) { it.toImageBitmap() },
+                            contentDescription = "Selected operation map",
+                            modifier = Modifier.fillMaxSize().padding(8.dp),
+                            contentScale = ContentScale.Fit,
+                        )
+                    } ?: Text("MAP PREVIEW", color = CommandColours.Backing)
+                }
+            }
+            errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                CommandButton(
+                    onClick = ::launch,
+                    enabled = operationName.isNotBlank() && mapImage != null &&
+                            unitsPerPixel.toDoubleOrNull()?.let { it > 0.0 } == true &&
+                            !loadingMap && !launching,
+                ) {
+                    Text(if (launching) "PREPARING OPERATION…" else "LAUNCH OPERATION")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComposeExistingOperationsScreen(
     repository: MapViewerSaveRepository,
     awtWindow: java.awt.Window,
-    onCreateOperation: () -> Unit,
+    onBack: () -> Unit,
     onMapLoaded: (MapViewerSavedMap) -> Unit,
 ) {
     var saves by remember { mutableStateOf<List<MapViewerSavedOperation>>(emptyList()) }
@@ -274,44 +559,34 @@ private fun ComposeLaunchpad(
 
     LaunchedEffect(Unit) { refresh() }
 
-    Surface(Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+    CommandLaunchScreen(title = "Ongoing Operations", onBack = onBack) {
+        CommandPanel(
+            modifier = Modifier.fillMaxSize().commandPanelWidth(),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Operational Command Tool", style = MaterialTheme.typography.headlineLarge)
-                Text(
-                    "Compose launchpad",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = onCreateOperation) {
-                    Text("Create new operation")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("SAVED OPERATIONS", style = MaterialTheme.typography.headlineSmall)
+                Spacer(Modifier.weight(1f))
+                if (refreshing || loadingPath != null) {
+                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                 }
-                OutlinedButton(onClick = ::browse, enabled = loadingPath == null) {
-                    Text("Browse for save")
+                CommandButton(onClick = ::browse, enabled = loadingPath == null) {
+                    Text("BROWSE FOR SAVE")
                 }
-                OutlinedButton(onClick = ::refresh, enabled = !refreshing) {
-                    Text(if (refreshing) "Refreshing…" else "Refresh")
+                CommandButton(onClick = ::refresh, enabled = !refreshing) {
+                    Text(if (refreshing) "REFRESHING…" else "REFRESH")
                 }
             }
             errorMessage?.let { message ->
                 Text(message, color = MaterialTheme.colorScheme.error)
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Ongoing operations", style = MaterialTheme.typography.headlineSmall)
-                Spacer(Modifier.weight(1f))
-                if (refreshing || loadingPath != null) {
-                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                }
-            }
             if (!refreshing && saves.isEmpty()) {
                 Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     Text(
-                        "No saved operations were found in\n${repository.savesDirectory}",
+                        "No valid saves found in\n${repository.savesDirectory}",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -345,6 +620,8 @@ private fun SavedOperationCard(
     Card(
         modifier = Modifier.fillMaxWidth()
             .clickable(enabled = enabled, onClick = onClick),
+        shape = RectangleShape,
+        border = BorderStroke(1.dp, CommandColours.Light),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Row(
@@ -385,6 +662,7 @@ private fun SavedOperationCard(
 }
 
 private val SAVE_DATE_FORMAT = DateTimeFormatter.ofPattern("d MMM uuuu, HH:mm")
+private const val COMPOSE_OPERATION_MAP_ID = "compose-operation-map"
 
 @Composable
 private fun ViewerWorkspace(
@@ -460,6 +738,7 @@ private fun ViewerWorkspace(
                         MapCanvas(
                             renderData = it,
                             savedCamera = initialMap.camera,
+                            replay = initialMap.ledger,
                             modifier = Modifier.fillMaxSize(),
                         )
                     } ?: EmptyMap(onRender = ::render, rendering = rendering)
@@ -479,7 +758,7 @@ private fun ViewerWorkspace(
                     )
                 }
             }
-            EventLog(eventLog)
+            LedgerPrototypePanel(initialMap.ledger, eventLog)
         }
     }
 }
@@ -499,13 +778,13 @@ private fun ViewerToolbar(
     horizontalArrangement = Arrangement.spacedBy(8.dp),
     verticalAlignment = Alignment.CenterVertically,
 ) {
-    OutlinedButton(onClick = onReturnToLaunchpad) {
+    CommandButton(onClick = onReturnToLaunchpad) {
         Text("Launchpad")
     }
-    Button(onClick = onRender, enabled = !rendering) {
+    CommandButton(onClick = onRender, enabled = !rendering) {
         Text(if (rendering) "Rendering…" else "Generate map")
     }
-    OutlinedButton(onClick = onOpenMap) {
+    CommandButton(onClick = onOpenMap) {
         Text("Open map")
     }
     Text("Layers:")
@@ -526,7 +805,7 @@ private fun ViewerToolbar(
         }
     }
     Spacer(Modifier.weight(1f))
-    OutlinedButton(
+    CommandButton(
         onClick = {
             onWorkspaceModeChanged(
                 if (workspaceMode == WorkspaceMode.DOCKED) WorkspaceMode.FLOATING else WorkspaceMode.DOCKED,
@@ -545,7 +824,7 @@ private fun ToolRail() = Column(
 ) {
     Text("Tools", style = MaterialTheme.typography.titleMedium)
     listOf("Select", "Pan", "Draw", "Measure").forEach { tool ->
-        OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth()) {
+        CommandButton(onClick = {}, modifier = Modifier.fillMaxWidth()) {
             Text(tool)
         }
     }
@@ -597,7 +876,7 @@ private fun FloatingNotesPanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("Notes", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            OutlinedButton(onClick = { minimized = !minimized }) {
+            CommandButton(onClick = { minimized = !minimized }) {
                 Text(if (minimized) "Restore" else "Minimize")
             }
         }
@@ -618,20 +897,97 @@ private fun EmptyMap(onRender: () -> Unit, rendering: Boolean) =
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (rendering) CircularProgressIndicator()
             Text("Create a terrain map to open the Compose Canvas viewer.")
-            Button(onClick = onRender, enabled = !rendering) {
+            CommandButton(onClick = onRender, enabled = !rendering) {
                 Text("Generate map")
             }
         }
     }
 
 @Composable
-private fun EventLog(events: List<String>) = Column(
-    Modifier.fillMaxWidth().height(92.dp).background(MaterialTheme.colorScheme.surfaceVariant)
-        .verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp),
+private fun LedgerPrototypePanel(
+    replay: MapViewerLedgerReplay,
+    events: List<String>,
 ) {
-    Text("Activity", style = MaterialTheme.typography.labelLarge)
-    events.takeLast(6).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+    var selectedIndex by remember(replay) { mutableStateOf(replay.entries.lastOrNull()?.index) }
+    val selected = replay.entries.firstOrNull { it.index == selectedIndex }
+    Column(
+        Modifier.fillMaxWidth().height(230.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text("Ledger replay prototype", style = MaterialTheme.typography.titleMedium)
+            Text("${replay.entries.size} actions")
+            Text("${replay.objects.size} objects")
+            Text("${replay.unitTemplates.size + replay.graphicTemplates.size} templates")
+            Text("${replay.notes.size} notes")
+            Spacer(Modifier.weight(1f))
+            Text(events.lastOrNull().orEmpty(), style = MaterialTheme.typography.bodySmall)
+        }
+        HorizontalDivider()
+        Row(Modifier.fillMaxSize()) {
+            LazyColumn(Modifier.weight(1.15f).fillMaxHeight()) {
+                if (replay.entries.isEmpty()) {
+                    item {
+                        Text(
+                            "No persisted ledger entries",
+                            modifier = Modifier.padding(12.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                items(replay.entries, key = { it.index }) { entry ->
+                    val selectedEntry = entry.index == selectedIndex
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable { selectedIndex = entry.index },
+                        color = if (selectedEntry) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text("${entry.index + 1}", style = MaterialTheme.typography.labelMedium)
+                            Text(entry.kind.name.lowercase().replace('_', ' '), modifier = Modifier.width(110.dp))
+                            Text(entry.description, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+            VerticalDivider()
+            Column(
+                modifier = Modifier.weight(0.85f).fillMaxHeight()
+                    .verticalScroll(rememberScrollState()).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                Text("Replayed current state", style = MaterialTheme.typography.titleSmall)
+                selected?.let {
+                    Text("Selected action ${it.index + 1}: ${it.description}")
+                    HorizontalDivider()
+                }
+                replay.objects.take(PROTOTYPE_STATE_ROW_LIMIT).forEach { mapObject ->
+                    Text(
+                        "${mapObject.kind.name.lowercase()}: ${mapObject.name}" +
+                                mapObject.templateName?.let { " · $it" }.orEmpty(),
+                    )
+                }
+                replay.notes.take(PROTOTYPE_STATE_ROW_LIMIT).forEach { note ->
+                    Text("note: ${note.title}")
+                }
+                if (replay.objects.isEmpty() && replay.notes.isEmpty()) {
+                    Text(
+                        "No live objects or notes at the ledger head.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
 }
+
+private const val PROTOTYPE_STATE_ROW_LIMIT = 12
 
 private data class ComposeRasterTile(
     val left: Int,
@@ -646,8 +1002,11 @@ private data class ComposeRasterTile(
 private fun MapCanvas(
     renderData: MapViewerRenderData,
     savedCamera: MapViewerSavedCamera? = null,
+    replay: MapViewerLedgerReplay = MapViewerLedgerReplay.EMPTY,
     modifier: Modifier = Modifier,
 ) {
+    val nordFontFamily = NordFontFamily()
+    val textMeasurer = rememberTextMeasurer()
     val tiles = remember(renderData.baseImage) {
         RasterTileSet.from(renderData.baseImage).tiles.map { tile ->
             ComposeRasterTile(
@@ -679,6 +1038,29 @@ private fun MapCanvas(
                 )
             } ?: MapViewport.centered(worldWidth, worldHeight),
         )
+    }
+    val gridOverlay = remember(renderData.gridLayer, viewport, nordFontFamily) {
+        renderData.gridLayer?.let { grid ->
+            MapViewerGridOverlayLayoutBuilder.build(
+                MapViewerGridOverlayRequest(
+                    gridLayer = grid,
+                    viewport = viewport,
+                    mapOffsetX = mapOffsetX,
+                    mapOffsetY = mapOffsetY,
+                    mapWidth = renderData.baseImage.width,
+                    mapHeight = renderData.baseImage.height,
+                ),
+            ) { text, fontSize, strong ->
+                textMeasurer.measure(
+                    text = text,
+                    style = TextStyle(
+                        fontFamily = nordFontFamily,
+                        fontWeight = if (strong) FontWeight.Bold else FontWeight.Normal,
+                        fontSize = fontSize.sp,
+                    ),
+                ).size.let { ViewerPoint(it.width.toDouble(), it.height.toDouble()) }
+            }
+        }
     }
 
     Canvas(
@@ -727,39 +1109,83 @@ private fun MapCanvas(
                         dstSize = IntSize(tile.width, tile.height),
                     )
                 }
-                renderData.gridLayer?.let { grid ->
-                    val lineColor = Color(
-                        red = grid.colour.red,
-                        green = grid.colour.green,
-                        blue = grid.colour.blue,
-                        alpha = grid.colour.alpha,
-                    )
-                    val strokeWidth = (1.25f / zoom).coerceAtLeast(0.35f)
-                    repeat(grid.verticalLineCount + 1) { index ->
-                        val x = (index * grid.pixelsPerLine).toFloat()
-                        drawLine(
-                            color = lineColor,
-                            start = Offset(x, 0f),
-                            end = Offset(x, renderData.baseImage.height.toFloat()),
-                            strokeWidth = strokeWidth,
-                            cap = StrokeCap.Square,
+            }
+            gridOverlay?.lineSegments?.forEach { segment ->
+                drawLine(
+                    color = segment.colour.toComposeColour(),
+                    start = Offset(segment.start.x.toFloat(), segment.start.y.toFloat()),
+                    end = Offset(segment.end.x.toFloat(), segment.end.y.toFloat()),
+                    strokeWidth = segment.thickness.toFloat(),
+                    cap = StrokeCap.Square,
+                )
+            }
+            withTransform({
+                translate(mapLeft, mapTop)
+                scale(zoom, zoom, Offset.Zero)
+            }) {
+                replay.objects
+                    .filter { it.x != null && it.y != null }
+                    .forEach { mapObject ->
+                        val centre = Offset(
+                            (mapObject.x!! * renderData.baseImage.width).toFloat(),
+                            (mapObject.y!! * renderData.baseImage.height).toFloat(),
                         )
+                        val radius = 7f / zoom
+                        val colour = when {
+                            mapObject.destroyed == true -> Color(0xFFE05A5A)
+                            mapObject.kind == MapViewerReplayObjectKind.GRAPHIC -> Color(0xFFFFC857)
+                            else -> Color(0xFF67D5E8)
+                        }
+                        when (mapObject.kind) {
+                            MapViewerReplayObjectKind.GRAPHIC ->
+                                drawRect(
+                                    color = colour,
+                                    topLeft = centre - Offset(radius, radius),
+                                    size = androidx.compose.ui.geometry.Size(radius * 2f, radius * 2f),
+                                )
+
+                            else -> drawCircle(colour, radius, centre)
+                        }
+                        if (mapObject.destroyed == true) {
+                            drawLine(
+                                color = Color.Black,
+                                start = centre - Offset(radius, radius),
+                                end = centre + Offset(radius, radius),
+                                strokeWidth = (2f / zoom).coerceAtLeast(0.5f),
+                            )
+                            drawLine(
+                                color = Color.Black,
+                                start = centre + Offset(radius, -radius),
+                                end = centre + Offset(-radius, radius),
+                                strokeWidth = (2f / zoom).coerceAtLeast(0.5f),
+                            )
+                        }
                     }
-                    repeat(grid.horizontalLineCount + 1) { index ->
-                        val y = (index * grid.pixelsPerLine).toFloat()
-                        drawLine(
-                            color = lineColor,
-                            start = Offset(0f, y),
-                            end = Offset(renderData.baseImage.width.toFloat(), y),
-                            strokeWidth = strokeWidth,
-                            cap = StrokeCap.Square,
-                        )
-                    }
-                }
+            }
+            gridOverlay?.labels?.forEach { label ->
+                val style = TextStyle(
+                    color = label.colour.toComposeColour(),
+                    fontFamily = nordFontFamily,
+                    fontWeight = if (label.strong) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = label.fontSize.sp,
+                )
+                val measured = textMeasurer.measure(label.text, style)
+                drawText(
+                    textMeasurer = textMeasurer,
+                    text = label.text,
+                    topLeft = Offset(
+                        (label.centre.x - measured.size.width / 2.0).toFloat(),
+                        (label.centre.y - measured.size.height / 2.0).toFloat(),
+                    ),
+                    style = style,
+                )
             }
         }
     }
 }
+
+private fun java.awt.Color.toComposeColour() =
+    Color(red = red, green = green, blue = blue, alpha = alpha)
 
 private fun java.awt.image.BufferedImage.toImageBitmap(): ImageBitmap =
     ByteArrayOutputStream().use { output ->
