@@ -155,8 +155,8 @@ private fun ComposeMapViewer(
         initialSetupInputs.mapImage
             ?: initialSetupInputs.mapImagePath?.let { path -> runCatching { ImageIO.read(File(path)) }.getOrNull() }
     }
-    var activeMap by remember {
-        mutableStateOf(
+    val launchState = remember {
+        ComposeLaunchState(
             suppliedMap?.let {
                 ComposeActiveMap(
                     settings = initialSettings,
@@ -167,11 +167,11 @@ private fun ComposeMapViewer(
     }
     val repository = remember { MapViewerSaveRepository() }
 
-    LaunchedEffect(activeMap?.settings?.operationName) {
-        onTitleChanged(activeMap?.settings?.windowTitle() ?: MapViewerSettings().windowTitle())
+    LaunchedEffect(launchState.activeMap?.settings?.operationName) {
+        onTitleChanged(launchState.activeMap?.settings?.windowTitle() ?: MapViewerSettings().windowTitle())
     }
 
-    activeMap?.let { map ->
+    launchState.activeMap?.let { map ->
         key(map) {
             ViewerWorkspace(
                 renderMap = renderMap,
@@ -179,32 +179,49 @@ private fun ComposeMapViewer(
                 workspaceMode = workspaceMode,
                 awtWindow = awtWindow,
                 onWorkspaceModeChanged = onWorkspaceModeChanged,
-                onReturnToLaunchpad = { activeMap = null },
+                onReturnToLaunchpad = launchState::returnToLaunchpad,
             )
         }
     } ?: ComposeLaunchpad(
         repository = repository,
         awtWindow = awtWindow,
         onCreateOperation = {
-            activeMap = ComposeActiveMap(settings = initialSettings)
-        },
-        onMapLoaded = { loaded ->
-            activeMap = ComposeActiveMap(
-                settings = loaded.settings,
-                renderData = loaded.renderData,
-                camera = loaded.camera,
-                sourcePath = loaded.operation.path.toString(),
+            launchState.createOperation(
+                initialSettings.copy(operationName = initialSettings.operationName ?: "New Operation"),
             )
         },
+        onMapLoaded = launchState::openSavedMap,
     )
 }
 
-private data class ComposeActiveMap(
+internal data class ComposeActiveMap(
     val settings: MapViewerSettings,
     val renderData: MapViewerRenderData? = null,
     val camera: MapViewerSavedCamera? = null,
     val sourcePath: String? = null,
 )
+
+internal class ComposeLaunchState(initialMap: ComposeActiveMap? = null) {
+    var activeMap by mutableStateOf(initialMap)
+        private set
+
+    fun createOperation(settings: MapViewerSettings) {
+        activeMap = ComposeActiveMap(settings = settings)
+    }
+
+    fun openSavedMap(loaded: MapViewerSavedMap) {
+        activeMap = ComposeActiveMap(
+            settings = loaded.settings,
+            renderData = loaded.renderData,
+            camera = loaded.camera,
+            sourcePath = loaded.operation.path.toString(),
+        )
+    }
+
+    fun returnToLaunchpad() {
+        activeMap = null
+    }
+}
 
 @Composable
 private fun ComposeLaunchpad(
