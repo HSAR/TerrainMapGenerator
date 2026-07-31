@@ -1,6 +1,8 @@
 package io.hsar.mapgenerator.commandgui.compose
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.WindowPlacement
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
@@ -20,5 +22,17 @@ class CommandDesignTest {
     @Test
     fun `Compose application starts maximized`() {
         assertThat(COMPOSE_INITIAL_WINDOW_PLACEMENT, equalTo(WindowPlacement.Maximized))
+    }
+
+    @Test
+    fun `command buttons retain the legacy tool rail label size`() {
+        assertThat(COMMAND_BUTTON_FONT_SIZE, equalTo(22.sp))
+    }
+
+    @Test
+    fun `command buttons retain the legacy tool rail minimum dimensions`() {
+        assertThat(COMMAND_BUTTON_MIN_WIDTH, equalTo(120.dp))
+        assertThat(COMMAND_BUTTON_MIN_HEIGHT, equalTo(40.dp))
+        assertThat(COMMAND_BUTTON_HORIZONTAL_PADDING, equalTo(12.dp))
     }
 }

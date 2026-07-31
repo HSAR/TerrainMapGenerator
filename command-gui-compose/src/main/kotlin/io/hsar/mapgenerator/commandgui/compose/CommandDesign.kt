@@ -37,7 +37,10 @@ internal fun CommandButton(
     content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
 ) = OutlinedButton(
     onClick = onClick,
-    modifier = Modifier.defaultMinSize(minWidth = 120.dp, minHeight = 40.dp).then(modifier),
+    modifier = Modifier.defaultMinSize(
+        minWidth = COMMAND_BUTTON_MIN_WIDTH,
+        minHeight = COMMAND_BUTTON_MIN_HEIGHT,
+    ).then(modifier),
     enabled = enabled,
     shape = RectangleShape,
     border = BorderStroke(2.dp, if (enabled) CommandColours.White else CommandColours.Light),
@@ -47,12 +50,17 @@ internal fun CommandButton(
         disabledContainerColor = CommandColours.Main,
         disabledContentColor = CommandColours.Light,
     ),
-    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+    contentPadding = PaddingValues(horizontal = COMMAND_BUTTON_HORIZONTAL_PADDING, vertical = 0.dp),
 ) {
-    ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp)) {
+    ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontSize = COMMAND_BUTTON_FONT_SIZE, lineHeight = COMMAND_BUTTON_FONT_SIZE)) {
         content()
     }
 }
+
+internal val COMMAND_BUTTON_FONT_SIZE = 22.sp
+internal val COMMAND_BUTTON_MIN_WIDTH = 120.dp
+internal val COMMAND_BUTTON_MIN_HEIGHT = 40.dp
+internal val COMMAND_BUTTON_HORIZONTAL_PADDING = 12.dp
 
 @Composable
 internal fun CommandPanel(

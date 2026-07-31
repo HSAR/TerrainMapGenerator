@@ -4,7 +4,10 @@ import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.databind.JsonNode
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingIconRenderer
+import korlibs.datastructure.count
 import korlibs.image.bitmap.Bitmap32
+import korlibs.io.util.buildList
+import java.util.Collections.emptyMap
 import java.util.UUID
 import kotlin.Boolean
 import kotlin.Double
@@ -18,6 +21,7 @@ import kotlin.collections.forEachIndexed
 import kotlin.collections.lastIndex
 import kotlin.collections.toList
 import kotlin.let
+import kotlin.plus
 import kotlin.takeIf
 import kotlin.takeUnless
 import kotlin.text.Regex
@@ -210,7 +214,7 @@ private fun editDescription(item: String, changes: Map<String, JsonNode?>): Stri
 private fun MapPlacedObjectSnapshot.objectDescription(): String =
     when (this) {
         is UnitSnapshot -> "unit ${instanceName.ifBlank { template.name }} (${template.name})"
-        is GraphicSnapshot -> "graphic ${instanceName.ifBlank { template.name }} (${template.name})"
+        is GraphicSnapshot -> "graphic ${displayName() ?: instanceName.ifBlank { template.name }} (${template.name})"
         is DrawingSnapshot -> drawing.name
     }
 

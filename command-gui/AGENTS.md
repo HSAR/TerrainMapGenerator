@@ -39,6 +39,12 @@ single draggable/minimizable notes overlay. The Select/Draw/Measure tool buttons
   return-to-launchpad, exit and close actions without retaining the obsolete map-generation/open toolbar.
 - Context-menu action/target contracts, feature filtering and replay-object option resolution now live in engine-neutral `commandgui`. Compose right-clicks an object to show its
   object-specific menu and otherwise right-drags to pan; KorGE retains only rendering and callback adapters for its existing menus.
+- Replayed graphics now carry their save-loaded icon and normalized dimensions through the shared model. Compose renders those icons at map-relative size, with `displayName`
+  labels above them and the same display name in ledger and context-menu headers.
+- Renderer-neutral selection chrome now lives in `commandgui`: screen selection bounds/frames, grabbable corner brackets, rotation-handle placement, marquee overlap and
+  additive-selection reducers. Compose selection is now a stable set of IDs and supports click-to-replace, Shift-click toggling, Shift-marquee toggling, ordinary drag-marquee
+  replacement, per-object bounding boxes, group frames, resize brackets and a rotate dot. The replay model remains read-only, so move/resize/rotate previews and ledger commits
+  remain part of the authoritative editable-operation-state work below rather than being simulated only in the renderer.
 
 Implement the remaining migration as small vertical slices in this order:
 

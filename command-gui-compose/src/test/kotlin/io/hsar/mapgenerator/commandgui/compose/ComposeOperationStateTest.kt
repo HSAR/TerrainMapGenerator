@@ -22,20 +22,34 @@ class ComposeOperationStateTest {
             .moveLedgerCursor(4)
 
         assertThat(state.activeTool, equalTo(ComposeMapTool.DRAW))
-        assertThat(state.selectedObjectId, equalTo(objectId))
+        assertThat(state.selectedObjectIds, equalTo(setOf(objectId)))
         assertThat(state.ledgerCursor, equalTo(4))
     }
 
     @Test
     fun `changing tools preserves the current selection and cursor`() {
         val objectId = UUID.fromString("00000000-0000-0000-0000-000000000002")
-        val state = ComposeOperationState(selectedObjectId = objectId, ledgerCursor = 2)
+        val state = ComposeOperationState(selectedObjectIds = setOf(objectId), ledgerCursor = 2)
 
         val updated = state.selectTool(ComposeMapTool.MEASURE)
 
         assertThat(updated.activeTool, equalTo(ComposeMapTool.MEASURE))
-        assertThat(updated.selectedObjectId, equalTo(objectId))
+        assertThat(updated.selectedObjectIds, equalTo(setOf(objectId)))
         assertThat(updated.ledgerCursor, equalTo(2))
+    }
+
+    @Test
+    fun `shift selection toggles objects while drag selection replaces or toggles a set`() {
+        val first = UUID.fromString("00000000-0000-0000-0000-000000000011")
+        val second = UUID.fromString("00000000-0000-0000-0000-000000000012")
+
+        val state = ComposeOperationState()
+            .selectObject(first)
+            .selectObject(second, additive = true)
+            .selectBox(setOf(first, second), additive = true)
+            .selectBox(setOf(second), additive = false)
+
+        assertThat(state.selectedObjectIds, equalTo(setOf(second)))
     }
 
     @Test

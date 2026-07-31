@@ -61,7 +61,12 @@ data class MapViewerReplayObject(
     val destroyed: Boolean? = null,
     val customProperties: Map<String, String> = emptyMap(),
     val icon: BufferedImage? = null,
-)
+    val normalizedWidth: Double? = null,
+    val normalizedHeight: Double? = null,
+) {
+    val displayName: String?
+        get() = customProperties[DISPLAY_NAME_PROPERTY]?.trim()?.takeIf(String::isNotEmpty)
+}
 
 data class MapViewerReplayTemplate(
     val id: UUID,
@@ -157,6 +162,9 @@ private fun MapPlacedObjectSnapshot.toViewerObject() =
             x = mapCoordinate.x,
             y = mapCoordinate.y,
             customProperties = customProperties,
+            icon = template.bitmap.toBufferedImage(),
+            normalizedWidth = normalizedWidth,
+            normalizedHeight = normalizedHeight,
         )
     }
 
@@ -170,3 +178,5 @@ private fun Bitmap32.toBufferedImage() =
             }
         }
     }
+
+private const val DISPLAY_NAME_PROPERTY = "displayName"
