@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -676,7 +677,7 @@ private fun ViewerWorkspace(
     var settings by remember { mutableStateOf(initialMap.settings) }
     var renderData by remember { mutableStateOf(initialMap.renderData) }
     var rendering by remember { mutableStateOf(false) }
-    var note by remember { mutableStateOf("") }
+    var operationState by remember { mutableStateOf(ComposeOperationState()) }
     val eventLog = remember {
         mutableStateListOf(
             initialMap.sourcePath?.let { "Loaded ${File(it).name} at map level" }
@@ -732,33 +733,44 @@ private fun ViewerWorkspace(
             )
             HorizontalDivider()
             Row(Modifier.weight(1f)) {
-                ToolRail()
+                ToolRail(
+                    activeTool = operationState.activeTool,
+                    onToolSelected = { operationState = operationState.selectTool(it) },
+                )
                 Box(Modifier.weight(1f).fillMaxHeight()) {
                     renderData?.let {
                         MapCanvas(
                             renderData = it,
                             savedCamera = initialMap.camera,
                             replay = initialMap.ledger,
+                            activeTool = operationState.activeTool,
+                            selectedObjectId = operationState.selectedObjectId,
+                            onObjectSelected = { operationState = operationState.selectObject(it) },
                             modifier = Modifier.fillMaxSize(),
                         )
                     } ?: EmptyMap(onRender = ::render, rendering = rendering)
 
                     if (workspaceMode == WorkspaceMode.FLOATING) {
                         FloatingNotesPanel(
-                            note = note,
-                            onNoteChanged = { note = it },
+                            note = operationState.noteDraft,
+                            onNoteChanged = { operationState = operationState.updateNoteDraft(it) },
                         )
                     }
                 }
                 if (workspaceMode == WorkspaceMode.DOCKED) {
                     NotesPanel(
-                        note = note,
-                        onNoteChanged = { note = it },
+                        note = operationState.noteDraft,
+                        onNoteChanged = { operationState = operationState.updateNoteDraft(it) },
                         modifier = Modifier.requiredWidth(320.dp).fillMaxHeight(),
                     )
                 }
             }
-            LedgerPrototypePanel(initialMap.ledger, eventLog)
+            LedgerPrototypePanel(
+                replay = initialMap.ledger,
+                events = eventLog,
+                selectedIndex = operationState.ledgerCursor,
+                onSelectedIndexChanged = { operationState = operationState.moveLedgerCursor(it) },
+            )
         }
     }
 }
@@ -817,15 +829,18 @@ private fun ViewerToolbar(
 }
 
 @Composable
-private fun ToolRail() = Column(
+private fun ToolRail(
+    activeTool: ComposeMapTool,
+    onToolSelected: (ComposeMapTool) -> Unit,
+) = Column(
     modifier = Modifier.width(104.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceVariant)
         .padding(8.dp),
     verticalArrangement = Arrangement.spacedBy(8.dp),
 ) {
     Text("Tools", style = MaterialTheme.typography.titleMedium)
-    listOf("Select", "Pan", "Draw", "Measure").forEach { tool ->
-        CommandButton(onClick = {}, modifier = Modifier.fillMaxWidth()) {
-            Text(tool)
+    ComposeMapTool.entries.forEach { tool ->
+        CommandButton(onClick = { onToolSelected(tool) }, modifier = Modifier.fillMaxWidth()) {
+            Text(if (tool == activeTool) "• ${tool.label}" else tool.label)
         }
     }
 }
@@ -907,9 +922,11 @@ private fun EmptyMap(onRender: () -> Unit, rendering: Boolean) =
 private fun LedgerPrototypePanel(
     replay: MapViewerLedgerReplay,
     events: List<String>,
+    selectedIndex: Int?,
+    onSelectedIndexChanged: (Int) -> Unit,
 ) {
-    var selectedIndex by remember(replay) { mutableStateOf(replay.entries.lastOrNull()?.index) }
-    val selected = replay.entries.firstOrNull { it.index == selectedIndex }
+    val currentSelectedIndex = selectedIndex ?: replay.entries.lastOrNull()?.index
+    val selected = replay.entries.firstOrNull { it.index == currentSelectedIndex }
     Column(
         Modifier.fillMaxWidth().height(230.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant),
@@ -940,9 +957,9 @@ private fun LedgerPrototypePanel(
                     }
                 }
                 items(replay.entries, key = { it.index }) { entry ->
-                    val selectedEntry = entry.index == selectedIndex
+                    val selectedEntry = entry.index == currentSelectedIndex
                     Surface(
-                        modifier = Modifier.fillMaxWidth().clickable { selectedIndex = entry.index },
+                        modifier = Modifier.fillMaxWidth().clickable { onSelectedIndexChanged(entry.index) },
                         color = if (selectedEntry) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
                     ) {
                         Row(
@@ -1003,6 +1020,9 @@ private fun MapCanvas(
     renderData: MapViewerRenderData,
     savedCamera: MapViewerSavedCamera? = null,
     replay: MapViewerLedgerReplay = MapViewerLedgerReplay.EMPTY,
+    activeTool: ComposeMapTool = ComposeMapTool.PAN,
+    selectedObjectId: java.util.UUID? = null,
+    onObjectSelected: (java.util.UUID?) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val nordFontFamily = NordFontFamily()
@@ -1076,10 +1096,25 @@ private fun MapCanvas(
                 )
                 change.consume()
             }
-            .pointerInput(renderData.baseImage) {
-                detectDragGestures { change, dragAmount ->
-                    change.consume()
-                    viewport = viewport.pan(ViewerPoint(dragAmount.x.toDouble(), dragAmount.y.toDouble()))
+            .pointerInput(renderData.baseImage, activeTool) {
+                if (activeTool == ComposeMapTool.PAN) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        viewport = viewport.pan(ViewerPoint(dragAmount.x.toDouble(), dragAmount.y.toDouble()))
+                    }
+                } else if (activeTool == ComposeMapTool.SELECT) {
+                    detectTapGestures { offset ->
+                        onObjectSelected(
+                            replay.objectAtScreen(
+                                screenPoint = ViewerPoint(offset.x.toDouble(), offset.y.toDouble()),
+                                viewport = viewport,
+                                mapOffsetX = mapOffsetX,
+                                mapOffsetY = mapOffsetY,
+                                mapWidth = renderData.baseImage.width,
+                                mapHeight = renderData.baseImage.height,
+                            )?.id,
+                        )
+                    }
                 }
             },
     ) {
@@ -1158,6 +1193,14 @@ private fun MapCanvas(
                                 start = centre + Offset(radius, -radius),
                                 end = centre + Offset(-radius, radius),
                                 strokeWidth = (2f / zoom).coerceAtLeast(0.5f),
+                            )
+                        }
+                        if (mapObject.id == selectedObjectId) {
+                            drawCircle(
+                                color = Color.White,
+                                radius = radius + 4f / zoom,
+                                center = centre,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(2f / zoom),
                             )
                         }
                     }

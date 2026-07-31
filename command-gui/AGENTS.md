@@ -25,18 +25,24 @@ The Compose viewer is a functional prototype, not yet a replacement for KorGE. I
 map display, camera pan/zoom, shared grid layout, saved-camera restoration, replayed object markers, a read-only ledger demonstration, basic layer toggles, session-only notes and a
 single draggable/minimizable notes overlay. The Select/Draw/Measure tool buttons are placeholders, and the docked/floating workspace does not yet manage real editors.
 
+### Completed Compose slices
+
+- The Compose workspace now owns its current tool, selected replayed object, ledger cursor and session note draft in `ComposeOperationState`, rather than leaving tool state in
+  inert
+  controls. Select hit-tests replay markers with a zoom-independent screen target and renders a selection ring; Pan exclusively owns drag-to-pan. Draw and Measure remain explicit
+  selected modes awaiting their respective gesture/reducer slices.
+
 Implement the remaining migration as small vertical slices in this order:
 
 1. **Finish the engine-neutral application layer.** Move remaining reusable object, unit, graphic, drawing, selection, hit-test, note, sensor, tactical and report rules out of
    `korge/interaction`, `korge/drawing` and KorGE UI callbacks. Prefer immutable models and pure reducers/state holders. Keep `BufferedImage`, `ViewerPoint`, `MapViewport` and the
    shared ARGB/geometry types at backend boundaries; convert only inside each renderer. Consolidate duplicate legacy/shared camera, grid and ledger types only when parity tests
    protect their behaviour.
-2. **Create one authoritative Compose operation state.** It must own the loaded operation, enabled layers, camera, selected tool/objects, templates, drawings, notes, ledger cursor,
-   open editor instances, drafts and validation. Launchpad loading, regeneration and editor actions should update this state instead of keeping unrelated local `remember` values.
+2. **Create one authoritative Compose operation state.** It must own the loaded operation, enabled layers, camera, templates, drawings, open editor instances, drafts and
+   validation. Launchpad loading, regeneration and editor actions should update this state instead of keeping unrelated local `remember` values.
    Preserve stable IDs and append actions through the existing save/ledger model rather than mutating rendered markers directly.
 3. **Reach map interaction and rendering parity.** Complete the ordered Canvas layers for raster tiles, grid, drawings, placed graphics, units, tactical overlays, labels, selection
-   handles and drag previews. Port cursor-anchored zoom, panning, click/marquee selection, move/resize/rotate, drawing and measurement gestures using shared coordinate conversion
-   and
+   handles and drag previews. Port cursor-anchored zoom, marquee selection, move/resize/rotate, drawing and measurement gestures using shared coordinate conversion and
    hit testing. Keep the viewport transform authoritative in one place, cull off-screen tiles/objects, and use direct Skia only for a primitive Compose Canvas cannot reproduce.
 4. **Port operational workflows, not KorGE widgets.** Replace the inert tool rail and prototypes with Compose controls for layer/grid settings, unit and graphic creation/editing,
    custom properties, notes and references, ledger navigation/replay, templates, SITREP/SCIREP, GUNREP, tactical targeting/fire and Olympiad Dawn status. Reuse extracted domain
