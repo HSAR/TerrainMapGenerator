@@ -81,11 +81,13 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.hsar.mapgenerator.commandgui.MapViewerBackend
 import io.hsar.mapgenerator.commandgui.MapViewerBackendProvider
+import io.hsar.mapgenerator.commandgui.MapViewerContextMenuItem
 import io.hsar.mapgenerator.commandgui.MapViewerGlobalSettings
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayLayoutBuilder
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayRequest
 import io.hsar.mapgenerator.commandgui.MapViewerLedgerReplay
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
+import io.hsar.mapgenerator.commandgui.MapViewerReplayObject
 import io.hsar.mapgenerator.commandgui.MapViewerReplayObjectKind
 import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
 import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
@@ -96,6 +98,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.MapViewport
 import io.hsar.mapgenerator.commandgui.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.ViewerPoint
+import io.hsar.mapgenerator.commandgui.contextMenuItems
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -687,6 +690,7 @@ private fun ViewerWorkspace(
     var operationState by remember { mutableStateOf(ComposeOperationState()) }
     var unitIconSizePx by remember { mutableStateOf(UnitIconDisplaySize.coerce(initialUnitIconSizePx)) }
     var escapeMenuOpen by remember { mutableStateOf(false) }
+    var contextMenu by remember { mutableStateOf<ComposeMapContextMenu?>(null) }
 
     Surface(
         Modifier.fillMaxSize().onPreviewKeyEvent { event ->
@@ -707,6 +711,11 @@ private fun ViewerWorkspace(
                             activeTool = operationState.activeTool,
                             selectedObjectId = operationState.selectedObjectId,
                             onObjectSelected = { operationState = operationState.selectObject(it) },
+                            onContextMenuRequested = { mapObject, position ->
+                                operationState = operationState.selectObject(mapObject.id)
+                                contextMenu = ComposeMapContextMenu(mapObject.name, position, mapObject.contextMenuItems())
+                            },
+                            onContextMenuDismissed = { contextMenu = null },
                             unitIconSizePx = unitIconSizePx,
                             onUnitIconSizeChanged = { size -> unitIconSizePx = onUnitIconSizeChanged(size) },
                             modifier = Modifier.fillMaxSize(),
@@ -715,11 +724,23 @@ private fun ViewerWorkspace(
 
                     ToolRail(
                         activeTool = operationState.activeTool,
-                        unitIconSizePx = unitIconSizePx,
                         onToolSelected = { operationState = operationState.selectTool(it) },
-                        onMenuRequested = { escapeMenuOpen = true },
-                        modifier = Modifier.align(Alignment.TopCenter).padding(12.dp),
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp),
                     )
+                    CommandButton(
+                        onClick = { escapeMenuOpen = true },
+                        modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
+                    )
+                    {
+                        Text("MENU")
+                    }
+                    contextMenu?.let { menu ->
+                        ComposeMapContextMenu(
+                            menu = menu,
+                            onActionSelected = { contextMenu = null },
+                            onDismiss = { contextMenu = null },
+                        )
+                    }
 
                     if (workspaceMode == WorkspaceMode.FLOATING) {
                         FloatingNotesPanel(
@@ -759,24 +780,18 @@ private fun ViewerWorkspace(
 @Composable
 private fun ToolRail(
     activeTool: ComposeMapTool,
-    unitIconSizePx: Double,
     onToolSelected: (ComposeMapTool) -> Unit,
-    onMenuRequested: () -> Unit,
     modifier: Modifier = Modifier,
 ) = Row(
     modifier = modifier,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(12.dp),
     verticalAlignment = Alignment.CenterVertically,
 ) {
-    CommandButton(onClick = onMenuRequested) {
-        Text("MENU")
-    }
     ComposeMapTool.entries.forEach { tool ->
-        CommandButton(onClick = { onToolSelected(tool) }) {
-            Text(if (tool == activeTool) "• ${tool.label}" else tool.label)
+        CommandButton(onClick = { onToolSelected(tool) }, active = tool == activeTool) {
+            Text(tool.label.uppercase())
         }
     }
-    Text("${UnitIconDisplaySize.format(unitIconSizePx)} px · Alt+wheel")
 }
 
 @Composable
@@ -866,6 +881,31 @@ private fun EscapeMenuDialog(
         CommandButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
             Text("CLOSE")
         }
+    }
+}
+
+private data class ComposeMapContextMenu(
+    val objectName: String,
+    val position: IntOffset,
+    val actions: List<MapViewerContextMenuItem>,
+)
+
+@Composable
+private fun ComposeMapContextMenu(
+    menu: ComposeMapContextMenu,
+    onActionSelected: (MapViewerContextMenuItem) -> Unit,
+    onDismiss: () -> Unit,
+) = CommandPanel(
+    modifier = Modifier.offset { menu.position }.width(220.dp),
+) {
+    Text(menu.objectName, style = MaterialTheme.typography.titleMedium)
+    menu.actions.forEach { action ->
+        CommandButton(onClick = { onActionSelected(action) }, modifier = Modifier.fillMaxWidth()) {
+            Text(action.label.uppercase())
+        }
+    }
+    CommandButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+        Text("CLOSE")
     }
 }
 
@@ -974,6 +1014,8 @@ private fun MapCanvas(
     activeTool: ComposeMapTool = ComposeMapTool.SELECT,
     selectedObjectId: java.util.UUID? = null,
     onObjectSelected: (java.util.UUID?) -> Unit = {},
+    onContextMenuRequested: (MapViewerReplayObject, IntOffset) -> Unit = { _, _ -> },
+    onContextMenuDismissed: () -> Unit = {},
     unitIconSizePx: Double = UnitIconDisplaySize.DEFAULT_PX,
     onUnitIconSizeChanged: (Double) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -1012,6 +1054,7 @@ private fun MapCanvas(
             } ?: MapViewport.centered(worldWidth, worldHeight),
         )
     }
+    var rightClickTargetId by remember { mutableStateOf<java.util.UUID?>(null) }
     val gridOverlay = remember(renderData.gridLayer, viewport, nordFontFamily) {
         renderData.gridLayer?.let { grid ->
             MapViewerGridOverlayLayoutBuilder.build(
@@ -1060,7 +1103,7 @@ private fun MapCanvas(
                 change.consume()
             }
             .onPointerEvent(PointerEventType.Move) { event ->
-                if (event.buttons.isSecondaryPressed) {
+                if (event.buttons.isSecondaryPressed && rightClickTargetId == null) {
                     event.changes.firstOrNull()?.let { change ->
                         val delta = change.position - change.previousPosition
                         if (delta != Offset.Zero) {
@@ -1069,6 +1112,35 @@ private fun MapCanvas(
                         }
                     }
                 }
+            }
+            .onPointerEvent(PointerEventType.Press) { event ->
+                if (event.buttons.isSecondaryPressed) {
+                    event.changes.firstOrNull()?.let { change ->
+                        replay.objectAtScreen(
+                            screenPoint = ViewerPoint(change.position.x.toDouble(), change.position.y.toDouble()),
+                            viewport = viewport,
+                            mapOffsetX = mapOffsetX,
+                            mapOffsetY = mapOffsetY,
+                            mapWidth = renderData.baseImage.width,
+                            mapHeight = renderData.baseImage.height,
+                            hitRadius = unitIconSizePx / 2.0,
+                        )?.let { mapObject ->
+                            rightClickTargetId = mapObject.id
+                            onContextMenuRequested(
+                                mapObject,
+                                IntOffset(change.position.x.roundToInt(), change.position.y.roundToInt()),
+                            )
+                        } ?: run {
+                            rightClickTargetId = null
+                            onContextMenuDismissed()
+                        }
+                    }
+                } else {
+                    onContextMenuDismissed()
+                }
+            }
+            .onPointerEvent(PointerEventType.Release) { event ->
+                if (!event.buttons.isSecondaryPressed) rightClickTargetId = null
             }
             .pointerInput(renderData.baseImage, activeTool) {
                 if (activeTool == ComposeMapTool.SELECT) {

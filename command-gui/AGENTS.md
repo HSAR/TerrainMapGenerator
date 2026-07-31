@@ -37,6 +37,8 @@ single draggable/minimizable notes overlay. The Select/Draw/Measure tool buttons
   zoom-independent screen size, supports right-drag panning under every tool, and mirrors KorGE's `Alt` + wheel 12% icon-size adjustment.
 - Compose now places its tool controls in a transparent horizontal map overlay and exposes the legacy Escape menu workflow through `Escape` and a Menu button; its modal provides
   return-to-launchpad, exit and close actions without retaining the obsolete map-generation/open toolbar.
+- Context-menu action/target contracts, feature filtering and replay-object option resolution now live in engine-neutral `commandgui`. Compose right-clicks an object to show its
+  object-specific menu and otherwise right-drags to pan; KorGE retains only rendering and callback adapters for its existing menus.
 
 Implement the remaining migration as small vertical slices in this order:
 
