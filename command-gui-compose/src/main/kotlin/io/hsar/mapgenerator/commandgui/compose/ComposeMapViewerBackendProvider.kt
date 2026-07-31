@@ -27,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -83,6 +84,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.hsar.mapgenerator.commandgui.MapCoordinate
@@ -120,6 +122,7 @@ import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.operation.OperationOvalDrawing
 import io.hsar.mapgenerator.commandgui.operation.OperationRectangleDrawing
 import io.hsar.mapgenerator.commandgui.operation.OperationUnit
+import io.hsar.mapgenerator.commandgui.operation.OperationUnitAffiliation
 import io.hsar.mapgenerator.commandgui.operation.contains
 import io.hsar.mapgenerator.commandgui.operation.move
 import io.hsar.mapgenerator.commandgui.operation.resize
@@ -143,6 +146,8 @@ import javax.imageio.ImageIO
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.roundToInt
+import kotlin.math.cos
+import kotlin.math.sin
 
 class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
     override val backend = MapViewerBackend.COMPOSE
@@ -725,6 +730,7 @@ private fun ViewerWorkspace(
     var unitIconSizePx by remember { mutableStateOf(UnitIconDisplaySize.coerce(initialUnitIconSizePx)) }
     var escapeMenuOpen by remember { mutableStateOf(false) }
     var contextMenu by remember { mutableStateOf<ComposeMapContextMenu?>(null) }
+    var editingUnitId by remember { mutableStateOf<OperationObjectId?>(null) }
     var pendingExit by remember { mutableStateOf<ComposePendingExit?>(null) }
     val autosaveScheduler = remember { ComposeAutosaveScheduler(debounceMillis = COMPOSE_AUTOSAVE_DEBOUNCE_MS) }
     val scope = rememberCoroutineScope()
@@ -884,8 +890,11 @@ private fun ViewerWorkspace(
                         ComposeMapContextMenu(
                             menu = menu,
                             onActionSelected = { action ->
-                                if (action.action.name.startsWith("DELETE")) {
-                                    operationState = operationState.selectObject(menu.objectId).deleteSelection()
+                                when (action.action) {
+                                    MapViewerContextMenuCommand.EDIT_UNIT -> editingUnitId = menu.objectId
+                                    else -> if (action.action.name.startsWith("DELETE")) {
+                                        operationState = operationState.selectObject(menu.objectId).deleteSelection()
+                                    }
                                 }
                                 contextMenu = null
                             },
@@ -940,6 +949,20 @@ private fun ViewerWorkspace(
             },
             onCancel = { pendingExit = null },
         )
+    }
+    editingUnitId?.let { objectId ->
+        (operationState.visibleContent.objectById(objectId) as? OperationUnit)?.let { unit ->
+            ComposeUnitEditDialog(
+                unit = unit,
+                templateName = operationState.visibleContent.unitTemplate(unit.unitTemplateId)?.name.orEmpty(),
+                editable = !operationState.isReadOnly,
+                onSave = { updated ->
+                    operationState = operationState.editUnit(updated)
+                    editingUnitId = null
+                },
+                onDismiss = { editingUnitId = null },
+            )
+        } ?: run { editingUnitId = null }
     }
 }
 
@@ -1049,6 +1072,92 @@ private fun EscapeMenuDialog(
         }
         CommandButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
             Text("CLOSE")
+        }
+    }
+}
+
+@Composable
+private fun ComposeUnitEditDialog(
+    unit: OperationUnit,
+    templateName: String,
+    editable: Boolean,
+    onSave: (OperationUnit) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember(unit.id) { mutableStateOf(unit.instanceName) }
+    var positionX by remember(unit.id) { mutableStateOf(unit.coordinate.x.toString()) }
+    var positionY by remember(unit.id) { mutableStateOf(unit.coordinate.y.toString()) }
+    var facing by remember(unit.id) { mutableStateOf(unit.facingDegrees?.toString().orEmpty()) }
+    var destroyed by remember(unit.id) { mutableStateOf(unit.destroyed) }
+    val x = positionX.toDoubleOrNull()
+    val y = positionY.toDoubleOrNull()
+    val facingDegrees = facing.trim().takeIf(String::isNotEmpty)?.toIntOrNull()?.mod(360)
+    val valid = name.isNotBlank() && x != null && y != null && (facing.isBlank() || facingDegrees != null)
+
+    Dialog(onDismissRequest = onDismiss) {
+        CommandPanel(Modifier.width(520.dp)) {
+            Text("EDIT UNIT", style = MaterialTheme.typography.headlineMedium)
+            Text(templateName.ifBlank { "Unit" }, color = CommandColours.Backing)
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = editable,
+                    singleLine = true,
+                    label = { Text("Name") },
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = positionX,
+                        onValueChange = { positionX = it },
+                        modifier = Modifier.weight(1f),
+                        enabled = editable,
+                        singleLine = true,
+                        isError = positionX.isNotBlank() && x == null,
+                        label = { Text("Map X") },
+                    )
+                    OutlinedTextField(
+                        value = positionY,
+                        onValueChange = { positionY = it },
+                        modifier = Modifier.weight(1f),
+                        enabled = editable,
+                        singleLine = true,
+                        isError = positionY.isNotBlank() && y == null,
+                        label = { Text("Map Y") },
+                    )
+                }
+                OutlinedTextField(
+                    value = facing,
+                    onValueChange = { facing = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = editable,
+                    singleLine = true,
+                    isError = facing.isNotBlank() && facingDegrees == null,
+                    label = { Text("Facing (0–359, blank for none)") },
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = destroyed, onCheckedChange = { destroyed = it }, enabled = editable)
+                    Text("Destroyed")
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CommandButton(
+                    onClick = {
+                        onSave(
+                            unit.copy(
+                                instanceName = name.trim(),
+                                coordinate = MapCoordinate(x ?: unit.coordinate.x, y ?: unit.coordinate.y),
+                                facingDegrees = facingDegrees,
+                                destroyed = destroyed,
+                            ),
+                        )
+                    },
+                    enabled = editable && valid,
+                    modifier = Modifier.weight(1f),
+                ) { Text("SAVE") }
+                CommandButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("CANCEL") }
+            }
         }
     }
 }
@@ -1283,6 +1392,7 @@ private fun MapCanvas(
     val worldHeight = mapHeight * 1.66
     val mapOffsetX = (worldWidth - mapWidth) * 0.5
     val mapOffsetY = (worldHeight - mapHeight) * 0.5
+    val debugMapObjects = System.getProperty("commandgui.compose.debugMapObjects") == "true"
     val initialViewport = remember(renderData.baseImage, savedCamera) {
         savedCamera?.let { camera ->
             MapViewport(
@@ -1295,7 +1405,8 @@ private fun MapCanvas(
             )
         } ?: MapViewport.centered(worldWidth, worldHeight)
     }
-    val currentViewport = viewport ?: initialViewport
+    var panningViewport by remember(renderData.baseImage) { mutableStateOf<MapViewport?>(null) }
+    val currentViewport = panningViewport ?: viewport ?: initialViewport
     var rightClickTargetId by remember { mutableStateOf<OperationObjectId?>(null) }
     var marquee by remember { mutableStateOf<ComposeSelectionMarquee?>(null) }
     var transformGesture by remember { mutableStateOf<ComposeTransformGesture?>(null) }
@@ -1356,11 +1467,23 @@ private fun MapCanvas(
             ).frame()
         }
 
+    if (debugMapObjects) {
+        LaunchedEffect(content, currentViewport) {
+            println(
+                "Compose map-object diagnostic: objects=${content.objects.size}, units=${content.objects.count { it is OperationUnit }}, " +
+                        "graphics=${content.objects.count { it is OperationGraphic }}, viewport=$currentViewport",
+            )
+        }
+    }
+
     Canvas(
         modifier = modifier.background(Color(0xFF15181B))
             .onSizeChanged {
                 val resized = currentViewport.resized(it.width, it.height)
-                if (resized != viewport) onViewportChanged(resized)
+                if (resized != currentViewport) {
+                    panningViewport = null
+                    onViewportChanged(resized)
+                }
             }
             .onPointerEvent(PointerEventType.Scroll) { event ->
                 val change = event.changes.firstOrNull() ?: return@onPointerEvent
@@ -1368,6 +1491,7 @@ private fun MapCanvas(
                     onUnitIconSizeChanged(UnitIconDisplaySize.scroll(unitIconSizePx, change.scrollDelta.y))
                 } else {
                     val factor = if (change.scrollDelta.y < 0f) 1.1 else 1.0 / 1.1
+                    panningViewport = null
                     onViewportChanged(currentViewport.zoomAt(ViewerPoint(change.position.x.toDouble(), change.position.y.toDouble()), factor))
                 }
                 change.consume()
@@ -1421,7 +1545,9 @@ private fun MapCanvas(
                 val change = event.changes.firstOrNull() ?: return@onPointerEvent
                 if (event.buttons.isSecondaryPressed && rightClickTargetId == null) {
                     val delta = change.position - change.previousPosition
-                    if (delta != Offset.Zero) onViewportChanged(currentViewport.pan(ViewerPoint(delta.x.toDouble(), delta.y.toDouble())))
+                    if (delta != Offset.Zero) {
+                        panningViewport = (panningViewport ?: currentViewport).pan(ViewerPoint(delta.x.toDouble(), delta.y.toDouble()))
+                    }
                     return@onPointerEvent
                 }
                 transformGesture?.let { gesture ->
@@ -1455,7 +1581,11 @@ private fun MapCanvas(
                 }
             }
             .onPointerEvent(PointerEventType.Release) { event ->
-                if (!event.buttons.isSecondaryPressed) rightClickTargetId = null
+                if (!event.buttons.isSecondaryPressed) {
+                    rightClickTargetId = null
+                    panningViewport?.let(onViewportChanged)
+                    panningViewport = null
+                }
                 transformGesture?.let { gesture ->
                     onPreviewCommitted(
                         when (gesture) {
@@ -1483,7 +1613,13 @@ private fun MapCanvas(
         val mapTop = currentViewport.screenY(mapOffsetY).toFloat()
         clipRect {
             withTransform({ translate(mapLeft, mapTop); scale(zoom, zoom, Offset.Zero) }) {
-                tiles.forEach { tile -> drawImage(tile.image, IntOffset(tile.left, tile.top), IntSize(tile.width, tile.height)) }
+                tiles.forEach { tile ->
+                    drawImage(
+                        image = tile.image,
+                        dstOffset = IntOffset(tile.left, tile.top),
+                        dstSize = IntSize(tile.width, tile.height),
+                    )
+                }
                 content.objects.filterIsInstance<OperationDrawingObject>().forEach { value ->
                     drawOperationDrawing(value, mapWidth, mapHeight)
                 }
@@ -1492,7 +1628,13 @@ private fun MapCanvas(
                     val centre = Offset((value.coordinate.x * mapWidth).toFloat(), (value.coordinate.y * mapHeight).toFloat())
                     val width = (value.normalizedWidth * mapWidth).roundToInt().coerceAtLeast(1)
                     val height = (value.normalizedHeight * mapHeight).roundToInt().coerceAtLeast(1)
-                    icon?.let { drawImage(it, IntOffset((centre.x - width / 2f).roundToInt(), (centre.y - height / 2f).roundToInt()), IntSize(width, height)) }
+                    icon?.let {
+                        drawImage(
+                            image = it,
+                            dstOffset = IntOffset((centre.x - width / 2f).roundToInt(), (centre.y - height / 2f).roundToInt()),
+                            dstSize = IntSize(width, height),
+                        )
+                    }
                         ?: drawRect(Color(0xFFFFC857), centre - Offset(width / 2f, height / 2f), androidx.compose.ui.geometry.Size(width.toFloat(), height.toFloat()))
                 }
             }
@@ -1513,9 +1655,21 @@ private fun MapCanvas(
                 )
                 val width = unitIconSizePx.roundToInt().coerceAtLeast(1)
                 val height = icon?.let { (width.toDouble() * it.height / it.width).roundToInt() } ?: width
-                withTransform({ rotate((value.facingDegrees ?: 0).toFloat(), centre) }) {
-                    icon?.let { drawImage(it, IntOffset((centre.x - width / 2f).roundToInt(), (centre.y - height / 2f).roundToInt()), IntSize(width, height)) }
-                        ?: drawCircle(Color(0xFF67D5E8), width / 2f, centre)
+                icon?.let {
+                    drawImage(
+                        image = it,
+                        dstOffset = IntOffset((centre.x - width / 2f).roundToInt(), (centre.y - height / 2f).roundToInt()),
+                        dstSize = IntSize(width, height),
+                    )
+                } ?: drawCircle(Color(0xFF67D5E8), width / 2f, centre)
+                value.facingDegrees?.let { degrees ->
+                    drawUnitFacingIndicator(
+                        centre = centre,
+                        iconWidth = width.toFloat(),
+                        iconHeight = height.toFloat(),
+                        facingDegrees = degrees,
+                        color = content.unitTemplate(value.unitTemplateId)?.affiliation.facingIndicatorColor(),
+                    )
                 }
                 if (value.destroyed) {
                     val radius = maxOf(width, height) / 2f
@@ -1542,6 +1696,20 @@ private fun MapCanvas(
                     androidx.compose.ui.geometry.Size((bounds.right - bounds.left).toFloat(), (bounds.bottom - bounds.top).toFloat()),
                     style = androidx.compose.ui.graphics.drawscope.Stroke(2f)
                 )
+            }
+            if (debugMapObjects) {
+                content.objects.filter { it is OperationUnit || it is OperationGraphic }.forEach { value ->
+                    val bounds = screenBounds(value)
+                    val centre = Offset(((bounds.left + bounds.right) * 0.5).toFloat(), ((bounds.top + bounds.bottom) * 0.5).toFloat())
+                    drawLine(Color.Magenta, centre - Offset(8f, 0f), centre + Offset(8f, 0f), 2f)
+                    drawLine(Color.Magenta, centre - Offset(0f, 8f), centre + Offset(0f, 8f), 2f)
+                    drawRect(
+                        Color.Magenta,
+                        Offset(bounds.left.toFloat(), bounds.top.toFloat()),
+                        androidx.compose.ui.geometry.Size((bounds.right - bounds.left).toFloat(), (bounds.bottom - bounds.top).toFloat()),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(1f),
+                    )
+                }
             }
             selectionFrame()?.let { frame ->
                 frame.cornerBrackets().forEach { bracket ->
@@ -2047,6 +2215,61 @@ private data class ComposeSelectionMarquee(
     val additive: Boolean,
 )
 
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawUnitFacingIndicator(
+    centre: Offset,
+    iconWidth: Float,
+    iconHeight: Float,
+    facingDegrees: Int,
+    color: Color,
+) {
+    val outerRadius = minOf(iconWidth, iconHeight) * 0.72f
+    val innerRadius = outerRadius * 0.86f
+    val arcRadius = (outerRadius + innerRadius) * 0.5f
+    val mainStroke = outerRadius - innerRadius
+    val thinStroke = mainStroke * 0.5f
+    val ringBounds = androidx.compose.ui.geometry.Rect(
+        centre.x - arcRadius,
+        centre.y - arcRadius,
+        centre.x + arcRadius,
+        centre.y + arcRadius,
+    )
+    drawArc(
+        color = color,
+        startAngle = facingDegrees - 150f,
+        sweepAngle = 120f,
+        useCenter = false,
+        topLeft = ringBounds.topLeft,
+        size = ringBounds.size,
+        style = androidx.compose.ui.graphics.drawscope.Stroke(mainStroke),
+    )
+    drawArc(color, facingDegrees - 210f, 60f, false, ringBounds.topLeft, ringBounds.size, style = androidx.compose.ui.graphics.drawscope.Stroke(thinStroke))
+    drawArc(color, facingDegrees - 30f, 60f, false, ringBounds.topLeft, ringBounds.size, style = androidx.compose.ui.graphics.drawscope.Stroke(thinStroke))
+
+    val radians = Math.toRadians(facingDegrees.toDouble())
+    val direction = Offset(sin(radians).toFloat(), -cos(radians).toFloat())
+    val perpendicular = Offset(cos(radians).toFloat(), sin(radians).toFloat())
+    val tip = centre + direction * (outerRadius * 1.22f)
+    val base = centre + direction * arcRadius
+    val halfWidth = minOf(iconWidth, iconHeight) * 0.16f
+    drawPath(
+        Path().apply {
+            moveTo(tip.x, tip.y)
+            lineTo(base.x + perpendicular.x * halfWidth, base.y + perpendicular.y * halfWidth)
+            lineTo(base.x - perpendicular.x * halfWidth, base.y - perpendicular.y * halfWidth)
+            close()
+        },
+        color,
+    )
+}
+
+private fun OperationUnitAffiliation?.facingIndicatorColor() = when (this) {
+    OperationUnitAffiliation.FRIEND -> Color(0xFF276A88)
+    OperationUnitAffiliation.HOSTILE -> Color(0xFFC23E3C)
+    OperationUnitAffiliation.NEUTRAL -> Color(0xFF3D7652)
+    OperationUnitAffiliation.UNKNOWN -> Color(0xFF806E29)
+    null -> Color(0xFF403A3A)
+}
+
 private fun MapViewerReplayObject.selectionBounds(
     viewport: MapViewport,
     mapOffsetX: Double,
@@ -2074,7 +2297,7 @@ private fun MapViewerReplayObject.selectionBounds(
 private fun java.awt.Color.toComposeColour() =
     Color(red = red, green = green, blue = blue, alpha = alpha)
 
-private fun java.awt.image.BufferedImage.toImageBitmap(): ImageBitmap =
+internal fun java.awt.image.BufferedImage.toImageBitmap(): ImageBitmap =
     ByteArrayOutputStream().use { output ->
         ImageIO.write(this, "png", output)
         Image.makeFromEncoded(output.toByteArray()).toComposeImageBitmap()

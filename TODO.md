@@ -20,3 +20,7 @@
 - Can't delete unit types in the new operation screen
 - Collapsed unit types list is not a universal list
 - Text selection highlight geometry not correct
+
+## Porting Regressions
+
+- Only resizable map objects should have corner brackets - units should not 

@@ -45,13 +45,21 @@ internal fun OperationTimeline.toLegacyEntries(): List<LedgerEntry> {
 
 internal fun ReplayedLedger.toOperationContent(): OperationContent {
     val operationObjects = objects.map(MapPlacedObjectSnapshot::toOperationObject)
+    val unitTemplateSnapshots = unitTemplates + objects.filterIsInstance<UnitSnapshot>()
+        .filter { unit -> unitTemplates.none { it.id == unit.unitTemplateId } }
+        .distinctBy(UnitSnapshot::unitTemplateId)
+        .mapIndexed { index, unit -> UnitTemplateSnapshot(unit.unitTemplateId, unit.template, unitTemplates.size + index) }
+    val graphicTemplateSnapshots = graphicTemplates + objects.filterIsInstance<GraphicSnapshot>()
+        .filter { graphic -> graphicTemplates.none { it.id == graphic.graphicTemplateId } }
+        .distinctBy(GraphicSnapshot::graphicTemplateId)
+        .mapIndexed { index, graphic -> GraphicTemplateSnapshot(graphic.graphicTemplateId, graphic.template, graphicTemplates.size + index) }
     val graphicSizes = operationObjects.filterIsInstance<OperationGraphic>()
         .groupBy(OperationGraphic::graphicTemplateId)
         .mapValues { (_, instances) -> instances.first().let { it.normalizedWidth to it.normalizedHeight } }
     return OperationContent(
         objects = operationObjects,
-        unitTemplates = unitTemplates.map(UnitTemplateSnapshot::toOperationTemplate),
-        graphicTemplates = graphicTemplates.map { snapshot ->
+        unitTemplates = unitTemplateSnapshots.map(UnitTemplateSnapshot::toOperationTemplate),
+        graphicTemplates = graphicTemplateSnapshots.map { snapshot ->
             snapshot.toOperationTemplate().let { template ->
                 graphicSizes[template.id]?.let { size ->
                     template.copy(normalizedWidth = size.first, normalizedHeight = size.second)

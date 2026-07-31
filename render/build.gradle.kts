@@ -17,6 +17,12 @@ dependencies {
     runtimeOnly(libs.log4j.core)
 }
 
+tasks.withType<JavaExec>().configureEach {
+    providers.systemProperty("commandgui.compose.debugMapObjects").orNull?.let { value ->
+        systemProperty("commandgui.compose.debugMapObjects", value)
+    }
+}
+
 tasks.processResources {
     from(rootProject.file("LICENSE")) {
         into("licenses")
