@@ -31,6 +31,8 @@ single draggable/minimizable notes overlay. The Select/Draw/Measure tool buttons
   inert
   controls. Select hit-tests replay markers with a zoom-independent screen target and renders a selection ring; Pan exclusively owns drag-to-pan. Draw and Measure remain explicit
   selected modes awaiting their respective gesture/reducer slices.
+- Normalized map coordinates, coordinate deltas, bounds/clamping and map-to-world conversion now live in engine-neutral `commandgui`. KorGE retains only its `Vector2D` adapters,
+  while Compose uses the same conversion for replay-marker hit testing.
 
 Implement the remaining migration as small vertical slices in this order:
 

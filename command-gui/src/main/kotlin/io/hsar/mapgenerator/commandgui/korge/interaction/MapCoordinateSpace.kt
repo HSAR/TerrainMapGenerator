@@ -1,32 +1,16 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.toMapPixels
+import io.hsar.mapgenerator.commandgui.toWorldPoint
 import korlibs.math.geom.Vector2D
+import io.hsar.mapgenerator.commandgui.MapCoordinate as SharedMapCoordinate
+import io.hsar.mapgenerator.commandgui.MapCoordinateBounds as SharedMapCoordinateBounds
+import io.hsar.mapgenerator.commandgui.MapCoordinateDelta as SharedMapCoordinateDelta
 
-internal data class MapCoordinate(
-    val x: Double,
-    val y: Double,
-)
-
-internal data class MapCoordinateDelta(
-    val x: Double,
-    val y: Double,
-)
-
-internal data class MapCoordinateBounds(
-    val left: Double,
-    val top: Double,
-    val right: Double,
-    val bottom: Double,
-) {
-    fun contains(point: MapCoordinate) =
-        point.x in left..right && point.y in top..bottom
-
-    fun clamp(point: MapCoordinate) = MapCoordinate(
-        x = point.x.coerceIn(left, right),
-        y = point.y.coerceIn(top, bottom),
-    )
-}
+internal typealias MapCoordinate = SharedMapCoordinate
+internal typealias MapCoordinateDelta = SharedMapCoordinateDelta
+internal typealias MapCoordinateBounds = SharedMapCoordinateBounds
 
 internal class MapCoordinateSpace(
     private val geometry: ViewerGeometry,
@@ -49,10 +33,12 @@ internal class MapCoordinateSpace(
         bottom = (geometry.backgroundHeight - geometry.mapOffsetY).toDouble() / mapHeight,
     )
 
-    fun toWorld(point: MapCoordinate) = Vector2D(
-        x = geometry.mapOffsetX + point.x * mapWidth,
-        y = geometry.mapOffsetY + point.y * mapHeight,
-    )
+    fun toWorld(point: MapCoordinate) = point.toWorldPoint(
+        mapOffsetX = geometry.mapOffsetX.toDouble(),
+        mapOffsetY = geometry.mapOffsetY.toDouble(),
+        mapWidth = mapWidth,
+        mapHeight = mapHeight,
+    ).let { worldPoint -> Vector2D(worldPoint.x, worldPoint.y) }
 
     fun toMapCoordinate(worldPoint: Vector2D) = MapCoordinate(
         x = (worldPoint.x - geometry.mapOffsetX) / mapWidth,
@@ -69,10 +55,8 @@ internal class MapCoordinateSpace(
         y = delta.y * mapHeight,
     )
 
-    fun toMapPixels(point: MapCoordinate) = Vector2D(
-        x = point.x * mapWidth,
-        y = point.y * mapHeight,
-    )
+    fun toMapPixels(point: MapCoordinate) = point.toMapPixels(mapWidth, mapHeight)
+        .let { mapPixels -> Vector2D(mapPixels.x, mapPixels.y) }
 
     fun fromMapPixels(point: Vector2D) = MapCoordinate(
         x = point.x / mapWidth,

@@ -1,8 +1,10 @@
 package io.hsar.mapgenerator.commandgui.compose
 
+import io.hsar.mapgenerator.commandgui.MapCoordinate
 import io.hsar.mapgenerator.commandgui.MapViewerLedgerReplay
 import io.hsar.mapgenerator.commandgui.MapViewport
 import io.hsar.mapgenerator.commandgui.ViewerPoint
+import io.hsar.mapgenerator.commandgui.toWorldPoint
 import java.util.*
 
 /**
@@ -41,9 +43,11 @@ internal fun MapViewerLedgerReplay.objectAtScreen(
 ) = objects.asReversed().firstOrNull { mapObject ->
     mapObject.x?.let { mapX ->
         mapObject.y?.let { mapY ->
-            (viewport.screenX(mapOffsetX + mapX * mapWidth) - screenPoint.x).let { x ->
-                (viewport.screenY(mapOffsetY + mapY * mapHeight) - screenPoint.y).let { y ->
-                    x * x + y * y <= hitRadius * hitRadius
+            MapCoordinate(mapX, mapY).toWorldPoint(mapOffsetX, mapOffsetY, mapWidth, mapHeight).let { worldPoint ->
+                (viewport.screenX(worldPoint.x) - screenPoint.x).let { x ->
+                    (viewport.screenY(worldPoint.y) - screenPoint.y).let { y ->
+                        x * x + y * y <= hitRadius * hitRadius
+                    }
                 }
             }
         }
