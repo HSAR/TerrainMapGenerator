@@ -2,7 +2,7 @@ package io.hsar.mapgenerator.commandgui
 
 import java.io.File
 
-internal data class AssetSource(
+data class AssetSource(
     val path: String,
     val originalFilename: String,
     val extension: String,

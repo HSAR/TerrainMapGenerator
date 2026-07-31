@@ -86,6 +86,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerToolbar
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTransientNotice
 import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
 import io.hsar.mapgenerator.commandgui.korge.ui.noteReferenceContextMenuActions
+import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.save.GeneratedImageAsset
 import io.hsar.mapgenerator.commandgui.save.LoadedOperation
 import io.hsar.mapgenerator.commandgui.save.MapThumbnailRenderer
@@ -137,6 +138,8 @@ import java.awt.image.BufferedImage
 import java.nio.file.Path
 import java.time.Instant
 import java.util.*
+import java.util.Collections.emptyList
+import java.util.Collections.emptySet
 import java.util.concurrent.ConcurrentLinkedQueue
 import javax.swing.JFileChooser
 import javax.swing.JFrame
@@ -539,7 +542,7 @@ internal class MapViewerScene(
                                     updateUiState(
                                         UiSessionState(
                                             selectedTool = currentTool,
-                                            selectedObjectIds = selectionController.selectedIds().toList(),
+                                            selectedObjectIds = selectionController.selectedIds().map { OperationObjectId(it.value) },
                                             dialogs = dialogManager.persistedDialogs() + listOfNotNull(
                                                 sidebar.persistedDialog(),
                                                 graphicSidebar.persistedDialog(),
@@ -1291,7 +1294,7 @@ internal class MapViewerScene(
                             startupReplayInProgress = false
                             drawingView.update(drawingStore.state, currentViewport.zoom)
                             refreshHistoryUi()
-                            selectionController.restoreSelection(restoredUiState.selectedObjectIds)
+                            selectionController.restoreSelection(restoredUiState.selectedObjectIds.map { MapPlacedObjectId(it.value) })
                             restoredUiState.dialogs
                                 .filter { it.type == "note" }
                                 .forEach { dialog -> notesPanel?.restoreNote(dialog) }

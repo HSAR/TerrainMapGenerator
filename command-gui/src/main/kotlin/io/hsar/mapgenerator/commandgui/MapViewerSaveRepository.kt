@@ -1,13 +1,26 @@
 package io.hsar.mapgenerator.commandgui
 
 import com.sun.org.apache.bcel.internal.util.Args.require
+import io.hsar.mapgenerator.commandgui.korge.adapter.toLegacyEntries
+import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationTimeline
+import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
+import io.hsar.mapgenerator.commandgui.operation.OperationDocument
+import io.hsar.mapgenerator.commandgui.operation.OperationGeneratedImage
+import io.hsar.mapgenerator.commandgui.operation.OperationTimeline
+import io.hsar.mapgenerator.commandgui.operation.OperationUiState
 import io.hsar.mapgenerator.commandgui.save.GameSaveDto
+import io.hsar.mapgenerator.commandgui.save.GeneratedImageAsset
 import io.hsar.mapgenerator.commandgui.save.LedgerFileDto
+import io.hsar.mapgenerator.commandgui.save.OperationAdditionalData
 import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
+import io.hsar.mapgenerator.commandgui.save.OperationSaveLoader
+import io.hsar.mapgenerator.commandgui.save.OperationSaveRequest
+import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
 import io.hsar.mapgenerator.commandgui.save.OperationToolStorage
 import io.hsar.mapgenerator.commandgui.save.RuntimeLedgerReplayer
 import io.hsar.mapgenerator.grid.CoordAxis
 import io.hsar.mapgenerator.grid.GridLayerBuilder
+import korlibs.io.lang.use
 import java.awt.image.BufferedImage
 import java.nio.file.Files
 import java.nio.file.Path
@@ -121,6 +134,99 @@ class MapViewerSaveRepository(
                     ?: MapViewerLedgerReplay.EMPTY,
             )
         }
+
+    fun loadOperation(path: Path): OperationDocument {
+        val loaded = OperationSaveLoader().load(path)
+        val map = loadMap(path)
+        val additionalData = OperationAdditionalData.fromJson(loaded.additionalDataJson)
+        return OperationDocument(
+            operationId = loaded.operationId,
+            operationName = loaded.operationName,
+            createdAt = loaded.createdAt,
+            updatedAt = loaded.updatedAt,
+            settings = loaded.settings,
+            renderData = map.renderData,
+            camera = map.camera,
+            mapAssetSource = loaded.mapAssetSource,
+            timeline = loaded.ledgerEntries.toOperationTimeline(),
+            generatedImageAssets = loaded.generatedImageAssets.map {
+                OperationGeneratedImage(it.id, it.role, it.image)
+            },
+            additionalDataJson = loaded.additionalDataJson,
+            sourcePath = path,
+            uiState = additionalData.operationUiState(),
+            persisted = true,
+        )
+    }
+
+    fun createOperation(
+        settings: MapViewerSettings,
+        renderData: MapViewerRenderData,
+        operationId: UUID = UUID.randomUUID(),
+        now: Instant = Instant.now(),
+    ): OperationDocument {
+        val operationName = settings.operationName?.takeIf(String::isNotBlank) ?: "Operation"
+        val writer = OperationSaveWriter()
+        return OperationDocument(
+            operationId = operationId,
+            operationName = operationName,
+            createdAt = now,
+            updatedAt = now,
+            settings = settings,
+            renderData = renderData,
+            timeline = OperationTimeline(),
+            sourcePath = writer.defaultSavePath(operationName, operationId),
+        )
+    }
+
+    fun saveOperation(
+        document: OperationDocument,
+        camera: MapViewerSavedCamera? = document.camera,
+        uiState: OperationUiState = document.uiState,
+    ): OperationDocument {
+        val now = Instant.now()
+        val geometry = geometryFor(document.renderData.baseImage)
+        val savedCamera = camera ?: MapViewerSavedCamera(0.5, 0.5, 1.0)
+        val viewport = CameraViewport(
+            centerX = geometry.mapOffsetX + savedCamera.x * document.renderData.baseImage.width,
+            centerY = geometry.mapOffsetY + savedCamera.y * document.renderData.baseImage.height,
+            zoom = savedCamera.zoom,
+            viewportWidth = 1,
+            viewportHeight = 1,
+            worldWidth = geometry.backgroundWidth,
+            worldHeight = geometry.backgroundHeight,
+        )
+        val additionalData = OperationAdditionalData.fromJson(document.additionalDataJson)
+            .also { it.updateOperationUiState(uiState) }
+            .toJsonOrNull()
+        val target = document.sourcePath ?: OperationSaveWriter().defaultSavePath(document.operationName, document.operationId)
+        OperationSaveWriter().write(
+            OperationSaveRequest(
+                operationId = document.operationId,
+                operationName = document.operationName,
+                createdAt = document.createdAt,
+                updatedAt = now,
+                camera = viewport,
+                settings = document.settings,
+                mapImage = document.renderData.baseImage,
+                mapAssetSource = document.mapAssetSource,
+                ledgerEntries = document.timeline.toLegacyEntries(),
+                generatedImageAssets = document.generatedImageAssets.map {
+                    GeneratedImageAsset(it.id, it.role, it.image)
+                },
+                additionalDataJson = additionalData,
+            ),
+            target,
+        )
+        return document.copy(
+            updatedAt = now,
+            camera = savedCamera,
+            additionalDataJson = additionalData,
+            sourcePath = target,
+            uiState = uiState,
+            persisted = true,
+        )
+    }
 
     private fun readSummaryOrNull(path: Path): MapViewerSavedOperation? =
         runCatching {

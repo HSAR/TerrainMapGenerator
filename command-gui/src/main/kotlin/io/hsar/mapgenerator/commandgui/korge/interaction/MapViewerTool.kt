@@ -1,10 +1,9 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
-internal enum class MapViewerTool {
-    SELECT,
-    MEASURE,
-    DRAW,
-}
+import io.hsar.mapgenerator.commandgui.MapViewerTool as SharedMapViewerTool
+import io.hsar.mapgenerator.commandgui.canStartPlacementDrag as sharedCanStartPlacementDrag
 
-internal fun MapViewerTool.canStartPlacementDrag(): Boolean =
-    this == MapViewerTool.SELECT
+internal typealias MapViewerTool = SharedMapViewerTool
+
+internal fun MapViewerTool.canStartPlacementDrag() =
+    sharedCanStartPlacementDrag()

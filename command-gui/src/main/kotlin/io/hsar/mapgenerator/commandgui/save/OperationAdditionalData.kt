@@ -3,18 +3,25 @@ package io.hsar.mapgenerator.commandgui.save
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
+import io.hsar.mapgenerator.commandgui.MapViewerTool
 import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog
+import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
+import io.hsar.mapgenerator.commandgui.operation.OperationUiState
 import java.util.*
+import java.util.Collections.emptyList
+import java.util.Collections.emptyMap
+import java.util.Collections.emptySet
 
 internal data class UiSessionState(
     val selectedTool: MapViewerTool = MapViewerTool.SELECT,
-    val selectedObjectIds: List<MapPlacedObjectId> = emptyList(),
+    val selectedObjectIds: List<OperationObjectId> = emptyList(),
     val dialogs: List<MapViewerPersistedDialog> = emptyList(),
     val workspaceMode: MapViewerWorkspaceMode = MapViewerWorkspaceMode.FLOATING,
     val dockPanels: List<DockPanelSessionState> = emptyList(),
+    val enabledLayerIds: Set<String> = emptySet(),
+    val openEditorIds: List<String> = emptyList(),
+    val drafts: Map<String, String> = emptyMap(),
 )
 
 internal data class DockPanelSessionState(
@@ -37,7 +44,7 @@ internal class OperationAdditionalData private constructor(private val root: Obj
             ?.let { value -> MapViewerTool.entries.firstOrNull { it.name == value } }
             ?: MapViewerTool.SELECT
         val selected = state.path("selectedObjectIds").mapNotNull { node ->
-            node.textValue()?.let { runCatching { MapPlacedObjectId(UUID.fromString(it)) }.getOrNull() }
+            node.textValue()?.let { runCatching { OperationObjectId(UUID.fromString(it)) }.getOrNull() }
         }
         val dialogs = state.path("dialogs").mapNotNull(MapViewerPersistedDialog::fromJson)
         val workspaceMode = state.path("workspaceMode").textValue()
@@ -55,7 +62,12 @@ internal class OperationAdditionalData private constructor(private val root: Obj
                 collapsed = panel.path("collapsed").booleanValue(),
             )
         }
-        return UiSessionState(tool, selected, dialogs, workspaceMode, dockPanels)
+        val enabledLayerIds = state.path("enabledLayerIds").mapNotNull(JsonNode::textValue).toSet()
+        val openEditorIds = state.path("openEditorIds").mapNotNull(JsonNode::textValue)
+        val drafts = state.path("drafts").takeIf(JsonNode::isObject)?.properties()?.asSequence()
+            ?.mapNotNull { (id, value) -> value.textValue()?.let { id to it } }
+            ?.toMap().orEmpty()
+        return UiSessionState(tool, selected, dialogs, workspaceMode, dockPanels, enabledLayerIds, openEditorIds, drafts)
     }
 
     fun updateUiState(state: UiSessionState) {
@@ -76,6 +88,31 @@ internal class OperationAdditionalData private constructor(private val root: Obj
                 }
             }
         }
+        value.putArray("enabledLayerIds").also { layers -> state.enabledLayerIds.forEach(layers::add) }
+        value.putArray("openEditorIds").also { editors -> state.openEditorIds.forEach(editors::add) }
+        value.putObject("drafts").also { drafts -> state.drafts.forEach(drafts::put) }
+    }
+
+    fun updateOperationUiState(state: OperationUiState) = updateUiState(
+        uiState().copy(
+            selectedTool = state.selectedTool,
+            selectedObjectIds = state.selectedObjectIds.toList(),
+            workspaceMode = state.workspaceMode,
+            enabledLayerIds = state.enabledLayerIds,
+            openEditorIds = state.openEditorIds,
+            drafts = state.drafts,
+        ),
+    )
+
+    fun operationUiState() = uiState().let { state ->
+        OperationUiState(
+            selectedTool = state.selectedTool,
+            selectedObjectIds = state.selectedObjectIds.toCollection(linkedSetOf()),
+            workspaceMode = state.workspaceMode,
+            enabledLayerIds = state.enabledLayerIds,
+            openEditorIds = state.openEditorIds,
+            drafts = state.drafts,
+        )
     }
 
     fun toJsonOrNull(): ByteArray? =

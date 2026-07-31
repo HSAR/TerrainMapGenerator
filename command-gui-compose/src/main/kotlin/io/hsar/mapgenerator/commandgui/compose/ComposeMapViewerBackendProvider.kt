@@ -35,12 +35,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -56,6 +58,8 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -86,6 +90,7 @@ import io.hsar.mapgenerator.commandgui.MapSelectionBox
 import io.hsar.mapgenerator.commandgui.MapSelectionScreenBounds
 import io.hsar.mapgenerator.commandgui.MapViewerBackend
 import io.hsar.mapgenerator.commandgui.MapViewerBackendProvider
+import io.hsar.mapgenerator.commandgui.MapViewerContextMenuCommand
 import io.hsar.mapgenerator.commandgui.MapViewerContextMenuItem
 import io.hsar.mapgenerator.commandgui.MapViewerGlobalSettings
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayLayoutBuilder
@@ -96,14 +101,30 @@ import io.hsar.mapgenerator.commandgui.MapViewerReplayObject
 import io.hsar.mapgenerator.commandgui.MapViewerReplayObjectKind
 import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
 import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
-import io.hsar.mapgenerator.commandgui.MapViewerSavedMap
 import io.hsar.mapgenerator.commandgui.MapViewerSavedOperation
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
+import io.hsar.mapgenerator.commandgui.MapViewerTool
+import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
 import io.hsar.mapgenerator.commandgui.MapViewport
 import io.hsar.mapgenerator.commandgui.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.ViewerPoint
-import io.hsar.mapgenerator.commandgui.contextMenuItems
+import io.hsar.mapgenerator.commandgui.operation.OperationContent
+import io.hsar.mapgenerator.commandgui.operation.OperationDocument
+import io.hsar.mapgenerator.commandgui.operation.OperationDrawingObject
+import io.hsar.mapgenerator.commandgui.operation.OperationFreeformDrawing
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphic
+import io.hsar.mapgenerator.commandgui.operation.OperationLineDrawing
+import io.hsar.mapgenerator.commandgui.operation.OperationObject
+import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
+import io.hsar.mapgenerator.commandgui.operation.OperationOvalDrawing
+import io.hsar.mapgenerator.commandgui.operation.OperationRectangleDrawing
+import io.hsar.mapgenerator.commandgui.operation.OperationUnit
+import io.hsar.mapgenerator.commandgui.operation.contains
+import io.hsar.mapgenerator.commandgui.operation.move
+import io.hsar.mapgenerator.commandgui.operation.resize
+import io.hsar.mapgenerator.commandgui.operation.rotate
+import io.hsar.mapgenerator.commandgui.operation.selectionBounds
 import io.hsar.mapgenerator.commandgui.toWorldPoint
 import jdk.internal.net.http.common.Utils.close
 import kotlinx.coroutines.Dispatchers
@@ -119,6 +140,8 @@ import java.time.format.DateTimeFormatter
 import java.util.Collections.emptyList
 import java.util.Collections.emptySet
 import javax.imageio.ImageIO
+import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
@@ -131,12 +154,13 @@ class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
     ) = application {
         var workspaceMode by remember { mutableStateOf(WorkspaceMode.DOCKED) }
         var windowTitle by remember { mutableStateOf(MapViewerSettings().windowTitle()) }
+        var closeRequestHandler by remember { mutableStateOf<() -> Unit>({ exitApplication() }) }
         val windowState = rememberWindowState(placement = COMPOSE_INITIAL_WINDOW_PLACEMENT)
 
         Window(
             title = windowTitle,
             state = windowState,
-            onCloseRequest = ::exitApplication,
+            onCloseRequest = { closeRequestHandler() },
         ) {
             MenuBar {
                 Menu("Workspace") {
@@ -163,16 +187,14 @@ class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
                     onWorkspaceModeChanged = { workspaceMode = it },
                     onTitleChanged = { windowTitle = it },
                     onExit = ::exitApplication,
+                    onCloseRequestHandlerChanged = { closeRequestHandler = it },
                 )
             }
         }
     }
 }
 
-internal enum class WorkspaceMode {
-    DOCKED,
-    FLOATING,
-}
+internal typealias WorkspaceMode = MapViewerWorkspaceMode
 
 @Composable
 private fun ComposeMapViewer(
@@ -184,6 +206,7 @@ private fun ComposeMapViewer(
     onWorkspaceModeChanged: (WorkspaceMode) -> Unit,
     onTitleChanged: (String) -> Unit,
     onExit: () -> Unit,
+    onCloseRequestHandlerChanged: (() -> Unit) -> Unit,
 ) {
     val suppliedMap = remember {
         initialSetupInputs.mapImage
@@ -208,15 +231,19 @@ private fun ComposeMapViewer(
         key(map) {
             ViewerWorkspace(
                 initialMap = map,
+                repository = repository,
                 workspaceMode = workspaceMode,
                 initialUnitIconSizePx = globalSettings.unitIconSizePx(),
                 onUnitIconSizeChanged = globalSettings::updateUnitIconSizePx,
                 onWorkspaceModeChanged = onWorkspaceModeChanged,
                 onReturnToLaunchpad = launchState::returnToLaunchpad,
                 onExitProgram = onExit,
+                onCloseRequestHandlerChanged = onCloseRequestHandlerChanged,
             )
         }
-    } ?: when (launchState.screen) {
+    } ?: run {
+        LaunchedEffect(launchState.screen) { onCloseRequestHandlerChanged(onExit) }
+        when (launchState.screen) {
         ComposeLaunchScreen.MAIN -> ComposeMainLaunchpad(
             onNewOperation = launchState::showNewOperation,
             onExistingOperations = launchState::showExistingOperations,
@@ -230,27 +257,29 @@ private fun ComposeMapViewer(
             initialMapPath = initialSetupInputs.mapImagePath,
             awtWindow = awtWindow,
             onBack = launchState::returnToLaunchpad,
-            onLaunch = launchState::createOperation,
+            onLaunch = { settings, renderData ->
+                launchState.openOperation(repository.createOperation(settings, renderData ?: error("Operation map was not rendered")))
+            },
         )
 
         ComposeLaunchScreen.EXISTING_OPERATIONS -> ComposeExistingOperationsScreen(
             repository = repository,
             awtWindow = awtWindow,
             onBack = launchState::returnToLaunchpad,
-            onMapLoaded = launchState::openSavedMap,
+            onMapLoaded = launchState::openOperation,
         )
+        }
     }
 }
 
 internal val COMPOSE_INITIAL_WINDOW_PLACEMENT = WindowPlacement.Maximized
 
-internal data class ComposeActiveMap(
-    val settings: MapViewerSettings,
-    val renderData: MapViewerRenderData? = null,
-    val camera: MapViewerSavedCamera? = null,
-    val sourcePath: String? = null,
-    val ledger: MapViewerLedgerReplay = MapViewerLedgerReplay.EMPTY,
-)
+internal data class ComposeActiveMap(val document: OperationDocument) {
+    val settings get() = document.settings
+    val renderData get() = document.renderData
+    val camera get() = document.camera
+    val sourcePath get() = document.sourcePath?.toString()
+}
 
 internal enum class ComposeLaunchScreen(val windowTitle: String) {
     MAIN("Launchpad"),
@@ -273,18 +302,8 @@ internal class ComposeLaunchState(initialScreen: ComposeLaunchScreen = ComposeLa
         screen = ComposeLaunchScreen.EXISTING_OPERATIONS
     }
 
-    fun createOperation(settings: MapViewerSettings, renderData: MapViewerRenderData? = null) {
-        activeMap = ComposeActiveMap(settings = settings, renderData = renderData)
-    }
-
-    fun openSavedMap(loaded: MapViewerSavedMap) {
-        activeMap = ComposeActiveMap(
-            settings = loaded.settings,
-            renderData = loaded.renderData,
-            camera = loaded.camera,
-            sourcePath = loaded.operation.path.toString(),
-            ledger = loaded.ledger,
-        )
+    fun openOperation(document: OperationDocument) {
+        activeMap = ComposeActiveMap(document)
     }
 
     fun returnToLaunchpad() {
@@ -534,7 +553,7 @@ private fun ComposeExistingOperationsScreen(
     repository: MapViewerSaveRepository,
     awtWindow: java.awt.Window,
     onBack: () -> Unit,
-    onMapLoaded: (MapViewerSavedMap) -> Unit,
+    onMapLoaded: (OperationDocument) -> Unit,
 ) {
     var saves by remember { mutableStateOf<List<MapViewerSavedOperation>>(emptyList()) }
     var refreshing by remember { mutableStateOf(true) }
@@ -561,7 +580,7 @@ private fun ComposeExistingOperationsScreen(
         loadingPath = path.toString()
         errorMessage = null
         scope.launch {
-            runCatching { withContext(Dispatchers.IO) { repository.loadMap(path) } }
+            runCatching { withContext(Dispatchers.IO) { repository.loadOperation(path) } }
                 .onSuccess(onMapLoaded)
                 .onFailure { errorMessage = "Could not load ${path.fileName}: ${it.message ?: it::class.simpleName}" }
             loadingPath = null
@@ -684,51 +703,170 @@ private fun SavedOperationCard(
 
 private val SAVE_DATE_FORMAT = DateTimeFormatter.ofPattern("d MMM uuuu, HH:mm")
 private const val COMPOSE_OPERATION_MAP_ID = "compose-operation-map"
+private const val OPERATION_NOTES_DRAFT_ID = "operation-notes"
+private const val COMPOSE_AUTOSAVE_DEBOUNCE_MS = 2_000L
 
 @Composable
 private fun ViewerWorkspace(
     initialMap: ComposeActiveMap,
+    repository: MapViewerSaveRepository,
     workspaceMode: WorkspaceMode,
     initialUnitIconSizePx: Double,
     onUnitIconSizeChanged: (Double) -> Double,
     onWorkspaceModeChanged: (WorkspaceMode) -> Unit,
     onReturnToLaunchpad: () -> Unit,
     onExitProgram: () -> Unit,
+    onCloseRequestHandlerChanged: (() -> Unit) -> Unit,
 ) {
-    var operationState by remember { mutableStateOf(ComposeOperationState()) }
+    var operationState by remember(initialMap.document) {
+        mutableStateOf(ComposeOperationState(initialMap.document))
+    }
+    var workspaceInitialized by remember(initialMap.document) { mutableStateOf(false) }
     var unitIconSizePx by remember { mutableStateOf(UnitIconDisplaySize.coerce(initialUnitIconSizePx)) }
     var escapeMenuOpen by remember { mutableStateOf(false) }
     var contextMenu by remember { mutableStateOf<ComposeMapContextMenu?>(null) }
+    var pendingExit by remember { mutableStateOf<ComposePendingExit?>(null) }
+    val autosaveScheduler = remember { ComposeAutosaveScheduler(debounceMillis = COMPOSE_AUTOSAVE_DEBOUNCE_MS) }
+    val scope = rememberCoroutineScope()
+
+    fun autosaveObservation() = ComposeAutosaveObservation(
+        revision = operationState.revision,
+        savedRevision = operationState.savedRevision,
+        savingRevision = operationState.savingRevision,
+        failed = operationState.saveStatus == ComposeSaveStatus.FAILED,
+        exiting = pendingExit != null,
+    )
+
+    fun saveNow(onSuccess: (() -> Unit)? = null) {
+        if (operationState.savingRevision != null) return
+        val snapshot = operationState
+        val targetRevision = snapshot.revision
+        operationState = operationState.saveStarted(targetRevision)
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    repository.saveOperation(snapshot.document, snapshot.savedCamera(), snapshot.operationUiState())
+                }
+            }.onSuccess { saved ->
+                operationState = operationState.saveSucceeded(saved, targetRevision)
+                if (operationState.revision == targetRevision) onSuccess?.invoke()
+            }.onFailure { failure ->
+                operationState = operationState.saveFailed(failure.message ?: failure::class.simpleName ?: "Unknown save failure")
+            }
+        }
+    }
+
+    fun requestExit(target: ComposePendingExit) {
+        autosaveScheduler.cancel()
+        pendingExit = target
+        saveNow {
+            pendingExit = null
+            when (target) {
+                ComposePendingExit.LAUNCHPAD -> onReturnToLaunchpad()
+                ComposePendingExit.DESKTOP -> onExitProgram()
+            }
+        }
+    }
+
+    val currentExitRequester by rememberUpdatedState<(ComposePendingExit) -> Unit>(::requestExit)
+
+    DisposableEffect(Unit) {
+        onCloseRequestHandlerChanged { currentExitRequester(ComposePendingExit.DESKTOP) }
+        onDispose { onCloseRequestHandlerChanged(onExitProgram) }
+    }
+
+    LaunchedEffect(operationState.revision, operationState.savedRevision, operationState.savingRevision) {
+        val waitMillis = autosaveScheduler.observe(autosaveObservation()) ?: return@LaunchedEffect
+        kotlinx.coroutines.delay(waitMillis)
+        if (autosaveScheduler.consumeIfDue(autosaveObservation()) != null) saveNow()
+    }
+
+    LaunchedEffect(pendingExit, operationState.savingRevision, operationState.saveStatus) {
+        val target = pendingExit ?: return@LaunchedEffect
+        if (operationState.savingRevision == null && operationState.saveStatus != ComposeSaveStatus.FAILED) {
+            saveNow {
+                pendingExit = null
+                if (target == ComposePendingExit.LAUNCHPAD) onReturnToLaunchpad() else onExitProgram()
+            }
+        }
+    }
+
+    LaunchedEffect(workspaceMode) {
+        if (workspaceInitialized) {
+            operationState = operationState.updateWorkspaceMode(workspaceMode)
+        } else {
+            workspaceInitialized = true
+            onWorkspaceModeChanged(operationState.workspaceMode)
+        }
+    }
 
     Surface(
         Modifier.fillMaxSize().onPreviewKeyEvent { event ->
-            if (event.type == KeyEventType.KeyUp && event.key == Key.Escape) {
-                escapeMenuOpen = !escapeMenuOpen
-                true
-            } else false
+            if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
+            when {
+                event.key == Key.Escape && operationState.previewContent != null -> {
+                    operationState = operationState.cancelPreview()
+                    true
+                }
+
+                event.key == Key.Escape -> {
+                    escapeMenuOpen = !escapeMenuOpen
+                    true
+                }
+
+                event.key == Key.Delete && !operationState.isReadOnly -> {
+                    operationState = operationState.deleteSelection()
+                    true
+                }
+
+                event.isCtrlPressed && event.key == Key.S -> {
+                    saveNow()
+                    true
+                }
+
+                event.isCtrlPressed && event.key == Key.Z && event.isShiftPressed -> {
+                    operationState = operationState.redo()
+                    true
+                }
+
+                event.isCtrlPressed && event.key == Key.Z -> {
+                    operationState = operationState.undo()
+                    true
+                }
+
+                event.isCtrlPressed && event.key == Key.Y -> {
+                    operationState = operationState.redo()
+                    true
+                }
+
+                else -> false
+            }
         },
     ) {
         Column {
             Row(Modifier.weight(1f)) {
                 Box(Modifier.weight(1f).fillMaxHeight()) {
-                    initialMap.renderData?.let {
-                        MapCanvas(
-                            renderData = it,
-                            savedCamera = initialMap.camera,
-                            replay = initialMap.ledger,
+                    MapCanvas(
+                        renderData = operationState.document.renderData,
+                        savedCamera = operationState.document.camera,
+                        content = operationState.visibleContent,
+                        viewport = operationState.viewport,
+                        onViewportChanged = { operationState = operationState.updateViewport(it) },
                             activeTool = operationState.activeTool,
+                        editable = !operationState.isReadOnly,
                             selectedObjectIds = operationState.selectedObjectIds,
                             onObjectsSelected = { ids, additive -> operationState = operationState.selectBox(ids, additive) },
                             onContextMenuRequested = { mapObject, position ->
                                 operationState = operationState.selectObject(mapObject.id)
-                                contextMenu = ComposeMapContextMenu(mapObject.displayName ?: mapObject.name, position, mapObject.contextMenuItems())
+                                contextMenu = ComposeMapContextMenu(mapObject.id, mapObject.displayName(operationState.visibleContent), position, mapObject.contextMenuItems())
                             },
                             onContextMenuDismissed = { contextMenu = null },
+                        onPreviewChanged = { operationState = operationState.preview(it) },
+                        onPreviewCommitted = { description -> operationState = operationState.commitPreview(description = description) },
                             unitIconSizePx = unitIconSizePx,
                             onUnitIconSizeChanged = { size -> unitIconSizePx = onUnitIconSizeChanged(size) },
                             modifier = Modifier.fillMaxSize(),
                         )
-                    } ?: EmptyMap()
 
                     ToolRail(
                         activeTool = operationState.activeTool,
@@ -745,31 +883,38 @@ private fun ViewerWorkspace(
                     contextMenu?.let { menu ->
                         ComposeMapContextMenu(
                             menu = menu,
-                            onActionSelected = { contextMenu = null },
+                            onActionSelected = { action ->
+                                if (action.action.name.startsWith("DELETE")) {
+                                    operationState = operationState.selectObject(menu.objectId).deleteSelection()
+                                }
+                                contextMenu = null
+                            },
                             onDismiss = { contextMenu = null },
                         )
                     }
 
-                    if (workspaceMode == WorkspaceMode.FLOATING) {
+                    if (operationState.workspaceMode == WorkspaceMode.FLOATING) {
                         FloatingNotesPanel(
-                            note = operationState.noteDraft,
-                            onNoteChanged = { operationState = operationState.updateNoteDraft(it) },
+                            note = operationState.drafts[OPERATION_NOTES_DRAFT_ID].orEmpty(),
+                            onNoteChanged = { operationState = operationState.updateDraft(OPERATION_NOTES_DRAFT_ID, it) },
                         )
                     }
                 }
-                if (workspaceMode == WorkspaceMode.DOCKED) {
+                if (operationState.workspaceMode == WorkspaceMode.DOCKED) {
                     NotesPanel(
-                        note = operationState.noteDraft,
-                        onNoteChanged = { operationState = operationState.updateNoteDraft(it) },
+                        note = operationState.drafts[OPERATION_NOTES_DRAFT_ID].orEmpty(),
+                        onNoteChanged = { operationState = operationState.updateDraft(OPERATION_NOTES_DRAFT_ID, it) },
                         modifier = Modifier.requiredWidth(320.dp).fillMaxHeight(),
                     )
                 }
             }
-            LedgerPrototypePanel(
-                replay = initialMap.ledger,
-                events = emptyList(),
-                selectedIndex = operationState.ledgerCursor,
-                onSelectedIndexChanged = { operationState = operationState.moveLedgerCursor(it) },
+            OperationLedgerPanel(
+                state = operationState,
+                onUndo = { operationState = operationState.undo() },
+                onRedo = { operationState = operationState.redo() },
+                onPreviewIndex = { operationState = operationState.previewHistory(it) },
+                onCurrent = { operationState = operationState.returnToCurrent() },
+                onSave = { saveNow() },
             )
         }
     }
@@ -778,29 +923,42 @@ private fun ViewerWorkspace(
             onDismiss = { escapeMenuOpen = false },
             onReturnToLaunchpad = {
                 escapeMenuOpen = false
-                onReturnToLaunchpad()
+                requestExit(ComposePendingExit.LAUNCHPAD)
             },
-            onExitProgram = onExitProgram,
+            onExitProgram = { requestExit(ComposePendingExit.DESKTOP) },
+        )
+    }
+    if (pendingExit != null && operationState.saveStatus == ComposeSaveStatus.FAILED) {
+        SaveFailureDialog(
+            message = operationState.saveFailure.orEmpty(),
+            onRetry = {
+                val target = pendingExit ?: return@SaveFailureDialog
+                saveNow {
+                    pendingExit = null
+                    if (target == ComposePendingExit.LAUNCHPAD) onReturnToLaunchpad() else onExitProgram()
+                }
+            },
+            onCancel = { pendingExit = null },
         )
     }
 }
 
 @Composable
 private fun ToolRail(
-    activeTool: ComposeMapTool,
-    onToolSelected: (ComposeMapTool) -> Unit,
+    activeTool: MapViewerTool,
+    onToolSelected: (MapViewerTool) -> Unit,
     modifier: Modifier = Modifier,
 ) = Row(
     modifier = modifier,
     horizontalArrangement = Arrangement.spacedBy(12.dp),
     verticalAlignment = Alignment.CenterVertically,
 ) {
-    ComposeMapTool.entries.forEach { tool ->
+    MapViewerTool.entries.forEach { tool ->
         CommandButton(
             onClick = { onToolSelected(tool) },
             active = tool == activeTool,
         ) {
-            Text(tool.label.uppercase())
+            Text(tool.name)
         }
     }
 }
@@ -895,7 +1053,25 @@ private fun EscapeMenuDialog(
     }
 }
 
+@Composable
+private fun SaveFailureDialog(
+    message: String,
+    onRetry: () -> Unit,
+    onCancel: () -> Unit,
+) = androidx.compose.ui.window.Dialog(onDismissRequest = onCancel) {
+    CommandPanel(Modifier.width(460.dp)) {
+        Text("SAVE FAILED", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.error)
+        Text(message.ifBlank { "The operation could not be saved." })
+        Text("The viewer will remain open so no changes are discarded.")
+        CommandButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("RETRY") }
+        CommandButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("CANCEL EXIT") }
+    }
+}
+
+private enum class ComposePendingExit { LAUNCHPAD, DESKTOP }
+
 private data class ComposeMapContextMenu(
+    val objectId: OperationObjectId,
     val objectName: String,
     val position: IntOffset,
     val actions: List<MapViewerContextMenuItem>,
@@ -920,15 +1096,42 @@ private fun ComposeMapContextMenu(
     }
 }
 
+private fun OperationObject.displayName(content: OperationContent): String = when (this) {
+    is OperationUnit -> instanceName.ifBlank { content.unitTemplate(unitTemplateId)?.name ?: "Unit" }
+    is OperationGraphic -> customProperties["displayName"]?.takeIf(String::isNotBlank)
+        ?: instanceName.ifBlank { content.graphicTemplate(graphicTemplateId)?.name ?: "Graphic" }
+
+    is OperationDrawingObject -> drawing.displayName
+}
+
+private fun OperationObject.contextMenuItems(): List<MapViewerContextMenuItem> = when (this) {
+    is OperationUnit -> listOf(
+        MapViewerContextMenuItem(MapViewerContextMenuCommand.EDIT_UNIT, "Edit Unit"),
+        MapViewerContextMenuItem(MapViewerContextMenuCommand.DELETE_UNIT, "Delete Unit"),
+        MapViewerContextMenuItem(MapViewerContextMenuCommand.SITREP, "SITREP"),
+    )
+
+    is OperationGraphic -> listOf(
+        MapViewerContextMenuItem(MapViewerContextMenuCommand.EDIT_GRAPHIC, "Edit Graphic"),
+        MapViewerContextMenuItem(MapViewerContextMenuCommand.DELETE_GRAPHIC, "Delete Graphic"),
+    )
+
+    is OperationDrawingObject -> listOf(
+        MapViewerContextMenuItem(MapViewerContextMenuCommand.DELETE_DRAWING, "Delete Drawing"),
+    )
+}
+
 @Composable
-private fun LedgerPrototypePanel(
-    replay: MapViewerLedgerReplay,
-    events: List<String>,
-    selectedIndex: Int?,
-    onSelectedIndexChanged: (Int) -> Unit,
+private fun OperationLedgerPanel(
+    state: ComposeOperationState,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    onPreviewIndex: (Int) -> Unit,
+    onCurrent: () -> Unit,
+    onSave: () -> Unit,
 ) {
-    val currentSelectedIndex = selectedIndex ?: replay.entries.lastOrNull()?.index
-    val selected = replay.entries.firstOrNull { it.index == currentSelectedIndex }
+    val entries = state.document.timeline.entries
+    val currentSelectedIndex = state.historyPreviewCount?.minus(1)
     Column(
         Modifier.fillMaxWidth().height(230.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant),
@@ -938,18 +1141,26 @@ private fun LedgerPrototypePanel(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Ledger replay prototype", style = MaterialTheme.typography.titleMedium)
-            Text("${replay.entries.size} actions")
-            Text("${replay.objects.size} objects")
-            Text("${replay.unitTemplates.size + replay.graphicTemplates.size} templates")
-            Text("${replay.notes.size} notes")
+            Text("LEDGER", style = MaterialTheme.typography.titleMedium)
+            CommandButton(onClick = onUndo, enabled = state.document.timeline.canUndo && !state.isReadOnly) { Text("UNDO") }
+            CommandButton(onClick = onRedo, enabled = state.document.timeline.canRedo && !state.isReadOnly) { Text("REDO") }
+            CommandButton(onClick = onCurrent, active = !state.isReadOnly) { Text("CURRENT") }
+            CommandButton(onClick = onSave, enabled = state.savingRevision == null) { Text("SAVE") }
             Spacer(Modifier.weight(1f))
-            Text(events.lastOrNull().orEmpty(), style = MaterialTheme.typography.bodySmall)
+            Text(
+                when (state.saveStatus) {
+                    ComposeSaveStatus.CLEAN -> "SAVED"
+                    ComposeSaveStatus.DIRTY -> "UNSAVED CHANGES"
+                    ComposeSaveStatus.SAVING -> "SAVING…"
+                    ComposeSaveStatus.FAILED -> "SAVE FAILED"
+                },
+                color = if (state.saveStatus == ComposeSaveStatus.FAILED) MaterialTheme.colorScheme.error else CommandColours.Backing,
+            )
         }
         HorizontalDivider()
         Row(Modifier.fillMaxSize()) {
             LazyColumn(Modifier.weight(1.15f).fillMaxHeight()) {
-                if (replay.entries.isEmpty()) {
+                if (entries.isEmpty()) {
                     item {
                         Text(
                             "No persisted ledger entries",
@@ -958,17 +1169,18 @@ private fun LedgerPrototypePanel(
                         )
                     }
                 }
-                items(replay.entries, key = { it.index }) { entry ->
-                    val selectedEntry = entry.index == currentSelectedIndex
+                items(entries.indices.toList(), key = { it }) { index ->
+                    val entry = entries[index]
+                    val selectedEntry = index == currentSelectedIndex
                     Surface(
-                        modifier = Modifier.fillMaxWidth().clickable { onSelectedIndexChanged(entry.index) },
+                        modifier = Modifier.fillMaxWidth().clickable { onPreviewIndex(index) },
                         color = if (selectedEntry) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            Text("${entry.index + 1}", style = MaterialTheme.typography.labelMedium)
+                            Text("${index + 1}", style = MaterialTheme.typography.labelMedium)
                             Text(entry.kind.name.lowercase().replace('_', ' '), modifier = Modifier.width(110.dp))
                             Text(entry.description, modifier = Modifier.weight(1f))
                         }
@@ -981,21 +1193,18 @@ private fun LedgerPrototypePanel(
                     .verticalScroll(rememberScrollState()).padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                Text("Replayed current state", style = MaterialTheme.typography.titleSmall)
-                selected?.let {
-                    Text("Selected action ${it.index + 1}: ${it.description}")
+                Text(if (state.isReadOnly) "READ-ONLY HISTORY" else "CURRENT STATE", style = MaterialTheme.typography.titleSmall)
+                currentSelectedIndex?.let { index ->
+                    entries.getOrNull(index)?.let { Text("Action ${index + 1}: ${it.description}") }
                     HorizontalDivider()
                 }
-                replay.objects.take(PROTOTYPE_STATE_ROW_LIMIT).forEach { mapObject ->
-                    Text(
-                        "${mapObject.kind.name.lowercase()}: ${mapObject.displayName ?: mapObject.name}" +
-                                mapObject.templateName?.let { " · $it" }.orEmpty(),
-                    )
+                state.visibleContent.objects.take(PROTOTYPE_STATE_ROW_LIMIT).forEach { mapObject ->
+                    Text("${mapObject::class.simpleName?.removePrefix("Operation")?.lowercase()}: ${mapObject.displayName(state.visibleContent)}")
                 }
-                replay.notes.take(PROTOTYPE_STATE_ROW_LIMIT).forEach { note ->
+                state.visibleContent.notes.take(PROTOTYPE_STATE_ROW_LIMIT).forEach { note ->
                     Text("note: ${note.title}")
                 }
-                if (replay.objects.isEmpty() && replay.notes.isEmpty()) {
+                if (state.visibleContent.objects.isEmpty() && state.visibleContent.notes.isEmpty()) {
                     Text(
                         "No live objects or notes at the ledger head.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1016,13 +1225,413 @@ private data class ComposeRasterTile(
     val image: ImageBitmap,
 )
 
+private sealed interface ComposeTransformGesture {
+    val original: OperationContent
+    val selectedIds: Set<OperationObjectId>
+
+    data class Move(
+        override val original: OperationContent,
+        override val selectedIds: Set<OperationObjectId>,
+        val start: MapCoordinate,
+    ) : ComposeTransformGesture
+
+    data class Resize(
+        override val original: OperationContent,
+        override val selectedIds: Set<OperationObjectId>,
+        val corner: io.hsar.mapgenerator.commandgui.MapSelectionCorner,
+    ) : ComposeTransformGesture
+
+    data class Rotate(
+        override val original: OperationContent,
+        override val selectedIds: Set<OperationObjectId>,
+        val pivot: MapCoordinate,
+        val start: MapCoordinate,
+    ) : ComposeTransformGesture
+}
+
 @Composable
 @OptIn(ExperimentalComposeUiApi::class)
 private fun MapCanvas(
     renderData: MapViewerRenderData,
+    savedCamera: MapViewerSavedCamera?,
+    content: OperationContent,
+    viewport: MapViewport?,
+    onViewportChanged: (MapViewport) -> Unit,
+    activeTool: MapViewerTool,
+    editable: Boolean,
+    selectedObjectIds: Set<OperationObjectId>,
+    onObjectsSelected: (Set<OperationObjectId>, Boolean) -> Unit,
+    onContextMenuRequested: (OperationObject, IntOffset) -> Unit,
+    onContextMenuDismissed: () -> Unit,
+    onPreviewChanged: (OperationContent) -> Unit,
+    onPreviewCommitted: (String) -> Unit,
+    unitIconSizePx: Double,
+    onUnitIconSizeChanged: (Double) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val nordFontFamily = NordFontFamily()
+    val textMeasurer = rememberTextMeasurer()
+    val tiles = remember(renderData.baseImage) {
+        RasterTileSet.from(renderData.baseImage).tiles.map { tile ->
+            ComposeRasterTile(tile.left, tile.top, tile.image.width, tile.image.height, tile.image.toImageBitmap())
+        }
+    }
+    val mapWidth = renderData.baseImage.width
+    val mapHeight = renderData.baseImage.height
+    val aspectRatio = mapWidth.toDouble() / mapHeight
+    val worldWidth = mapWidth * 1.66
+    val worldHeight = mapHeight * 1.66
+    val mapOffsetX = (worldWidth - mapWidth) * 0.5
+    val mapOffsetY = (worldHeight - mapHeight) * 0.5
+    val initialViewport = remember(renderData.baseImage, savedCamera) {
+        savedCamera?.let { camera ->
+            MapViewport(
+                center = ViewerPoint(mapOffsetX + camera.x * mapWidth, mapOffsetY + camera.y * mapHeight),
+                zoom = camera.zoom.coerceIn(MapViewerSettings.MIN_ZOOM, MapViewerSettings.MAX_ZOOM),
+                viewportWidth = 1,
+                viewportHeight = 1,
+                worldWidth = worldWidth,
+                worldHeight = worldHeight,
+            )
+        } ?: MapViewport.centered(worldWidth, worldHeight)
+    }
+    val currentViewport = viewport ?: initialViewport
+    var rightClickTargetId by remember { mutableStateOf<OperationObjectId?>(null) }
+    var marquee by remember { mutableStateOf<ComposeSelectionMarquee?>(null) }
+    var transformGesture by remember { mutableStateOf<ComposeTransformGesture?>(null) }
+    val unitIcons = remember(content.unitTemplates) { content.unitTemplates.associate { it.id to it.image.toImageBitmap() } }
+    val graphicIcons = remember(content.graphicTemplates) { content.graphicTemplates.associate { it.id to it.image.toImageBitmap() } }
+    val gridOverlay = remember(renderData.gridLayer, currentViewport, nordFontFamily) {
+        renderData.gridLayer?.let { grid ->
+            MapViewerGridOverlayLayoutBuilder.build(
+                MapViewerGridOverlayRequest(grid, currentViewport, mapOffsetX, mapOffsetY, mapWidth, mapHeight),
+            ) { text, fontSize, strong ->
+                textMeasurer.measure(
+                    text,
+                    TextStyle(fontFamily = nordFontFamily, fontWeight = if (strong) FontWeight.Bold else FontWeight.Normal, fontSize = fontSize.sp),
+                ).size.let { ViewerPoint(it.width.toDouble(), it.height.toDouble()) }
+            }
+        }
+    }
+
+    fun screenToMap(point: Offset) = MapCoordinate(
+        x = (currentViewport.left + point.x / currentViewport.zoom - mapOffsetX) / mapWidth,
+        y = (currentViewport.top + point.y / currentViewport.zoom - mapOffsetY) / mapHeight,
+    )
+
+    fun screenBounds(value: OperationObject): MapSelectionScreenBounds = value.selectionBounds(aspectRatio).let { bounds ->
+        if (value is OperationUnit) {
+            val centre = value.coordinate.toWorldPoint(mapOffsetX, mapOffsetY, mapWidth, mapHeight)
+            val x = currentViewport.screenX(centre.x)
+            val y = currentViewport.screenY(centre.y)
+            MapSelectionScreenBounds(x - unitIconSizePx * 0.5, y - unitIconSizePx * 0.5, x + unitIconSizePx * 0.5, y + unitIconSizePx * 0.5)
+        } else {
+            MapSelectionScreenBounds(
+                currentViewport.screenX(mapOffsetX + bounds.left * mapWidth),
+                currentViewport.screenY(mapOffsetY + bounds.top * mapHeight),
+                currentViewport.screenX(mapOffsetX + bounds.right * mapWidth),
+                currentViewport.screenY(mapOffsetY + bounds.bottom * mapHeight),
+            )
+        }
+    }
+
+    fun objectAtScreen(point: Offset): OperationObject? {
+        val screenPoint = ViewerPoint(point.x.toDouble(), point.y.toDouble())
+        return content.objects.asReversed().firstOrNull { value ->
+            val bounds = screenBounds(value)
+            if (value is OperationDrawingObject) {
+                value.contains(screenToMap(point), 10.0 / (currentViewport.zoom * minOf(mapWidth, mapHeight)), aspectRatio)
+            } else screenPoint.x in bounds.left..bounds.right && screenPoint.y in bounds.top..bounds.bottom
+        }
+    }
+
+    fun selectionFrame(): io.hsar.mapgenerator.commandgui.MapSelectionFrame? = content.objects
+        .filter { it.id in selectedObjectIds }
+        .map(::screenBounds)
+        .takeIf(List<*>::isNotEmpty)
+        ?.let { bounds ->
+            MapSelectionScreenBounds(
+                bounds.minOf(MapSelectionScreenBounds::left), bounds.minOf(MapSelectionScreenBounds::top),
+                bounds.maxOf(MapSelectionScreenBounds::right), bounds.maxOf(MapSelectionScreenBounds::bottom),
+            ).frame()
+        }
+
+    Canvas(
+        modifier = modifier.background(Color(0xFF15181B))
+            .onSizeChanged {
+                val resized = currentViewport.resized(it.width, it.height)
+                if (resized != viewport) onViewportChanged(resized)
+            }
+            .onPointerEvent(PointerEventType.Scroll) { event ->
+                val change = event.changes.firstOrNull() ?: return@onPointerEvent
+                if (event.keyboardModifiers.isAltPressed) {
+                    onUnitIconSizeChanged(UnitIconDisplaySize.scroll(unitIconSizePx, change.scrollDelta.y))
+                } else {
+                    val factor = if (change.scrollDelta.y < 0f) 1.1 else 1.0 / 1.1
+                    onViewportChanged(currentViewport.zoomAt(ViewerPoint(change.position.x.toDouble(), change.position.y.toDouble()), factor))
+                }
+                change.consume()
+            }
+            .onPointerEvent(PointerEventType.Press) { event ->
+                val change = event.changes.firstOrNull() ?: return@onPointerEvent
+                if (event.buttons.isSecondaryPressed) {
+                    objectAtScreen(change.position)?.let { value ->
+                        rightClickTargetId = value.id
+                        onContextMenuRequested(value, IntOffset(change.position.x.roundToInt(), change.position.y.roundToInt()))
+                    } ?: run {
+                        rightClickTargetId = null
+                        onContextMenuDismissed()
+                    }
+                    return@onPointerEvent
+                }
+                if (!event.buttons.isPrimaryPressed || activeTool != MapViewerTool.SELECT) return@onPointerEvent
+                if (!editable) {
+                    objectAtScreen(change.position)?.let { onObjectsSelected(setOf(it.id), false) }
+                    return@onPointerEvent
+                }
+                val point = ViewerPoint(change.position.x.toDouble(), change.position.y.toDouble())
+                val frame = selectionFrame()
+                val rotateHit = frame?.rotationHandle()?.let { hypot(it.x - point.x, it.y - point.y) <= 12.0 } == true
+                val resizeHit = frame?.cornerBrackets()?.firstOrNull { it.contains(point) }
+                when {
+                    rotateHit && selectedObjectIds.isNotEmpty() -> {
+                        val bounds = content.selectionBounds(selectedObjectIds, aspectRatio) ?: return@onPointerEvent
+                        transformGesture = ComposeTransformGesture.Rotate(content, selectedObjectIds, bounds.centre, screenToMap(change.position))
+                    }
+
+                    resizeHit != null && selectedObjectIds.isNotEmpty() -> {
+                        transformGesture = ComposeTransformGesture.Resize(content, selectedObjectIds, resizeHit.corner)
+                    }
+
+                    else -> objectAtScreen(change.position)?.let { selected ->
+                        val ids = when {
+                            selected.id in selectedObjectIds -> selectedObjectIds
+                            event.keyboardModifiers.isShiftPressed -> selectedObjectIds + selected.id
+                            else -> setOf(selected.id)
+                        }
+                        if (selected.id !in selectedObjectIds) onObjectsSelected(setOf(selected.id), event.keyboardModifiers.isShiftPressed)
+                        transformGesture = ComposeTransformGesture.Move(content, ids, screenToMap(change.position))
+                    } ?: run {
+                        marquee = ComposeSelectionMarquee(change.position, change.position, event.keyboardModifiers.isShiftPressed)
+                    }
+                }
+                onContextMenuDismissed()
+            }
+            .onPointerEvent(PointerEventType.Move) { event ->
+                val change = event.changes.firstOrNull() ?: return@onPointerEvent
+                if (event.buttons.isSecondaryPressed && rightClickTargetId == null) {
+                    val delta = change.position - change.previousPosition
+                    if (delta != Offset.Zero) onViewportChanged(currentViewport.pan(ViewerPoint(delta.x.toDouble(), delta.y.toDouble())))
+                    return@onPointerEvent
+                }
+                transformGesture?.let { gesture ->
+                    val point = screenToMap(change.position)
+                    val preview = when (gesture) {
+                        is ComposeTransformGesture.Move -> gesture.original.move(
+                            gesture.selectedIds,
+                            io.hsar.mapgenerator.commandgui.MapCoordinateDelta(point.x - gesture.start.x, point.y - gesture.start.y),
+                            io.hsar.mapgenerator.commandgui.MapCoordinateBounds(-0.33, -0.33, 1.33, 1.33),
+                            aspectRatio,
+                        )
+
+                        is ComposeTransformGesture.Resize -> gesture.original.resize(
+                            gesture.selectedIds, gesture.corner, point, aspectRatio,
+                            fromCentre = event.keyboardModifiers.isAltPressed,
+                            preserveAspect = event.keyboardModifiers.isShiftPressed,
+                        )
+
+                        is ComposeTransformGesture.Rotate -> gesture.original.rotate(
+                            gesture.selectedIds,
+                            io.hsar.mapgenerator.commandgui.operation.rotationDelta(gesture.pivot, gesture.start, point, aspectRatio),
+                            aspectRatio,
+                            snap = event.keyboardModifiers.isShiftPressed,
+                        )
+                    }
+                    onPreviewChanged(preview)
+                    change.consume()
+                } ?: marquee?.let { current ->
+                    marquee = current.copy(current = change.position)
+                    change.consume()
+                }
+            }
+            .onPointerEvent(PointerEventType.Release) { event ->
+                if (!event.buttons.isSecondaryPressed) rightClickTargetId = null
+                transformGesture?.let { gesture ->
+                    onPreviewCommitted(
+                        when (gesture) {
+                            is ComposeTransformGesture.Move -> "moved ${gesture.selectedIds.size} item${if (gesture.selectedIds.size == 1) "" else "s"}"
+                            is ComposeTransformGesture.Resize -> "resized ${gesture.selectedIds.size} item${if (gesture.selectedIds.size == 1) "" else "s"}"
+                            is ComposeTransformGesture.Rotate -> "rotated ${gesture.selectedIds.size} item${if (gesture.selectedIds.size == 1) "" else "s"}"
+                        },
+                    )
+                    transformGesture = null
+                }
+                marquee?.let { current ->
+                    val box = MapSelectionBox(
+                        ViewerPoint(current.start.x.toDouble(), current.start.y.toDouble()),
+                        ViewerPoint(current.current.x.toDouble(), current.current.y.toDouble())
+                    )
+                    if (box.isDrag) {
+                        onObjectsSelected(content.objects.filter { box.overlaps(screenBounds(it)) }.mapTo(linkedSetOf(), OperationObject::id), current.additive)
+                    } else if (!current.additive) onObjectsSelected(emptySet(), false)
+                    marquee = null
+                }
+            },
+    ) {
+        val zoom = currentViewport.zoom.toFloat()
+        val mapLeft = currentViewport.screenX(mapOffsetX).toFloat()
+        val mapTop = currentViewport.screenY(mapOffsetY).toFloat()
+        clipRect {
+            withTransform({ translate(mapLeft, mapTop); scale(zoom, zoom, Offset.Zero) }) {
+                tiles.forEach { tile -> drawImage(tile.image, IntOffset(tile.left, tile.top), IntSize(tile.width, tile.height)) }
+                content.objects.filterIsInstance<OperationDrawingObject>().forEach { value ->
+                    drawOperationDrawing(value, mapWidth, mapHeight)
+                }
+                content.objects.filterIsInstance<OperationGraphic>().forEach { value ->
+                    val icon = graphicIcons[value.graphicTemplateId]
+                    val centre = Offset((value.coordinate.x * mapWidth).toFloat(), (value.coordinate.y * mapHeight).toFloat())
+                    val width = (value.normalizedWidth * mapWidth).roundToInt().coerceAtLeast(1)
+                    val height = (value.normalizedHeight * mapHeight).roundToInt().coerceAtLeast(1)
+                    icon?.let { drawImage(it, IntOffset((centre.x - width / 2f).roundToInt(), (centre.y - height / 2f).roundToInt()), IntSize(width, height)) }
+                        ?: drawRect(Color(0xFFFFC857), centre - Offset(width / 2f, height / 2f), androidx.compose.ui.geometry.Size(width.toFloat(), height.toFloat()))
+                }
+            }
+            gridOverlay?.lineSegments?.forEach { segment ->
+                drawLine(
+                    segment.colour.toComposeColour(),
+                    Offset(segment.start.x.toFloat(), segment.start.y.toFloat()),
+                    Offset(segment.end.x.toFloat(), segment.end.y.toFloat()),
+                    segment.thickness.toFloat(),
+                    StrokeCap.Square
+                )
+            }
+            content.objects.filterIsInstance<OperationUnit>().forEach { value ->
+                val icon = unitIcons[value.unitTemplateId]
+                val centre = Offset(
+                    currentViewport.screenX(mapOffsetX + value.coordinate.x * mapWidth).toFloat(),
+                    currentViewport.screenY(mapOffsetY + value.coordinate.y * mapHeight).toFloat(),
+                )
+                val width = unitIconSizePx.roundToInt().coerceAtLeast(1)
+                val height = icon?.let { (width.toDouble() * it.height / it.width).roundToInt() } ?: width
+                withTransform({ rotate((value.facingDegrees ?: 0).toFloat(), centre) }) {
+                    icon?.let { drawImage(it, IntOffset((centre.x - width / 2f).roundToInt(), (centre.y - height / 2f).roundToInt()), IntSize(width, height)) }
+                        ?: drawCircle(Color(0xFF67D5E8), width / 2f, centre)
+                }
+                if (value.destroyed) {
+                    val radius = maxOf(width, height) / 2f
+                    drawLine(Color.Black, centre - Offset(radius, radius), centre + Offset(radius, radius), 2f)
+                    drawLine(Color.Black, centre + Offset(radius, -radius), centre + Offset(-radius, radius), 2f)
+                }
+            }
+            content.objects.filterIsInstance<OperationGraphic>().forEach { value ->
+                value.customProperties["displayName"]?.takeIf(String::isNotBlank)?.let { label ->
+                    val centre = Offset(
+                        currentViewport.screenX(mapOffsetX + value.coordinate.x * mapWidth).toFloat(),
+                        currentViewport.screenY(mapOffsetY + value.coordinate.y * mapHeight).toFloat(),
+                    )
+                    val height = value.normalizedHeight * mapHeight * currentViewport.zoom
+                    val style = TextStyle(Color.White, fontFamily = nordFontFamily, fontSize = 16.sp)
+                    val measured = textMeasurer.measure(label, style)
+                    drawText(textMeasurer, label, Offset(centre.x - measured.size.width / 2f, centre.y - height.toFloat() / 2f - measured.size.height - 4f), style)
+                }
+            }
+            content.objects.filter { it.id in selectedObjectIds }.map(::screenBounds).forEach { bounds ->
+                drawRect(
+                    Color.White.copy(alpha = 0.82f),
+                    Offset(bounds.left.toFloat(), bounds.top.toFloat()),
+                    androidx.compose.ui.geometry.Size((bounds.right - bounds.left).toFloat(), (bounds.bottom - bounds.top).toFloat()),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(2f)
+                )
+            }
+            selectionFrame()?.let { frame ->
+                frame.cornerBrackets().forEach { bracket ->
+                    drawPath(Path().apply {
+                        moveTo(bracket.points.first().x.toFloat(), bracket.points.first().y.toFloat()); bracket.points.drop(1)
+                        .forEach { lineTo(it.x.toFloat(), it.y.toFloat()) }; close()
+                    }, Color.White)
+                }
+                frame.rotationHandle().let { handle ->
+                    drawCircle(Color.White, 7f, Offset(handle.x.toFloat(), handle.y.toFloat()))
+                    drawCircle(Color(0xFF120909), 3.5f, Offset(handle.x.toFloat(), handle.y.toFloat()))
+                }
+            }
+            marquee?.let { selection ->
+                val box = MapSelectionBox(
+                    ViewerPoint(selection.start.x.toDouble(), selection.start.y.toDouble()),
+                    ViewerPoint(selection.current.x.toDouble(), selection.current.y.toDouble())
+                )
+                if (box.isDrag) {
+                    val topLeft = Offset(box.left.toFloat(), box.top.toFloat())
+                    val size = androidx.compose.ui.geometry.Size((box.right - box.left).toFloat(), (box.bottom - box.top).toFloat())
+                    drawRect(Color(0xFFDF4A4A).copy(alpha = 0.15f), topLeft, size)
+                    drawRect(Color(0xFFDF4A4A), topLeft, size, style = androidx.compose.ui.graphics.drawscope.Stroke(2f))
+                }
+            }
+            gridOverlay?.labels?.forEach { label ->
+                val style = TextStyle(
+                    label.colour.toComposeColour(),
+                    fontFamily = nordFontFamily,
+                    fontWeight = if (label.strong) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = label.fontSize.sp
+                )
+                val measured = textMeasurer.measure(label.text, style)
+                drawText(textMeasurer, label.text, Offset((label.centre.x - measured.size.width / 2.0).toFloat(), (label.centre.y - measured.size.height / 2.0).toFloat()), style)
+            }
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawOperationDrawing(
+    value: OperationDrawingObject,
+    mapWidth: Int,
+    mapHeight: Int,
+) {
+    val colour = value.drawing.colour.let { Color(it.red, it.green, it.blue, it.alpha) }
+    fun io.hsar.mapgenerator.commandgui.operation.OperationDrawingPoint.offset() = Offset((x * mapWidth).toFloat(), (y * mapHeight).toFloat())
+    when (val drawing = value.drawing) {
+        is OperationFreeformDrawing -> if (drawing.points.size > 1) drawPath(
+            Path().apply { moveTo(drawing.points.first().offset().x, drawing.points.first().offset().y); drawing.points.drop(1).forEach { lineTo(it.offset().x, it.offset().y) } },
+            colour, style = androidx.compose.ui.graphics.drawscope.Stroke(2f),
+        )
+
+        is OperationLineDrawing -> drawLine(colour, drawing.start.offset(), drawing.end.offset(), 2f)
+        is OperationRectangleDrawing -> {
+            val left = minOf(drawing.start.x, drawing.end.x) * mapWidth
+            val top = minOf(drawing.start.y, drawing.end.y) * mapHeight
+            val width = abs(drawing.end.x - drawing.start.x) * mapWidth
+            val height = abs(drawing.end.y - drawing.start.y) * mapHeight
+            val centre = Offset((left + width * 0.5).toFloat(), (top + height * 0.5).toFloat())
+            withTransform({ rotate(drawing.rotationDegrees.toFloat(), centre) }) {
+                drawRect(
+                    colour,
+                    Offset(left.toFloat(), top.toFloat()),
+                    androidx.compose.ui.geometry.Size(width.toFloat(), height.toFloat()),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(2f)
+                )
+            }
+        }
+
+        is OperationOvalDrawing -> {
+            val centre = drawing.centre.offset()
+            withTransform({ rotate(drawing.rotationDegrees.toFloat(), centre) }) {
+                drawOval(
+                    colour,
+                    topLeft = Offset((centre.x - drawing.xRadius * mapWidth).toFloat(), (centre.y - drawing.yRadius * mapHeight).toFloat()),
+                    size = androidx.compose.ui.geometry.Size((drawing.xRadius * mapWidth * 2).toFloat(), (drawing.yRadius * mapHeight * 2).toFloat()),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(2f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalComposeUiApi::class)
+private fun LegacyReplayMapCanvas(
+    renderData: MapViewerRenderData,
     savedCamera: MapViewerSavedCamera? = null,
     replay: MapViewerLedgerReplay = MapViewerLedgerReplay.EMPTY,
-    activeTool: ComposeMapTool = ComposeMapTool.SELECT,
+    activeTool: MapViewerTool = MapViewerTool.SELECT,
     selectedObjectIds: Set<java.util.UUID> = emptySet(),
     onObjectsSelected: (Set<java.util.UUID>, Boolean) -> Unit = { _, _ -> },
     onContextMenuRequested: (MapViewerReplayObject, IntOffset) -> Unit = { _, _ -> },
@@ -1159,7 +1768,7 @@ private fun MapCanvas(
                             onContextMenuDismissed()
                         }
                     }
-                } else if (event.buttons.isPrimaryPressed && activeTool == ComposeMapTool.SELECT) {
+                } else if (event.buttons.isPrimaryPressed && activeTool == MapViewerTool.SELECT) {
                     event.changes.firstOrNull()?.let { change ->
                         val selected = replay.objectAtScreen(
                             screenPoint = ViewerPoint(change.position.x.toDouble(), change.position.y.toDouble()),

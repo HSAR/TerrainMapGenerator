@@ -1,16 +1,19 @@
 package io.hsar.mapgenerator.commandgui.save
 
+import io.hsar.mapgenerator.commandgui.MapViewerTool
 import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
 import io.hsar.mapgenerator.commandgui.ViewerPoint
 import io.hsar.mapgenerator.commandgui.korge.interaction.EcmActivation
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogBounds
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog
+import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
+import korlibs.io.lang.toByteArray
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import java.util.*
+import java.util.Collections.emptyList
 
 class OperationAdditionalDataTest {
     @Test
@@ -41,7 +44,7 @@ class OperationAdditionalDataTest {
 
     @Test
     fun `ui state is additive and preserves unrelated additional data`() {
-        val objectId = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
+        val objectId = OperationObjectId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
         val data = OperationAdditionalData.fromJson("""{"custom":"keep","sitrepContacts":[]}""".toByteArray())
 
         data.updateUiState(
@@ -135,6 +138,9 @@ class OperationAdditionalDataTest {
                     collapsed = false,
                 ),
             ),
+            enabledLayerIds = setOf("GRID", "map"),
+            openEditorIds = listOf("notes", "unit-edit:1"),
+            drafts = mapOf("notes" to "working text"),
         )
 
         // Act

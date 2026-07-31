@@ -1,12 +1,8 @@
 package io.hsar.mapgenerator.commandgui.compose
 
-import io.hsar.mapgenerator.commandgui.MapViewerLedgerEntryKind
-import io.hsar.mapgenerator.commandgui.MapViewerLedgerEntrySummary
-import io.hsar.mapgenerator.commandgui.MapViewerLedgerReplay
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
-import io.hsar.mapgenerator.commandgui.MapViewerSavedMap
-import io.hsar.mapgenerator.commandgui.MapViewerSavedOperation
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
+import io.hsar.mapgenerator.commandgui.operation.OperationDocument
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.nullValue
@@ -37,7 +33,7 @@ class ComposeLaunchStateTest {
     fun `creates an operation and returns to launchpad`() {
         val state = ComposeLaunchState()
 
-        state.createOperation(MapViewerSettings(operationName = "New Operation"))
+        state.openOperation(document("New Operation"))
         val launchedName = state.activeMap?.settings?.operationName
         state.returnToLaunchpad()
 
@@ -49,36 +45,29 @@ class ComposeLaunchStateTest {
     fun `opens a saved map without discarding its map state`() {
         val image = BufferedImage(32, 24, BufferedImage.TYPE_INT_ARGB)
         val path = Path.of("operation.oct.zip")
-        val loaded = MapViewerSavedMap(
-            operation = MapViewerSavedOperation(
-                path = path,
-                operationId = UUID.fromString("00000000-0000-0000-0000-000000000001"),
-                operationName = "Loaded Operation",
-                updatedAt = Instant.parse("2026-07-29T12:00:00Z"),
-                createdAt = Instant.parse("2026-07-28T12:00:00Z"),
-                thumbnailAssetId = null,
-                thumbnail = null,
-            ),
+        val loaded = OperationDocument(
+            operationId = UUID.fromString("00000000-0000-0000-0000-000000000001"),
+            operationName = "Loaded Operation",
+            updatedAt = Instant.parse("2026-07-29T12:00:00Z"),
+            createdAt = Instant.parse("2026-07-28T12:00:00Z"),
             settings = MapViewerSettings(operationName = "Loaded Operation"),
             renderData = MapViewerRenderData(image),
-            camera = null,
-            ledger = MapViewerLedgerReplay.EMPTY.copy(
-                entries = listOf(
-                    MapViewerLedgerEntrySummary(
-                        index = 0,
-                        kind = MapViewerLedgerEntryKind.TURN,
-                        description = "added Operation Start",
-                        turnName = "Operation Start",
-                    ),
-                ),
-            ),
+            sourcePath = path,
         )
         val state = ComposeLaunchState()
 
-        state.openSavedMap(loaded)
+        state.openOperation(loaded)
 
         assertThat(state.activeMap?.renderData?.baseImage, equalTo(image))
         assertThat(state.activeMap?.sourcePath, equalTo(path.toString()))
-        assertThat(state.activeMap?.ledger?.entries, equalTo(loaded.ledger.entries))
     }
+
+    private fun document(name: String) = OperationDocument(
+        operationId = UUID.fromString("00000000-0000-0000-0000-000000000009"),
+        operationName = name,
+        createdAt = Instant.EPOCH,
+        updatedAt = Instant.EPOCH,
+        settings = MapViewerSettings(operationName = name),
+        renderData = MapViewerRenderData(BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)),
+    )
 }
