@@ -17,11 +17,11 @@ class ComposeOperationStateTest {
         val objectId = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
         val state = ComposeOperationState()
-            .selectTool(ComposeMapTool.PAN)
+            .selectTool(ComposeMapTool.DRAW)
             .selectObject(objectId)
             .moveLedgerCursor(4)
 
-        assertThat(state.activeTool, equalTo(ComposeMapTool.PAN))
+        assertThat(state.activeTool, equalTo(ComposeMapTool.DRAW))
         assertThat(state.selectedObjectId, equalTo(objectId))
         assertThat(state.ledgerCursor, equalTo(4))
     }

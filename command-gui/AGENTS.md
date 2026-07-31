@@ -33,6 +33,10 @@ single draggable/minimizable notes overlay. The Select/Draw/Measure tool buttons
   selected modes awaiting their respective gesture/reducer slices.
 - Normalized map coordinates, coordinate deltas, bounds/clamping and map-to-world conversion now live in engine-neutral `commandgui`. KorGE retains only its `Vector2D` adapters,
   while Compose uses the same conversion for replay-marker hit testing.
+- `UnitIconDisplaySize` and persisted global icon-size settings now live in engine-neutral `commandgui`. Compose renders decoded unit-template images from replayed saves at that
+  zoom-independent screen size, supports right-drag panning under every tool, and mirrors KorGE's `Alt` + wheel 12% icon-size adjustment.
+- Compose now places its tool controls in a transparent horizontal map overlay and exposes the legacy Escape menu workflow through `Escape` and a Menu button; its modal provides
+  return-to-launchpad, exit and close actions without retaining the obsolete map-generation/open toolbar.
 
 Implement the remaining migration as small vertical slices in this order:
 

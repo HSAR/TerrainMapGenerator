@@ -28,7 +28,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -40,7 +39,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -56,7 +54,14 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isAltPressed
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -76,6 +81,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.hsar.mapgenerator.commandgui.MapViewerBackend
 import io.hsar.mapgenerator.commandgui.MapViewerBackendProvider
+import io.hsar.mapgenerator.commandgui.MapViewerGlobalSettings
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayLayoutBuilder
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayRequest
 import io.hsar.mapgenerator.commandgui.MapViewerLedgerReplay
@@ -88,6 +94,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerSavedOperation
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.MapViewport
+import io.hsar.mapgenerator.commandgui.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.ViewerPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -177,6 +184,7 @@ private fun ComposeMapViewer(
         )
     }
     val repository = remember { MapViewerSaveRepository() }
+    val globalSettings = remember { MapViewerGlobalSettings() }
 
     LaunchedEffect(launchState.activeMap?.settings?.operationName, launchState.screen) {
         onTitleChanged(
@@ -188,12 +196,13 @@ private fun ComposeMapViewer(
     launchState.activeMap?.let { map ->
         key(map) {
             ViewerWorkspace(
-                renderMap = renderMap,
                 initialMap = map,
                 workspaceMode = workspaceMode,
-                awtWindow = awtWindow,
+                initialUnitIconSizePx = globalSettings.unitIconSizePx(),
+                onUnitIconSizeChanged = globalSettings::updateUnitIconSizePx,
                 onWorkspaceModeChanged = onWorkspaceModeChanged,
                 onReturnToLaunchpad = launchState::returnToLaunchpad,
+                onExitProgram = onExit,
             )
         }
     } ?: when (launchState.screen) {
@@ -667,78 +676,30 @@ private const val COMPOSE_OPERATION_MAP_ID = "compose-operation-map"
 
 @Composable
 private fun ViewerWorkspace(
-    renderMap: (MapViewerSettings) -> MapViewerRenderData,
     initialMap: ComposeActiveMap,
     workspaceMode: WorkspaceMode,
-    awtWindow: java.awt.Window,
+    initialUnitIconSizePx: Double,
+    onUnitIconSizeChanged: (Double) -> Double,
     onWorkspaceModeChanged: (WorkspaceMode) -> Unit,
     onReturnToLaunchpad: () -> Unit,
+    onExitProgram: () -> Unit,
 ) {
-    var settings by remember { mutableStateOf(initialMap.settings) }
-    var renderData by remember { mutableStateOf(initialMap.renderData) }
-    var rendering by remember { mutableStateOf(false) }
     var operationState by remember { mutableStateOf(ComposeOperationState()) }
-    val eventLog = remember {
-        mutableStateListOf(
-            initialMap.sourcePath?.let { "Loaded ${File(it).name} at map level" }
-                ?: "Compose viewer started",
-        )
-    }
-    val scope = rememberCoroutineScope()
-    fun openMap() {
-        FileDialog(awtWindow as? Frame, "Open map image", FileDialog.LOAD).also { dialog ->
-            dialog.file = "*.png"
-            dialog.isVisible = true
-            val fileName = dialog.file ?: return
-            runCatching {
-                ImageIO.read(File(dialog.directory, fileName))
-                    ?: error("The selected file is not a supported image.")
-            }.onSuccess {
-                renderData = MapViewerRenderData(it)
-                eventLog += "Opened $fileName"
-            }.onFailure {
-                eventLog += "Open failed: ${it.message ?: it::class.simpleName}"
-            }
-        }
-    }
+    var unitIconSizePx by remember { mutableStateOf(UnitIconDisplaySize.coerce(initialUnitIconSizePx)) }
+    var escapeMenuOpen by remember { mutableStateOf(false) }
 
-    fun render() {
-        if (rendering) return
-        rendering = true
-        eventLog += "Rendering map"
-        scope.launch {
-            runCatching {
-                withContext(Dispatchers.Default) { renderMap(settings) }
-            }.onSuccess {
-                renderData = it
-                eventLog += "Map ready"
-            }.onFailure {
-                eventLog += "Render failed: ${it.message ?: it::class.simpleName}"
-            }
-            rendering = false
-        }
-    }
-
-    Surface(Modifier.fillMaxSize()) {
+    Surface(
+        Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+            if (event.type == KeyEventType.KeyUp && event.key == Key.Escape) {
+                escapeMenuOpen = !escapeMenuOpen
+                true
+            } else false
+        },
+    ) {
         Column {
-            ViewerToolbar(
-                settings = settings,
-                rendering = rendering,
-                workspaceMode = workspaceMode,
-                onSettingsChanged = { settings = it },
-                onRender = ::render,
-                onOpenMap = ::openMap,
-                onWorkspaceModeChanged = onWorkspaceModeChanged,
-                onReturnToLaunchpad = onReturnToLaunchpad,
-            )
-            HorizontalDivider()
             Row(Modifier.weight(1f)) {
-                ToolRail(
-                    activeTool = operationState.activeTool,
-                    onToolSelected = { operationState = operationState.selectTool(it) },
-                )
                 Box(Modifier.weight(1f).fillMaxHeight()) {
-                    renderData?.let {
+                    initialMap.renderData?.let {
                         MapCanvas(
                             renderData = it,
                             savedCamera = initialMap.camera,
@@ -746,9 +707,19 @@ private fun ViewerWorkspace(
                             activeTool = operationState.activeTool,
                             selectedObjectId = operationState.selectedObjectId,
                             onObjectSelected = { operationState = operationState.selectObject(it) },
+                            unitIconSizePx = unitIconSizePx,
+                            onUnitIconSizeChanged = { size -> unitIconSizePx = onUnitIconSizeChanged(size) },
                             modifier = Modifier.fillMaxSize(),
                         )
-                    } ?: EmptyMap(onRender = ::render, rendering = rendering)
+                    } ?: EmptyMap()
+
+                    ToolRail(
+                        activeTool = operationState.activeTool,
+                        unitIconSizePx = unitIconSizePx,
+                        onToolSelected = { operationState = operationState.selectTool(it) },
+                        onMenuRequested = { escapeMenuOpen = true },
+                        modifier = Modifier.align(Alignment.TopCenter).padding(12.dp),
+                    )
 
                     if (workspaceMode == WorkspaceMode.FLOATING) {
                         FloatingNotesPanel(
@@ -767,82 +738,45 @@ private fun ViewerWorkspace(
             }
             LedgerPrototypePanel(
                 replay = initialMap.ledger,
-                events = eventLog,
+                events = emptyList(),
                 selectedIndex = operationState.ledgerCursor,
                 onSelectedIndexChanged = { operationState = operationState.moveLedgerCursor(it) },
             )
         }
     }
-}
-
-@Composable
-private fun ViewerToolbar(
-    settings: MapViewerSettings,
-    rendering: Boolean,
-    workspaceMode: WorkspaceMode,
-    onSettingsChanged: (MapViewerSettings) -> Unit,
-    onRender: () -> Unit,
-    onOpenMap: () -> Unit,
-    onWorkspaceModeChanged: (WorkspaceMode) -> Unit,
-    onReturnToLaunchpad: () -> Unit,
-) = Row(
-    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
-    verticalAlignment = Alignment.CenterVertically,
-) {
-    CommandButton(onClick = onReturnToLaunchpad) {
-        Text("Launchpad")
-    }
-    CommandButton(onClick = onRender, enabled = !rendering) {
-        Text(if (rendering) "Rendering…" else "Generate map")
-    }
-    CommandButton(onClick = onOpenMap) {
-        Text("Open map")
-    }
-    Text("Layers:")
-    settings.availableLayers.forEach { layer ->
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(
-                checked = layer.id in settings.enabledLayerIds,
-                onCheckedChange = { enabled ->
-                    onSettingsChanged(
-                        settings.copy(
-                            enabledLayerIds = settings.enabledLayerIds
-                                .let { if (enabled) it + layer.id else it - layer.id },
-                        ),
-                    )
-                },
-            )
-            Text(layer.displayName)
-        }
-    }
-    Spacer(Modifier.weight(1f))
-    CommandButton(
-        onClick = {
-            onWorkspaceModeChanged(
-                if (workspaceMode == WorkspaceMode.DOCKED) WorkspaceMode.FLOATING else WorkspaceMode.DOCKED,
-            )
-        },
-    ) {
-        Text(if (workspaceMode == WorkspaceMode.DOCKED) "Floating workspace" else "Dock workspace")
+    if (escapeMenuOpen) {
+        EscapeMenuDialog(
+            onDismiss = { escapeMenuOpen = false },
+            onReturnToLaunchpad = {
+                escapeMenuOpen = false
+                onReturnToLaunchpad()
+            },
+            onExitProgram = onExitProgram,
+        )
     }
 }
 
 @Composable
 private fun ToolRail(
     activeTool: ComposeMapTool,
+    unitIconSizePx: Double,
     onToolSelected: (ComposeMapTool) -> Unit,
-) = Column(
-    modifier = Modifier.width(104.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceVariant)
-        .padding(8.dp),
-    verticalArrangement = Arrangement.spacedBy(8.dp),
+    onMenuRequested: () -> Unit,
+    modifier: Modifier = Modifier,
+) = Row(
+    modifier = modifier,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    verticalAlignment = Alignment.CenterVertically,
 ) {
-    Text("Tools", style = MaterialTheme.typography.titleMedium)
+    CommandButton(onClick = onMenuRequested) {
+        Text("MENU")
+    }
     ComposeMapTool.entries.forEach { tool ->
-        CommandButton(onClick = { onToolSelected(tool) }, modifier = Modifier.fillMaxWidth()) {
+        CommandButton(onClick = { onToolSelected(tool) }) {
             Text(if (tool == activeTool) "• ${tool.label}" else tool.label)
         }
     }
+    Text("${UnitIconDisplaySize.format(unitIconSizePx)} px · Alt+wheel")
 }
 
 @Composable
@@ -907,16 +841,33 @@ private fun FloatingNotesPanel(
 }
 
 @Composable
-private fun EmptyMap(onRender: () -> Unit, rendering: Boolean) =
+private fun EmptyMap() =
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (rendering) CircularProgressIndicator()
-            Text("Create a terrain map to open the Compose Canvas viewer.")
-            CommandButton(onClick = onRender, enabled = !rendering) {
-                Text("Generate map")
-            }
+            Text("No terrain map is available for this operation.")
         }
     }
+
+@Composable
+private fun EscapeMenuDialog(
+    onDismiss: () -> Unit,
+    onReturnToLaunchpad: () -> Unit,
+    onExitProgram: () -> Unit,
+) = androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    CommandPanel(Modifier.width(420.dp)) {
+        Text("MENU", style = MaterialTheme.typography.headlineMedium)
+        Text("Return to the launchpad after saving.")
+        CommandButton(onClick = onReturnToLaunchpad, modifier = Modifier.fillMaxWidth()) {
+            Text("RETURN TO LAUNCHPAD")
+        }
+        CommandButton(onClick = onExitProgram, modifier = Modifier.fillMaxWidth()) {
+            Text("EXIT")
+        }
+        CommandButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+            Text("CLOSE")
+        }
+    }
+}
 
 @Composable
 private fun LedgerPrototypePanel(
@@ -1020,9 +971,11 @@ private fun MapCanvas(
     renderData: MapViewerRenderData,
     savedCamera: MapViewerSavedCamera? = null,
     replay: MapViewerLedgerReplay = MapViewerLedgerReplay.EMPTY,
-    activeTool: ComposeMapTool = ComposeMapTool.PAN,
+    activeTool: ComposeMapTool = ComposeMapTool.SELECT,
     selectedObjectId: java.util.UUID? = null,
     onObjectSelected: (java.util.UUID?) -> Unit = {},
+    unitIconSizePx: Double = UnitIconDisplaySize.DEFAULT_PX,
+    onUnitIconSizeChanged: (Double) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val nordFontFamily = NordFontFamily()
@@ -1082,6 +1035,12 @@ private fun MapCanvas(
             }
         }
     }
+    val unitIcons = remember(replay) {
+        replay.objects
+            .filter { it.kind == MapViewerReplayObjectKind.UNIT }
+            .mapNotNull { mapObject -> mapObject.icon?.let { mapObject.id to it.toImageBitmap() } }
+            .toMap()
+    }
 
     Canvas(
         modifier = modifier
@@ -1089,20 +1048,30 @@ private fun MapCanvas(
             .onSizeChanged { viewport = viewport.resized(it.width, it.height) }
             .onPointerEvent(PointerEventType.Scroll) { event ->
                 val change = event.changes.firstOrNull() ?: return@onPointerEvent
-                val factor = if (change.scrollDelta.y < 0f) 1.1f else 1f / 1.1f
-                viewport = viewport.zoomAt(
-                    ViewerPoint(change.position.x.toDouble(), change.position.y.toDouble()),
-                    factor.toDouble(),
-                )
+                if (event.keyboardModifiers.isAltPressed) {
+                    onUnitIconSizeChanged(UnitIconDisplaySize.scroll(unitIconSizePx, change.scrollDelta.y))
+                } else {
+                    val factor = if (change.scrollDelta.y < 0f) 1.1f else 1f / 1.1f
+                    viewport = viewport.zoomAt(
+                        ViewerPoint(change.position.x.toDouble(), change.position.y.toDouble()),
+                        factor.toDouble(),
+                    )
+                }
                 change.consume()
             }
-            .pointerInput(renderData.baseImage, activeTool) {
-                if (activeTool == ComposeMapTool.PAN) {
-                    detectDragGestures { change, dragAmount ->
-                        change.consume()
-                        viewport = viewport.pan(ViewerPoint(dragAmount.x.toDouble(), dragAmount.y.toDouble()))
+            .onPointerEvent(PointerEventType.Move) { event ->
+                if (event.buttons.isSecondaryPressed) {
+                    event.changes.firstOrNull()?.let { change ->
+                        val delta = change.position - change.previousPosition
+                        if (delta != Offset.Zero) {
+                            viewport = viewport.pan(ViewerPoint(delta.x.toDouble(), delta.y.toDouble()))
+                            change.consume()
+                        }
                     }
-                } else if (activeTool == ComposeMapTool.SELECT) {
+                }
+            }
+            .pointerInput(renderData.baseImage, activeTool) {
+                if (activeTool == ComposeMapTool.SELECT) {
                     detectTapGestures { offset ->
                         onObjectSelected(
                             replay.objectAtScreen(
@@ -1112,6 +1081,7 @@ private fun MapCanvas(
                                 mapOffsetY = mapOffsetY,
                                 mapWidth = renderData.baseImage.width,
                                 mapHeight = renderData.baseImage.height,
+                                hitRadius = unitIconSizePx / 2.0,
                             )?.id,
                         )
                     }
@@ -1179,9 +1149,12 @@ private fun MapCanvas(
                                     size = androidx.compose.ui.geometry.Size(radius * 2f, radius * 2f),
                                 )
 
+                            MapViewerReplayObjectKind.UNIT ->
+                                if (mapObject.icon == null) drawCircle(colour, radius, centre)
+
                             else -> drawCircle(colour, radius, centre)
                         }
-                        if (mapObject.destroyed == true) {
+                        if (mapObject.destroyed == true && mapObject.icon == null) {
                             drawLine(
                                 color = Color.Black,
                                 start = centre - Offset(radius, radius),
@@ -1195,7 +1168,7 @@ private fun MapCanvas(
                                 strokeWidth = (2f / zoom).coerceAtLeast(0.5f),
                             )
                         }
-                        if (mapObject.id == selectedObjectId) {
+                        if (mapObject.id == selectedObjectId && mapObject.icon == null) {
                             drawCircle(
                                 color = Color.White,
                                 radius = radius + 4f / zoom,
@@ -1205,6 +1178,36 @@ private fun MapCanvas(
                         }
                     }
             }
+            replay.objects
+                .filter { it.kind == MapViewerReplayObjectKind.UNIT && it.x != null && it.y != null }
+                .forEach { mapObject ->
+                    unitIcons[mapObject.id]?.let { icon ->
+                        val width = unitIconSizePx.roundToInt()
+                        val height = (width.toDouble() * icon.height / icon.width).roundToInt()
+                        val centre = Offset(
+                            viewport.screenX(mapOffsetX + mapObject.x!! * renderData.baseImage.width).toFloat(),
+                            viewport.screenY(mapOffsetY + mapObject.y!! * renderData.baseImage.height).toFloat(),
+                        )
+                        drawImage(
+                            image = icon,
+                            dstOffset = IntOffset((centre.x - width / 2f).roundToInt(), (centre.y - height / 2f).roundToInt()),
+                            dstSize = IntSize(width, height),
+                        )
+                        if (mapObject.destroyed == true) {
+                            val radius = maxOf(width, height) / 2f
+                            drawLine(Color.Black, centre - Offset(radius, radius), centre + Offset(radius, radius), 2f)
+                            drawLine(Color.Black, centre + Offset(radius, -radius), centre + Offset(-radius, radius), 2f)
+                        }
+                        if (mapObject.id == selectedObjectId) {
+                            drawCircle(
+                                color = Color.White,
+                                radius = maxOf(width, height) / 2f + 4f,
+                                center = centre,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(2f),
+                            )
+                        }
+                    }
+                }
             gridOverlay?.labels?.forEach { label ->
                 val style = TextStyle(
                     color = label.colour.toComposeColour(),

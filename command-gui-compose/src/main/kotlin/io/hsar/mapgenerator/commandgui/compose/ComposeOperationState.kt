@@ -58,7 +58,6 @@ enum class ComposeMapTool(
     val label: String,
 ) {
     SELECT("Select"),
-    PAN("Pan"),
     DRAW("Draw"),
     MEASURE("Measure"),
 }

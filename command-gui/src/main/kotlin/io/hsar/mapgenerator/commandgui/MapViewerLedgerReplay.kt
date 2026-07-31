@@ -23,6 +23,8 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.ReorderNotesAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.changeDescription
+import korlibs.image.bitmap.Bitmap32
+import java.awt.image.BufferedImage
 import java.util.*
 import java.util.Collections.emptyList
 import java.util.Collections.emptyMap
@@ -58,6 +60,7 @@ data class MapViewerReplayObject(
     val y: Double? = null,
     val destroyed: Boolean? = null,
     val customProperties: Map<String, String> = emptyMap(),
+    val icon: BufferedImage? = null,
 )
 
 data class MapViewerReplayTemplate(
@@ -136,6 +139,7 @@ private fun MapPlacedObjectSnapshot.toViewerObject() =
             y = mapCoordinate.y,
             destroyed = destroyed,
             customProperties = customProperties,
+            icon = template.bitmap.toBufferedImage(),
         )
 
         is DrawingSnapshot -> MapViewerReplayObject(
@@ -154,4 +158,15 @@ private fun MapPlacedObjectSnapshot.toViewerObject() =
             y = mapCoordinate.y,
             customProperties = customProperties,
         )
+    }
+
+private fun Bitmap32.toBufferedImage() =
+    BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { image ->
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                getRgba(x, y).let { rgba ->
+                    image.setRGB(x, y, (rgba.a shl 24) or (rgba.r shl 16) or (rgba.g shl 8) or rgba.b)
+                }
+            }
+        }
     }
