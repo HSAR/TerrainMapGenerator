@@ -65,6 +65,11 @@ prototype UI; Draw/Measure creation workflows and most operational editors remai
   additive-selection reducers. Compose selection is now a stable set of IDs and supports click-to-replace, Shift-click toggling, Shift-marquee toggling, ordinary drag-marquee
   replacement, per-object bounding boxes, group frames, resize brackets and a rotate dot. Transform previews now come from neutral content and commit through the authoritative
   timeline rather than mutating renderer state.
+- Compose now opens `Edit Unit` from the shared object context menu as a movable, resizable non-modal map overlay with KorGE-style dark title bars, bright frames, framed close
+  crosses and a bottom-right corner bracket. Resize dimensions resolve from the full pointer drag distance, retaining pixel-for-pixel lock when a minimum-size clamp is reached.
+  Several unit editors may stay open at once through `ComposeOperationState`; stable Compose keys retain each panel's independent transient geometry when another closes. They
+  edit the unit name, map position, facing and destroyed state and record saved changes through the authoritative timeline. Editor bounds and multi-editor persistence remain
+  future work.
 
 Implement the remaining migration as small vertical slices in this order:
 

@@ -10,6 +10,7 @@ import io.hsar.mapgenerator.commandgui.operation.OperationDocument
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntry
 import io.hsar.mapgenerator.commandgui.operation.OperationUiState
+import io.hsar.mapgenerator.commandgui.operation.OperationUnit
 import io.hsar.mapgenerator.commandgui.operation.changesFrom
 import io.hsar.mapgenerator.commandgui.operation.delete
 import java.util.Collections.emptyMap
@@ -99,6 +100,14 @@ data class ComposeOperationState(
         return preview(after).commitPreview(
             description = if (selectedObjectIds.size == 1) "deleted an item" else "deleted ${selectedObjectIds.size} items",
         ).copy(selectedObjectIds = emptySet())
+    }
+
+    fun editUnit(updated: OperationUnit): ComposeOperationState {
+        if (isReadOnly) return this
+        val before = document.content.objectById(updated.id) as? OperationUnit ?: return this
+        if (before == updated) return this
+        val after = document.content.copy(objects = document.content.objects.map { value -> if (value.id == updated.id) updated else value })
+        return preview(after).commitPreview(description = "edited ${updated.instanceName.ifBlank { "unit" }}")
     }
 
     fun undo(): ComposeOperationState {

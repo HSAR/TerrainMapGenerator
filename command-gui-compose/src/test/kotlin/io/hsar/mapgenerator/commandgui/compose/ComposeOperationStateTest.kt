@@ -48,6 +48,36 @@ class ComposeOperationStateTest {
     }
 
     @Test
+    fun `editing a unit records an object timeline entry`() {
+        val updated = unit.copy(instanceName = "Renamed", facingDegrees = 90)
+
+        val state = ComposeOperationState(documentWith(unit)).editUnit(updated)
+
+        assertThat(state.document.content.objectById(objectId), equalTo(updated))
+        assertThat(state.document.timeline.entries.last().description, equalTo("edited Renamed"))
+    }
+
+    @Test
+    fun `keeps several independently identified editors open`() {
+        val first = ComposeEditorInstance("unit:first", "unit", objectId)
+        val second = ComposeEditorInstance("unit:second", "unit", OperationObjectId(UUID.fromString("00000000-0000-0000-0000-000000000003")))
+
+        val state = ComposeOperationState(documentWith(unit)).openEditor(first).openEditor(second).openEditor(first)
+
+        assertThat(state.openEditors, equalTo(listOf(first, second)))
+    }
+
+    @Test
+    fun `closing one editor retains its independently identified sibling`() {
+        val first = ComposeEditorInstance("unit:first", "unit", objectId)
+        val second = ComposeEditorInstance("unit:second", "unit", OperationObjectId(UUID.fromString("00000000-0000-0000-0000-000000000003")))
+
+        val state = ComposeOperationState(documentWith(unit)).openEditor(first).openEditor(second).closeEditor(first.id)
+
+        assertThat(state.openEditors, equalTo(listOf(second)))
+    }
+
+    @Test
     fun `preview does not mutate the timeline until committed`() {
         val initial = ComposeOperationState(documentWith(unit))
         val moved = initial.document.content.copy(objects = listOf(unit.copy(coordinate = MapCoordinate(0.7, 0.5))))

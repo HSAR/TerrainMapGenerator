@@ -73,6 +73,7 @@ import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -84,7 +85,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.hsar.mapgenerator.commandgui.MapCoordinate
@@ -134,6 +134,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
+import sun.security.krb5.internal.KDCOptions.with
 import java.awt.FileDialog
 import java.awt.Frame
 import java.io.ByteArrayOutputStream
@@ -144,9 +145,9 @@ import java.util.Collections.emptyList
 import java.util.Collections.emptySet
 import javax.imageio.ImageIO
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.roundToInt
-import kotlin.math.cos
 import kotlin.math.sin
 
 class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
@@ -710,6 +711,7 @@ private val SAVE_DATE_FORMAT = DateTimeFormatter.ofPattern("d MMM uuuu, HH:mm")
 private const val COMPOSE_OPERATION_MAP_ID = "compose-operation-map"
 private const val OPERATION_NOTES_DRAFT_ID = "operation-notes"
 private const val COMPOSE_AUTOSAVE_DEBOUNCE_MS = 2_000L
+private const val UNIT_EDITOR_TYPE = "unit"
 
 @Composable
 private fun ViewerWorkspace(
@@ -730,7 +732,6 @@ private fun ViewerWorkspace(
     var unitIconSizePx by remember { mutableStateOf(UnitIconDisplaySize.coerce(initialUnitIconSizePx)) }
     var escapeMenuOpen by remember { mutableStateOf(false) }
     var contextMenu by remember { mutableStateOf<ComposeMapContextMenu?>(null) }
-    var editingUnitId by remember { mutableStateOf<OperationObjectId?>(null) }
     var pendingExit by remember { mutableStateOf<ComposePendingExit?>(null) }
     val autosaveScheduler = remember { ComposeAutosaveScheduler(debounceMillis = COMPOSE_AUTOSAVE_DEBOUNCE_MS) }
     val scope = rememberCoroutineScope()
@@ -806,8 +807,9 @@ private fun ViewerWorkspace(
         }
     }
 
-    Surface(
-        Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+    Box(Modifier.fillMaxSize()) {
+        Surface(
+            Modifier.fillMaxSize().onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
             when {
                 event.key == Key.Escape && operationState.previewContent != null -> {
@@ -891,7 +893,13 @@ private fun ViewerWorkspace(
                             menu = menu,
                             onActionSelected = { action ->
                                 when (action.action) {
-                                    MapViewerContextMenuCommand.EDIT_UNIT -> editingUnitId = menu.objectId
+                                    MapViewerContextMenuCommand.EDIT_UNIT -> operationState = operationState.openEditor(
+                                        ComposeEditorInstance(
+                                            id = menu.objectId.unitEditorId(),
+                                            type = UNIT_EDITOR_TYPE,
+                                            objectId = menu.objectId,
+                                        ),
+                                    )
                                     else -> if (action.action.name.startsWith("DELETE")) {
                                         operationState = operationState.selectObject(menu.objectId).deleteSelection()
                                     }
@@ -950,19 +958,23 @@ private fun ViewerWorkspace(
             onCancel = { pendingExit = null },
         )
     }
-    editingUnitId?.let { objectId ->
-        (operationState.visibleContent.objectById(objectId) as? OperationUnit)?.let { unit ->
-            ComposeUnitEditDialog(
-                unit = unit,
-                templateName = operationState.visibleContent.unitTemplate(unit.unitTemplateId)?.name.orEmpty(),
-                editable = !operationState.isReadOnly,
-                onSave = { updated ->
-                    operationState = operationState.editUnit(updated)
-                    editingUnitId = null
-                },
-                onDismiss = { editingUnitId = null },
-            )
-        } ?: run { editingUnitId = null }
+        operationState.openEditors.filter { it.type == UNIT_EDITOR_TYPE }.forEachIndexed { index, editor ->
+            key(editor.id) {
+                (editor.objectId?.let(operationState.visibleContent::objectById) as? OperationUnit)?.let { unit ->
+                    ComposeUnitEditDialog(
+                        unit = unit,
+                        templateName = operationState.visibleContent.unitTemplate(unit.unitTemplateId)?.name.orEmpty(),
+                        initialPosition = IntOffset(96 + index * 32, 96 + index * 32),
+                        editable = !operationState.isReadOnly,
+                        onSave = { updated ->
+                            operationState = operationState.editUnit(updated)
+                            operationState = operationState.closeEditor(editor.id)
+                        },
+                        onDismiss = { operationState = operationState.closeEditor(editor.id) },
+                    )
+                } ?: run { operationState = operationState.closeEditor(editor.id) }
+            }
+        }
     }
 }
 
@@ -1080,10 +1092,17 @@ private fun EscapeMenuDialog(
 private fun ComposeUnitEditDialog(
     unit: OperationUnit,
     templateName: String,
+    initialPosition: IntOffset,
     editable: Boolean,
     onSave: (OperationUnit) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var position by remember(unit.id) { mutableStateOf(initialPosition) }
+    var width by remember(unit.id) { mutableStateOf(520.dp) }
+    var height by remember(unit.id) { mutableStateOf(560.dp) }
+    var resizeStartWidth by remember(unit.id) { mutableStateOf(width) }
+    var resizeStartHeight by remember(unit.id) { mutableStateOf(height) }
+    var resizeDragDistance by remember(unit.id) { mutableStateOf(Offset.Zero) }
     var name by remember(unit.id) { mutableStateOf(unit.instanceName) }
     var positionX by remember(unit.id) { mutableStateOf(unit.coordinate.x.toString()) }
     var positionY by remember(unit.id) { mutableStateOf(unit.coordinate.y.toString()) }
@@ -1093,12 +1112,22 @@ private fun ComposeUnitEditDialog(
     val y = positionY.toDoubleOrNull()
     val facingDegrees = facing.trim().takeIf(String::isNotEmpty)?.toIntOrNull()?.mod(360)
     val valid = name.isNotBlank() && x != null && y != null && (facing.isBlank() || facingDegrees != null)
+    val density = LocalDensity.current
 
-    Dialog(onDismissRequest = onDismiss) {
-        CommandPanel(Modifier.width(520.dp)) {
-            Text("EDIT UNIT", style = MaterialTheme.typography.headlineMedium)
+    Box(Modifier.offset { position }.width(width).height(height)) {
+        CommandFloatingPanel(
+            title = listOf("Edit Unit", unit.instanceName).filter(String::isNotBlank).joinToString(" — "),
+            onClose = onDismiss,
+            modifier = Modifier.fillMaxSize(),
+            titleBarModifier = Modifier.pointerInput(unit.id) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    position += IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt())
+                }
+            },
+        ) {
             Text(templateName.ifBlank { "Unit" }, color = CommandColours.Backing)
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -1159,6 +1188,28 @@ private fun ComposeUnitEditDialog(
                 CommandButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("CANCEL") }
             }
         }
+        Canvas(
+            Modifier.align(Alignment.BottomEnd).size(30.dp).pointerInput(unit.id) {
+                detectDragGestures(
+                    onDragStart = {
+                        resizeStartWidth = width
+                        resizeStartHeight = height
+                        resizeDragDistance = Offset.Zero
+                    },
+                ) { change, dragAmount ->
+                    change.consume()
+                    resizeDragDistance += dragAmount
+                    with(density) {
+                        width = clampedDialogDimensionAtPointer(resizeStartWidth.value, resizeDragDistance.x.toDp().value, 420.dp.value).dp
+                        height = clampedDialogDimensionAtPointer(resizeStartHeight.value, resizeDragDistance.y.toDp().value, 360.dp.value).dp
+                    }
+                }
+            },
+        ) {
+            val inset = size.minDimension * 0.15f
+            drawLine(CommandColours.White, Offset(inset, size.height - inset), Offset(size.width - inset, size.height - inset), strokeWidth = 2f)
+            drawLine(CommandColours.White, Offset(size.width - inset, inset), Offset(size.width - inset, size.height - inset), strokeWidth = 2f)
+        }
     }
 }
 
@@ -1185,6 +1236,8 @@ private data class ComposeMapContextMenu(
     val position: IntOffset,
     val actions: List<MapViewerContextMenuItem>,
 )
+
+private fun OperationObjectId.unitEditorId() = "unit:$value"
 
 @Composable
 private fun ComposeMapContextMenu(

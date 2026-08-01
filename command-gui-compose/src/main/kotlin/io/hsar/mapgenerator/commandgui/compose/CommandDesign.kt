@@ -2,6 +2,8 @@ package io.hsar.mapgenerator.commandgui.compose
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -12,7 +14,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -77,6 +81,52 @@ internal fun CommandPanel(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         content = content,
     )
+}
+
+@Composable
+internal fun CommandFloatingPanel(
+    title: String,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    titleBarModifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) = Surface(
+    modifier = modifier,
+    shape = RectangleShape,
+    color = CommandColours.Dark.copy(alpha = 0.94f),
+    border = BorderStroke(1.dp, CommandColours.Light),
+) {
+    Column {
+        Row(
+            modifier = titleBarModifier
+                .fillMaxWidth()
+                .height(42.dp)
+                .background(CommandColours.Dark.copy(alpha = 0.92f))
+                .border(1.dp, CommandColours.White),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title.uppercase(),
+                modifier = Modifier.weight(1f).padding(start = 14.dp),
+                color = CommandColours.White,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = COMMAND_BUTTON_FONT_SIZE),
+            )
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .border(1.dp, CommandColours.White)
+                    .clickable(onClick = onClose),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("×", color = CommandColours.White, fontSize = 28.sp, lineHeight = 28.sp)
+            }
+        }
+        Column(
+            modifier = Modifier.weight(1f).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            content = content,
+        )
+    }
 }
 
 @Composable
