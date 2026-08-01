@@ -22,6 +22,13 @@ class MainTest {
     }
 
     @Test
+    fun `available commands include the app icon exporter`() {
+        val commandNames = availableCommands().map { it.name }
+
+        assertThat(commandNames, hasItem("export-app-icon"))
+    }
+
+    @Test
     fun `commands default to twenty metres per pixel`() {
         assertThat(testCommand().configuredMetresPerPixel, equalTo(20.0))
     }

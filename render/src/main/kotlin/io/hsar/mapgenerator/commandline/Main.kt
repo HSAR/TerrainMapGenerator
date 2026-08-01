@@ -14,6 +14,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
+import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerAppIconExporter
 import io.hsar.mapgenerator.grid.Coord
 import io.hsar.mapgenerator.grid.GridLayerBuilder
 import io.hsar.mapgenerator.grid.ReferenceSystem
@@ -22,11 +23,13 @@ import io.hsar.mapgenerator.image.ImageUtils.compose
 import io.hsar.mapgenerator.image.ImageWriter
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
+import org.apache.logging.log4j.util.Lazy.lazy
 import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.nio.file.Path
 import java.util.*
+import java.util.Collections.emptyList
 import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.ImageIO
@@ -175,6 +178,27 @@ object ApplyGridCommand : Command("apply-grid") {
     }
 }
 
+@Parameters(commandDescription = "Exports the selected hostile OCT marker as a transparent PNG app icon.")
+object ExportAppIconCommand : Command("export-app-icon") {
+    @Parameter(
+        names = ["--target"],
+        description = "Path to save the PNG app icon to.",
+        required = true,
+    )
+    private lateinit var target: String
+
+    @Parameter(
+        names = ["--size"],
+        description = "Square output size in pixels. Defaults to 512; must be a positive power of two.",
+    )
+    private var size = MapViewerAppIconExporter.DEFAULT_SIZE
+
+    override fun run() {
+        MapViewerAppIconExporter.export(Path.of(target).toAbsolutePath().normalize(), size)
+        logger.info("Saved $size x $size app icon to ${Path.of(target).toAbsolutePath().normalize()}")
+    }
+}
+
 abstract class Command(val name: String) : Runnable {
 
     @Parameter(
@@ -275,6 +299,7 @@ internal fun availableCommands(): List<Command> =
         ShowImageCommand,
         SaveImageCommand,
         ApplyGridCommand,
+        ExportAppIconCommand,
     )
 
 private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewerRenderData {
