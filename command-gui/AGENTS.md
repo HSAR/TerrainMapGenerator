@@ -70,6 +70,8 @@ prototype UI; Draw/Measure creation workflows and most operational editors remai
   Several unit editors may stay open at once through `ComposeOperationState`; stable Compose keys retain each panel's independent transient geometry when another closes. They
   edit the unit name, map position, facing and destroyed state and record saved changes through the authoritative timeline. Editor bounds and multi-editor persistence remain
   future work.
+- Measure and Draw now use engine-neutral Compose gesture reducers matching KorGE's transient grid measurement and Freeform/Line/Rectangle/Oval creation rules. Compose exposes
+  the legacy Draw mode and colour controls, previews valid gestures, commits drawings as one operation timeline entry and keeps Measure available in read-only history.
 
 Implement the remaining migration as small vertical slices in this order:
 

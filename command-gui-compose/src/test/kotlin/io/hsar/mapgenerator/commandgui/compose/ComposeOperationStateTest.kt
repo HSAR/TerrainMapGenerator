@@ -6,8 +6,12 @@ import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerTool
 import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
+import io.hsar.mapgenerator.commandgui.operation.OperationArgb
 import io.hsar.mapgenerator.commandgui.operation.OperationChangeSet
 import io.hsar.mapgenerator.commandgui.operation.OperationDocument
+import io.hsar.mapgenerator.commandgui.operation.OperationDrawingObject
+import io.hsar.mapgenerator.commandgui.operation.OperationDrawingPoint
+import io.hsar.mapgenerator.commandgui.operation.OperationLineDrawing
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.operation.OperationTimeline
 import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntry
@@ -55,6 +59,17 @@ class ComposeOperationStateTest {
 
         assertThat(state.document.content.objectById(objectId), equalTo(updated))
         assertThat(state.document.timeline.entries.last().description, equalTo("edited Renamed"))
+    }
+
+    @Test
+    fun `adding a drawing records and selects one operation object`() {
+        val drawing = OperationLineDrawing(OperationDrawingPoint(.1, .1), OperationDrawingPoint(.2, .2), OperationArgb.of(255, 255, 0, 0))
+
+        val state = ComposeOperationState(documentWith(unit)).addDrawing(drawing)
+
+        assertThat((state.document.content.objects.last() as OperationDrawingObject).drawing, equalTo(drawing))
+        assertThat(state.selectedObjectIds, equalTo(setOf(state.document.content.objects.last().id)))
+        assertThat(state.document.timeline.entries.last().description, equalTo("created line drawing"))
     }
 
     @Test

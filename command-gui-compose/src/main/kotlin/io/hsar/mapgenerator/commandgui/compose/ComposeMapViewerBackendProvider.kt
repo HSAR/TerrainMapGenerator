@@ -94,10 +94,14 @@ import io.hsar.mapgenerator.commandgui.MapViewerBackend
 import io.hsar.mapgenerator.commandgui.MapViewerBackendProvider
 import io.hsar.mapgenerator.commandgui.MapViewerContextMenuCommand
 import io.hsar.mapgenerator.commandgui.MapViewerContextMenuItem
+import io.hsar.mapgenerator.commandgui.MapViewerDrawingColour
+import io.hsar.mapgenerator.commandgui.MapViewerDrawingGesture
+import io.hsar.mapgenerator.commandgui.MapViewerDrawingMode
 import io.hsar.mapgenerator.commandgui.MapViewerGlobalSettings
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayLayoutBuilder
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayRequest
 import io.hsar.mapgenerator.commandgui.MapViewerLedgerReplay
+import io.hsar.mapgenerator.commandgui.MapViewerMeasurement
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerReplayObject
 import io.hsar.mapgenerator.commandgui.MapViewerReplayObjectKind
@@ -111,6 +115,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
 import io.hsar.mapgenerator.commandgui.MapViewport
 import io.hsar.mapgenerator.commandgui.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.ViewerPoint
+import io.hsar.mapgenerator.commandgui.measureMapDrag
 import io.hsar.mapgenerator.commandgui.operation.OperationContent
 import io.hsar.mapgenerator.commandgui.operation.OperationDocument
 import io.hsar.mapgenerator.commandgui.operation.OperationDrawingObject
@@ -128,6 +133,7 @@ import io.hsar.mapgenerator.commandgui.operation.move
 import io.hsar.mapgenerator.commandgui.operation.resize
 import io.hsar.mapgenerator.commandgui.operation.rotate
 import io.hsar.mapgenerator.commandgui.operation.selectionBounds
+import io.hsar.mapgenerator.commandgui.startedAt
 import io.hsar.mapgenerator.commandgui.toWorldPoint
 import jdk.internal.net.http.common.Utils.close
 import kotlinx.coroutines.Dispatchers
@@ -732,6 +738,9 @@ private fun ViewerWorkspace(
     var unitIconSizePx by remember { mutableStateOf(UnitIconDisplaySize.coerce(initialUnitIconSizePx)) }
     var escapeMenuOpen by remember { mutableStateOf(false) }
     var contextMenu by remember { mutableStateOf<ComposeMapContextMenu?>(null) }
+    var drawingMode by remember { mutableStateOf(MapViewerDrawingMode.FREEFORM) }
+    var drawingColour by remember { mutableStateOf(MapViewerDrawingColour.RED) }
+    var toolGestureCancellationEpoch by remember { mutableStateOf(0) }
     var pendingExit by remember { mutableStateOf<ComposePendingExit?>(null) }
     val autosaveScheduler = remember { ComposeAutosaveScheduler(debounceMillis = COMPOSE_AUTOSAVE_DEBOUNCE_MS) }
     val scope = rememberCoroutineScope()
@@ -817,6 +826,11 @@ private fun ViewerWorkspace(
                     true
                 }
 
+                event.key == Key.Escape && operationState.activeTool in setOf(MapViewerTool.DRAW, MapViewerTool.MEASURE) -> {
+                    toolGestureCancellationEpoch++
+                    true
+                }
+
                 event.key == Key.Escape -> {
                     escapeMenuOpen = !escapeMenuOpen
                     true
@@ -871,6 +885,10 @@ private fun ViewerWorkspace(
                             onContextMenuDismissed = { contextMenu = null },
                         onPreviewChanged = { operationState = operationState.preview(it) },
                         onPreviewCommitted = { description -> operationState = operationState.commitPreview(description = description) },
+                        drawingMode = drawingMode,
+                        drawingColour = drawingColour,
+                        onDrawingCommitted = { operationState = operationState.addDrawing(it) },
+                        cancellationEpoch = toolGestureCancellationEpoch,
                             unitIconSizePx = unitIconSizePx,
                             onUnitIconSizeChanged = { size -> unitIconSizePx = onUnitIconSizeChanged(size) },
                             modifier = Modifier.fillMaxSize(),
@@ -878,7 +896,15 @@ private fun ViewerWorkspace(
 
                     ToolRail(
                         activeTool = operationState.activeTool,
-                        onToolSelected = { operationState = operationState.selectTool(it) },
+                        drawingMode = drawingMode,
+                        drawingColour = drawingColour,
+                        editable = !operationState.isReadOnly,
+                        onToolSelected = {
+                            operationState = operationState.selectTool(it)
+                            if (it != MapViewerTool.DRAW) drawingMode = MapViewerDrawingMode.FREEFORM
+                        },
+                        onDrawingModeSelected = { drawingMode = it },
+                        onDrawingColourSelected = { drawingColour = it },
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp),
                     )
                     CommandButton(
@@ -981,19 +1007,38 @@ private fun ViewerWorkspace(
 @Composable
 private fun ToolRail(
     activeTool: MapViewerTool,
+    drawingMode: MapViewerDrawingMode,
+    drawingColour: MapViewerDrawingColour,
+    editable: Boolean,
     onToolSelected: (MapViewerTool) -> Unit,
+    onDrawingModeSelected: (MapViewerDrawingMode) -> Unit,
+    onDrawingColourSelected: (MapViewerDrawingColour) -> Unit,
     modifier: Modifier = Modifier,
-) = Row(
+) = Column(
     modifier = modifier,
-    horizontalArrangement = Arrangement.spacedBy(12.dp),
-    verticalAlignment = Alignment.CenterVertically,
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.spacedBy(8.dp),
 ) {
-    MapViewerTool.entries.forEach { tool ->
-        CommandButton(
-            onClick = { onToolSelected(tool) },
-            active = tool == activeTool,
-        ) {
-            Text(tool.name)
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        MapViewerTool.entries.forEach { tool ->
+            CommandButton(onClick = { onToolSelected(tool) }, active = tool == activeTool, enabled = editable || tool == MapViewerTool.MEASURE) { Text(tool.name) }
+        }
+    }
+    if (editable && activeTool == MapViewerTool.DRAW) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            MapViewerDrawingMode.entries.forEach { mode ->
+                CommandButton(
+                    onClick = { onDrawingModeSelected(mode) },
+                    active = drawingMode == mode,
+                    modifier = Modifier.height(34.dp)
+                ) { Text(mode.label) }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MapViewerDrawingColour.entries.forEach { colour ->
+                Box(Modifier.size(28.dp).border(2.dp, CommandColours.White).background(colour.argb.toComposeColour()).clickable { onDrawingColourSelected(colour) }
+                    .then(if (colour == drawingColour) Modifier.border(3.dp, CommandColours.Dark) else Modifier))
+            }
         }
     }
 }
@@ -1427,6 +1472,10 @@ private fun MapCanvas(
     onContextMenuDismissed: () -> Unit,
     onPreviewChanged: (OperationContent) -> Unit,
     onPreviewCommitted: (String) -> Unit,
+    drawingMode: MapViewerDrawingMode,
+    drawingColour: MapViewerDrawingColour,
+    onDrawingCommitted: (io.hsar.mapgenerator.commandgui.operation.OperationDrawing) -> Unit,
+    cancellationEpoch: Int,
     unitIconSizePx: Double,
     onUnitIconSizeChanged: (Double) -> Unit,
     modifier: Modifier = Modifier,
@@ -1463,6 +1512,14 @@ private fun MapCanvas(
     var rightClickTargetId by remember { mutableStateOf<OperationObjectId?>(null) }
     var marquee by remember { mutableStateOf<ComposeSelectionMarquee?>(null) }
     var transformGesture by remember { mutableStateOf<ComposeTransformGesture?>(null) }
+    var drawingGesture by remember { mutableStateOf<MapViewerDrawingGesture?>(null) }
+    var measurementOrigin by remember { mutableStateOf<MapCoordinate?>(null) }
+    var measurement by remember { mutableStateOf<MapViewerMeasurement?>(null) }
+    LaunchedEffect(activeTool, renderData.gridLayer, cancellationEpoch) {
+        drawingGesture = null
+        measurementOrigin = null
+        measurement = null
+    }
     val unitIcons = remember(content.unitTemplates) { content.unitTemplates.associate { it.id to it.image.toImageBitmap() } }
     val graphicIcons = remember(content.graphicTemplates) { content.graphicTemplates.associate { it.id to it.image.toImageBitmap() } }
     val gridOverlay = remember(renderData.gridLayer, currentViewport, nordFontFamily) {
@@ -1561,6 +1618,14 @@ private fun MapCanvas(
                     }
                     return@onPointerEvent
                 }
+                if (event.buttons.isPrimaryPressed && activeTool == MapViewerTool.MEASURE) {
+                    if (renderData.gridLayer != null) screenToMap(change.position).takeIf { it.x in 0.0..1.0 && it.y in 0.0..1.0 }?.let { measurementOrigin = it }
+                    return@onPointerEvent
+                }
+                if (event.buttons.isPrimaryPressed && editable && activeTool == MapViewerTool.DRAW) {
+                    screenToMap(change.position).takeIf { it.x in 0.0..1.0 && it.y in 0.0..1.0 }?.let { drawingGesture = drawingMode.startedAt(it, drawingColour.argb) }
+                    return@onPointerEvent
+                }
                 if (!event.buttons.isPrimaryPressed || activeTool != MapViewerTool.SELECT) return@onPointerEvent
                 if (!editable) {
                     objectAtScreen(change.position)?.let { onObjectsSelected(setOf(it.id), false) }
@@ -1600,6 +1665,18 @@ private fun MapCanvas(
                     val delta = change.position - change.previousPosition
                     if (delta != Offset.Zero) {
                         panningViewport = (panningViewport ?: currentViewport).pan(ViewerPoint(delta.x.toDouble(), delta.y.toDouble()))
+                    }
+                    return@onPointerEvent
+                }
+                drawingGesture?.let { gesture ->
+                    val point = screenToMap(change.position).let { MapCoordinate(it.x.coerceIn(0.0, 1.0), it.y.coerceIn(0.0, 1.0)) }
+                    drawingGesture = gesture.update(point, event.keyboardModifiers.isShiftPressed, aspectRatio, 2.0 / minOf(mapWidth.toDouble(), mapHeight.toDouble()))
+                    return@onPointerEvent
+                }
+                measurementOrigin?.let { origin ->
+                    renderData.gridLayer?.let { layer ->
+                        val destination = screenToMap(change.position).let { MapCoordinate(it.x.coerceIn(0.0, 1.0), it.y.coerceIn(0.0, 1.0)) }
+                        measurement = measureMapDrag(layer, origin, destination, mapWidth, mapHeight)
                     }
                     return@onPointerEvent
                 }
@@ -1649,6 +1726,12 @@ private fun MapCanvas(
                     )
                     transformGesture = null
                 }
+                drawingGesture?.let { gesture ->
+                    gesture.committedOrNull()?.let(onDrawingCommitted)
+                    drawingGesture = null
+                }
+                measurementOrigin = null
+                measurement = null
                 marquee?.let { current ->
                     val box = MapSelectionBox(
                         ViewerPoint(current.start.x.toDouble(), current.start.y.toDouble()),
@@ -1674,8 +1757,9 @@ private fun MapCanvas(
                     )
                 }
                 content.objects.filterIsInstance<OperationDrawingObject>().forEach { value ->
-                    drawOperationDrawing(value, mapWidth, mapHeight)
+                    drawOperationDrawing(value.drawing, mapWidth, mapHeight)
                 }
+                drawingGesture?.let { drawOperationDrawing(it.preview, mapWidth, mapHeight) }
                 content.objects.filterIsInstance<OperationGraphic>().forEach { value ->
                     val icon = graphicIcons[value.graphicTemplateId]
                     val centre = Offset((value.coordinate.x * mapWidth).toFloat(), (value.coordinate.y * mapHeight).toFloat())
@@ -1699,6 +1783,21 @@ private fun MapCanvas(
                     segment.thickness.toFloat(),
                     StrokeCap.Square
                 )
+            }
+            measurement?.let { value ->
+                val colour = renderData.gridLayer?.colour?.toComposeColour() ?: Color.Red
+                val origin = Offset(
+                    currentViewport.screenX(mapOffsetX + value.origin.x * mapWidth).toFloat(),
+                    currentViewport.screenY(mapOffsetY + value.origin.y * mapHeight).toFloat(),
+                )
+                val destination = Offset(
+                    currentViewport.screenX(mapOffsetX + value.destination.x * mapWidth).toFloat(),
+                    currentViewport.screenY(mapOffsetY + value.destination.y * mapHeight).toFloat(),
+                )
+                drawLine(colour, origin, destination, 2f)
+                val style = TextStyle(colour, fontFamily = nordFontFamily, fontSize = 16.sp)
+                drawText(textMeasurer, value.distanceText, destination + Offset(12f, 12f), style)
+                drawText(textMeasurer, value.bearingText, destination + Offset(12f, 32f), style)
             }
             content.objects.filterIsInstance<OperationUnit>().forEach { value ->
                 val icon = unitIcons[value.unitTemplateId]
@@ -1803,13 +1902,13 @@ private fun MapCanvas(
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawOperationDrawing(
-    value: OperationDrawingObject,
+    drawing: io.hsar.mapgenerator.commandgui.operation.OperationDrawing,
     mapWidth: Int,
     mapHeight: Int,
 ) {
-    val colour = value.drawing.colour.let { Color(it.red, it.green, it.blue, it.alpha) }
+    val colour = drawing.colour.let { Color(it.red, it.green, it.blue, it.alpha) }
     fun io.hsar.mapgenerator.commandgui.operation.OperationDrawingPoint.offset() = Offset((x * mapWidth).toFloat(), (y * mapHeight).toFloat())
-    when (val drawing = value.drawing) {
+    when (drawing) {
         is OperationFreeformDrawing -> if (drawing.points.size > 1) drawPath(
             Path().apply { moveTo(drawing.points.first().offset().x, drawing.points.first().offset().y); drawing.points.drop(1).forEach { lineTo(it.offset().x, it.offset().y) } },
             colour, style = androidx.compose.ui.graphics.drawscope.Stroke(2f),
@@ -2348,6 +2447,9 @@ private fun MapViewerReplayObject.selectionBounds(
 }
 
 private fun java.awt.Color.toComposeColour() =
+    Color(red = red, green = green, blue = blue, alpha = alpha)
+
+private fun io.hsar.mapgenerator.commandgui.operation.OperationArgb.toComposeColour() =
     Color(red = red, green = green, blue = blue, alpha = alpha)
 
 internal fun java.awt.image.BufferedImage.toImageBitmap(): ImageBitmap =

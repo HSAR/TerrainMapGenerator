@@ -7,12 +7,15 @@ import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
 import io.hsar.mapgenerator.commandgui.MapViewport
 import io.hsar.mapgenerator.commandgui.operation.OperationContent
 import io.hsar.mapgenerator.commandgui.operation.OperationDocument
+import io.hsar.mapgenerator.commandgui.operation.OperationDrawing
+import io.hsar.mapgenerator.commandgui.operation.OperationDrawingObject
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntry
 import io.hsar.mapgenerator.commandgui.operation.OperationUiState
 import io.hsar.mapgenerator.commandgui.operation.OperationUnit
 import io.hsar.mapgenerator.commandgui.operation.changesFrom
 import io.hsar.mapgenerator.commandgui.operation.delete
+import java.util.*
 import java.util.Collections.emptyMap
 import java.util.Collections.emptySet
 
@@ -108,6 +111,14 @@ data class ComposeOperationState(
         if (before == updated) return this
         val after = document.content.copy(objects = document.content.objects.map { value -> if (value.id == updated.id) updated else value })
         return preview(after).commitPreview(description = "edited ${updated.instanceName.ifBlank { "unit" }}")
+    }
+
+    fun addDrawing(drawing: OperationDrawing): ComposeOperationState {
+        if (isReadOnly) return this
+        val drawingObject = OperationDrawingObject(OperationObjectId(UUID.randomUUID()), drawing)
+        return preview(document.content.copy(objects = document.content.objects + drawingObject))
+            .commitPreview(description = "created ${drawing.displayName.lowercase()}")
+            .copy(selectedObjectIds = setOf(drawingObject.id))
     }
 
     fun undo(): ComposeOperationState {

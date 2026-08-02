@@ -23,7 +23,6 @@ import io.hsar.mapgenerator.image.ImageUtils.compose
 import io.hsar.mapgenerator.image.ImageWriter
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
-import org.apache.logging.log4j.util.Lazy.lazy
 import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
