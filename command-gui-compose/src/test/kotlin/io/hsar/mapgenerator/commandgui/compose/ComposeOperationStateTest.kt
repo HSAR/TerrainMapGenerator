@@ -6,11 +6,16 @@ import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerTool
 import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
+import io.hsar.mapgenerator.commandgui.MapViewport
+import io.hsar.mapgenerator.commandgui.ViewerPoint
 import io.hsar.mapgenerator.commandgui.operation.OperationArgb
 import io.hsar.mapgenerator.commandgui.operation.OperationChangeSet
 import io.hsar.mapgenerator.commandgui.operation.OperationDocument
 import io.hsar.mapgenerator.commandgui.operation.OperationDrawingObject
 import io.hsar.mapgenerator.commandgui.operation.OperationDrawingPoint
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorId
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorKind
 import io.hsar.mapgenerator.commandgui.operation.OperationLineDrawing
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.operation.OperationTimeline
@@ -19,6 +24,7 @@ import io.hsar.mapgenerator.commandgui.operation.OperationUiState
 import io.hsar.mapgenerator.commandgui.operation.OperationUnit
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateId
 import io.hsar.mapgenerator.commandgui.operation.OperationValueChange
+import io.hsar.mapgenerator.commandgui.operation.OperationWorkspaceState
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -74,22 +80,33 @@ class ComposeOperationStateTest {
 
     @Test
     fun `keeps several independently identified editors open`() {
-        val first = ComposeEditorInstance("unit:first", "unit", objectId)
-        val second = ComposeEditorInstance("unit:second", "unit", OperationObjectId(UUID.fromString("00000000-0000-0000-0000-000000000003")))
+        val state = ComposeOperationState(documentWith(unit)).openUnitEditor(objectId).openUnitEditor(objectId)
 
-        val state = ComposeOperationState(documentWith(unit)).openEditor(first).openEditor(second).openEditor(first)
-
-        assertThat(state.openEditors, equalTo(listOf(first, second)))
+        assertThat(state.openEditors.map { it.id.value }, equalTo(listOf("operation-notes", "unit:${objectId.value}")))
     }
 
     @Test
     fun `closing one editor retains its independently identified sibling`() {
-        val first = ComposeEditorInstance("unit:first", "unit", objectId)
-        val second = ComposeEditorInstance("unit:second", "unit", OperationObjectId(UUID.fromString("00000000-0000-0000-0000-000000000003")))
+        val editorId = OperationEditorId("unit:${objectId.value}")
+        val state = ComposeOperationState(documentWith(unit)).openUnitEditor(objectId).closeEditor(editorId)
 
-        val state = ComposeOperationState(documentWith(unit)).openEditor(first).openEditor(second).closeEditor(first.id)
+        assertThat(state.openEditors.map { it.id.value }, equalTo(listOf("operation-notes")))
+    }
 
-        assertThat(state.openEditors, equalTo(listOf(second)))
+    @Test
+    fun `closing discards a unit draft and reopening hydrates current content`() {
+        // Arrange
+        val editorId = OperationEditorId("unit:${objectId.value}")
+        val opened = ComposeOperationState(documentWith(unit)).openUnitEditor(objectId)
+        val draft = opened.workspace.editor(editorId)!!.draft as OperationEditorDraft.Unit
+
+        // Act
+        val reopened = opened.updateEditorDraft(editorId, draft.copy(name = "Unsaved"))
+            .closeEditor(editorId)
+            .openUnitEditor(objectId)
+
+        // Assert
+        assertThat((reopened.workspace.editor(editorId)!!.draft as OperationEditorDraft.Unit).name, equalTo("Unit"))
     }
 
     @Test
@@ -134,10 +151,8 @@ class ComposeOperationStateTest {
         val uiState = OperationUiState(
             selectedTool = MapViewerTool.MEASURE,
             selectedObjectIds = setOf(objectId),
-            workspaceMode = MapViewerWorkspaceMode.FLOATING,
             enabledLayerIds = setOf("GRID"),
-            openEditorIds = listOf("unit-editor"),
-            drafts = mapOf("notes" to "restored"),
+            workspace = OperationWorkspaceState.default("restored").copy(mode = MapViewerWorkspaceMode.FLOATING),
         )
 
         val state = ComposeOperationState(documentWith(unit).copy(uiState = uiState, persisted = true))
@@ -145,10 +160,37 @@ class ComposeOperationStateTest {
         assertThat(state.activeTool, equalTo(MapViewerTool.MEASURE))
         assertThat(state.workspaceMode, equalTo(MapViewerWorkspaceMode.FLOATING))
         assertThat(state.enabledLayerIds, equalTo(setOf("GRID")))
-        assertThat(state.openEditors.single().id, equalTo("unit-editor"))
-        assertThat(state.drafts["notes"], equalTo("restored"))
+        assertThat(state.openEditors.single().id, equalTo(OperationWorkspaceState.DEFAULT_NOTES_ID))
+        assertThat((state.openEditors.single().draft as OperationEditorDraft.Notes).body, equalTo("restored"))
         assertThat(state.saveStatus, equalTo(ComposeSaveStatus.CLEAN))
         assertThat(state.hasUnsavedChanges, equalTo(false))
+    }
+
+    @Test
+    fun `pinning stores the legacy compatible top right map anchor`() {
+        val viewport = MapViewport.centered(166.0, 166.0, 100, 100, 2.0)
+        val editorId = OperationWorkspaceState.DEFAULT_NOTES_ID
+        val state = ComposeOperationState(documentWith(unit)).updateViewport(viewport)
+
+        val pinned = state.pinEditor(editorId, ViewerPoint(60.0, 20.0))
+
+        val floating = pinned.workspace.editor(editorId)!!.floating
+        assertThat(floating.pinned, equalTo(true))
+        assertThat(floating.mapAnchor, equalTo(ViewerPoint(88.0, 68.0)))
+    }
+
+    @Test
+    fun `history preview retains a target editor but live deletion prunes it`() {
+        // Arrange
+        val opened = ComposeOperationState(documentWith(unit)).openUnitEditor(objectId)
+
+        // Act
+        val historical = opened.previewHistory(-1)
+        val deleted = opened.selectObject(objectId).deleteSelection()
+
+        // Assert
+        assertThat(historical.openEditors.any { it.kind == OperationEditorKind.UNIT }, equalTo(true))
+        assertThat(deleted.openEditors.any { it.kind == OperationEditorKind.UNIT }, equalTo(false))
     }
 
     @Test

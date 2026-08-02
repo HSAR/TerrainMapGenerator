@@ -12,7 +12,8 @@ The migration is intentionally incomplete. Keep these boundaries accurate while 
   `operation/OperationTransforms.kt`, `OperationTransformGestures.kt` and `OperationSelectionGeometry.kt` are authoritative for transforms, hit testing, selection frames and
   marquee geometry in both viewers. KorGE adapts these rules through snapshot/projection wrappers; do not recreate transform math below `korge` or in Compose.
 - `ComposeOperationState` is the authoritative Compose session state. It owns the document/head replay, camera, tool, selection, historical preview, transform preview, save
-  revisions, workspace mode and current editor/draft records. Composables may own only genuinely transient gesture and window-layout details.
+  revisions and the neutral `OperationWorkspaceState`. Composables may own only active drag/resize deltas; persistent editor identity, typed drafts, dock placement and floating
+  state belong in `commandgui.operation`.
 - `MapViewerSaveRepository.loadOperation/createOperation/saveOperation` is the Compose document persistence entry point. Unknown `additionalData.json` fields and legacy UI records
   must remain additive and round-trip unchanged.
 - The neutral boundary is not finished. `MapViewerSaveRepository` still calls KorGE `CameraViewport` and `LegacyOperationAdapter`; KorGE still runs its own `LedgerEntry`, snapshot,
@@ -32,19 +33,20 @@ Treat the following as implemented and protected behavior, not future work:
   cancellation and one-entry commit. Measure is transient, grid-aware and remains available during historical replay.
 - The live ledger supports current/history selection, read-only preview, undo/redo, branch truncation and selection pruning. Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+S, Delete and Escape
   are wired.
-- Unit editing is a functional non-modal floating overlay. Multiple unit editors can coexist in one session and edits to name, position, facing and destroyed state commit through
-  the neutral timeline.
+- Operation notes and basic unit editing share typed editor instances in a resizable right dock or floating windows. Multiple unit editors retain drafts and placement across mode
+  switches; floating bounds, minimization, Z-order and legacy-compatible map pinning persist. Unit edits to name, position, facing and destroyed state commit through the neutral
+  timeline; closing or cancelling intentionally discards the draft.
 - Revisioned two-second autosave, manual save, save-gated return/close, in-flight mutation handling and Retry/Cancel Exit are implemented. New operations save without requiring a
   first edit.
-- Additive UI persistence currently stores tool, selection, workspace mode, enabled-layer IDs, editor IDs and string drafts while preserving legacy dialog/dock and unknown JSON.
+- Additive UI schema version 3 stores the typed workspace while continuing to write version-2 IDs/drafts/dock panels and KorGE `unit-edit` dialog records. Version-2 and legacy
+  unit-dialog saves migrate into functional typed editors; unknown additional-data and unsupported legacy dialog/draft fields remain preserved.
 
 Do not overstate these partial implementations:
 
 - `enabledLayerIds` is state/persistence only; Compose has no real layer controller and Canvas still paints the supplied base map and grid directly.
 - The notes panels edit one string draft, not timeline-backed `OperationNote` records with references and ordering.
-- Restored editor IDs lose their typed editor model (`"restored"` is used), and floating bounds/minimize/pin/Z-order are transient. Persisted editor IDs therefore do not yet
-  restore
-  functional editor windows.
+- The workspace implementation is deliberately a prototype: only the right dock is rendered, tabs cannot yet be interactively reordered or moved between regions, and only notes
+  plus the basic unit editor have functional Compose bodies. The neutral model already retains generic regions, tab order and opaque restored editor records for later ports.
 - Only `Edit Unit` and delete context-menu actions are functional. Graphic editing, object creation from templates, SITREP and the other legacy commands are still absent.
 - `loadMap()` and `MapViewerLedgerReplay` remain compatibility projections in the save repository and non-Compose callers. Compose production code no longer uses the obsolete
   replay Canvas or replay support extensions.
@@ -59,13 +61,14 @@ connect Compose to the rule, and leave only rendering/input adaptation in each b
 Completed: transform gestures and selection geometry now use neutral operation content and projection APIs in both viewers. The old KorGE resize/pivot implementations and unused
 Compose replay renderer have been deleted; parity coverage includes every persisted drawing kind, mixed selections, graphics, modifiers, snapping, cancellation and handles.
 
-1. Replace string editor IDs with a neutral typed editor/workspace model. It must retain editor kind, target ID, draft, validation, floating bounds, minimized/pinned state, map
-   anchor, Z-order and dock/tab placement. New/load and docked/floating switching must reuse the same editor instances.
-2. Make layers real authoritative state: expose layer controls, regenerate only the enabled generated layers, preserve the seed, render only enabled layers, and keep camera/editor
+Completed: string editor IDs and viewer-local drafts/windows have been replaced by `OperationWorkspaceState`. Notes and unit editors restore functionally in docked/floating modes;
+schema-v3 persistence remains bidirectionally compatible with the KorGE unit-dialog record.
+
+1. Make layers real authoritative state: expose layer controls, regenerate only the enabled generated layers, preserve the seed, render only enabled layers, and keep camera/editor
    state stable across regeneration. Distinguish generated layers from repeated static-image layers.
-3. Consolidate the duplicate top-level and KorGE grid-overlay implementations behind one neutral layout contract, including top/left fading, sticky labels, major/fine switching,
+2. Consolidate the duplicate top-level and KorGE grid-overlay implementations behind one neutral layout contract, including top/left fading, sticky labels, major/fine switching,
    measurements and live references. Keep renderer-specific text measurement and drawing at the edges.
-4. Retire `loadMap()` once callers use `loadOperation()`. Remove the `CameraViewport` and KorGE thumbnail-layout dependencies from saving, and replace the O(n²) prefix replay in
+3. Retire `loadMap()` once callers use `loadOperation()`. Remove the `CameraViewport` and KorGE thumbnail-layout dependencies from saving, and replace the O(n²) prefix replay in
    `LegacyOperationAdapter` with direct or incremental conversion. This is the next step toward a genuinely engine-neutral `command-gui-core`.
 
 Phase 1 gate: neutral transform fixtures cover every shape/group/modifier combination; restored editors are functional; layer toggles survive save/reload; both viewers pass the
@@ -102,8 +105,9 @@ results from the same operation fixture.
 
 ### Phase 4 — Finish the Compose workspace and desktop product
 
-1. Implement permanent docked regions with resizable splits, tabs, activation and collapse; complete floating drag/resize/minimize/pin/Z-order/map-anchor behavior; preserve drafts
-   and validation when switching modes.
+1. Expand the typed workspace beyond its current right-dock prototype: add left/bottom regions, tab reordering and cross-region moves, stable keyboard/focus activation,
+   editor-specific
+   validation state and the remaining editor bodies. Preserve the implemented floating drag/resize/minimize/pin/Z-order/map-anchor behavior.
 2. Finish native desktop behavior: menus and shortcuts, focus traversal, context menus, confirmations, snackbars/errors, native AWT file dialogs, app icons/licenses/resources and
    robust loading/progress/cancellation states. Keep one Compose rendering surface and use Material/Compose multiline text controls.
 3. Make save/exit orchestration independently testable by injecting the saver as well as the existing autosave clock. Cover failed autosave, retry, mutation during save, forced

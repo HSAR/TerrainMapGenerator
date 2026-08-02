@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -89,6 +90,7 @@ internal fun CommandFloatingPanel(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     titleBarModifier: Modifier = Modifier,
+    titleActions: @Composable RowScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) = Surface(
     modifier = modifier,
@@ -111,6 +113,7 @@ internal fun CommandFloatingPanel(
                 color = CommandColours.White,
                 style = MaterialTheme.typography.labelLarge.copy(fontSize = COMMAND_BUTTON_FONT_SIZE),
             )
+            titleActions()
             Box(
                 modifier = Modifier
                     .size(42.dp)

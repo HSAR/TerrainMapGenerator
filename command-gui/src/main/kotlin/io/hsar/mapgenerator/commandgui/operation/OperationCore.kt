@@ -8,7 +8,6 @@ import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerTool
-import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
 import java.awt.image.BufferedImage
 import java.nio.file.Path
 import java.time.Instant
@@ -257,10 +256,8 @@ data class OperationGeneratedImage(
 data class OperationUiState(
     val selectedTool: MapViewerTool = MapViewerTool.SELECT,
     val selectedObjectIds: Set<OperationObjectId> = emptySet(),
-    val workspaceMode: MapViewerWorkspaceMode = MapViewerWorkspaceMode.DOCKED,
     val enabledLayerIds: Set<String> = emptySet(),
-    val openEditorIds: List<String> = emptyList(),
-    val drafts: Map<String, String> = emptyMap(),
+    val workspace: OperationWorkspaceState = OperationWorkspaceState.default(),
 )
 
 data class OperationDocument(

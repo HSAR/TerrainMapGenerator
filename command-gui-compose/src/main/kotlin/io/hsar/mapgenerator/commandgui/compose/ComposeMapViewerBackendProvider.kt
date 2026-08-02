@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -114,8 +115,15 @@ import io.hsar.mapgenerator.commandgui.UnitIconDisplaySize
 import io.hsar.mapgenerator.commandgui.ViewerPoint
 import io.hsar.mapgenerator.commandgui.measureMapDrag
 import io.hsar.mapgenerator.commandgui.operation.OperationContent
+import io.hsar.mapgenerator.commandgui.operation.OperationDockRegion
 import io.hsar.mapgenerator.commandgui.operation.OperationDocument
 import io.hsar.mapgenerator.commandgui.operation.OperationDrawingObject
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorBounds
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorId
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorKind
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorState
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorTarget
 import io.hsar.mapgenerator.commandgui.operation.OperationFreeformDrawing
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphic
 import io.hsar.mapgenerator.commandgui.operation.OperationLineDrawing
@@ -165,7 +173,7 @@ class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
         initialSettings: MapViewerSettings,
         initialSetupInputs: MapViewerSetupInputs,
     ) = application {
-        var workspaceMode by remember { mutableStateOf(WorkspaceMode.DOCKED) }
+        var workspaceModeRequestHandler by remember { mutableStateOf<(WorkspaceMode) -> Unit>({}) }
         var windowTitle by remember { mutableStateOf(MapViewerSettings().windowTitle()) }
         var closeRequestHandler by remember { mutableStateOf<() -> Unit>({ exitApplication() }) }
         val windowState = rememberWindowState(placement = COMPOSE_INITIAL_WINDOW_PLACEMENT)
@@ -179,12 +187,12 @@ class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
                 Menu("Workspace") {
                     Item(
                         text = "Docked",
-                        onClick = { workspaceMode = WorkspaceMode.DOCKED },
+                        onClick = { workspaceModeRequestHandler(WorkspaceMode.DOCKED) },
                         shortcut = null,
                     )
                     Item(
                         text = "Floating",
-                        onClick = { workspaceMode = WorkspaceMode.FLOATING },
+                        onClick = { workspaceModeRequestHandler(WorkspaceMode.FLOATING) },
                         shortcut = null,
                     )
                 }
@@ -195,9 +203,8 @@ class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
                     renderMap = renderMap,
                     initialSettings = initialSettings,
                     initialSetupInputs = initialSetupInputs,
-                    workspaceMode = workspaceMode,
                     awtWindow = window,
-                    onWorkspaceModeChanged = { workspaceMode = it },
+                    onWorkspaceModeRequestHandlerChanged = { workspaceModeRequestHandler = it },
                     onTitleChanged = { windowTitle = it },
                     onExit = ::exitApplication,
                     onCloseRequestHandlerChanged = { closeRequestHandler = it },
@@ -214,9 +221,8 @@ private fun ComposeMapViewer(
     renderMap: (MapViewerSettings) -> MapViewerRenderData,
     initialSettings: MapViewerSettings,
     initialSetupInputs: MapViewerSetupInputs,
-    workspaceMode: WorkspaceMode,
     awtWindow: java.awt.Window,
-    onWorkspaceModeChanged: (WorkspaceMode) -> Unit,
+    onWorkspaceModeRequestHandlerChanged: ((WorkspaceMode) -> Unit) -> Unit,
     onTitleChanged: (String) -> Unit,
     onExit: () -> Unit,
     onCloseRequestHandlerChanged: (() -> Unit) -> Unit,
@@ -245,17 +251,19 @@ private fun ComposeMapViewer(
             ViewerWorkspace(
                 initialMap = map,
                 repository = repository,
-                workspaceMode = workspaceMode,
                 initialUnitIconSizePx = globalSettings.unitIconSizePx(),
                 onUnitIconSizeChanged = globalSettings::updateUnitIconSizePx,
-                onWorkspaceModeChanged = onWorkspaceModeChanged,
+                onWorkspaceModeRequestHandlerChanged = onWorkspaceModeRequestHandlerChanged,
                 onReturnToLaunchpad = launchState::returnToLaunchpad,
                 onExitProgram = onExit,
                 onCloseRequestHandlerChanged = onCloseRequestHandlerChanged,
             )
         }
     } ?: run {
-        LaunchedEffect(launchState.screen) { onCloseRequestHandlerChanged(onExit) }
+        LaunchedEffect(launchState.screen) {
+            onCloseRequestHandlerChanged(onExit)
+            onWorkspaceModeRequestHandlerChanged {}
+        }
         when (launchState.screen) {
         ComposeLaunchScreen.MAIN -> ComposeMainLaunchpad(
             onNewOperation = launchState::showNewOperation,
@@ -716,18 +724,15 @@ private fun SavedOperationCard(
 
 private val SAVE_DATE_FORMAT = DateTimeFormatter.ofPattern("d MMM uuuu, HH:mm")
 private const val COMPOSE_OPERATION_MAP_ID = "compose-operation-map"
-private const val OPERATION_NOTES_DRAFT_ID = "operation-notes"
 private const val COMPOSE_AUTOSAVE_DEBOUNCE_MS = 2_000L
-private const val UNIT_EDITOR_TYPE = "unit"
 
 @Composable
 private fun ViewerWorkspace(
     initialMap: ComposeActiveMap,
     repository: MapViewerSaveRepository,
-    workspaceMode: WorkspaceMode,
     initialUnitIconSizePx: Double,
     onUnitIconSizeChanged: (Double) -> Double,
-    onWorkspaceModeChanged: (WorkspaceMode) -> Unit,
+    onWorkspaceModeRequestHandlerChanged: ((WorkspaceMode) -> Unit) -> Unit,
     onReturnToLaunchpad: () -> Unit,
     onExitProgram: () -> Unit,
     onCloseRequestHandlerChanged: (() -> Unit) -> Unit,
@@ -735,7 +740,6 @@ private fun ViewerWorkspace(
     var operationState by remember(initialMap.document) {
         mutableStateOf(ComposeOperationState(initialMap.document))
     }
-    var workspaceInitialized by remember(initialMap.document) { mutableStateOf(false) }
     var unitIconSizePx by remember { mutableStateOf(UnitIconDisplaySize.coerce(initialUnitIconSizePx)) }
     var escapeMenuOpen by remember { mutableStateOf(false) }
     var contextMenu by remember { mutableStateOf<ComposeMapContextMenu?>(null) }
@@ -808,13 +812,12 @@ private fun ViewerWorkspace(
         }
     }
 
-    LaunchedEffect(workspaceMode) {
-        if (workspaceInitialized) {
-            operationState = operationState.updateWorkspaceMode(workspaceMode)
-        } else {
-            workspaceInitialized = true
-            onWorkspaceModeChanged(operationState.workspaceMode)
-        }
+    val currentWorkspaceModeRequester by rememberUpdatedState<(WorkspaceMode) -> Unit> { mode ->
+        operationState = operationState.updateWorkspaceMode(mode)
+    }
+    DisposableEffect(Unit) {
+        onWorkspaceModeRequestHandlerChanged { currentWorkspaceModeRequester(it) }
+        onDispose { onWorkspaceModeRequestHandlerChanged {} }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -909,25 +912,19 @@ private fun ViewerWorkspace(
                         onDrawingColourSelected = { drawingColour = it },
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp),
                     )
-                    CommandButton(
-                        onClick = { escapeMenuOpen = true },
+                    Row(
                         modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
-                    )
-                    {
-                        Text("MENU")
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        CommandButton(onClick = { escapeMenuOpen = true }) { Text("MENU") }
+                        CommandButton(onClick = { operationState = operationState.openNotes() }) { Text("NOTES") }
                     }
                     contextMenu?.let { menu ->
                         ComposeMapContextMenu(
                             menu = menu,
                             onActionSelected = { action ->
                                 when (action.action) {
-                                    MapViewerContextMenuCommand.EDIT_UNIT -> operationState = operationState.openEditor(
-                                        ComposeEditorInstance(
-                                            id = menu.objectId.unitEditorId(),
-                                            type = UNIT_EDITOR_TYPE,
-                                            objectId = menu.objectId,
-                                        ),
-                                    )
+                                    MapViewerContextMenuCommand.EDIT_UNIT -> operationState = operationState.openUnitEditor(menu.objectId)
                                     else -> if (action.action.name.startsWith("DELETE")) {
                                         operationState = operationState.selectObject(menu.objectId).deleteSelection()
                                     }
@@ -939,17 +936,16 @@ private fun ViewerWorkspace(
                     }
 
                     if (operationState.workspaceMode == WorkspaceMode.FLOATING) {
-                        FloatingNotesPanel(
-                            note = operationState.drafts[OPERATION_NOTES_DRAFT_ID].orEmpty(),
-                            onNoteChanged = { operationState = operationState.updateDraft(OPERATION_NOTES_DRAFT_ID, it) },
+                        FloatingWorkspace(
+                            state = operationState,
+                            onStateChanged = { operationState = it },
                         )
                     }
                 }
                 if (operationState.workspaceMode == WorkspaceMode.DOCKED) {
-                    NotesPanel(
-                        note = operationState.drafts[OPERATION_NOTES_DRAFT_ID].orEmpty(),
-                        onNoteChanged = { operationState = operationState.updateDraft(OPERATION_NOTES_DRAFT_ID, it) },
-                        modifier = Modifier.requiredWidth(320.dp).fillMaxHeight(),
+                    DockedWorkspace(
+                        state = operationState,
+                        onStateChanged = { operationState = it },
                     )
                 }
             }
@@ -986,23 +982,6 @@ private fun ViewerWorkspace(
             onCancel = { pendingExit = null },
         )
     }
-        operationState.openEditors.filter { it.type == UNIT_EDITOR_TYPE }.forEachIndexed { index, editor ->
-            key(editor.id) {
-                (editor.objectId?.let(operationState.visibleContent::objectById) as? OperationUnit)?.let { unit ->
-                    ComposeUnitEditDialog(
-                        unit = unit,
-                        templateName = operationState.visibleContent.unitTemplate(unit.unitTemplateId)?.name.orEmpty(),
-                        initialPosition = IntOffset(96 + index * 32, 96 + index * 32),
-                        editable = !operationState.isReadOnly,
-                        onSave = { updated ->
-                            operationState = operationState.editUnit(updated)
-                            operationState = operationState.closeEditor(editor.id)
-                        },
-                        onDismiss = { operationState = operationState.closeEditor(editor.id) },
-                    )
-                } ?: run { operationState = operationState.closeEditor(editor.id) }
-            }
-        }
     }
 }
 
@@ -1066,45 +1045,264 @@ private fun NotesPanel(
 }
 
 @Composable
-private fun FloatingNotesPanel(
-    note: String,
-    onNoteChanged: (String) -> Unit,
+private fun DockedWorkspace(
+    state: ComposeOperationState,
+    onStateChanged: (ComposeOperationState) -> Unit,
 ) {
-    var position by remember { mutableStateOf(IntOffset(32, 32)) }
-    var minimized by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier
-            .offset { position }
-            .size(width = 340.dp, height = if (minimized) 48.dp else 360.dp)
-            .border(1.dp, MaterialTheme.colorScheme.outline)
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(8.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().pointerInput(Unit) {
-                detectDragGestures { change, dragAmount ->
+    val dock = state.workspace.dockRegions.firstOrNull { it.region == OperationDockRegion.RIGHT }
+        ?: return
+    var previewWidth by remember(dock.size) { mutableStateOf(dock.size) }
+    var resizeStart by remember { mutableStateOf(dock.size) }
+    var resizeDistance by remember { mutableStateOf(0f) }
+    val density = LocalDensity.current
+    Row(Modifier.requiredWidth(if (dock.collapsed) 48.dp else previewWidth.dp).fillMaxHeight()) {
+        Box(
+            Modifier.width(8.dp).fillMaxHeight().background(CommandColours.Dark).pointerInput(dock.region) {
+                detectDragGestures(
+                    onDragStart = { resizeStart = dock.size; resizeDistance = 0f },
+                    onDragEnd = { onStateChanged(state.updateDockSize(OperationDockRegion.RIGHT, previewWidth)) },
+                ) { change, amount ->
                     change.consume()
-                    position += IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt())
+                    resizeDistance -= amount.x
+                    previewWidth = (resizeStart + with(density) { resizeDistance.toDp().value }).coerceIn(240.0, 720.0)
                 }
             },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Notes", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            CommandButton(onClick = { minimized = !minimized }) {
-                Text(if (minimized) "Restore" else "Minimize")
+        )
+        Column(Modifier.weight(1f).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceVariant)) {
+            CommandButton(
+                onClick = { onStateChanged(state.toggleDockCollapsed(OperationDockRegion.RIGHT)) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(if (dock.collapsed) "OPEN" else "COLLAPSE") }
+            if (!dock.collapsed) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                    dock.editorIds.mapNotNull(state.workspace::editor).forEach { editor ->
+                        CommandButton(
+                            onClick = { onStateChanged(state.activateDockTab(OperationDockRegion.RIGHT, editor.id)) },
+                            active = editor.id == dock.activeEditorId,
+                        ) { Text(editor.title(state.visibleContent)) }
+                    }
+                }
+                dock.activeEditorId?.let(state.workspace::editor)?.let { editor ->
+                    Column(Modifier.fillMaxSize().padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(editor.title(state.visibleContent), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                            CommandButton(onClick = { onStateChanged(state.closeEditor(editor.id)) }) { Text("×") }
+                        }
+                        EditorContent(editor, state, onStateChanged, Modifier.weight(1f).fillMaxWidth())
+                    }
+                }
             }
-        }
-        if (!minimized) {
-            OutlinedTextField(
-                value = note,
-                onValueChange = onNoteChanged,
-                modifier = Modifier.fillMaxSize().padding(top = 8.dp),
-                minLines = 8,
-            )
         }
     }
 }
+
+@Composable
+private fun FloatingWorkspace(
+    state: ComposeOperationState,
+    onStateChanged: (ComposeOperationState) -> Unit,
+) = state.workspace.editors.forEach { editor ->
+    key(editor.id.value) {
+        FloatingEditorWindow(editor, state, onStateChanged)
+    }
+}
+
+@Composable
+@OptIn(ExperimentalComposeUiApi::class)
+private fun FloatingEditorWindow(
+    editor: OperationEditorState,
+    state: ComposeOperationState,
+    onStateChanged: (ComposeOperationState) -> Unit,
+) {
+    val density = LocalDensity.current
+    val densityScale = density.density.toDouble()
+    val viewport = state.viewport
+    val projected = editor.displayBounds(state, densityScale).clampedTo(
+        (viewport?.viewportWidth ?: Int.MAX_VALUE) / densityScale,
+        (viewport?.viewportHeight ?: Int.MAX_VALUE) / densityScale,
+    )
+    var bounds by remember(editor.id, projected) { mutableStateOf(projected) }
+    var dragStart by remember(editor.id) { mutableStateOf(projected) }
+    var dragDelta by remember(editor.id) { mutableStateOf(Offset.Zero) }
+    fun clamped(value: OperationEditorBounds) = value.clampedTo(
+        (viewport?.viewportWidth ?: Int.MAX_VALUE) / densityScale,
+        (viewport?.viewportHeight ?: Int.MAX_VALUE) / densityScale,
+    )
+
+    fun commit(value: OperationEditorBounds) {
+        var next = state.updateFloatingEditor(editor.id, value)
+        if (editor.floating.pinned) {
+            next = next.pinEditor(editor.id, ViewerPoint((value.left + value.width) * densityScale, value.top * densityScale))
+        }
+        onStateChanged(next)
+    }
+
+    Box(
+        Modifier.offset { IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt()) }
+            .width(bounds.width.dp)
+            .height(if (editor.floating.minimized) 42.dp else bounds.height.dp)
+            .onPointerEvent(PointerEventType.Press) { onStateChanged(state.activateEditor(editor.id)) },
+    ) {
+        CommandFloatingPanel(
+            title = editor.title(state.visibleContent),
+            onClose = { onStateChanged(state.closeEditor(editor.id)) },
+            modifier = Modifier.fillMaxSize(),
+            titleBarModifier = Modifier.pointerInput(editor.id) {
+                detectDragGestures(
+                    onDragStart = { dragStart = bounds; dragDelta = Offset.Zero },
+                    onDragEnd = { commit(bounds) },
+                ) { change, amount ->
+                    change.consume()
+                    dragDelta += amount
+                    bounds = clamped(
+                        dragStart.copy(
+                            left = dragStart.left + (dragDelta.x / density.density).toDouble(),
+                            top = dragStart.top + (dragDelta.y / density.density).toDouble(),
+                        )
+                    )
+                }
+            },
+            titleActions = {
+                CommandButton(onClick = { onStateChanged(state.toggleEditorMinimized(editor.id)) }) {
+                    Text(if (editor.floating.minimized) "+" else "−")
+                }
+                CommandButton(onClick = {
+                    if (editor.floating.pinned) onStateChanged(state.unpinEditor(editor.id, bounds))
+                    else onStateChanged(state.pinEditor(editor.id, ViewerPoint((bounds.left + bounds.width) * densityScale, bounds.top * densityScale)))
+                }, active = editor.floating.pinned) { Text("PIN") }
+            },
+        ) {
+            if (!editor.floating.minimized) EditorContent(editor, state, onStateChanged, Modifier.weight(1f).fillMaxWidth())
+        }
+        if (!editor.floating.minimized) Canvas(
+            Modifier.align(Alignment.BottomEnd).size(30.dp).pointerInput(editor.id) {
+                detectDragGestures(
+                    onDragStart = { dragStart = bounds; dragDelta = Offset.Zero },
+                    onDragEnd = { commit(bounds) },
+                ) { change, amount ->
+                    change.consume()
+                    dragDelta += amount
+                    bounds = clamped(
+                        dragStart.copy(
+                            width = clampedDialogDimensionAtPointer(dragStart.width.toFloat(), dragDelta.x / density.density, 320f).toDouble(),
+                            height = clampedDialogDimensionAtPointer(dragStart.height.toFloat(), dragDelta.y / density.density, 240f).toDouble(),
+                        )
+                    )
+                }
+            },
+        ) {
+            val inset = size.minDimension * 0.15f
+            drawLine(CommandColours.White, Offset(inset, size.height - inset), Offset(size.width - inset, size.height - inset), strokeWidth = 2f)
+            drawLine(CommandColours.White, Offset(size.width - inset, inset), Offset(size.width - inset, size.height - inset), strokeWidth = 2f)
+        }
+    }
+}
+
+@Composable
+private fun EditorContent(
+    editor: OperationEditorState,
+    state: ComposeOperationState,
+    onStateChanged: (ComposeOperationState) -> Unit,
+    modifier: Modifier = Modifier,
+) = when (val draft = editor.draft) {
+    is OperationEditorDraft.Notes -> NotesPanel(
+        note = draft.body,
+        onNoteChanged = { onStateChanged(state.updateEditorDraft(editor.id, draft.copy(body = it))) },
+        modifier = modifier,
+    )
+
+    is OperationEditorDraft.Unit -> {
+        val target = editor.target as? OperationEditorTarget.Object
+        val unit = target?.objectId?.let(state.visibleContent::objectById) as? OperationUnit
+        if (unit == null) Box(modifier, contentAlignment = Alignment.Center) {
+            Text(if (state.isReadOnly) "This unit is unavailable at this history point." else "This unit no longer exists.")
+        } else UnitEditorContent(editor.id, draft, unit, state, onStateChanged, modifier)
+    }
+
+    is OperationEditorDraft.Opaque -> Box(modifier, contentAlignment = Alignment.Center) { Text("This restored editor is not supported yet.") }
+}
+
+@Composable
+private fun UnitEditorContent(
+    editorId: OperationEditorId,
+    draft: OperationEditorDraft.Unit,
+    unit: OperationUnit,
+    state: ComposeOperationState,
+    onStateChanged: (ComposeOperationState) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val x = draft.positionX.toDoubleOrNull()
+    val y = draft.positionY.toDoubleOrNull()
+    val facingDegrees = draft.facing.trim().takeIf(String::isNotEmpty)?.toIntOrNull()?.mod(360)
+    val valid = draft.name.isNotBlank() && x != null && y != null && (draft.facing.isBlank() || facingDegrees != null)
+    fun update(value: OperationEditorDraft.Unit) = onStateChanged(state.updateEditorDraft(editorId, value))
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(state.visibleContent.unitTemplate(unit.unitTemplateId)?.name ?: "Unit", color = CommandColours.Backing)
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(draft.name, { update(draft.copy(name = it)) }, Modifier.fillMaxWidth(), enabled = !state.isReadOnly, singleLine = true, label = { Text("Name") })
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    draft.positionX,
+                    { update(draft.copy(positionX = it)) },
+                    Modifier.weight(1f),
+                    enabled = !state.isReadOnly,
+                    singleLine = true,
+                    isError = draft.positionX.isNotBlank() && x == null,
+                    label = { Text("Map X") })
+                OutlinedTextField(
+                    draft.positionY,
+                    { update(draft.copy(positionY = it)) },
+                    Modifier.weight(1f),
+                    enabled = !state.isReadOnly,
+                    singleLine = true,
+                    isError = draft.positionY.isNotBlank() && y == null,
+                    label = { Text("Map Y") })
+            }
+            OutlinedTextField(
+                draft.facing,
+                { update(draft.copy(facing = it)) },
+                Modifier.fillMaxWidth(),
+                enabled = !state.isReadOnly,
+                singleLine = true,
+                isError = draft.facing.isNotBlank() && facingDegrees == null,
+                label = { Text("Facing (0–359, blank for none)") })
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(draft.destroyed, { update(draft.copy(destroyed = it)) }, enabled = !state.isReadOnly)
+                Text("Destroyed")
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CommandButton(onClick = {
+                val updated = unit.copy(
+                    instanceName = draft.name.trim(),
+                    coordinate = MapCoordinate(x ?: unit.coordinate.x, y ?: unit.coordinate.y),
+                    facingDegrees = facingDegrees,
+                    destroyed = draft.destroyed,
+                )
+                onStateChanged(state.editUnit(updated).closeEditor(editorId))
+            }, enabled = !state.isReadOnly && valid, modifier = Modifier.weight(1f)) { Text("SAVE") }
+            CommandButton(onClick = { onStateChanged(state.closeEditor(editorId)) }, modifier = Modifier.weight(1f)) { Text("CANCEL") }
+        }
+    }
+}
+
+private fun OperationEditorState.title(content: OperationContent): String = when (kind) {
+    OperationEditorKind.OPERATION_NOTES -> "Notes"
+    OperationEditorKind.UNIT -> (target as? OperationEditorTarget.Object)?.objectId?.let(content::objectById)?.name?.takeIf(String::isNotBlank) ?: "Edit Unit"
+    else -> kind.value
+}
+
+private fun OperationEditorState.displayBounds(state: ComposeOperationState, density: Double): OperationEditorBounds {
+    val anchor = floating.mapAnchor?.takeIf { floating.pinned } ?: return floating.bounds
+    val viewport = state.viewport ?: return floating.bounds
+    val right = viewport.screenX(anchor.x) / density
+    val top = viewport.screenY(anchor.y) / density
+    return floating.bounds.copy(left = right - floating.bounds.width, top = top)
+}
+
+private fun OperationEditorBounds.clampedTo(width: Double, height: Double) = copy(
+    left = left.coerceIn(0.0, (width - this.width).coerceAtLeast(0.0)),
+    top = top.coerceIn(0.0, (height - this.height.coerceAtMost(42.0)).coerceAtLeast(0.0)),
+)
 
 @Composable
 private fun EmptyMap() =
@@ -1136,131 +1334,6 @@ private fun EscapeMenuDialog(
 }
 
 @Composable
-private fun ComposeUnitEditDialog(
-    unit: OperationUnit,
-    templateName: String,
-    initialPosition: IntOffset,
-    editable: Boolean,
-    onSave: (OperationUnit) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var position by remember(unit.id) { mutableStateOf(initialPosition) }
-    var width by remember(unit.id) { mutableStateOf(520.dp) }
-    var height by remember(unit.id) { mutableStateOf(560.dp) }
-    var resizeStartWidth by remember(unit.id) { mutableStateOf(width) }
-    var resizeStartHeight by remember(unit.id) { mutableStateOf(height) }
-    var resizeDragDistance by remember(unit.id) { mutableStateOf(Offset.Zero) }
-    var name by remember(unit.id) { mutableStateOf(unit.instanceName) }
-    var positionX by remember(unit.id) { mutableStateOf(unit.coordinate.x.toString()) }
-    var positionY by remember(unit.id) { mutableStateOf(unit.coordinate.y.toString()) }
-    var facing by remember(unit.id) { mutableStateOf(unit.facingDegrees?.toString().orEmpty()) }
-    var destroyed by remember(unit.id) { mutableStateOf(unit.destroyed) }
-    val x = positionX.toDoubleOrNull()
-    val y = positionY.toDoubleOrNull()
-    val facingDegrees = facing.trim().takeIf(String::isNotEmpty)?.toIntOrNull()?.mod(360)
-    val valid = name.isNotBlank() && x != null && y != null && (facing.isBlank() || facingDegrees != null)
-    val density = LocalDensity.current
-
-    Box(Modifier.offset { position }.width(width).height(height)) {
-        CommandFloatingPanel(
-            title = listOf("Edit Unit", unit.instanceName).filter(String::isNotBlank).joinToString(" — "),
-            onClose = onDismiss,
-            modifier = Modifier.fillMaxSize(),
-            titleBarModifier = Modifier.pointerInput(unit.id) {
-                detectDragGestures { change, dragAmount ->
-                    change.consume()
-                    position += IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt())
-                }
-            },
-        ) {
-            Text(templateName.ifBlank { "Unit" }, color = CommandColours.Backing)
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = editable,
-                    singleLine = true,
-                    label = { Text("Name") },
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = positionX,
-                        onValueChange = { positionX = it },
-                        modifier = Modifier.weight(1f),
-                        enabled = editable,
-                        singleLine = true,
-                        isError = positionX.isNotBlank() && x == null,
-                        label = { Text("Map X") },
-                    )
-                    OutlinedTextField(
-                        value = positionY,
-                        onValueChange = { positionY = it },
-                        modifier = Modifier.weight(1f),
-                        enabled = editable,
-                        singleLine = true,
-                        isError = positionY.isNotBlank() && y == null,
-                        label = { Text("Map Y") },
-                    )
-                }
-                OutlinedTextField(
-                    value = facing,
-                    onValueChange = { facing = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = editable,
-                    singleLine = true,
-                    isError = facing.isNotBlank() && facingDegrees == null,
-                    label = { Text("Facing (0–359, blank for none)") },
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = destroyed, onCheckedChange = { destroyed = it }, enabled = editable)
-                    Text("Destroyed")
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                CommandButton(
-                    onClick = {
-                        onSave(
-                            unit.copy(
-                                instanceName = name.trim(),
-                                coordinate = MapCoordinate(x ?: unit.coordinate.x, y ?: unit.coordinate.y),
-                                facingDegrees = facingDegrees,
-                                destroyed = destroyed,
-                            ),
-                        )
-                    },
-                    enabled = editable && valid,
-                    modifier = Modifier.weight(1f),
-                ) { Text("SAVE") }
-                CommandButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("CANCEL") }
-            }
-        }
-        Canvas(
-            Modifier.align(Alignment.BottomEnd).size(30.dp).pointerInput(unit.id) {
-                detectDragGestures(
-                    onDragStart = {
-                        resizeStartWidth = width
-                        resizeStartHeight = height
-                        resizeDragDistance = Offset.Zero
-                    },
-                ) { change, dragAmount ->
-                    change.consume()
-                    resizeDragDistance += dragAmount
-                    with(density) {
-                        width = clampedDialogDimensionAtPointer(resizeStartWidth.value, resizeDragDistance.x.toDp().value, 420.dp.value).dp
-                        height = clampedDialogDimensionAtPointer(resizeStartHeight.value, resizeDragDistance.y.toDp().value, 360.dp.value).dp
-                    }
-                }
-            },
-        ) {
-            val inset = size.minDimension * 0.15f
-            drawLine(CommandColours.White, Offset(inset, size.height - inset), Offset(size.width - inset, size.height - inset), strokeWidth = 2f)
-            drawLine(CommandColours.White, Offset(size.width - inset, inset), Offset(size.width - inset, size.height - inset), strokeWidth = 2f)
-        }
-    }
-}
-
-@Composable
 private fun SaveFailureDialog(
     message: String,
     onRetry: () -> Unit,
@@ -1283,8 +1356,6 @@ private data class ComposeMapContextMenu(
     val position: IntOffset,
     val actions: List<MapViewerContextMenuItem>,
 )
-
-private fun OperationObjectId.unitEditorId() = "unit:$value"
 
 @Composable
 private fun ComposeMapContextMenu(

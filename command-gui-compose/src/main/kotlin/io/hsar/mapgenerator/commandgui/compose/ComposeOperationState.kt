@@ -5,38 +5,40 @@ import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
 import io.hsar.mapgenerator.commandgui.MapViewerTool
 import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
 import io.hsar.mapgenerator.commandgui.MapViewport
+import io.hsar.mapgenerator.commandgui.ViewerPoint
 import io.hsar.mapgenerator.commandgui.operation.OperationContent
+import io.hsar.mapgenerator.commandgui.operation.OperationDockRegion
 import io.hsar.mapgenerator.commandgui.operation.OperationDocument
 import io.hsar.mapgenerator.commandgui.operation.OperationDrawing
 import io.hsar.mapgenerator.commandgui.operation.OperationDrawingObject
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorBounds
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorId
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorKind
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorState
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorTarget
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntry
 import io.hsar.mapgenerator.commandgui.operation.OperationUiState
 import io.hsar.mapgenerator.commandgui.operation.OperationUnit
+import io.hsar.mapgenerator.commandgui.operation.OperationWorkspaceState
 import io.hsar.mapgenerator.commandgui.operation.changesFrom
 import io.hsar.mapgenerator.commandgui.operation.delete
+import io.hsar.mapgenerator.commandgui.operation.editorState
 import java.util.*
 import java.util.Collections.emptyMap
 import java.util.Collections.emptySet
 
 enum class ComposeSaveStatus { CLEAN, DIRTY, SAVING, FAILED }
 
-data class ComposeEditorInstance(
-    val id: String,
-    val type: String,
-    val objectId: OperationObjectId? = null,
-)
-
 data class ComposeOperationState(
     val document: OperationDocument,
     val viewport: MapViewport? = null,
     val activeTool: MapViewerTool = document.uiState.selectedTool,
     val selectedObjectIds: Set<OperationObjectId> = document.uiState.selectedObjectIds,
-    val workspaceMode: MapViewerWorkspaceMode = document.uiState.workspaceMode,
+    val workspace: OperationWorkspaceState = document.uiState.workspace.hydrate(document.content),
     val enabledLayerIds: Set<String> = document.uiState.enabledLayerIds.ifEmpty { document.settings.enabledLayerIds },
-    val openEditors: List<ComposeEditorInstance> = document.uiState.openEditorIds.map { ComposeEditorInstance(it, "restored") },
-    val drafts: Map<String, String> = document.uiState.drafts,
-    val validationErrors: Map<String, String> = emptyMap(),
+    val validationErrors: Map<OperationEditorId, String> = emptyMap(),
     val historyPreviewCount: Int? = null,
     val previewContent: OperationContent? = null,
     val revision: Long = if (document.persisted) 0L else 1L,
@@ -51,6 +53,8 @@ data class ComposeOperationState(
             ?: historyPreviewCount?.let(document.timeline::contentAt)
             ?: document.content
     val hasUnsavedChanges get() = revision > savedRevision
+    val workspaceMode get() = workspace.mode
+    val openEditors get() = workspace.editors
 
     fun selectTool(tool: MapViewerTool) =
         if (tool == activeTool) this else persistentCopy(activeTool = tool)
@@ -65,7 +69,7 @@ data class ComposeOperationState(
         if (value == viewport) this else persistentCopy(viewport = value)
 
     fun updateWorkspaceMode(value: MapViewerWorkspaceMode) =
-        if (value == workspaceMode) this else persistentCopy(workspaceMode = value)
+        if (value == workspace.mode) this else persistentCopy(workspace = workspace.withMode(value))
 
     fun updateEnabledLayers(value: Set<String>) =
         if (value == enabledLayerIds) this else persistentCopy(
@@ -73,14 +77,64 @@ data class ComposeOperationState(
             enabledLayerIds = value,
         )
 
-    fun openEditor(value: ComposeEditorInstance) =
-        if (openEditors.any { it.id == value.id }) this else persistentCopy(openEditors = openEditors + value)
+    fun openNotes() = updateWorkspace(workspace.open(OperationWorkspaceState.default().editors.single()))
 
-    fun closeEditor(id: String) =
-        if (openEditors.none { it.id == id }) this else persistentCopy(openEditors = openEditors.filterNot { it.id == id })
+    fun openUnitEditor(id: OperationObjectId): ComposeOperationState {
+        val unit = document.content.objectById(id) as? OperationUnit ?: return this
+        val cascade = workspace.editors.count { it.kind == OperationEditorKind.UNIT } * 32.0
+        return updateWorkspace(workspace.open(unit.editorState(OperationEditorBounds(96.0 + cascade, 96.0 + cascade, 520.0, 560.0))))
+    }
 
-    fun updateDraft(id: String, value: String) =
-        if (drafts[id] == value) this else persistentCopy(drafts = drafts + (id to value))
+    fun activateEditor(id: OperationEditorId) = updateWorkspace(workspace.activate(id))
+
+    fun closeEditor(id: OperationEditorId) = updateWorkspace(workspace.close(id))
+
+    fun updateEditorDraft(id: OperationEditorId, draft: OperationEditorDraft) = updateWorkspace(
+        workspace.updateEditor(id) { it.copy(draft = draft) },
+    )
+
+    fun updateFloatingEditor(id: OperationEditorId, bounds: OperationEditorBounds) = updateWorkspace(
+        workspace.updateEditor(id) { editor -> editor.copy(floating = editor.floating.copy(bounds = bounds)) },
+    )
+
+    fun toggleEditorMinimized(id: OperationEditorId) = updateWorkspace(
+        workspace.updateEditor(id) { editor -> editor.copy(floating = editor.floating.copy(minimized = !editor.floating.minimized)) },
+    )
+
+    fun pinEditor(id: OperationEditorId, screenTopRight: ViewerPoint): ComposeOperationState {
+        val current = viewport ?: return this
+        val anchor = ViewerPoint(
+            current.left + screenTopRight.x / current.zoom,
+            current.top + screenTopRight.y / current.zoom,
+        )
+        return updateWorkspace(workspace.updateEditor(id) { editor ->
+            editor.copy(floating = editor.floating.copy(pinned = true, mapAnchor = anchor))
+        })
+    }
+
+    fun unpinEditor(id: OperationEditorId, displayedBounds: OperationEditorBounds) = updateWorkspace(
+        workspace.updateEditor(id) { editor ->
+            editor.copy(floating = editor.floating.copy(bounds = displayedBounds, pinned = false, mapAnchor = null))
+        },
+    )
+
+    fun updateDockSize(region: OperationDockRegion, size: Double) = updateWorkspace(
+        workspace.updateDock(region) { it.copy(size = size.coerceIn(240.0, 720.0)) },
+    )
+
+    fun activateDockTab(region: OperationDockRegion, id: OperationEditorId) = updateWorkspace(
+        workspace.activate(id).updateDock(region) { dock -> if (id in dock.editorIds) dock.copy(activeEditorId = id, collapsed = false) else dock },
+    )
+
+    fun toggleDockCollapsed(region: OperationDockRegion) = updateWorkspace(
+        workspace.updateDock(region) { it.copy(collapsed = !it.collapsed) },
+    )
+
+    fun dockEditor(id: OperationEditorId, region: OperationDockRegion, index: Int? = null) =
+        updateWorkspace(workspace.dock(id, region, index))
+
+    fun reorderDockTabs(region: OperationDockRegion, orderedIds: List<OperationEditorId>) =
+        updateWorkspace(workspace.reorderDock(region, orderedIds))
 
     fun preview(content: OperationContent) =
         if (isReadOnly) this else copy(previewContent = content)
@@ -126,7 +180,7 @@ data class ComposeOperationState(
         return persistentCopy(
             document = document.copy(timeline = document.timeline.undo()),
             previewContent = null,
-        ).pruneSelection()
+        ).pruneSelection().pruneEditors()
     }
 
     fun redo(): ComposeOperationState {
@@ -134,7 +188,7 @@ data class ComposeOperationState(
         return persistentCopy(
             document = document.copy(timeline = document.timeline.redo()),
             previewContent = null,
-        ).pruneSelection()
+        ).pruneSelection().pruneEditors()
     }
 
     fun previewHistory(entryIndex: Int?) = copy(
@@ -143,7 +197,7 @@ data class ComposeOperationState(
         selectedObjectIds = emptySet(),
     )
 
-    fun returnToCurrent() = copy(historyPreviewCount = null, previewContent = null).pruneSelection()
+    fun returnToCurrent() = copy(historyPreviewCount = null, previewContent = null).pruneSelection().pruneEditors()
 
     fun saveStarted(targetRevision: Long = revision) = copy(
         savingRevision = targetRevision,
@@ -185,35 +239,32 @@ data class ComposeOperationState(
     fun operationUiState() = OperationUiState(
         selectedTool = activeTool,
         selectedObjectIds = selectedObjectIds,
-        workspaceMode = workspaceMode,
         enabledLayerIds = enabledLayerIds,
-        openEditorIds = openEditors.map(ComposeEditorInstance::id),
-        drafts = drafts,
+        workspace = workspace,
     )
 
     private fun withTimelineEntry(entry: OperationTimelineEntry) = persistentCopy(
         document = document.copy(timeline = document.timeline.record(entry)),
-    ).pruneSelection()
+    ).pruneSelection().pruneEditors()
+
+    private fun updateWorkspace(value: OperationWorkspaceState) =
+        if (value == workspace) this else persistentCopy(workspace = value)
 
     private fun persistentCopy(
         document: OperationDocument = this.document,
         viewport: MapViewport? = this.viewport,
         activeTool: MapViewerTool = this.activeTool,
         selectedObjectIds: Set<OperationObjectId> = this.selectedObjectIds,
-        workspaceMode: MapViewerWorkspaceMode = this.workspaceMode,
+        workspace: OperationWorkspaceState = this.workspace,
         enabledLayerIds: Set<String> = this.enabledLayerIds,
-        openEditors: List<ComposeEditorInstance> = this.openEditors,
-        drafts: Map<String, String> = this.drafts,
         previewContent: OperationContent? = this.previewContent,
     ) = copy(
         document = document,
         viewport = viewport,
         activeTool = activeTool,
         selectedObjectIds = selectedObjectIds,
-        workspaceMode = workspaceMode,
+        workspace = workspace,
         enabledLayerIds = enabledLayerIds,
-        openEditors = openEditors,
-        drafts = drafts,
         previewContent = previewContent,
         revision = revision + 1,
         saveStatus = if (saveStatus == ComposeSaveStatus.SAVING) saveStatus else ComposeSaveStatus.DIRTY,
@@ -225,6 +276,36 @@ data class ComposeOperationState(
 
     private fun pruneSelection() = copy(
         selectedObjectIds = selectedObjectIds.intersect(visibleContent.objects.mapTo(hashSetOf()) { it.id }),
+    )
+
+    private fun pruneEditors(): ComposeOperationState {
+        val liveIds = document.content.objects.mapTo(hashSetOf()) { it.id }
+        val invalid = workspace.editors.filter { editor ->
+            (editor.target as? OperationEditorTarget.Object)?.objectId?.let { it !in liveIds } == true
+        }.map(OperationEditorState::id)
+        return if (invalid.isEmpty()) this else copy(workspace = invalid.fold(workspace, OperationWorkspaceState::close))
+    }
+}
+
+private fun OperationWorkspaceState.hydrate(content: OperationContent): OperationWorkspaceState {
+    val hydrated = editors.filter { editor ->
+        (editor.target as? OperationEditorTarget.Object)?.objectId?.let(content::objectById) != null || editor.target !is OperationEditorTarget.Object
+    }.map { editor ->
+        val target = editor.target as? OperationEditorTarget.Object
+        val unit = target?.objectId?.let(content::objectById) as? OperationUnit
+        val draft = editor.draft as? OperationEditorDraft.Unit
+        if (unit != null && draft != null && draft.name.isEmpty() && draft.positionX.isEmpty() && draft.positionY.isEmpty()) {
+            editor.copy(draft = unit.editorState(editor.floating.bounds).draft)
+        } else editor
+    }
+    val ids = hydrated.mapTo(hashSetOf()) { it.id }
+    return copy(
+        editors = hydrated,
+        activeEditorId = activeEditorId?.takeIf(ids::contains) ?: hydrated.lastOrNull()?.id,
+        dockRegions = dockRegions.map { dock ->
+            val dockIds = dock.editorIds.filter(ids::contains)
+            dock.copy(editorIds = dockIds, activeEditorId = dock.activeEditorId?.takeIf(ids::contains) ?: dockIds.lastOrNull())
+        },
     )
 }
 

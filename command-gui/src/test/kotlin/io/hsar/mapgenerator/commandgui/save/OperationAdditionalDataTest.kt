@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.save
 
+import io.hsar.mapgenerator.commandgui.MapCoordinate
 import io.hsar.mapgenerator.commandgui.MapViewerTool
 import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
 import io.hsar.mapgenerator.commandgui.ViewerPoint
@@ -7,7 +8,13 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.EcmActivation
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogBounds
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorBounds
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
+import io.hsar.mapgenerator.commandgui.operation.OperationUnit
+import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateId
+import io.hsar.mapgenerator.commandgui.operation.OperationWorkspaceState
+import io.hsar.mapgenerator.commandgui.operation.editorState
 import korlibs.io.lang.toByteArray
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
@@ -150,7 +157,7 @@ class OperationAdditionalDataTest {
 
         // Assert
         assertThat(restored, equalTo(state))
-        assertThat(OperationSaveJson.objectMapper.readTree(json).path("uiState").path("schemaVersion").intValue(), equalTo(2))
+        assertThat(OperationSaveJson.objectMapper.readTree(json).path("uiState").path("schemaVersion").intValue(), equalTo(3))
         assertThat(restored.dialogs.single(), equalTo(dialog))
         assertThat(String(json).contains("\"custom\" : \"keep\""), equalTo(true))
     }
@@ -164,5 +171,65 @@ class OperationAdditionalDataTest {
 
         // Assert
         assertThat(restored.workspaceMode, equalTo(MapViewerWorkspaceMode.FLOATING))
+    }
+
+    @Test
+    fun `operation without workspace metadata starts with notes in the right dock`() {
+        // Arrange / Act
+        val state = OperationAdditionalData.fromJson(null).operationUiState()
+
+        // Assert
+        assertThat(state.workspace.mode, equalTo(MapViewerWorkspaceMode.DOCKED))
+        assertThat(state.workspace.editors.single().id, equalTo(OperationWorkspaceState.DEFAULT_NOTES_ID))
+        assertThat(state.workspace.dockRegions.single().region.name, equalTo("RIGHT"))
+    }
+
+    @Test
+    fun `version three typed workspace and legacy unit dialog round trip together`() {
+        // Arrange
+        val unit = OperationUnit(
+            OperationObjectId(UUID.fromString("00000000-0000-0000-0000-000000000022")),
+            OperationUnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000023")),
+            "Alpha", false, 45, MapCoordinate(0.2, 0.3), 0.03, 0.03,
+        )
+        val editor = unit.editorState(OperationEditorBounds(12.0, 34.0, 520.0, 560.0)).let { value ->
+            value.copy(
+                draft = (value.draft as OperationEditorDraft.Unit).copy(name = "Working Alpha"),
+                floating = value.floating.copy(minimized = true, pinned = true, mapAnchor = ViewerPoint(40.0, 50.0)),
+            )
+        }
+        val data = OperationAdditionalData.fromJson("""{"uiState":{"customUi":"keep"},"custom":"keep"}""".toByteArray())
+
+        // Act
+        data.updateOperationUiState(
+            io.hsar.mapgenerator.commandgui.operation.OperationUiState(
+                workspace = OperationWorkspaceState.default().open(editor).copy(mode = MapViewerWorkspaceMode.FLOATING),
+            ),
+        )
+        val json = data.toJsonOrNull()!!
+        val restored = OperationAdditionalData.fromJson(json)
+
+        // Assert
+        val restoredEditor = restored.operationUiState().workspace.editor(editor.id)!!
+        assertThat((restoredEditor.draft as OperationEditorDraft.Unit).name, equalTo("Working Alpha"))
+        assertThat(restoredEditor.floating.mapAnchor, equalTo(ViewerPoint(40.0, 50.0)))
+        assertThat(restored.uiState().dialogs.single().type, equalTo("unit-edit"))
+        assertThat(restored.uiState().dialogs.single().draft!!.path("name").textValue(), equalTo("Working Alpha"))
+        assertThat(OperationSaveJson.objectMapper.readTree(json).path("uiState").path("customUi").textValue(), equalTo("keep"))
+    }
+
+    @Test
+    fun `legacy unit edit migrates to a typed functional editor`() {
+        // Arrange
+        val json =
+            """{"uiState":{"dialogs":[{"type":"unit-edit","targetId":"00000000-0000-0000-0000-000000000024","bounds":{"left":10,"top":20,"width":520,"height":560},"draft":{"name":"Legacy","positionX":"0.1","positionY":"0.2","facing":"90","destroyed":false}}]}}"""
+
+        // Act
+        val state = OperationAdditionalData.fromJson(json.toByteArray()).operationUiState()
+
+        // Assert
+        val editor = state.workspace.editors.single()
+        assertThat((editor.draft as OperationEditorDraft.Unit).name, equalTo("Legacy"))
+        assertThat(editor.kind.value, equalTo("unit"))
     }
 }

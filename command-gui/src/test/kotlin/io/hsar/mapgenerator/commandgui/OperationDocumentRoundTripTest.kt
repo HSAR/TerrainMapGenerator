@@ -59,10 +59,19 @@ class OperationDocumentRoundTripTest {
         val uiState = OperationUiState(
             selectedTool = MapViewerTool.DRAW,
             selectedObjectIds = setOf(id(2)),
-            workspaceMode = MapViewerWorkspaceMode.FLOATING,
             enabledLayerIds = setOf(MapLayer.GRID.id),
-            openEditorIds = listOf("graphic-2"),
-            drafts = mapOf("notes" to "draft text"),
+            workspace = OperationWorkspaceState(
+                mode = MapViewerWorkspaceMode.FLOATING,
+                editors = listOf(
+                    OperationEditorState(
+                        OperationEditorId("graphic-2"),
+                        OperationEditorKind("graphic"),
+                        OperationEditorTarget.Opaque("graphic-2"),
+                        OperationEditorDraft.Opaque("draft text"),
+                        OperationFloatingEditorState(OperationEditorBounds(10.0, 20.0, 300.0, 400.0)),
+                    ),
+                ),
+            ),
         )
         val camera = MapViewerSavedCamera(0.25, 0.75, 2.0)
         repository.saveOperation(document, camera, uiState)
