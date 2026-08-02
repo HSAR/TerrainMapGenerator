@@ -38,7 +38,23 @@ internal fun geometryFor(image: BufferedImage): ViewerGeometry {
     )
 }
 
+/** Normalized map-coordinate bounds of the padded viewer background. */
+fun viewerBackgroundBounds(imageWidth: Int, imageHeight: Int): MapCoordinateBounds {
+    val backgroundWidth = (imageWidth * VIEWER_BACKGROUND_SCALE).toInt()
+    val backgroundHeight = (imageHeight * VIEWER_BACKGROUND_SCALE).toInt()
+    val offsetX = (backgroundWidth - imageWidth) / 2
+    val offsetY = (backgroundHeight - imageHeight) / 2
+    return MapCoordinateBounds(
+        left = -offsetX.toDouble() / imageWidth,
+        top = -offsetY.toDouble() / imageHeight,
+        right = (backgroundWidth - offsetX).toDouble() / imageWidth,
+        bottom = (backgroundHeight - offsetY).toDouble() / imageHeight,
+    )
+}
+
 internal fun java.awt.Rectangle.toLayerViewport(offsetX: Int, offsetY: Int) = Rectangle(
     Point((x - offsetX).toDouble(), (y - offsetY).toDouble()),
     Point((x + width - offsetX).toDouble(), (y + height - offsetY).toDouble()),
 )
+
+private const val VIEWER_BACKGROUND_SCALE = 1.66

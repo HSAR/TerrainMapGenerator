@@ -100,11 +100,8 @@ import io.hsar.mapgenerator.commandgui.MapViewerDrawingMode
 import io.hsar.mapgenerator.commandgui.MapViewerGlobalSettings
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayLayoutBuilder
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayRequest
-import io.hsar.mapgenerator.commandgui.MapViewerLedgerReplay
 import io.hsar.mapgenerator.commandgui.MapViewerMeasurement
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
-import io.hsar.mapgenerator.commandgui.MapViewerReplayObject
-import io.hsar.mapgenerator.commandgui.MapViewerReplayObjectKind
 import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
 import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
 import io.hsar.mapgenerator.commandgui.MapViewerSavedOperation
@@ -126,15 +123,19 @@ import io.hsar.mapgenerator.commandgui.operation.OperationObject
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.operation.OperationOvalDrawing
 import io.hsar.mapgenerator.commandgui.operation.OperationRectangleDrawing
+import io.hsar.mapgenerator.commandgui.operation.OperationSelectionProjection
+import io.hsar.mapgenerator.commandgui.operation.OperationTransformGesture
+import io.hsar.mapgenerator.commandgui.operation.OperationTransformModifiers
 import io.hsar.mapgenerator.commandgui.operation.OperationUnit
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitAffiliation
 import io.hsar.mapgenerator.commandgui.operation.contains
-import io.hsar.mapgenerator.commandgui.operation.move
-import io.hsar.mapgenerator.commandgui.operation.resize
-import io.hsar.mapgenerator.commandgui.operation.rotate
+import io.hsar.mapgenerator.commandgui.operation.objectAtScreen
 import io.hsar.mapgenerator.commandgui.operation.selectionBounds
+import io.hsar.mapgenerator.commandgui.operation.selectionFrame
+import io.hsar.mapgenerator.commandgui.operation.selectionScreenBounds
 import io.hsar.mapgenerator.commandgui.startedAt
 import io.hsar.mapgenerator.commandgui.toWorldPoint
+import io.hsar.mapgenerator.commandgui.viewerBackgroundBounds
 import jdk.internal.net.http.common.Utils.close
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -823,6 +824,7 @@ private fun ViewerWorkspace(
             when {
                 event.key == Key.Escape && operationState.previewContent != null -> {
                     operationState = operationState.cancelPreview()
+                    toolGestureCancellationEpoch++
                     true
                 }
 
@@ -1432,29 +1434,11 @@ private data class ComposeRasterTile(
     val image: ImageBitmap,
 )
 
-private sealed interface ComposeTransformGesture {
-    val original: OperationContent
-    val selectedIds: Set<OperationObjectId>
-
-    data class Move(
-        override val original: OperationContent,
-        override val selectedIds: Set<OperationObjectId>,
-        val start: MapCoordinate,
-    ) : ComposeTransformGesture
-
-    data class Resize(
-        override val original: OperationContent,
-        override val selectedIds: Set<OperationObjectId>,
-        val corner: io.hsar.mapgenerator.commandgui.MapSelectionCorner,
-    ) : ComposeTransformGesture
-
-    data class Rotate(
-        override val original: OperationContent,
-        override val selectedIds: Set<OperationObjectId>,
-        val pivot: MapCoordinate,
-        val start: MapCoordinate,
-    ) : ComposeTransformGesture
-}
+private data class ComposeSelectionMarquee(
+    val start: Offset,
+    val current: Offset,
+    val additive: Boolean,
+)
 
 @Composable
 @OptIn(ExperimentalComposeUiApi::class)
@@ -1511,11 +1495,13 @@ private fun MapCanvas(
     val currentViewport = panningViewport ?: viewport ?: initialViewport
     var rightClickTargetId by remember { mutableStateOf<OperationObjectId?>(null) }
     var marquee by remember { mutableStateOf<ComposeSelectionMarquee?>(null) }
-    var transformGesture by remember { mutableStateOf<ComposeTransformGesture?>(null) }
+    var transformGesture by remember { mutableStateOf<OperationTransformGesture?>(null) }
     var drawingGesture by remember { mutableStateOf<MapViewerDrawingGesture?>(null) }
     var measurementOrigin by remember { mutableStateOf<MapCoordinate?>(null) }
     var measurement by remember { mutableStateOf<MapViewerMeasurement?>(null) }
     LaunchedEffect(activeTool, renderData.gridLayer, cancellationEpoch) {
+        transformGesture = null
+        marquee = null
         drawingGesture = null
         measurementOrigin = null
         measurement = null
@@ -1540,42 +1526,31 @@ private fun MapCanvas(
         y = (currentViewport.top + point.y / currentViewport.zoom - mapOffsetY) / mapHeight,
     )
 
-    fun screenBounds(value: OperationObject): MapSelectionScreenBounds = value.selectionBounds(aspectRatio).let { bounds ->
-        if (value is OperationUnit) {
+    val selectionProjection = object : OperationSelectionProjection {
+        override val aspectRatio = aspectRatio
+
+        override fun toScreen(point: MapCoordinate): ViewerPoint {
+            val world = point.toWorldPoint(mapOffsetX, mapOffsetY, mapWidth, mapHeight)
+            return ViewerPoint(currentViewport.screenX(world.x), currentViewport.screenY(world.y))
+        }
+
+        override fun toMap(point: ViewerPoint) = screenToMap(Offset(point.x.toFloat(), point.y.toFloat()))
+
+        override fun unitScreenBounds(unit: OperationUnit): MapSelectionScreenBounds {
+            val value = unit
             val centre = value.coordinate.toWorldPoint(mapOffsetX, mapOffsetY, mapWidth, mapHeight)
             val x = currentViewport.screenX(centre.x)
             val y = currentViewport.screenY(centre.y)
-            MapSelectionScreenBounds(x - unitIconSizePx * 0.5, y - unitIconSizePx * 0.5, x + unitIconSizePx * 0.5, y + unitIconSizePx * 0.5)
-        } else {
-            MapSelectionScreenBounds(
-                currentViewport.screenX(mapOffsetX + bounds.left * mapWidth),
-                currentViewport.screenY(mapOffsetY + bounds.top * mapHeight),
-                currentViewport.screenX(mapOffsetX + bounds.right * mapWidth),
-                currentViewport.screenY(mapOffsetY + bounds.bottom * mapHeight),
-            )
+            return MapSelectionScreenBounds(x - unitIconSizePx * 0.5, y - unitIconSizePx * 0.5, x + unitIconSizePx * 0.5, y + unitIconSizePx * 0.5)
         }
     }
 
-    fun objectAtScreen(point: Offset): OperationObject? {
-        val screenPoint = ViewerPoint(point.x.toDouble(), point.y.toDouble())
-        return content.objects.asReversed().firstOrNull { value ->
-            val bounds = screenBounds(value)
-            if (value is OperationDrawingObject) {
-                value.contains(screenToMap(point), 10.0 / (currentViewport.zoom * minOf(mapWidth, mapHeight)), aspectRatio)
-            } else screenPoint.x in bounds.left..bounds.right && screenPoint.y in bounds.top..bounds.bottom
-        }
-    }
+    fun objectAtScreen(point: Offset): OperationObject? = content.objectAtScreen(
+        ViewerPoint(point.x.toDouble(), point.y.toDouble()), selectionProjection,
+        10.0 / (currentViewport.zoom * minOf(mapWidth, mapHeight)),
+    )
 
-    fun selectionFrame(): io.hsar.mapgenerator.commandgui.MapSelectionFrame? = content.objects
-        .filter { it.id in selectedObjectIds }
-        .map(::screenBounds)
-        .takeIf(List<*>::isNotEmpty)
-        ?.let { bounds ->
-            MapSelectionScreenBounds(
-                bounds.minOf(MapSelectionScreenBounds::left), bounds.minOf(MapSelectionScreenBounds::top),
-                bounds.maxOf(MapSelectionScreenBounds::right), bounds.maxOf(MapSelectionScreenBounds::bottom),
-            ).frame()
-        }
+    fun selectionFrame() = content.selectionFrame(selectedObjectIds, selectionProjection)
 
     if (debugMapObjects) {
         LaunchedEffect(content, currentViewport) {
@@ -1638,11 +1613,19 @@ private fun MapCanvas(
                 when {
                     rotateHit && selectedObjectIds.isNotEmpty() -> {
                         val bounds = content.selectionBounds(selectedObjectIds, aspectRatio) ?: return@onPointerEvent
-                        transformGesture = ComposeTransformGesture.Rotate(content, selectedObjectIds, bounds.centre, screenToMap(change.position))
+                        transformGesture = OperationTransformGesture.Rotate(
+                            content, selectedObjectIds, bounds.centre, screenToMap(change.position), aspectRatio,
+                        )
                     }
 
                     resizeHit != null && selectedObjectIds.isNotEmpty() -> {
-                        transformGesture = ComposeTransformGesture.Resize(content, selectedObjectIds, resizeHit.corner)
+                        transformGesture = OperationTransformGesture.Resize(
+                            original = content,
+                            selectedIds = selectedObjectIds,
+                            grabbedCorner = resizeHit.corner,
+                            aspectRatio = aspectRatio,
+                            originalFixedCorner = frame.corner(resizeHit.corner.opposite()).let(selectionProjection::toMap),
+                        )
                     }
 
                     else -> objectAtScreen(change.position)?.let { selected ->
@@ -1652,7 +1635,9 @@ private fun MapCanvas(
                             else -> setOf(selected.id)
                         }
                         if (selected.id !in selectedObjectIds) onObjectsSelected(setOf(selected.id), event.keyboardModifiers.isShiftPressed)
-                        transformGesture = ComposeTransformGesture.Move(content, ids, screenToMap(change.position))
+                        transformGesture = OperationTransformGesture.Move(
+                            content, ids, screenToMap(change.position), viewerBackgroundBounds(mapWidth, mapHeight), aspectRatio,
+                        )
                     } ?: run {
                         marquee = ComposeSelectionMarquee(change.position, change.position, event.keyboardModifiers.isShiftPressed)
                     }
@@ -1682,27 +1667,10 @@ private fun MapCanvas(
                 }
                 transformGesture?.let { gesture ->
                     val point = screenToMap(change.position)
-                    val preview = when (gesture) {
-                        is ComposeTransformGesture.Move -> gesture.original.move(
-                            gesture.selectedIds,
-                            io.hsar.mapgenerator.commandgui.MapCoordinateDelta(point.x - gesture.start.x, point.y - gesture.start.y),
-                            io.hsar.mapgenerator.commandgui.MapCoordinateBounds(-0.33, -0.33, 1.33, 1.33),
-                            aspectRatio,
-                        )
-
-                        is ComposeTransformGesture.Resize -> gesture.original.resize(
-                            gesture.selectedIds, gesture.corner, point, aspectRatio,
-                            fromCentre = event.keyboardModifiers.isAltPressed,
-                            preserveAspect = event.keyboardModifiers.isShiftPressed,
-                        )
-
-                        is ComposeTransformGesture.Rotate -> gesture.original.rotate(
-                            gesture.selectedIds,
-                            io.hsar.mapgenerator.commandgui.operation.rotationDelta(gesture.pivot, gesture.start, point, aspectRatio),
-                            aspectRatio,
-                            snap = event.keyboardModifiers.isShiftPressed,
-                        )
-                    }
+                    val preview = gesture.preview(
+                        point,
+                        OperationTransformModifiers(event.keyboardModifiers.isAltPressed, event.keyboardModifiers.isShiftPressed),
+                    )
                     onPreviewChanged(preview)
                     change.consume()
                 } ?: marquee?.let { current ->
@@ -1719,9 +1687,9 @@ private fun MapCanvas(
                 transformGesture?.let { gesture ->
                     onPreviewCommitted(
                         when (gesture) {
-                            is ComposeTransformGesture.Move -> "moved ${gesture.selectedIds.size} item${if (gesture.selectedIds.size == 1) "" else "s"}"
-                            is ComposeTransformGesture.Resize -> "resized ${gesture.selectedIds.size} item${if (gesture.selectedIds.size == 1) "" else "s"}"
-                            is ComposeTransformGesture.Rotate -> "rotated ${gesture.selectedIds.size} item${if (gesture.selectedIds.size == 1) "" else "s"}"
+                            is OperationTransformGesture.Move -> "moved ${gesture.selectedIds.size} item${if (gesture.selectedIds.size == 1) "" else "s"}"
+                            is OperationTransformGesture.Resize -> "resized ${gesture.selectedIds.size} item${if (gesture.selectedIds.size == 1) "" else "s"}"
+                            is OperationTransformGesture.Rotate -> "rotated ${gesture.selectedIds.size} item${if (gesture.selectedIds.size == 1) "" else "s"}"
                         },
                     )
                     transformGesture = null
@@ -1738,7 +1706,10 @@ private fun MapCanvas(
                         ViewerPoint(current.current.x.toDouble(), current.current.y.toDouble())
                     )
                     if (box.isDrag) {
-                        onObjectsSelected(content.objects.filter { box.overlaps(screenBounds(it)) }.mapTo(linkedSetOf(), OperationObject::id), current.additive)
+                        onObjectsSelected(
+                            content.objects.filter { box.overlaps(it.selectionScreenBounds(selectionProjection)) }.mapTo(linkedSetOf(), OperationObject::id),
+                            current.additive
+                        )
                     } else if (!current.additive) onObjectsSelected(emptySet(), false)
                     marquee = null
                 }
@@ -1841,7 +1812,7 @@ private fun MapCanvas(
                     drawText(textMeasurer, label, Offset(centre.x - measured.size.width / 2f, centre.y - height.toFloat() / 2f - measured.size.height - 4f), style)
                 }
             }
-            content.objects.filter { it.id in selectedObjectIds }.map(::screenBounds).forEach { bounds ->
+            content.objects.filter { it.id in selectedObjectIds }.map { it.selectionScreenBounds(selectionProjection) }.forEach { bounds ->
                 drawRect(
                     Color.White.copy(alpha = 0.82f),
                     Offset(bounds.left.toFloat(), bounds.top.toFloat()),
@@ -1851,7 +1822,7 @@ private fun MapCanvas(
             }
             if (debugMapObjects) {
                 content.objects.filter { it is OperationUnit || it is OperationGraphic }.forEach { value ->
-                    val bounds = screenBounds(value)
+                    val bounds = value.selectionScreenBounds(selectionProjection)
                     val centre = Offset(((bounds.left + bounds.right) * 0.5).toFloat(), ((bounds.top + bounds.bottom) * 0.5).toFloat())
                     drawLine(Color.Magenta, centre - Offset(8f, 0f), centre + Offset(8f, 0f), 2f)
                     drawLine(Color.Magenta, centre - Offset(0f, 8f), centre + Offset(0f, 8f), 2f)
@@ -1945,428 +1916,6 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawOperationDrawin
     }
 }
 
-@Composable
-@OptIn(ExperimentalComposeUiApi::class)
-private fun LegacyReplayMapCanvas(
-    renderData: MapViewerRenderData,
-    savedCamera: MapViewerSavedCamera? = null,
-    replay: MapViewerLedgerReplay = MapViewerLedgerReplay.EMPTY,
-    activeTool: MapViewerTool = MapViewerTool.SELECT,
-    selectedObjectIds: Set<java.util.UUID> = emptySet(),
-    onObjectsSelected: (Set<java.util.UUID>, Boolean) -> Unit = { _, _ -> },
-    onContextMenuRequested: (MapViewerReplayObject, IntOffset) -> Unit = { _, _ -> },
-    onContextMenuDismissed: () -> Unit = {},
-    unitIconSizePx: Double = UnitIconDisplaySize.DEFAULT_PX,
-    onUnitIconSizeChanged: (Double) -> Unit = {},
-    modifier: Modifier = Modifier,
-) {
-    val nordFontFamily = NordFontFamily()
-    val textMeasurer = rememberTextMeasurer()
-    val tiles = remember(renderData.baseImage) {
-        RasterTileSet.from(renderData.baseImage).tiles.map { tile ->
-            ComposeRasterTile(
-                left = tile.left,
-                top = tile.top,
-                width = tile.image.width,
-                height = tile.image.height,
-                image = tile.image.toImageBitmap(),
-            )
-        }
-    }
-    val worldWidth = remember(renderData.baseImage) { renderData.baseImage.width * 1.66 }
-    val worldHeight = remember(renderData.baseImage) { renderData.baseImage.height * 1.66 }
-    val mapOffsetX = remember(renderData.baseImage) { (worldWidth - renderData.baseImage.width) / 2.0 }
-    val mapOffsetY = remember(renderData.baseImage) { (worldHeight - renderData.baseImage.height) / 2.0 }
-    var viewport by remember(renderData.baseImage, savedCamera) {
-        mutableStateOf(
-            savedCamera?.let { camera ->
-                MapViewport(
-                    center = ViewerPoint(
-                        mapOffsetX + camera.x * renderData.baseImage.width,
-                        mapOffsetY + camera.y * renderData.baseImage.height,
-                    ),
-                    zoom = camera.zoom.coerceIn(MapViewerSettings.MIN_ZOOM, MapViewerSettings.MAX_ZOOM),
-                    viewportWidth = 1,
-                    viewportHeight = 1,
-                    worldWidth = worldWidth,
-                    worldHeight = worldHeight,
-                )
-            } ?: MapViewport.centered(worldWidth, worldHeight),
-        )
-    }
-    var rightClickTargetId by remember { mutableStateOf<java.util.UUID?>(null) }
-    var marquee by remember { mutableStateOf<ComposeSelectionMarquee?>(null) }
-    val gridOverlay = remember(renderData.gridLayer, viewport, nordFontFamily) {
-        renderData.gridLayer?.let { grid ->
-            MapViewerGridOverlayLayoutBuilder.build(
-                MapViewerGridOverlayRequest(
-                    gridLayer = grid,
-                    viewport = viewport,
-                    mapOffsetX = mapOffsetX,
-                    mapOffsetY = mapOffsetY,
-                    mapWidth = renderData.baseImage.width,
-                    mapHeight = renderData.baseImage.height,
-                ),
-            ) { text, fontSize, strong ->
-                textMeasurer.measure(
-                    text = text,
-                    style = TextStyle(
-                        fontFamily = nordFontFamily,
-                        fontWeight = if (strong) FontWeight.Bold else FontWeight.Normal,
-                        fontSize = fontSize.sp,
-                    ),
-                ).size.let { ViewerPoint(it.width.toDouble(), it.height.toDouble()) }
-            }
-        }
-    }
-    val unitIcons = remember(replay) {
-        replay.objects
-            .filter { it.kind == MapViewerReplayObjectKind.UNIT }
-            .mapNotNull { mapObject -> mapObject.icon?.let { mapObject.id to it.toImageBitmap() } }
-            .toMap()
-    }
-    val graphicIcons = remember(replay) {
-        replay.objects
-            .filter { it.kind == MapViewerReplayObjectKind.GRAPHIC }
-            .mapNotNull { mapObject -> mapObject.icon?.let { mapObject.id to it.toImageBitmap() } }
-            .toMap()
-    }
-
-    Canvas(
-        modifier = modifier
-            .background(Color(0xFF15181B))
-            .onSizeChanged { viewport = viewport.resized(it.width, it.height) }
-            .onPointerEvent(PointerEventType.Scroll) { event ->
-                val change = event.changes.firstOrNull() ?: return@onPointerEvent
-                if (event.keyboardModifiers.isAltPressed) {
-                    onUnitIconSizeChanged(UnitIconDisplaySize.scroll(unitIconSizePx, change.scrollDelta.y))
-                } else {
-                    val factor = if (change.scrollDelta.y < 0f) 1.1f else 1f / 1.1f
-                    viewport = viewport.zoomAt(
-                        ViewerPoint(change.position.x.toDouble(), change.position.y.toDouble()),
-                        factor.toDouble(),
-                    )
-                }
-                change.consume()
-            }
-            .onPointerEvent(PointerEventType.Move) { event ->
-                if (event.buttons.isSecondaryPressed && rightClickTargetId == null) {
-                    event.changes.firstOrNull()?.let { change ->
-                        val delta = change.position - change.previousPosition
-                        if (delta != Offset.Zero) {
-                            viewport = viewport.pan(ViewerPoint(delta.x.toDouble(), delta.y.toDouble()))
-                            change.consume()
-                        }
-                    }
-                }
-                marquee?.let { current ->
-                    event.changes.firstOrNull()?.let { change ->
-                        marquee = current.copy(current = change.position)
-                        change.consume()
-                    }
-                }
-            }
-            .onPointerEvent(PointerEventType.Press) { event ->
-                if (event.buttons.isSecondaryPressed) {
-                    event.changes.firstOrNull()?.let { change ->
-                        replay.objectAtScreen(
-                            screenPoint = ViewerPoint(change.position.x.toDouble(), change.position.y.toDouble()),
-                            viewport = viewport,
-                            mapOffsetX = mapOffsetX,
-                            mapOffsetY = mapOffsetY,
-                            mapWidth = renderData.baseImage.width,
-                            mapHeight = renderData.baseImage.height,
-                            hitRadius = unitIconSizePx / 2.0,
-                        )?.let { mapObject ->
-                            rightClickTargetId = mapObject.id
-                            onContextMenuRequested(
-                                mapObject,
-                                IntOffset(change.position.x.roundToInt(), change.position.y.roundToInt()),
-                            )
-                        } ?: run {
-                            rightClickTargetId = null
-                            onContextMenuDismissed()
-                        }
-                    }
-                } else if (event.buttons.isPrimaryPressed && activeTool == MapViewerTool.SELECT) {
-                    event.changes.firstOrNull()?.let { change ->
-                        val selected = replay.objectAtScreen(
-                            screenPoint = ViewerPoint(change.position.x.toDouble(), change.position.y.toDouble()),
-                            viewport = viewport,
-                            mapOffsetX = mapOffsetX,
-                            mapOffsetY = mapOffsetY,
-                            mapWidth = renderData.baseImage.width,
-                            mapHeight = renderData.baseImage.height,
-                            hitRadius = unitIconSizePx / 2.0,
-                        )
-                        if (selected != null) {
-                            onObjectsSelected(setOf(selected.id), event.keyboardModifiers.isShiftPressed)
-                        } else {
-                            marquee = ComposeSelectionMarquee(change.position, change.position, event.keyboardModifiers.isShiftPressed)
-                        }
-                    }
-                    onContextMenuDismissed()
-                }
-            }
-            .onPointerEvent(PointerEventType.Release) { event ->
-                if (!event.buttons.isSecondaryPressed) rightClickTargetId = null
-                marquee?.let { current ->
-                    val box = MapSelectionBox(
-                        start = ViewerPoint(current.start.x.toDouble(), current.start.y.toDouble()),
-                        current = ViewerPoint(current.current.x.toDouble(), current.current.y.toDouble()),
-                    )
-                    if (box.isDrag) {
-                        onObjectsSelected(
-                            replay.objects.filter {
-                                it.selectionBounds(viewport, mapOffsetX, mapOffsetY, renderData.baseImage.width, renderData.baseImage.height, unitIconSizePx)
-                                    ?.let(box::overlaps) == true
-                            }
-                                .mapTo(linkedSetOf(), MapViewerReplayObject::id),
-                            current.additive,
-                        )
-                    } else if (!current.additive) {
-                        onObjectsSelected(emptySet(), false)
-                    }
-                    marquee = null
-                }
-            }
-    ) {
-        val zoom = viewport.zoom.toFloat()
-        val mapLeft = viewport.screenX(mapOffsetX).toFloat()
-        val mapTop = viewport.screenY(mapOffsetY).toFloat()
-        val visibleMapLeft = (viewport.left - mapOffsetX).coerceAtLeast(0.0)
-        val visibleMapTop = (viewport.top - mapOffsetY).coerceAtLeast(0.0)
-        val visibleMapRight = (viewport.left + viewport.visibleWidth - mapOffsetX)
-            .coerceAtMost(renderData.baseImage.width.toDouble())
-        val visibleMapBottom = (viewport.top + viewport.visibleHeight - mapOffsetY)
-            .coerceAtMost(renderData.baseImage.height.toDouble())
-        clipRect {
-            withTransform({
-                translate(mapLeft, mapTop)
-                scale(zoom, zoom, Offset.Zero)
-            }) {
-                tiles.filter { tile ->
-                    tile.left < visibleMapRight &&
-                            tile.top < visibleMapBottom &&
-                            tile.left + tile.width > visibleMapLeft &&
-                            tile.top + tile.height > visibleMapTop
-                }.forEach { tile ->
-                    drawImage(
-                        image = tile.image,
-                        dstOffset = IntOffset(tile.left, tile.top),
-                        dstSize = IntSize(tile.width, tile.height),
-                    )
-                }
-            }
-            gridOverlay?.lineSegments?.forEach { segment ->
-                drawLine(
-                    color = segment.colour.toComposeColour(),
-                    start = Offset(segment.start.x.toFloat(), segment.start.y.toFloat()),
-                    end = Offset(segment.end.x.toFloat(), segment.end.y.toFloat()),
-                    strokeWidth = segment.thickness.toFloat(),
-                    cap = StrokeCap.Square,
-                )
-            }
-            withTransform({
-                translate(mapLeft, mapTop)
-                scale(zoom, zoom, Offset.Zero)
-            }) {
-                replay.objects
-                    .filter { it.x != null && it.y != null }
-                    .forEach { mapObject ->
-                        val centre = Offset(
-                            (mapObject.x!! * renderData.baseImage.width).toFloat(),
-                            (mapObject.y!! * renderData.baseImage.height).toFloat(),
-                        )
-                        val radius = 7f / zoom
-                        val colour = when {
-                            mapObject.destroyed == true -> Color(0xFFE05A5A)
-                            mapObject.kind == MapViewerReplayObjectKind.GRAPHIC -> Color(0xFFFFC857)
-                            else -> Color(0xFF67D5E8)
-                        }
-                        when (mapObject.kind) {
-                            MapViewerReplayObjectKind.GRAPHIC ->
-                                graphicIcons[mapObject.id]?.let { icon ->
-                                    val width = ((mapObject.normalizedWidth ?: 0.032) * renderData.baseImage.width).roundToInt().coerceAtLeast(1)
-                                    val height = ((mapObject.normalizedHeight ?: 0.032) * renderData.baseImage.height).roundToInt().coerceAtLeast(1)
-                                    drawImage(
-                                        image = icon,
-                                        dstOffset = IntOffset((centre.x - width / 2f).roundToInt(), (centre.y - height / 2f).roundToInt()),
-                                        dstSize = IntSize(width, height),
-                                    )
-                                } ?: drawRect(
-                                    color = colour,
-                                    topLeft = centre - Offset(radius, radius),
-                                    size = androidx.compose.ui.geometry.Size(radius * 2f, radius * 2f),
-                                )
-
-                            MapViewerReplayObjectKind.UNIT ->
-                                if (mapObject.icon == null) drawCircle(colour, radius, centre)
-
-                            else -> drawCircle(colour, radius, centre)
-                        }
-                        if (mapObject.destroyed == true && mapObject.icon == null) {
-                            drawLine(
-                                color = Color.Black,
-                                start = centre - Offset(radius, radius),
-                                end = centre + Offset(radius, radius),
-                                strokeWidth = (2f / zoom).coerceAtLeast(0.5f),
-                            )
-                            drawLine(
-                                color = Color.Black,
-                                start = centre + Offset(radius, -radius),
-                                end = centre + Offset(-radius, radius),
-                                strokeWidth = (2f / zoom).coerceAtLeast(0.5f),
-                            )
-                        }
-                        if (mapObject.id in selectedObjectIds && mapObject.icon == null) {
-                            drawCircle(
-                                color = Color.White,
-                                radius = radius + 4f / zoom,
-                                center = centre,
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(2f / zoom),
-                            )
-                        }
-                    }
-            }
-            replay.objects
-                .filter { it.kind == MapViewerReplayObjectKind.UNIT && it.x != null && it.y != null }
-                .forEach { mapObject ->
-                    unitIcons[mapObject.id]?.let { icon ->
-                        val width = unitIconSizePx.roundToInt()
-                        val height = (width.toDouble() * icon.height / icon.width).roundToInt()
-                        val centre = Offset(
-                            viewport.screenX(mapOffsetX + mapObject.x!! * renderData.baseImage.width).toFloat(),
-                            viewport.screenY(mapOffsetY + mapObject.y!! * renderData.baseImage.height).toFloat(),
-                        )
-                        drawImage(
-                            image = icon,
-                            dstOffset = IntOffset((centre.x - width / 2f).roundToInt(), (centre.y - height / 2f).roundToInt()),
-                            dstSize = IntSize(width, height),
-                        )
-                        if (mapObject.destroyed == true) {
-                            val radius = maxOf(width, height) / 2f
-                            drawLine(Color.Black, centre - Offset(radius, radius), centre + Offset(radius, radius), 2f)
-                            drawLine(Color.Black, centre + Offset(radius, -radius), centre + Offset(-radius, radius), 2f)
-                        }
-                        if (mapObject.id in selectedObjectIds) {
-                            drawCircle(
-                                color = Color.White,
-                                radius = maxOf(width, height) / 2f + 4f,
-                                center = centre,
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(2f),
-                            )
-                        }
-                    }
-                }
-            replay.objects
-                .filter { it.kind == MapViewerReplayObjectKind.GRAPHIC && it.x != null && it.y != null && it.displayName != null }
-                .forEach { mapObject ->
-                    val centre = Offset(
-                        viewport.screenX(mapOffsetX + mapObject.x!! * renderData.baseImage.width).toFloat(),
-                        viewport.screenY(mapOffsetY + mapObject.y!! * renderData.baseImage.height).toFloat(),
-                    )
-                    val graphicHeight = (mapObject.normalizedHeight ?: 0.032) * renderData.baseImage.height * viewport.zoom
-                    val style = TextStyle(color = Color.White, fontFamily = nordFontFamily, fontSize = 16.sp)
-                    val measured = textMeasurer.measure(mapObject.displayName!!, style)
-                    drawText(
-                        textMeasurer = textMeasurer,
-                        text = mapObject.displayName!!,
-                        topLeft = Offset(centre.x - measured.size.width / 2f, centre.y - graphicHeight.toFloat() / 2f - measured.size.height - 4f),
-                        style = style,
-                    )
-                }
-            val selectedBounds = replay.objects
-                .filter { it.id in selectedObjectIds }
-                .mapNotNull { it.selectionBounds(viewport, mapOffsetX, mapOffsetY, renderData.baseImage.width, renderData.baseImage.height, unitIconSizePx) }
-            selectedBounds.forEach { bounds ->
-                drawRect(
-                    color = Color.White.copy(alpha = 0.82f),
-                    topLeft = Offset(bounds.left.toFloat(), bounds.top.toFloat()),
-                    size = androidx.compose.ui.geometry.Size((bounds.right - bounds.left).toFloat(), (bounds.bottom - bounds.top).toFloat()),
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(2f),
-                )
-            }
-            selectedBounds.takeIf { it.isNotEmpty() }?.let { bounds ->
-                MapSelectionScreenBounds(
-                    left = bounds.minOf(MapSelectionScreenBounds::left),
-                    top = bounds.minOf(MapSelectionScreenBounds::top),
-                    right = bounds.maxOf(MapSelectionScreenBounds::right),
-                    bottom = bounds.maxOf(MapSelectionScreenBounds::bottom),
-                ).frame().let { frame ->
-                    if (bounds.size > 1) {
-                        drawPath(
-                            path = Path().apply {
-                                moveTo(frame.topLeft.x.toFloat(), frame.topLeft.y.toFloat())
-                                lineTo(frame.topRight.x.toFloat(), frame.topRight.y.toFloat())
-                                lineTo(frame.bottomRight.x.toFloat(), frame.bottomRight.y.toFloat())
-                                lineTo(frame.bottomLeft.x.toFloat(), frame.bottomLeft.y.toFloat())
-                                close()
-                            },
-                            color = Color.White.copy(alpha = 0.11f),
-                        )
-                    }
-                    frame.cornerBrackets().forEach { bracket ->
-                        drawPath(
-                            path = Path().apply {
-                                moveTo(bracket.points.first().x.toFloat(), bracket.points.first().y.toFloat())
-                                bracket.points.drop(1).forEach { lineTo(it.x.toFloat(), it.y.toFloat()) }
-                                close()
-                            },
-                            color = Color.White,
-                        )
-                    }
-                    val rotateHandle = frame.rotationHandle()
-                    drawCircle(Color.White, 7f, Offset(rotateHandle.x.toFloat(), rotateHandle.y.toFloat()))
-                    drawCircle(Color(0xFF120909), 3.5f, Offset(rotateHandle.x.toFloat(), rotateHandle.y.toFloat()))
-                }
-            }
-            marquee?.let { selection ->
-                MapSelectionBox(
-                    start = ViewerPoint(selection.start.x.toDouble(), selection.start.y.toDouble()),
-                    current = ViewerPoint(selection.current.x.toDouble(), selection.current.y.toDouble()),
-                ).takeIf(MapSelectionBox::isDrag)?.let { box ->
-                    drawRect(
-                        color = Color(0xFFDF4A4A).copy(alpha = 0.15f),
-                        topLeft = Offset(box.left.toFloat(), box.top.toFloat()),
-                        size = androidx.compose.ui.geometry.Size((box.right - box.left).toFloat(), (box.bottom - box.top).toFloat()),
-                    )
-                    drawRect(
-                        color = Color(0xFFDF4A4A),
-                        topLeft = Offset(box.left.toFloat(), box.top.toFloat()),
-                        size = androidx.compose.ui.geometry.Size((box.right - box.left).toFloat(), (box.bottom - box.top).toFloat()),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(2f),
-                    )
-                }
-            }
-            gridOverlay?.labels?.forEach { label ->
-                val style = TextStyle(
-                    color = label.colour.toComposeColour(),
-                    fontFamily = nordFontFamily,
-                    fontWeight = if (label.strong) FontWeight.Bold else FontWeight.Normal,
-                    fontSize = label.fontSize.sp,
-                )
-                val measured = textMeasurer.measure(label.text, style)
-                drawText(
-                    textMeasurer = textMeasurer,
-                    text = label.text,
-                    topLeft = Offset(
-                        (label.centre.x - measured.size.width / 2.0).toFloat(),
-                        (label.centre.y - measured.size.height / 2.0).toFloat(),
-                    ),
-                    style = style,
-                )
-            }
-        }
-    }
-}
-
-private data class ComposeSelectionMarquee(
-    val start: Offset,
-    val current: Offset,
-    val additive: Boolean,
-)
-
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawUnitFacingIndicator(
     centre: Offset,
     iconWidth: Float,
@@ -2420,30 +1969,6 @@ private fun OperationUnitAffiliation?.facingIndicatorColor() = when (this) {
     OperationUnitAffiliation.NEUTRAL -> Color(0xFF3D7652)
     OperationUnitAffiliation.UNKNOWN -> Color(0xFF806E29)
     null -> Color(0xFF403A3A)
-}
-
-private fun MapViewerReplayObject.selectionBounds(
-    viewport: MapViewport,
-    mapOffsetX: Double,
-    mapOffsetY: Double,
-    mapWidth: Int,
-    mapHeight: Int,
-    unitIconSizePx: Double,
-): MapSelectionScreenBounds? = x?.let { mapX ->
-    y?.let { mapY ->
-        val centre = MapCoordinate(mapX, mapY).toWorldPoint(mapOffsetX, mapOffsetY, mapWidth, mapHeight).let { point ->
-            ViewerPoint(viewport.screenX(point.x), viewport.screenY(point.y))
-        }
-        val halfWidth = when (kind) {
-            MapViewerReplayObjectKind.GRAPHIC -> (normalizedWidth ?: 0.032) * mapWidth * viewport.zoom * 0.5
-            else -> unitIconSizePx * 0.5
-        }
-        val halfHeight = when (kind) {
-            MapViewerReplayObjectKind.GRAPHIC -> (normalizedHeight ?: 0.032) * mapHeight * viewport.zoom * 0.5
-            else -> unitIconSizePx * 0.5
-        }
-        MapSelectionScreenBounds(centre.x - halfWidth, centre.y - halfHeight, centre.x + halfWidth, centre.y + halfHeight)
-    }
 }
 
 private fun java.awt.Color.toComposeColour() =

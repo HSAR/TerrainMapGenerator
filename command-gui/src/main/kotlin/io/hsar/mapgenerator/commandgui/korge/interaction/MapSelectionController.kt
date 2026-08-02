@@ -1,6 +1,15 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
-import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingTranslator
+import io.hsar.mapgenerator.commandgui.MapSelectionCorner
+import io.hsar.mapgenerator.commandgui.korge.adapter.toLegacyObject
+import io.hsar.mapgenerator.commandgui.korge.adapter.toOperation
+import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationContent
+import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationObject
+import io.hsar.mapgenerator.commandgui.operation.OperationContent
+import io.hsar.mapgenerator.commandgui.operation.OperationTransformGesture
+import io.hsar.mapgenerator.commandgui.operation.OperationTransformModifiers
+import io.hsar.mapgenerator.commandgui.operation.OperationUnit
+import io.hsar.mapgenerator.commandgui.operation.selectionBounds
 import korlibs.math.geom.Vector2D
 import kotlin.math.hypot
 
@@ -145,25 +154,17 @@ internal class MapSelectionController(
                     .filterIsInstance<GraphicSnapshot>()
                     .filter { it.graphicTemplateId in resizedTemplateIds }
                 ).distinctBy(MapPlacedObjectSnapshot::id)
+        val originalContent = objectController.snapshots().toOperationContent()
         resizeState = ResizeState(
-            grabbedCorner = handle.corner,
-            originalBounds = bounds,
-            anchor = singleDrawing?.let {
-                MapSelectionResize.anchorFor(
-                    drawing = it.drawing,
-                    grabbedCorner = handle.corner,
-                    altHeld = altHeld,
-                    aspectRatio = coordinateSpace.aspectRatio,
-                )
-            } ?: MapSelectionResize.anchorFor(
-                bounds = bounds,
-                grabbedCorner = handle.corner,
-                selectionSize = selectedSnapshots.size,
-                altHeld = altHeld,
+            gesture = OperationTransformGesture.Resize(
+                original = originalContent,
+                selectedIds = selectedSnapshots.mapTo(linkedSetOf()) { it.id.toOperation() },
+                grabbedCorner = MapSelectionCorner.valueOf(handle.corner.name),
+                aspectRatio = coordinateSpace.aspectRatio,
+                originalFixedCorner = originalFixedCorner,
             ),
-            originalFixedCorner = originalFixedCorner,
-            selectedSnapshots = selectedSnapshots,
             originalSnapshots = originalSnapshots,
+            altHeld = altHeld,
         )
         boxState = null
         moveState = null
@@ -179,13 +180,16 @@ internal class MapSelectionController(
         if (!handle.contains(screenPoint)) {
             return false
         }
-        val pivotCenter = MapSelectionPivot.pivotCenter(selectedSnapshots, coordinateSpace)
-        val pivotCenterWorld = coordinateSpace.toWorld(pivotCenter)
+        val originalContent = objectController.snapshots().toOperationContent()
+        val selectedOperationIds = selectedSnapshots.mapTo(linkedSetOf()) { it.id.toOperation() }
+        val pivotCenter = originalContent.selectionBounds(selectedOperationIds, coordinateSpace.aspectRatio)?.centre ?: return false
         pivotState = PivotState(
-            pivotCenterWorld = pivotCenterWorld,
-            startAngle = MapSelectionPivot.bearingAngle(
-                pivotCenterWorld,
-                coordinateSpace.screenToWorld(screenPoint, viewportProvider()),
+            gesture = OperationTransformGesture.Rotate(
+                original = originalContent,
+                selectedIds = selectedOperationIds,
+                pivot = pivotCenter,
+                start = coordinateSpace.screenToMap(screenPoint, viewportProvider()),
+                aspectRatio = coordinateSpace.aspectRatio,
             ),
             originalSnapshots = selectedSnapshots,
             originalGroupFrame = selectedSnapshots.groupSelectionFrame(coordinateSpace, viewportProvider()),
@@ -193,7 +197,7 @@ internal class MapSelectionController(
         )
         boxState = null
         moveState = null
-        applyPivot(pivotState ?: return false, 0.0, shiftHeld = false)
+        (pivotState ?: return false).let { applyPivot(it, it.gesture.start, shiftHeld = false) }
         publish()
         return true
     }
@@ -231,8 +235,18 @@ internal class MapSelectionController(
             return false
         }
         val startCoordinate = coordinateSpace.screenToMap(screenPoint, viewportProvider())
+        val originalContent = objectController.snapshots().toOperationContent()
         moveState = GroupMoveState(
-            startCoordinate = startCoordinate,
+            gesture = OperationTransformGesture.Move(
+                original = originalContent,
+                selectedIds = snapshots.mapTo(linkedSetOf()) { it.id.toOperation() },
+                start = startCoordinate,
+                backgroundBounds = coordinateSpace.backgroundBounds,
+                aspectRatio = coordinateSpace.aspectRatio,
+                constrainUnit = { unit, bypass ->
+                    (constrainUnitMove(unit.toLegacyObject(originalContent) as UnitSnapshot, bypass).toOperationObject() as OperationUnit)
+                },
+            ),
             originalSnapshots = snapshots,
         )
         boxState = null
@@ -249,19 +263,12 @@ internal class MapSelectionController(
             return
         }
 
-        val currentCoordinate = coordinateSpace.resolveScreenPointClamped(
-            screenPoint = pointer,
-            viewport = viewportProvider(),
-            bounds = coordinateSpace.backgroundBounds,
+        applyPreview(
+            state.gesture.preview(
+                coordinateSpace.screenToMap(pointer, viewportProvider()),
+                OperationTransformModifiers(shiftHeld = shiftHeld),
+            )
         )
-        val delta = MapCoordinateDelta(
-            x = currentCoordinate.x - state.startCoordinate.x,
-            y = currentCoordinate.y - state.startCoordinate.y,
-        )
-        state.originalSnapshots
-            .map { it.moveBy(delta) }
-            .map { snapshot -> if (snapshot is UnitSnapshot) constrainUnitMove(snapshot, shiftHeld) else snapshot }
-            .forEach(objectController::previewObject)
         updateMovePreview(state)
         publish()
     }
@@ -274,12 +281,11 @@ internal class MapSelectionController(
             return
         }
 
-        val currentAngle = MapSelectionPivot.bearingAngle(
-            state.pivotCenterWorld,
-            coordinateSpace.screenToWorld(pointer, viewportProvider()),
+        val current = coordinateSpace.screenToMap(pointer, viewportProvider())
+        state.deltaRadians = io.hsar.mapgenerator.commandgui.operation.rotationDelta(
+            state.gesture.pivot, state.gesture.start, current, coordinateSpace.aspectRatio,
         )
-        state.deltaRadians = currentAngle - state.startAngle
-        applyPivot(state, state.deltaRadians, shiftHeld)
+        applyPivot(state, current, shiftHeld)
         publish()
     }
 
@@ -295,48 +301,20 @@ internal class MapSelectionController(
         publish()
     }
 
-    private fun applyPivot(state: PivotState, deltaRadians: Double, shiftHeld: Boolean) {
-        MapSelectionPivot.rotateSnapshots(
-            originalSnapshots = state.originalSnapshots,
-            pivotCenterWorld = state.pivotCenterWorld,
-            deltaRadians = deltaRadians,
-            coordinateSpace = coordinateSpace,
-            shiftHeld = shiftHeld,
-        )
-            .forEach(objectController::previewObject)
-    }
+    private fun applyPivot(state: PivotState, pointer: MapCoordinate, shiftHeld: Boolean) =
+        applyPreview(state.gesture.preview(pointer, OperationTransformModifiers(shiftHeld = shiftHeld)))
 
     private fun applyResize(state: ResizeState, pointer: Vector2D, shiftHeld: Boolean = false) {
-        val resizedSelection = MapSelectionResize.resizeSnapshots(
-            originalSnapshots = state.selectedSnapshots,
-            bounds = state.originalBounds,
-            grabbedCorner = state.grabbedCorner,
-            anchor = state.anchor,
-            draggedCorner = coordinateSpace.screenToMap(pointer, viewportProvider()),
-            originalFixedCorner = state.originalFixedCorner,
-            aspectRatio = coordinateSpace.aspectRatio,
-            shiftHeld = shiftHeld,
+        applyPreview(
+            state.gesture.preview(
+                coordinateSpace.screenToMap(pointer, viewportProvider()),
+                OperationTransformModifiers(altHeld = state.altHeld, shiftHeld = shiftHeld),
+            )
         )
-        val templateSizes = resizedSelection
-            .filterIsInstance<GraphicSnapshot>()
-            .associate { it.graphicTemplateId to GraphicTemplateSize(it.normalizedWidth, it.normalizedHeight) }
-        val resizedById = resizedSelection.associateBy(MapPlacedObjectSnapshot::id)
-        state.originalSnapshots
-            .map { original ->
-                when (original) {
-                    is GraphicSnapshot -> templateSizes[original.graphicTemplateId]
-                        ?.let { size ->
-                            original.copy(
-                                normalizedWidth = size.width,
-                                normalizedHeight = size.height,
-                            )
-                        }
-                        ?: original
+    }
 
-                    else -> resizedById[original.id] ?: original
-                }
-            }
-            .forEach(objectController::previewObject)
+    private fun applyPreview(content: OperationContent) = content.objects.forEach { operationObject ->
+        objectController.previewObject(operationObject.toLegacyObject(content))
     }
 
     private fun commitPivot(state: PivotState) {
@@ -489,7 +467,7 @@ internal class MapSelectionController(
             snapshots.size <= 1 -> null
             pivotState != null -> pivotState?.originalGroupFrame
                 ?.rotatedAround(
-                    pivot = coordinateSpace.worldToScreen(pivotState!!.pivotCenterWorld, viewportProvider()),
+                    pivot = coordinateSpace.worldToScreen(coordinateSpace.toWorld(pivotState!!.gesture.pivot), viewportProvider()),
                     deltaRadians = pivotState!!.deltaRadians,
                 )
 
@@ -519,25 +497,21 @@ internal class MapSelectionController(
     )
 
     private data class GroupMoveState(
-        val startCoordinate: MapCoordinate,
+        val gesture: OperationTransformGesture.Move,
         val originalSnapshots: List<MapPlacedObjectSnapshot>,
     )
 
     private data class PivotState(
-        val pivotCenterWorld: Vector2D,
-        val startAngle: Double,
+        val gesture: OperationTransformGesture.Rotate,
         val originalSnapshots: List<MapPlacedObjectSnapshot>,
         val originalGroupFrame: ScreenSelectionFrame?,
         var deltaRadians: Double,
     )
 
     private data class ResizeState(
-        val grabbedCorner: ScreenSelectionCorner,
-        val originalBounds: MapSelectionBounds,
-        val anchor: MapCoordinate,
-        val originalFixedCorner: MapCoordinate?,
-        val selectedSnapshots: List<MapPlacedObjectSnapshot>,
+        val gesture: OperationTransformGesture.Resize,
         val originalSnapshots: List<MapPlacedObjectSnapshot>,
+        val altHeld: Boolean,
     )
 
     private companion object {
@@ -550,22 +524,6 @@ internal fun shouldPublishSelectionPivotHandle(
     moveActive: Boolean,
 ): Boolean =
     !boxSelectionActive && !moveActive
-
-private fun MapPlacedObjectSnapshot.moveBy(delta: MapCoordinateDelta): MapPlacedObjectSnapshot =
-    when (this) {
-        is UnitSnapshot -> copy(
-            mapCoordinate = MapCoordinate(
-                x = mapCoordinate.x + delta.x,
-                y = mapCoordinate.y + delta.y,
-            ),
-        )
-
-        is GraphicSnapshot -> copy(
-            mapCoordinate = MapCoordinate(mapCoordinate.x + delta.x, mapCoordinate.y + delta.y),
-        )
-
-        is DrawingSnapshot -> copy(drawing = MapDrawingTranslator.translate(drawing, delta))
-    }
 
 internal fun List<MapPlacedObjectSnapshot>.selectionCentroid(coordinateSpace: MapCoordinateSpace): MapCoordinate? =
     takeIf { it.isNotEmpty() }

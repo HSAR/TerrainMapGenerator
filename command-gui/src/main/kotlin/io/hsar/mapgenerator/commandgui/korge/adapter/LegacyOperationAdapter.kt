@@ -15,6 +15,7 @@ import korlibs.io.util.buildList
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.util.*
+import java.util.Collections.emptyList
 import java.util.Collections.emptyMap
 
 internal fun List<LedgerEntry>.toOperationTimeline(): OperationTimeline {
@@ -69,6 +70,9 @@ internal fun ReplayedLedger.toOperationContent(): OperationContent {
         notes = notes.map(MapNoteSnapshot::toOperationNote),
     )
 }
+
+internal fun List<MapPlacedObjectSnapshot>.toOperationContent() =
+    ReplayedLedger(this, emptyList(), emptyList(), emptyList()).toOperationContent()
 
 private fun OperationTimelineEntry.toLegacyEntry(before: OperationContent, after: OperationContent): LedgerEntry? {
     if (turnName != null) return AddTurnLedgerEntry(turnName, turnThumbnailAssetId)
@@ -133,7 +137,7 @@ private fun OperationTimelineEntry.toLegacyEntry(before: OperationContent, after
     }
 }
 
-private fun MapPlacedObjectSnapshot.toOperationObject(): OperationObject = when (this) {
+internal fun MapPlacedObjectSnapshot.toOperationObject(): OperationObject = when (this) {
     is UnitSnapshot -> OperationUnit(
         id = OperationObjectId(id.value),
         unitTemplateId = OperationUnitTemplateId(unitTemplateId.value),
@@ -189,14 +193,14 @@ private fun MapNoteSnapshot.toOperationNote() = OperationNote(
     referencedObjectIds = referencedObjectIds.map { OperationObjectId(it.value) },
 )
 
-private fun MapDrawing.toOperationDrawing(): OperationDrawing = when (this) {
+internal fun MapDrawing.toOperationDrawing(): OperationDrawing = when (this) {
     is FreeformDrawing -> OperationFreeformDrawing(points.map { OperationDrawingPoint(it.x, it.y) }, color.toOperationArgb())
     is LineDrawing -> OperationLineDrawing(start.toOperationPoint(), end.toOperationPoint(), color.toOperationArgb())
     is RectangleDrawing -> OperationRectangleDrawing(start.toOperationPoint(), end.toOperationPoint(), color.toOperationArgb(), rotationDegrees)
     is OvalDrawing -> OperationOvalDrawing(center.toOperationPoint(), xRadius, yRadius, color.toOperationArgb(), rotationDegrees)
 }
 
-private fun OperationObject.toLegacyObject(content: OperationContent): MapPlacedObjectSnapshot = when (this) {
+internal fun OperationObject.toLegacyObject(content: OperationContent): MapPlacedObjectSnapshot = when (this) {
     is OperationUnit -> UnitSnapshot(
         id = id.toLegacy(),
         unitTemplateId = unitTemplateId.toLegacy(),
@@ -279,7 +283,8 @@ private fun LedgerEntry.toOperationKind() = when (this) {
     else -> MapViewerLedgerEntryKind.BATCH
 }
 
-private fun OperationObjectId.toLegacy() = MapPlacedObjectId(value)
+internal fun OperationObjectId.toLegacy() = MapPlacedObjectId(value)
+internal fun MapPlacedObjectId.toOperation() = OperationObjectId(value)
 private fun OperationUnitTemplateId.toLegacy() = UnitTemplateId(value)
 private fun OperationGraphicTemplateId.toLegacy() = GraphicTemplateId(value)
 private fun OperationNoteId.toLegacy() = MapNoteId(value)
@@ -298,6 +303,7 @@ private object LegacyBitmapConversionCache {
             for (y in 0 until source.height) for (x in 0 until source.width) source.getRgba(x, y).let { colour ->
                 image.setRGB(x, y, (colour.a shl 24) or (colour.r shl 16) or (colour.g shl 8) or colour.b)
             }
+            bitmaps[image] = source
         }
     }
 
@@ -305,7 +311,7 @@ private object LegacyBitmapConversionCache {
     fun bitmap(source: BufferedImage) = bitmaps.getOrPut(source) {
         Bitmap32(source.width, source.height) { x, y ->
             source.getRGB(x, y).let { argb -> RGBA(argb ushr 16 and 0xff, argb ushr 8 and 0xff, argb and 0xff, argb ushr 24 and 0xff) }
-        }
+        }.also { bufferedImages[it] = source }
     }
 }
 

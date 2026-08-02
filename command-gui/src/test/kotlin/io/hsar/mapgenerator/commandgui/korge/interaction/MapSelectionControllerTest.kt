@@ -17,8 +17,10 @@ import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import java.awt.Color
 import java.util.*
+import java.util.Collections.emptySet
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -369,8 +371,8 @@ class MapSelectionControllerTest {
         selectionController.selectOnly(unit.id)
 
         val handle = pivotHandleForSelection(listOf(storedUnit), MapCoordinateSpace(GEOMETRY, 1000, 1000), viewport()) ?: error("missing handle")
-        val pivot = MapSelectionPivot.pivotCenter(listOf(storedUnit), MapCoordinateSpace(GEOMETRY, 1000, 1000))
-        val startAngle = MapSelectionPivot.bearingAngle(
+        val pivot = pivotCenter(listOf(storedUnit), MapCoordinateSpace(GEOMETRY, 1000, 1000))
+        val startAngle = bearingAngle(
             Vector2D(pivot.x * 1000.0, pivot.y * 1000.0),
             handle.center,
         )
@@ -405,8 +407,8 @@ class MapSelectionControllerTest {
 
         val selected = listOf(storedNorth, storedSouth)
         val handle = pivotHandleForSelection(selected, MapCoordinateSpace(GEOMETRY, 1000, 1000), viewport()) ?: error("missing handle")
-        val pivot = MapSelectionPivot.pivotCenter(selected, MapCoordinateSpace(GEOMETRY, 1000, 1000))
-        val startAngle = MapSelectionPivot.bearingAngle(
+        val pivot = pivotCenter(selected, MapCoordinateSpace(GEOMETRY, 1000, 1000))
+        val startAngle = bearingAngle(
             Vector2D(pivot.x * 1000.0, pivot.y * 1000.0),
             handle.center,
         )
@@ -447,8 +449,8 @@ class MapSelectionControllerTest {
         selectionController.selectOnly(drawing.id)
 
         val handle = pivotHandleForSelection(listOf(drawing), MapCoordinateSpace(GEOMETRY, 1000, 1000), viewport()) ?: error("missing handle")
-        val pivot = MapSelectionPivot.pivotCenter(listOf(drawing), MapCoordinateSpace(GEOMETRY, 1000, 1000))
-        val startAngle = MapSelectionPivot.bearingAngle(
+        val pivot = pivotCenter(listOf(drawing), MapCoordinateSpace(GEOMETRY, 1000, 1000))
+        val startAngle = bearingAngle(
             Vector2D(pivot.x * 1000.0, pivot.y * 1000.0),
             handle.center,
         )
@@ -595,6 +597,11 @@ class MapSelectionControllerTest {
             x = center.x + sin(bearingRadians) * radius,
             y = center.y - cos(bearingRadians) * radius,
         )
+
+    private fun pivotCenter(snapshots: List<MapPlacedObjectSnapshot>, coordinateSpace: MapCoordinateSpace) =
+        snapshots.combinedSelectionBounds(coordinateSpace)?.centre ?: error("missing selection bounds")
+
+    private fun bearingAngle(origin: Vector2D, target: Vector2D) = atan2(target.x - origin.x, origin.y - target.y)
 
     private companion object {
         val GEOMETRY = ViewerGeometry(

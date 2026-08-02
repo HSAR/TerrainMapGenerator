@@ -70,7 +70,16 @@ data class MapSelectionScreenBounds(
     )
 }
 
-enum class MapSelectionCorner { TOP_LEFT, TOP_RIGHT, BOTTOM_RIGHT, BOTTOM_LEFT }
+enum class MapSelectionCorner {
+    TOP_LEFT, TOP_RIGHT, BOTTOM_RIGHT, BOTTOM_LEFT;
+
+    fun opposite() = when (this) {
+        TOP_LEFT -> BOTTOM_RIGHT
+        TOP_RIGHT -> BOTTOM_LEFT
+        BOTTOM_RIGHT -> TOP_LEFT
+        BOTTOM_LEFT -> TOP_RIGHT
+    }
+}
 
 data class MapSelectionCornerBracket(
     val corner: MapSelectionCorner,
