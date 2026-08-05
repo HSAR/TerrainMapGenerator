@@ -20,20 +20,70 @@ import java.util.Collections.emptyMap
 
 internal fun List<LedgerEntry>.toOperationTimeline(): OperationTimeline {
     var before = OperationContent.EMPTY
-    return foldIndexed(OperationTimeline()) { index, timeline, entry ->
-        val after = LedgerReplay.replay(take(index + 1)).toOperationContent()
+    return fold(OperationTimeline()) { timeline, entry ->
+        val changeSet = entry.toOperationChangeSet(before)
+        val after = changeSet.applyTo(before)
         val timelineEntry = OperationTimelineEntry(
-            changeSet = after.changesFrom(before),
+            changeSet = changeSet,
             kind = entry.toOperationKind(),
             description = entry.changeDescription(LedgerActionDirection.Redo) { id ->
-                LedgerReplay.replay(take(index)).objects.firstOrNull { it.id == id }
+                before.objects.firstOrNull { it.id.value == id.value }?.toLegacyObject(before)
             },
             turnName = (entry as? AddTurnLedgerEntry)?.name,
             turnThumbnailAssetId = (entry as? AddTurnLedgerEntry)?.thumbnailAssetId,
+            componentChangeSets = entry.toOperationComponentChangeSets(before),
         )
         before = after
         timeline.record(timelineEntry)
     }
+}
+
+private fun LedgerEntry.toOperationComponentChangeSets(content: OperationContent): List<OperationChangeSet> =
+    if (this !is BatchLedgerEntry) {
+        listOf(toOperationChangeSet(content))
+    } else {
+        var current = content
+        entries.map { nested ->
+            nested.toOperationChangeSet(current).also { change -> current = change.applyTo(current) }
+        }
+    }
+
+internal fun MapActionHistory.toOperationTimeline(): OperationTimeline =
+    fullTimelineEntries.toOperationTimeline().copy(appliedCount = appliedEntries.size)
+
+private fun LedgerEntry.toOperationChangeSet(content: OperationContent): OperationChangeSet = when (this) {
+    is CreateObjectAction -> OperationChangeSet(objects = listOf(OperationValueChange(after = snapshot.toOperationObject())))
+    is DeleteObjectAction -> OperationChangeSet(objects = listOf(OperationValueChange(before = snapshot.toOperationObject())))
+    is EditObjectAction -> content.objectById(objectId.toOperation())?.let { before ->
+        OperationChangeSet(objects = listOf(OperationValueChange(before, applyOperationObjectPatch(before, forward))))
+    } ?: OperationChangeSet()
+
+    is CreateUnitTemplateAction -> OperationChangeSet(unitTemplates = listOf(OperationValueChange(after = snapshot.toOperationTemplate())))
+    is DeleteUnitTemplateAction -> OperationChangeSet(unitTemplates = listOf(OperationValueChange(before = snapshot.toOperationTemplate())))
+    is EditUnitTemplateAction -> {
+        val before = beforeSnapshot?.toOperationTemplate() ?: content.unitTemplate(OperationUnitTemplateId(id.value))
+        val after = afterSnapshot?.toOperationTemplate() ?: before?.let { applyOperationUnitTemplatePatch(it, forward) { null } }
+        if (before == null || after == null) OperationChangeSet() else OperationChangeSet(unitTemplates = listOf(OperationValueChange(before, after)))
+    }
+
+    is CreateGraphicTemplateAction -> OperationChangeSet(graphicTemplates = listOf(OperationValueChange(after = snapshot.toOperationTemplate())))
+    is DeleteGraphicTemplateAction -> OperationChangeSet(graphicTemplates = listOf(OperationValueChange(before = snapshot.toOperationTemplate())))
+    is EditGraphicTemplateAction -> {
+        val before = beforeSnapshot?.toOperationTemplate() ?: content.graphicTemplate(OperationGraphicTemplateId(id.value))
+        val after = afterSnapshot?.toOperationTemplate() ?: before?.let { applyOperationGraphicTemplatePatch(it, forward) { null } }
+        if (before == null || after == null) OperationChangeSet() else OperationChangeSet(graphicTemplates = listOf(OperationValueChange(before, after)))
+    }
+
+    is CreateNoteAction -> OperationChangeSet(notes = listOf(OperationValueChange(after = snapshot.toOperationNote())))
+    is DeleteNoteAction -> OperationChangeSet(notes = listOf(OperationValueChange(before = snapshot.toOperationNote())))
+    is EditNoteAction -> content.notes.firstOrNull { it.id.value == id.value }?.let { before ->
+        OperationChangeSet(notes = listOf(OperationValueChange(before, applyOperationNotePatch(before, forward))))
+    } ?: OperationChangeSet()
+
+    is ReorderNotesAction -> OperationChangeSet(noteOrderBefore = backward.map { OperationNoteId(it.value) }, noteOrderAfter = forward.map { OperationNoteId(it.value) })
+    is AddTurnLedgerEntry -> OperationChangeSet()
+    is BatchLedgerEntry -> toOperationComponentChangeSets(content).fold(content) { current, change -> change.applyTo(current) }.changesFrom(content)
+    else -> OperationChangeSet()
 }
 
 internal fun OperationTimeline.toLegacyEntries(): List<LedgerEntry> {
@@ -76,8 +126,24 @@ internal fun List<MapPlacedObjectSnapshot>.toOperationContent() =
 
 private fun OperationTimelineEntry.toLegacyEntry(before: OperationContent, after: OperationContent): LedgerEntry? {
     if (turnName != null) return AddTurnLedgerEntry(turnName, turnThumbnailAssetId)
-    val actions = buildList {
-        changeSet.unitTemplates.forEach { change ->
+    if (kind == MapViewerLedgerEntryKind.BATCH) {
+        var current = before
+        val actions = componentChangeSets.flatMap { component ->
+            val componentAfter = component.applyTo(current)
+            component.toLegacyActions(current, componentAfter).also { current = componentAfter }
+        }
+        return BatchLedgerEntry(actions)
+    }
+    val actions = changeSet.toLegacyActions(before, after)
+    return when (actions.size) {
+        0 -> null
+        1 -> actions.single()
+        else -> BatchLedgerEntry(actions)
+    }
+}
+
+private fun OperationChangeSet.toLegacyActions(before: OperationContent, after: OperationContent): List<LedgerEntry> = buildList {
+    unitTemplates.forEach { change ->
             when {
                 change.before == null -> add(CreateUnitTemplateAction(change.after!!.toLegacyTemplate()))
                 change.after == null -> add(DeleteUnitTemplateAction(change.before.toLegacyTemplate()))
@@ -92,7 +158,7 @@ private fun OperationTimelineEntry.toLegacyEntry(before: OperationContent, after
                 )
             }
         }
-        changeSet.graphicTemplates.forEach { change ->
+    graphicTemplates.forEach { change ->
             when {
                 change.before == null -> add(CreateGraphicTemplateAction(change.after!!.toLegacyTemplate()))
                 change.after == null -> add(DeleteGraphicTemplateAction(change.before.toLegacyTemplate()))
@@ -107,34 +173,28 @@ private fun OperationTimelineEntry.toLegacyEntry(before: OperationContent, after
                 )
             }
         }
-        changeSet.objects.forEach { change ->
+    objects.forEach { change ->
             when {
                 change.before == null -> add(CreateObjectAction(change.after!!.toLegacyObject(after)))
                 change.after == null -> add(DeleteObjectAction(change.before.toLegacyObject(before)))
                 else -> add(EditObjectAction.fromSnapshots(change.before.toLegacyObject(before), change.after.toLegacyObject(after)))
             }
         }
-        changeSet.notes.forEach { change ->
+    notes.forEach { change ->
             when {
                 change.before == null -> add(CreateNoteAction(change.after!!.toLegacyNote()))
                 change.after == null -> add(DeleteNoteAction(change.before.toLegacyNote()))
                 else -> add(EditNoteAction.fromSnapshots(change.before.toLegacyNote(), change.after.toLegacyNote()))
             }
         }
-        if (changeSet.noteOrderAfter != null && changeSet.noteOrderBefore != null) {
+    if (noteOrderAfter != null && noteOrderBefore != null) {
             add(
                 ReorderNotesAction(
-                    forward = changeSet.noteOrderAfter.map(OperationNoteId::toLegacy),
-                    backward = changeSet.noteOrderBefore.map(OperationNoteId::toLegacy),
+                    forward = noteOrderAfter.map(OperationNoteId::toLegacy),
+                    backward = noteOrderBefore.map(OperationNoteId::toLegacy),
                 )
             )
         }
-    }
-    return when (actions.size) {
-        0 -> null
-        1 -> actions.single()
-        else -> BatchLedgerEntry(actions)
-    }
 }
 
 internal fun MapPlacedObjectSnapshot.toOperationObject(): OperationObject = when (this) {
@@ -148,6 +208,7 @@ internal fun MapPlacedObjectSnapshot.toOperationObject(): OperationObject = when
         normalizedWidth = normalizedWidth,
         normalizedHeight = normalizedHeight,
         customProperties = customProperties,
+        affiliation = template.affiliation?.let { OperationUnitAffiliation.valueOf(it.name.uppercase()) },
     )
 
     is GraphicSnapshot -> OperationGraphic(
@@ -167,7 +228,7 @@ internal fun MapPlacedObjectSnapshot.toOperationObject(): OperationObject = when
     )
 }
 
-private fun UnitTemplateSnapshot.toOperationTemplate() = OperationUnitTemplate(
+internal fun UnitTemplateSnapshot.toOperationTemplate() = OperationUnitTemplate(
     id = OperationUnitTemplateId(id.value),
     name = template.name,
     image = template.bitmap.toBufferedImage(),
@@ -177,7 +238,7 @@ private fun UnitTemplateSnapshot.toOperationTemplate() = OperationUnitTemplate(
     customProperties = template.customProperties,
 )
 
-private fun GraphicTemplateSnapshot.toOperationTemplate() = OperationGraphicTemplate(
+internal fun GraphicTemplateSnapshot.toOperationTemplate() = OperationGraphicTemplate(
     id = OperationGraphicTemplateId(id.value),
     name = template.name,
     image = template.bitmap.toBufferedImage(),
@@ -186,7 +247,7 @@ private fun GraphicTemplateSnapshot.toOperationTemplate() = OperationGraphicTemp
     customProperties = template.customProperties,
 )
 
-private fun MapNoteSnapshot.toOperationNote() = OperationNote(
+internal fun MapNoteSnapshot.toOperationNote() = OperationNote(
     id = OperationNoteId(id.value),
     title = title,
     body = body,
@@ -204,7 +265,9 @@ internal fun OperationObject.toLegacyObject(content: OperationContent): MapPlace
     is OperationUnit -> UnitSnapshot(
         id = id.toLegacy(),
         unitTemplateId = unitTemplateId.toLegacy(),
-        template = content.unitTemplate(unitTemplateId)?.toLegacyTemplate()?.template ?: error("Missing unit template ${unitTemplateId.value}"),
+        template = content.unitTemplate(unitTemplateId)?.toLegacyTemplate()?.template
+            ?.let { template -> affiliation?.let { template.copy(affiliation = it.toLegacyAffiliation()) } ?: template }
+            ?: error("Missing unit template ${unitTemplateId.value}"),
         instanceName = instanceName,
         destroyed = destroyed,
         facingDegrees = facingDegrees,
@@ -228,7 +291,7 @@ internal fun OperationObject.toLegacyObject(content: OperationContent): MapPlace
     is OperationDrawingObject -> DrawingSnapshot(id.toLegacy(), drawing.toLegacyDrawing(), customProperties)
 }
 
-private fun OperationUnitTemplate.toLegacyTemplate() = UnitTemplateSnapshot(
+internal fun OperationUnitTemplate.toLegacyTemplate() = UnitTemplateSnapshot(
     id = id.toLegacy(),
     template = MapViewerUnitTemplate(
         id = id.toLegacy(),
@@ -248,7 +311,7 @@ private fun OperationUnitTemplate.toLegacyTemplate() = UnitTemplateSnapshot(
     index = index,
 )
 
-private fun OperationGraphicTemplate.toLegacyTemplate() = GraphicTemplateSnapshot(
+internal fun OperationGraphicTemplate.toLegacyTemplate() = GraphicTemplateSnapshot(
     id = id.toLegacy(),
     template = MapViewerGraphicTemplate(
         id = id.toLegacy(),
@@ -292,6 +355,12 @@ private fun MapDrawingPoint.toOperationPoint() = OperationDrawingPoint(x, y)
 private fun OperationDrawingPoint.toLegacy() = MapDrawingPoint(x, y)
 private fun Color.toOperationArgb() = OperationArgb(rgb)
 private fun OperationArgb.toAwt() = Color(value, true)
+private fun OperationUnitAffiliation.toLegacyAffiliation() = when (this) {
+    OperationUnitAffiliation.FRIEND -> UnitAffiliation.Friend
+    OperationUnitAffiliation.HOSTILE -> UnitAffiliation.Hostile
+    OperationUnitAffiliation.NEUTRAL -> UnitAffiliation.Neutral
+    OperationUnitAffiliation.UNKNOWN -> UnitAffiliation.Unknown
+}
 
 private object LegacyBitmapConversionCache {
     private val bufferedImages = WeakHashMap<Bitmap32, BufferedImage>()
@@ -317,3 +386,4 @@ private object LegacyBitmapConversionCache {
 
 private fun Bitmap32.toBufferedImage() = LegacyBitmapConversionCache.bufferedImage(this)
 private fun BufferedImage.toBitmap32() = LegacyBitmapConversionCache.bitmap(this)
+internal fun BufferedImage.toKorgeBitmap() = toBitmap32()

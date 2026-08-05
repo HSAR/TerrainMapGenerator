@@ -1,9 +1,12 @@
 package io.hsar.mapgenerator.commandgui.save
 
 import io.hsar.mapgenerator.commandgui.AssetSource
+import io.hsar.mapgenerator.commandgui.MapViewerLedgerEntryKind
+import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.geometryFor
-import io.hsar.mapgenerator.commandgui.nextTestUuid
+import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationTimeline
+import io.hsar.mapgenerator.commandgui.korge.adapter.toSavedCamera
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
@@ -11,10 +14,19 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.launch.defaultGridConfiguration
+import io.hsar.mapgenerator.commandgui.nextTestUuid
+import io.hsar.mapgenerator.commandgui.operation.OperationChangeSet
+import io.hsar.mapgenerator.commandgui.operation.OperationNote
+import io.hsar.mapgenerator.commandgui.operation.OperationNoteId
+import io.hsar.mapgenerator.commandgui.operation.OperationTimeline
+import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntry
+import io.hsar.mapgenerator.commandgui.operation.OperationValueChange
 import io.hsar.mapgenerator.grid.EpsilonCoord
 import io.hsar.mapgenerator.grid.ReferenceSystem
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
+import korlibs.io.lang.toByteArray
+import korlibs.io.lang.use
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.lessThanOrEqualTo
@@ -33,6 +45,36 @@ class OperationSaveWriterTest {
 
     @TempDir
     lateinit var tempDir: Path
+
+    @Test
+    fun `archive writes only the applied timeline branch`() {
+        val first = OperationNote(OperationNoteId(UUID.fromString("00000000-0000-0000-0000-000000000041")), "Applied", "one")
+        val second = OperationNote(OperationNoteId(UUID.fromString("00000000-0000-0000-0000-000000000042")), "Redo", "two")
+        val timeline = OperationTimeline(
+            entries = listOf(first, second).map { note ->
+                OperationTimelineEntry(
+                    OperationChangeSet(notes = listOf(OperationValueChange(after = note))),
+                    MapViewerLedgerEntryKind.NOTE,
+                    "created note ${note.title}",
+                )
+            },
+            appliedCount = 1,
+        )
+        val savePath = writerWithUuids(
+            UUID.fromString("00000000-0000-0000-0000-000000000051"),
+            UUID.fromString("00000000-0000-0000-0000-000000000052"),
+        ).write(
+            request(
+                operationId = UUID.fromString("00000000-0000-0000-0000-000000000050"),
+                mapImage = BufferedImage(16, 16, BufferedImage.TYPE_INT_RGB),
+                mapSource = null,
+                timeline = timeline,
+            ),
+            tempDir.resolve("applied-only.oct.zip"),
+        )
+
+        assertThat(OperationSaveReader().read(savePath).ledger.entries.map { (it as CreateNoteEntrySaveDto).note.title }, equalTo(listOf("Applied")))
+    }
 
     @Test
     fun `save archive contains game json ledger json copied assets and jpg thumbnail`() {
@@ -62,7 +104,7 @@ class OperationSaveWriterTest {
                 mapImage = mapImage,
                 thumbnailImage = thumbnailImage,
                 mapSource = AssetSource.fromFile(mapFile.toFile()),
-                ledgerEntries = listOf(CreateUnitTemplateAction(UnitTemplateSnapshot(unitTemplate.id, unitTemplate, 0))),
+                timeline = listOf(CreateUnitTemplateAction(UnitTemplateSnapshot(unitTemplate.id, unitTemplate, 0))).toOperationTimeline(),
             ),
             tempDir.resolve("operation.oct.zip"),
         )
@@ -88,7 +130,7 @@ class OperationSaveWriterTest {
             assertThat(gameJson["map"]["gridStartY"].asText(), equalTo(expectedGrid.startY.format()))
         }
         assertThat((save.ledger.entries.single() as CreateUnitTemplateEntrySaveDto).unitTemplate.template.assetId, equalTo("00000000-0000-0000-0000-000000000002"))
-        assertThat((save.ledger.entries.single() as CreateUnitTemplateEntrySaveDto).unitTemplate.template.affiliation, equalTo(UnitAffiliation.Friend))
+        assertThat((save.ledger.entries.single() as CreateUnitTemplateEntrySaveDto).unitTemplate.template.affiliation, equalTo(UnitAffiliationSaveDto.Friend))
 
         ZipFile(savePath.toFile()).use { zip ->
             assertThat(zip.getEntry("game.json") != null, equalTo(true))
@@ -109,7 +151,7 @@ class OperationSaveWriterTest {
                 operationId = UUID.fromString("00000000-0000-0000-0000-0000000000ee"),
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
                 mapSource = null,
-                ledgerEntries = emptyList(),
+                timeline = OperationTimeline(),
                 additionalDataJson = payload,
             ),
             tempDir.resolve("additional-data.oct.zip"),
@@ -146,7 +188,7 @@ class OperationSaveWriterTest {
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
                 mapSource = missingSource,
-                ledgerEntries = listOf(CreateUnitTemplateAction(UnitTemplateSnapshot(transparentTemplate.id, transparentTemplate, 0))),
+                timeline = listOf(CreateUnitTemplateAction(UnitTemplateSnapshot(transparentTemplate.id, transparentTemplate, 0))).toOperationTimeline(),
             ),
             tempDir.resolve("fallback.oct.zip"),
         )
@@ -177,8 +219,8 @@ class OperationSaveWriterTest {
                 operationId = nextTestUuid(),
                 mapImage = mapImage,
                 mapSource = null,
-                ledgerEntries = emptyList(),
-                camera = viewport,
+                timeline = OperationTimeline(),
+                camera = viewport.toSavedCamera(geometry, mapImage.width, mapImage.height),
             ),
             tempDir.resolve("camera.oct.zip"),
         )
@@ -264,7 +306,7 @@ class OperationSaveWriterTest {
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
                 mapSource = null,
-                ledgerEntries = emptyList(),
+                timeline = OperationTimeline(),
             ),
         )
 
@@ -284,7 +326,7 @@ class OperationSaveWriterTest {
                 operationId = operationId,
                 mapImage = mapImage,
                 mapSource = null,
-                ledgerEntries = emptyList(),
+                timeline = OperationTimeline(),
                 settings = MapViewerSettings(
                     operationName = "Test Operation",
                     width = mapImage.width,
@@ -314,7 +356,7 @@ class OperationSaveWriterTest {
         mapImage: BufferedImage,
         thumbnailImage: BufferedImage? = null,
         mapSource: AssetSource?,
-        ledgerEntries: List<io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry>,
+        timeline: OperationTimeline,
         settings: MapViewerSettings = MapViewerSettings(
             operationName = "Test Operation",
             width = mapImage.width,
@@ -322,13 +364,13 @@ class OperationSaveWriterTest {
             unitsPerPixel = 20.0,
             seed = 1234L,
         ),
-        camera: CameraViewport = CameraViewport.centeredOnMap(
+        camera: MapViewerSavedCamera = CameraViewport.centeredOnMap(
             geometry = geometryFor(mapImage),
             mapWidth = mapImage.width,
             mapHeight = mapImage.height,
             viewportWidth = 800,
             viewportHeight = 600,
-        ),
+        ).toSavedCamera(geometryFor(mapImage), mapImage.width, mapImage.height),
         additionalDataJson: ByteArray? = null,
     ) = OperationSaveRequest(
         operationId = operationId,
@@ -340,7 +382,7 @@ class OperationSaveWriterTest {
         mapImage = mapImage,
         thumbnailImage = thumbnailImage,
         mapAssetSource = mapSource,
-        ledgerEntries = ledgerEntries,
+        timeline = timeline,
         additionalDataJson = additionalDataJson,
     )
 

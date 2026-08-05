@@ -25,6 +25,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import java.util.*
+import java.util.Collections.emptyList
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.imageio.ImageIO
@@ -47,10 +48,10 @@ class MapViewerSaveRepositoryTest {
     }
 
     @Test
-    fun `loads map grid and camera without requiring a ledger`() {
+    fun `loads operation map grid and camera`() {
         val path = writeMapSave("map-only.zip", "Map Level", "2026-07-29T12:00:00Z")
 
-        val loaded = MapViewerSaveRepository(savesDirectory).loadMap(path)
+        val loaded = MapViewerSaveRepository(savesDirectory).loadOperation(path)
 
         assertThat(loaded.settings.operationName, equalTo("Map Level"))
         assertThat(loaded.renderData.baseImage.width, equalTo(120))
@@ -60,7 +61,7 @@ class MapViewerSaveRepositoryTest {
         assertThat(loaded.camera?.x ?: 0.0, closeTo(0.25, 0.0001))
         assertThat(loaded.camera?.y ?: 0.0, closeTo(0.75, 0.0001))
         assertThat(loaded.camera?.zoom ?: 0.0, closeTo(1.5, 0.0001))
-        assertThat(loaded.ledger, equalTo(MapViewerLedgerReplay.EMPTY))
+        assertThat(loaded.timeline.entries, equalTo(emptyList()))
     }
 
     @Test
@@ -81,7 +82,7 @@ class MapViewerSaveRepositoryTest {
             ),
         )
 
-        val replay = MapViewerSaveRepository(savesDirectory).loadMap(path).ledger
+        val replay = MapViewerSaveRepository(savesDirectory).loadOperation(path).timeline
 
         assertThat(
             replay.entries.map { it.kind }, equalTo(
@@ -93,8 +94,8 @@ class MapViewerSaveRepositoryTest {
             )
         )
         assertThat(replay.entries.first().turnName, equalTo("Operation Start"))
-        assertThat(replay.notes.single().title, equalTo("Updated"))
-        assertThat(replay.notes.single().body, equalTo("Latest body"))
+        assertThat(replay.contentAt().notes.single().title, equalTo("Updated"))
+        assertThat(replay.contentAt().notes.single().body, equalTo("Latest body"))
     }
 
     private fun writeMapSave(
@@ -134,12 +135,10 @@ class MapViewerSaveRepositoryTest {
                 zip.write("game.json", OperationSaveJson.objectMapper.writeValueAsBytes(game))
                 zip.write("assets/$mapAssetId.png", image.toPng())
                 zip.write("assets/$thumbnailAssetId.png", image.toPng())
-                ledgerEntries?.let {
-                    zip.write(
-                        "ledger.json",
-                        OperationSaveJson.objectMapper.writeValueAsBytes(LedgerFileDto(it)),
-                    )
-                }
+                zip.write(
+                    "ledger.json",
+                    OperationSaveJson.objectMapper.writeValueAsBytes(LedgerFileDto(ledgerEntries.orEmpty())),
+                )
             }
         }
     }

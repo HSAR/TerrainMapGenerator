@@ -14,10 +14,15 @@ The migration is intentionally incomplete. Keep these boundaries accurate while 
 - `ComposeOperationState` is the authoritative Compose session state. It owns the document/head replay, camera, tool, selection, historical preview, transform preview, save
   revisions and the neutral `OperationWorkspaceState`. Composables may own only active drag/resize deltas; persistent editor identity, typed drafts, dock placement and floating
   state belong in `commandgui.operation`.
-- `MapViewerSaveRepository.loadOperation/createOperation/saveOperation` is the Compose document persistence entry point. Unknown `additionalData.json` fields and legacy UI records
-  must remain additive and round-trip unchanged.
-- The neutral boundary is not finished. `MapViewerSaveRepository` still calls KorGE `CameraViewport` and `LegacyOperationAdapter`; KorGE still runs its own `LedgerEntry`, snapshot,
-  template, note and drawing models. The adapter is a temporary save bridge, not evidence that KorGE consumes `OperationDocument` directly.
+- `MapViewerSaveRepository.loadOperation/createOperation/saveOperation` is the authoritative operation archive entry point for both launchpads. `OperationSaveLoader` reads an
+  archive
+  once into `OperationDocument` data, and the ledger codec reads/writes `OperationTimelineEntry`, `OperationChangeSet` and `OperationContent` directly. Save codecs must not import
+  `korge` or `korlibs`; camera, bitmap and action-history conversion belongs in `korge.adapter` or the KorGE viewer boundary.
+- KorGE now accepts a loaded `OperationDocument` and converts its neutral timeline once on viewer entry. Its own `LedgerEntry`, snapshot, template, note and drawing controllers
+  remain
+  temporary runtime models; convert them to a neutral timeline only when saving, and never reintroduce prefix replay or KorGE source-of-truth models into archive code.
+- `OperationTimelineEntry.componentChangeSets` retains the sequential neutral members of a persisted batch. Keep this when adapting or editing timelines: an aggregate before/after
+  change cannot represent batches whose actions cancel, while each top-level archive record must remain exactly one timeline entry.
 - Preserve KorGE behavior while it is the default, but do not build new product UI in KorGE merely for symmetry. Extract reusable rules first, then give each renderer a thin
   drawing/input adapter. Do not change the default or remove the selector before the parity gates below are met.
 
@@ -48,8 +53,9 @@ Do not overstate these partial implementations:
 - The workspace implementation is deliberately a prototype: only the right dock is rendered, tabs cannot yet be interactively reordered or moved between regions, and only notes
   plus the basic unit editor have functional Compose bodies. The neutral model already retains generic regions, tab order and opaque restored editor records for later ports.
 - Only `Edit Unit` and delete context-menu actions are functional. Graphic editing, object creation from templates, SITREP and the other legacy commands are still absent.
-- `loadMap()` and `MapViewerLedgerReplay` remain compatibility projections in the save repository and non-Compose callers. Compose production code no longer uses the obsolete
-  replay Canvas or replay support extensions.
+- The old `loadMap()`, `MapViewerSavedMap`, `MapViewerLedgerReplay`, replay Canvas and projection-only tests have been removed. Do not add a second map/replay loader; derive views
+  from `OperationDocument.content` or its timeline.
+- Layer management remains deliberately deferred. `enabledLayerIds` is persisted state only; do not treat it as authoritative rendering until a separately approved layer slice.
 
 ## Migration Plan
 
@@ -64,15 +70,18 @@ Compose replay renderer have been deleted; parity coverage includes every persis
 Completed: string editor IDs and viewer-local drafts/windows have been replaced by `OperationWorkspaceState`. Notes and unit editors restore functionally in docked/floating modes;
 schema-v3 persistence remains bidirectionally compatible with the KorGE unit-dialog record.
 
-1. Make layers real authoritative state: expose layer controls, regenerate only the enabled generated layers, preserve the seed, render only enabled layers, and keep camera/editor
-   state stable across regeneration. Distinguish generated layers from repeated static-image layers.
-2. Consolidate the duplicate top-level and KorGE grid-overlay implementations behind one neutral layout contract, including top/left fading, sticky labels, major/fine switching,
-   measurements and live references. Keep renderer-specific text measurement and drawing at the edges.
-3. Retire `loadMap()` once callers use `loadOperation()`. Remove the `CameraViewport` and KorGE thumbnail-layout dependencies from saving, and replace the O(n²) prefix replay in
-   `LegacyOperationAdapter` with direct or incremental conversion. This is the next step toward a genuinely engine-neutral `command-gui-core`.
+Completed: operation persistence is document-native. Archive loading is single-pass and incremental, applied timeline entries are encoded directly, redo branches are intentionally
+discarded on restart, thumbnails and image loading consume neutral models, and KorGE conversion is confined to viewer/adaptor boundaries. The obsolete save projection and duplicate
+KorGE catalogue are deleted. Legacy tactical additional-data helpers remain under `korge.persistence`, layered over the neutral additive UI document.
 
-Phase 1 gate: neutral transform fixtures cover every shape/group/modifier combination; restored editors are functional; layer toggles survive save/reload; both viewers pass the
-same grid-layout fixtures; no Compose production code references `MapViewerLedgerReplay` or KorGE types.
+1. Consolidate the duplicate top-level and KorGE grid-overlay implementations behind one neutral layout contract, including top/left fading, sticky labels, major/fine switching,
+   measurements and live references. Keep renderer-specific text measurement and drawing at the edges.
+
+Authoritative layer controls and regeneration are a future feature, not current migration work. Do not start them incidentally while completing ordinary authoring, persistence,
+grid parity or operational-rule extraction.
+
+Phase 1 gate: neutral transform fixtures cover every shape/group/modifier combination; restored editors are functional; both viewers pass the same grid-layout fixtures; no Compose
+production code references KorGE types, and save codecs remain operation-native.
 
 ### Phase 2 — Complete ordinary operation authoring
 

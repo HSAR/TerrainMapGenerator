@@ -1,284 +1,151 @@
 package io.hsar.mapgenerator.commandgui.save
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.TextNode
-import io.hsar.mapgenerator.commandgui.CustomPropertyJson
-import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
-import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
-import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
-import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
-import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
-import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
-import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
-import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
-import io.hsar.mapgenerator.commandgui.korge.interaction.CreateGraphicTemplateAction
-import io.hsar.mapgenerator.commandgui.korge.interaction.CreateNoteAction
-import io.hsar.mapgenerator.commandgui.korge.interaction.CreateObjectAction
-import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
-import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteGraphicTemplateAction
-import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteNoteAction
-import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteObjectAction
-import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteUnitTemplateAction
-import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
-import io.hsar.mapgenerator.commandgui.korge.interaction.EditGraphicTemplateAction
-import io.hsar.mapgenerator.commandgui.korge.interaction.EditNoteAction
-import io.hsar.mapgenerator.commandgui.korge.interaction.EditObjectAction
-import io.hsar.mapgenerator.commandgui.korge.interaction.EditUnitTemplateAction
-import io.hsar.mapgenerator.commandgui.korge.interaction.GraphicSnapshot
-import io.hsar.mapgenerator.commandgui.korge.interaction.GraphicTemplateSnapshot
-import io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapNoteSnapshot
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
-import io.hsar.mapgenerator.commandgui.korge.interaction.ReorderNotesAction
-import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
-import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
-import java.awt.Color
+import io.hsar.mapgenerator.commandgui.MapCoordinate
+import io.hsar.mapgenerator.commandgui.operation.*
+import korlibs.io.util.buildList
 
-internal class LedgerEntrySaveMapper(
-    private val assets: OperationAssetRegistry,
-) {
-    fun toDto(entry: LedgerEntry): LedgerEntrySaveDto =
-        when (entry) {
-            is CreateObjectAction -> CreateObjectEntrySaveDto(
-                objectId = entry.snapshot.id.value,
-                objectData = entry.snapshot.toDto(),
-            )
-
-            is DeleteObjectAction -> DeleteObjectEntrySaveDto(
-                objectId = entry.snapshot.id.value,
-                objectData = entry.snapshot.toDto(),
-            )
-
-            is EditObjectAction -> EditObjectEntrySaveDto(
-                objectId = entry.objectId.value,
-                forward = entry.forward,
-                backward = entry.backward,
-            )
-
-            is BatchLedgerEntry -> BatchLedgerEntrySaveDto(
-                entries = entry.entries.map(::toDto),
-            )
-
-            is AddTurnLedgerEntry -> AddTurnEntrySaveDto(
-                name = entry.name,
-                thumbnailAssetId = entry.thumbnailAssetId,
-            )
-
-            is CreateUnitTemplateAction -> CreateUnitTemplateEntrySaveDto(
-                unitTemplate = entry.snapshot.toDto(),
-            )
-
-            is DeleteUnitTemplateAction -> DeleteUnitTemplateEntrySaveDto(
-                unitTemplate = entry.snapshot.toDto(),
-            )
-
-            is EditUnitTemplateAction -> EditUnitTemplateEntrySaveDto(
-                id = entry.id.value,
-                forward = entry.saveForwardPatch(),
-                backward = entry.saveBackwardPatch(),
-            )
-
-            is CreateGraphicTemplateAction -> CreateGraphicTemplateEntrySaveDto(entry.snapshot.toDto())
-            is DeleteGraphicTemplateAction -> DeleteGraphicTemplateEntrySaveDto(entry.snapshot.toDto())
-            is EditGraphicTemplateAction -> EditGraphicTemplateEntrySaveDto(entry.id.value, entry.saveForwardPatch(), entry.saveBackwardPatch())
-
-            is CreateNoteAction -> CreateNoteEntrySaveDto(
-                note = entry.snapshot.toDto(),
-            )
-
-            is EditNoteAction -> EditNoteEntrySaveDto(
-                id = entry.id.value,
-                forward = entry.forward,
-                backward = entry.backward,
-            )
-
-            is DeleteNoteAction -> DeleteNoteEntrySaveDto(
-                note = entry.snapshot.toDto(),
-            )
-
-            is ReorderNotesAction -> ReorderNotesEntrySaveDto(
-                forward = entry.forward.map { it.value },
-                backward = entry.backward.map { it.value },
-            )
-
-            else -> error("Unsupported ledger entry type: ${entry::class.qualifiedName}")
+internal class LedgerEntrySaveMapper(private val assets: OperationAssetRegistry) {
+    fun toDtos(timeline: OperationTimeline): List<LedgerEntrySaveDto> {
+        var content = OperationContent.EMPTY
+        return timeline.appliedEntries.mapNotNull { entry ->
+            val dto = entry.toDto(content)
+            content = entry.changeSet.applyTo(content)
+            dto
         }
+    }
 
-    private fun MapPlacedObjectSnapshot.toDto(): SavedMapObjectDto =
-        when (this) {
-            is UnitSnapshot -> SavedUnitObjectDto(
-                unitTemplateId = unitTemplateId.value,
-                instanceName = instanceName,
-                destroyed = destroyed,
-                facingDegrees = facingDegrees,
-                affiliation = template.affiliation,
-                mapCoordinate = mapCoordinate.toDto(),
-                normalizedWidth = normalizedWidth,
-                normalizedHeight = normalizedHeight,
-                customProperties = customProperties,
-            )
-
-            is DrawingSnapshot -> SavedDrawingObjectDto(
-                drawing = drawing.toDto(),
-                customProperties = customProperties,
-            )
-            is GraphicSnapshot -> SavedGraphicObjectDto(
-                graphicTemplateId = graphicTemplateId.value,
-                instanceName = instanceName,
-                mapCoordinate = mapCoordinate.toDto(),
-                normalizedWidth = normalizedWidth,
-                normalizedHeight = normalizedHeight,
-                customProperties = customProperties,
-            )
-        }
-
-    private fun GraphicTemplateSnapshot.toDto() = GraphicTemplateSaveDto(
-        id = id.value,
-        name = template.name,
-        assetId = assets.registerGraphicTemplate(template).id.toString(),
-        customProperties = template.customProperties,
-    )
-
-    private fun UnitTemplateSnapshot.toDto() =
-        UnitTemplateSnapshotSaveDto(
-            id = id.value,
-            template = template.toDto(),
-            index = index,
-        )
-
-    private fun MapNoteSnapshot.toDto() =
-        NoteSaveDto(
-            id = id.value,
-            title = title,
-            body = body,
-            referencedObjectIds = referencedObjectIds.map { it.value },
-        )
-
-    private fun MapViewerUnitTemplate.toDto() =
-        UnitTemplateSaveDto(
-            name = name,
-            assetId = assets.registerTemplate(this).id.toString(),
-            affiliation = affiliation,
-            customProperties = customProperties,
-        )
-
-    private fun EditGraphicTemplateAction.saveForwardPatch(): Map<String, com.fasterxml.jackson.databind.JsonNode?> =
-        if (beforeSnapshot == null || afterSnapshot == null) forward else graphicPatch(beforeSnapshot, afterSnapshot, assets)
-
-    private fun EditGraphicTemplateAction.saveBackwardPatch(): Map<String, com.fasterxml.jackson.databind.JsonNode?> =
-        if (beforeSnapshot == null || afterSnapshot == null) backward else graphicPatch(afterSnapshot, beforeSnapshot, assets)
-
-    private fun EditUnitTemplateAction.saveForwardPatch(): Map<String, com.fasterxml.jackson.databind.JsonNode?> =
-        if (beforeSnapshot == null || afterSnapshot == null) {
-            forward
-        } else {
-            val beforeAssetId = assets.registerTemplate(beforeSnapshot.template).id.toString()
-            val afterAssetId = assets.registerTemplate(afterSnapshot.template).id.toString()
-            buildMap {
-                if (beforeSnapshot.template.name != afterSnapshot.template.name) {
-                    put("name", TextNode(afterSnapshot.template.name))
-                }
-                if (beforeSnapshot.template.affiliation != afterSnapshot.template.affiliation) {
-                    put("affiliation", afterSnapshot.template.affiliation.toNode())
-                }
-                if (beforeAssetId != afterAssetId) {
-                    put("assetId", TextNode(afterAssetId))
-                }
-                putAll(
-                    CustomPropertyJson.diff(
-                        before = beforeSnapshot.template.customProperties,
-                        after = afterSnapshot.template.customProperties,
-                        reservedKeys = UNIT_TEMPLATE_PATCH_FIELDS,
-                    ),
-                )
+    private fun OperationTimelineEntry.toDto(before: OperationContent): LedgerEntrySaveDto? {
+        if (turnName != null) return AddTurnEntrySaveDto(turnName, turnThumbnailAssetId)
+        if (kind == io.hsar.mapgenerator.commandgui.MapViewerLedgerEntryKind.BATCH) {
+            var current = before
+            val entries = componentChangeSets.flatMap { component ->
+                val after = component.applyTo(current)
+                val actions = component.toDtos(current, after)
+                current = after
+                actions
             }
+            return BatchLedgerEntrySaveDto(entries)
         }
-
-    private fun EditUnitTemplateAction.saveBackwardPatch(): Map<String, com.fasterxml.jackson.databind.JsonNode?> =
-        if (beforeSnapshot == null || afterSnapshot == null) {
-            backward
-        } else {
-            val beforeAssetId = assets.registerTemplate(beforeSnapshot.template).id.toString()
-            val afterAssetId = assets.registerTemplate(afterSnapshot.template).id.toString()
-            buildMap {
-                if (beforeSnapshot.template.name != afterSnapshot.template.name) {
-                    put("name", TextNode(beforeSnapshot.template.name))
-                }
-                if (beforeSnapshot.template.affiliation != afterSnapshot.template.affiliation) {
-                    put("affiliation", beforeSnapshot.template.affiliation.toNode())
-                }
-                if (beforeAssetId != afterAssetId) {
-                    put("assetId", TextNode(beforeAssetId))
-                }
-                putAll(
-                    CustomPropertyJson.diff(
-                        before = afterSnapshot.template.customProperties,
-                        after = beforeSnapshot.template.customProperties,
-                        reservedKeys = UNIT_TEMPLATE_PATCH_FIELDS,
-                    ),
-                )
-            }
+        val after = changeSet.applyTo(before)
+        val actions = changeSet.toDtos(before, after)
+        return when (actions.size) {
+            0 -> null
+            1 -> actions.single()
+            else -> BatchLedgerEntrySaveDto(actions)
         }
+    }
 
-    private fun MapDrawing.toDto(): DrawingSaveDto =
-        when (this) {
-            is FreeformDrawing -> DrawingSaveDto(
-                type = "freeform",
-                color = color.toArgbHex(),
-                points = points.map { it.toDto() },
-            )
-
-            is LineDrawing -> DrawingSaveDto(
-                type = "line",
-                color = color.toArgbHex(),
-                start = start.toDto(),
-                end = end.toDto(),
-            )
-
-            is RectangleDrawing -> DrawingSaveDto(
-                type = "rectangle",
-                color = color.toArgbHex(),
-                start = start.toDto(),
-                end = end.toDto(),
-                rotationDegrees = rotationDegrees,
-            )
-
-            is OvalDrawing -> DrawingSaveDto(
-                type = "oval",
-                color = color.toArgbHex(),
-                center = center.toDto(),
-                xRadius = xRadius,
-                yRadius = yRadius,
-                rotationDegrees = rotationDegrees,
-            )
+    private fun OperationChangeSet.toDtos(before: OperationContent, after: OperationContent) = buildList {
+        unitTemplates.mapNotNullTo(this) { it.unitTemplateDto(assets) }
+        graphicTemplates.mapNotNullTo(this) { it.graphicTemplateDto(assets) }
+        objects.mapNotNullTo(this) { it.toDto(before, after) }
+        notes.mapNotNullTo(this) { it.toDto() }
+        if (noteOrderBefore != null && noteOrderAfter != null) {
+            add(ReorderNotesEntrySaveDto(noteOrderAfter.map { it.value }, noteOrderBefore.map { it.value }))
         }
-
-    private fun MapCoordinate.toDto() =
-        MapCoordinateSaveDto(x = x, y = y)
-
-    private fun MapDrawingPoint.toDto() =
-        MapDrawingPointSaveDto(x = x, y = y)
-
-    private fun Color.toArgbHex() =
-        "#%02X%02X%02X%02X".format(alpha, red, green, blue)
-
-    private fun io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation?.toNode(): com.fasterxml.jackson.databind.JsonNode =
-        this?.let { TextNode(it.name) } ?: com.fasterxml.jackson.databind.node.NullNode.instance
-
-    private companion object {
-        val UNIT_TEMPLATE_PATCH_FIELDS = setOf("name", "affiliation", "assetId")
     }
 }
 
-private fun graphicPatch(
-    before: GraphicTemplateSnapshot,
-    after: GraphicTemplateSnapshot,
-    assets: OperationAssetRegistry,
-): Map<String, com.fasterxml.jackson.databind.JsonNode?> = buildMap {
-    if (before.template.name != after.template.name) put("name", TextNode(after.template.name))
-    val beforeAsset = assets.registerGraphicTemplate(before.template).id.toString()
-    val afterAsset = assets.registerGraphicTemplate(after.template).id.toString()
-    if (beforeAsset != afterAsset) put("assetId", TextNode(afterAsset))
-    putAll(CustomPropertyJson.diff(before.template.customProperties, after.template.customProperties, setOf("name", "assetId")))
+private fun OperationValueChange<OperationObject>.toDto(beforeContent: OperationContent, afterContent: OperationContent): LedgerEntrySaveDto? = when {
+    before == null -> CreateObjectEntrySaveDto(after!!.id.value, after.toDto(afterContent))
+    after == null -> DeleteObjectEntrySaveDto(before.id.value, before.toDto(beforeContent))
+    else -> operationObjectPatch(before, after).let { EditObjectEntrySaveDto(before.id.value, it.forward, it.backward) }
 }
+
+private fun OperationValueChange<OperationUnitTemplate>.unitTemplateDto(assets: OperationAssetRegistry): LedgerEntrySaveDto? = when {
+    before == null -> CreateUnitTemplateEntrySaveDto(after!!.toDto(assets))
+    after == null -> DeleteUnitTemplateEntrySaveDto(before.toDto(assets))
+    else -> {
+        val patch = operationUnitTemplatePatch(before, after)
+        val beforeAsset = assets.registerTemplate(before)
+        val afterAsset = assets.registerTemplate(after)
+        EditUnitTemplateEntrySaveDto(
+            before.id.value,
+            patch.forward.withAssetChange(beforeAsset, afterAsset),
+            patch.backward.withAssetChange(afterAsset, beforeAsset),
+        )
+    }
+}
+
+private fun OperationValueChange<OperationGraphicTemplate>.graphicTemplateDto(assets: OperationAssetRegistry): LedgerEntrySaveDto? = when {
+    before == null -> CreateGraphicTemplateEntrySaveDto(after!!.toDto(assets))
+    after == null -> DeleteGraphicTemplateEntrySaveDto(before.toDto(assets))
+    else -> {
+        val patch = operationGraphicTemplatePatch(before, after)
+        val beforeAsset = assets.registerGraphicTemplate(before)
+        val afterAsset = assets.registerGraphicTemplate(after)
+        EditGraphicTemplateEntrySaveDto(
+            before.id.value,
+            patch.forward.withAssetChange(beforeAsset, afterAsset),
+            patch.backward.withAssetChange(afterAsset, beforeAsset),
+        )
+    }
+}
+
+private fun OperationValueChange<OperationNote>.toDto(): LedgerEntrySaveDto? = when {
+    before == null -> CreateNoteEntrySaveDto(after!!.toDto())
+    after == null -> DeleteNoteEntrySaveDto(before.toDto())
+    else -> operationNotePatch(before, after).let { EditNoteEntrySaveDto(before.id.value, it.forward, it.backward) }
+}
+
+private fun Map<String, JsonNode?>.withAssetChange(before: RegisteredAsset, after: RegisteredAsset) =
+    if (before.id == after.id) this else this + ("assetId" to TextNode(after.id.toString()))
+
+private fun OperationObject.toDto(content: OperationContent): SavedMapObjectDto = when (this) {
+    is OperationUnit -> SavedUnitObjectDto(
+        unitTemplateId = unitTemplateId.value,
+        instanceName = instanceName,
+        destroyed = destroyed,
+        facingDegrees = facingDegrees,
+        affiliation = (affiliation ?: content.unitTemplate(unitTemplateId)?.affiliation)?.toSaveDto(),
+        mapCoordinate = coordinate.toDto(),
+        normalizedWidth = normalizedWidth,
+        normalizedHeight = normalizedHeight,
+        customProperties = customProperties,
+    )
+
+    is OperationGraphic -> SavedGraphicObjectDto(
+        graphicTemplateId = graphicTemplateId.value,
+        instanceName = instanceName,
+        mapCoordinate = coordinate.toDto(),
+        normalizedWidth = normalizedWidth,
+        normalizedHeight = normalizedHeight,
+        customProperties = customProperties,
+    )
+
+    is OperationDrawingObject -> SavedDrawingObjectDto(drawing.toDto(), customProperties)
+}
+
+private fun OperationUnitTemplate.toDto(assets: OperationAssetRegistry) = UnitTemplateSnapshotSaveDto(
+    id = id.value,
+    template = UnitTemplateSaveDto(
+        name = name,
+        assetId = assets.registerTemplate(this).id.toString(),
+        affiliation = affiliation?.toSaveDto(),
+        customProperties = customProperties,
+    ),
+    index = index,
+)
+
+private fun OperationGraphicTemplate.toDto(assets: OperationAssetRegistry) = GraphicTemplateSaveDto(
+    id = id.value,
+    name = name,
+    assetId = assets.registerGraphicTemplate(this).id.toString(),
+    customProperties = customProperties,
+)
+
+private fun OperationNote.toDto() = NoteSaveDto(id.value, title, body, referencedObjectIds.map { it.value })
+
+private fun OperationDrawing.toDto(): DrawingSaveDto = when (this) {
+    is OperationFreeformDrawing -> DrawingSaveDto("freeform", colour.toHex(), points = points.map { it.toDto() })
+    is OperationLineDrawing -> DrawingSaveDto("line", colour.toHex(), start = start.toDto(), end = end.toDto())
+    is OperationRectangleDrawing -> DrawingSaveDto("rectangle", colour.toHex(), start = start.toDto(), end = end.toDto(), rotationDegrees = rotationDegrees)
+    is OperationOvalDrawing -> DrawingSaveDto("oval", colour.toHex(), center = centre.toDto(), xRadius = xRadius, yRadius = yRadius, rotationDegrees = rotationDegrees)
+}
+
+private fun MapCoordinate.toDto() = MapCoordinateSaveDto(x, y)
+private fun OperationDrawingPoint.toDto() = MapDrawingPointSaveDto(x, y)
+private fun OperationArgb.toHex() = "#%02X%02X%02X%02X".format(alpha, red, green, blue)
+private fun OperationUnitAffiliation.toSaveDto() = UnitAffiliationSaveDto.valueOf(saveName())

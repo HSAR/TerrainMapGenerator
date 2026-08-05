@@ -2,13 +2,10 @@ package io.hsar.mapgenerator.commandgui.save
 
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.GridColourSelector
-import io.hsar.mapgenerator.commandgui.geometryFor
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerGraphicTemplate
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
-import io.hsar.mapgenerator.commandgui.korge.launch.GridConfiguration
-import io.hsar.mapgenerator.commandgui.korge.launch.defaultGridConfiguration
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplate
+import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplate
 import io.hsar.mapgenerator.grid.CoordAxis
-import korlibs.image.bitmap.Bitmap32
+import korlibs.io.lang.use
 import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
@@ -17,6 +14,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
 import java.util.*
+import java.util.Collections.emptySet
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.imageio.IIOImage
@@ -37,7 +35,7 @@ internal class OperationSaveWriter(
             targetPath.parent?.let(Files::createDirectories)
         }
 
-        val assets = OperationAssetRegistry(uuidGenerator)
+        val assets = OperationAssetRegistry(uuidGenerator, setOf(request.operationId))
         val mapAsset = assets.registerBufferedImage(
             image = request.mapImage,
             role = ASSET_ROLE_MAP,
@@ -54,17 +52,15 @@ internal class OperationSaveWriter(
                 image = generatedAsset.image,
             )
         }
-        val ledgerMapper = LedgerEntrySaveMapper(assets)
-        val ledger = request.ledgerEntries.map(ledgerMapper::toDto)
+        val ledger = LedgerEntrySaveMapper(assets).toDtos(request.timeline)
         val updatedAt = request.updatedAt.takeIf { !it.isBefore(request.createdAt) } ?: clock.instant()
-        val geometry = geometryFor(request.mapImage)
         val gridConfiguration = request.settings.mapId
             ?.takeIf { it.isNotBlank() }
             ?.let { mapId ->
                 val startX = request.settings.gridStartX
                 val startY = request.settings.gridStartY
                 if (startX != null && startY != null) {
-                    GridConfiguration(
+                    SaveGridConfiguration(
                         mapId = mapId,
                         referenceSystem = request.settings.referenceSystem,
                         startX = startX,
@@ -73,7 +69,7 @@ internal class OperationSaveWriter(
                 } else {
                     null
                 }
-            } ?: defaultGridConfiguration(
+            } ?: defaultSaveGridConfiguration(
             mapImage = request.mapImage,
             unitsPerPixel = request.settings.unitsPerPixel,
             seed = request.settings.seed,
@@ -86,7 +82,7 @@ internal class OperationSaveWriter(
             createdAt = request.createdAt.toString(),
             updatedAt = updatedAt.toString(),
             thumbnailAssetId = thumbnailAsset.id.toString(),
-            camera = request.camera.toSaveCamera(geometry, request.mapImage.width, request.mapImage.height),
+            camera = CameraSaveDto(request.camera.x, request.camera.y, request.camera.zoom),
             map = MapSaveDto(
                 unitsPerPixel = request.settings.unitsPerPixel,
                 assetId = mapAsset.id.toString(),
@@ -160,37 +156,24 @@ internal class OperationSaveWriter(
 
 internal class OperationAssetRegistry(
     private val uuidGenerator: () -> UUID,
+    reservedIds: Set<UUID> = emptySet(),
 ) {
     private val registeredAssets = mutableListOf<RegisteredAsset>()
     private val templateAssets = mutableMapOf<String, RegisteredAsset>()
+    private val allocatedIds = reservedIds.toMutableSet()
 
     val assets: List<RegisteredAsset>
         get() = registeredAssets.toList()
 
-    fun registerTemplate(template: MapViewerUnitTemplate): RegisteredAsset =
+    fun registerTemplate(template: OperationUnitTemplate): RegisteredAsset =
         templateAssets.getOrPut(template.assetKey()) {
-            registerBitmap(
-                bitmap = template.bitmap,
-                role = "unit-icon",
-                source = template.assetSource,
-            )
+            registerBufferedImage(template.image, "unit-icon", template.assetSource)
         }
 
-    fun registerGraphicTemplate(template: MapViewerGraphicTemplate): RegisteredAsset =
-        templateAssets.getOrPut("graphic:${template.assetSource?.path ?: template.bitmap.contentKey()}") {
-            registerBitmap(template.bitmap, "graphic-icon", template.assetSource)
+    fun registerGraphicTemplate(template: OperationGraphicTemplate): RegisteredAsset =
+        templateAssets.getOrPut("graphic:${template.assetSource?.path ?: template.image.contentKey()}") {
+            registerBufferedImage(template.image, "graphic-icon", template.assetSource)
         }
-
-    private fun registerBitmap(bitmap: Bitmap32, role: String, source: AssetSource?): RegisteredAsset =
-        source
-            ?.existingFileAsset(role)
-            ?: bitmap.toBufferedImage().let { image ->
-                if (bitmap.hasTransparency()) {
-                    image.fallbackAsset(role = role, originalFilename = source?.originalFilename, forcePng = true)
-                } else {
-                    image.fallbackAsset(role = role, originalFilename = source?.originalFilename)
-                }
-            }
 
     fun registerBufferedImage(image: BufferedImage, role: String, source: AssetSource?): RegisteredAsset =
         source
@@ -223,7 +206,7 @@ internal class OperationAssetRegistry(
         val file = file().takeIf { path.isNotBlank() && it.isFile }
         val extension = extension.ifBlank { file?.extension?.lowercase().orEmpty() }.ifBlank { "bin" }
         val bytes = embeddedBytes ?: file?.toPath()?.let(Files::readAllBytes) ?: return null
-        val id = uuidGenerator()
+        val id = nextAssetId()
         return RegisteredAsset(
             id = id,
             path = "assets/$id.$extension",
@@ -239,7 +222,7 @@ internal class OperationAssetRegistry(
         originalFilename: String?,
         forcePng: Boolean = false,
     ): RegisteredAsset {
-        val id = uuidGenerator()
+        val id = nextAssetId()
         val usePng = forcePng || colorModel.hasAlpha()
         val extension = if (usePng) "png" else "jpg"
         return RegisteredAsset(
@@ -252,32 +235,18 @@ internal class OperationAssetRegistry(
         ).also(registeredAssets::add)
     }
 
-    private fun MapViewerUnitTemplate.assetKey(): String =
-        assetSource?.path ?: bitmap.contentKey()
+    private fun OperationUnitTemplate.assetKey(): String =
+        assetSource?.path ?: image.contentKey()
 
-    private fun Bitmap32.contentKey(): String =
+    private fun nextAssetId(): UUID = generateSequence(uuidGenerator).first(allocatedIds::add)
+
+    private fun BufferedImage.contentKey(): String =
         buildString {
             append(width).append('x').append(height).append(':')
             for (y in 0 until height) {
                 for (x in 0 until width) {
-                    append(getRgba(x, y).toArgbInt()).append(',')
+                    append(getRGB(x, y)).append(',')
                 }
-            }
-        }
-
-    private fun Bitmap32.toBufferedImage(): BufferedImage =
-        BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { image ->
-            for (y in 0 until height) {
-                for (x in 0 until width) {
-                    image.setRGB(x, y, getRgba(x, y).toArgbInt())
-                }
-            }
-        }
-
-    private fun Bitmap32.hasTransparency(): Boolean =
-        (0 until height).any { y ->
-            (0 until width).any { x ->
-                getRgba(x, y).a != 255
             }
         }
 
@@ -363,9 +332,6 @@ internal class OperationAssetRegistry(
         const val JPEG_QUALITY = 0.72f
     }
 }
-
-private fun korlibs.image.color.RGBA.toArgbInt(): Int =
-    (a shl 24) or (r shl 16) or (g shl 8) or b
 
 internal data class RegisteredAsset(
     val id: UUID,

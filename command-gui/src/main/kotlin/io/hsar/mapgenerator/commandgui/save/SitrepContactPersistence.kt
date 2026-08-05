@@ -1,4 +1,4 @@
-package io.hsar.mapgenerator.commandgui.save
+package io.hsar.mapgenerator.commandgui.korge.persistence
 
 import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
@@ -7,6 +7,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepContactState
 import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepLostContact
+import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
 import java.util.*
 
 internal data class SitrepContactKey(

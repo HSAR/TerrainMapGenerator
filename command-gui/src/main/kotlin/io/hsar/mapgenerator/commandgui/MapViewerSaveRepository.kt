@@ -1,25 +1,16 @@
 package io.hsar.mapgenerator.commandgui
 
-import com.sun.org.apache.bcel.internal.util.Args.require
-import io.hsar.mapgenerator.commandgui.korge.adapter.toLegacyEntries
-import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationTimeline
-import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
 import io.hsar.mapgenerator.commandgui.operation.OperationDocument
-import io.hsar.mapgenerator.commandgui.operation.OperationGeneratedImage
 import io.hsar.mapgenerator.commandgui.operation.OperationTimeline
 import io.hsar.mapgenerator.commandgui.operation.OperationUiState
 import io.hsar.mapgenerator.commandgui.save.GameSaveDto
-import io.hsar.mapgenerator.commandgui.save.GeneratedImageAsset
-import io.hsar.mapgenerator.commandgui.save.LedgerFileDto
+import io.hsar.mapgenerator.commandgui.save.MapThumbnailRenderer
 import io.hsar.mapgenerator.commandgui.save.OperationAdditionalData
 import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
 import io.hsar.mapgenerator.commandgui.save.OperationSaveLoader
 import io.hsar.mapgenerator.commandgui.save.OperationSaveRequest
 import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
 import io.hsar.mapgenerator.commandgui.save.OperationToolStorage
-import io.hsar.mapgenerator.commandgui.save.RuntimeLedgerReplayer
-import io.hsar.mapgenerator.grid.CoordAxis
-import io.hsar.mapgenerator.grid.GridLayerBuilder
 import korlibs.io.lang.use
 import java.awt.image.BufferedImage
 import java.nio.file.Files
@@ -27,7 +18,6 @@ import java.nio.file.Path
 import java.time.Instant
 import java.util.*
 import java.util.zip.ZipFile
-import javax.imageio.ImageIO
 
 data class MapViewerSavedOperation(
     val path: Path,
@@ -47,20 +37,7 @@ data class MapViewerSavedCamera(
     val zoom: Double,
 )
 
-data class MapViewerSavedMap(
-    val operation: MapViewerSavedOperation,
-    val settings: MapViewerSettings,
-    val renderData: MapViewerRenderData,
-    val camera: MapViewerSavedCamera?,
-    val ledger: MapViewerLedgerReplay = MapViewerLedgerReplay.EMPTY,
-)
-
-/**
- * Engine-neutral, map-level access to Operational Command Tool saves.
- *
- * This deliberately reads only game metadata and raster assets. It does not replay the ledger,
- * construct unit models, or initialize either viewer backend.
- */
+/** Engine-neutral catalogue and complete [OperationDocument] archive boundary. */
 class MapViewerSaveRepository(
     val savesDirectory: Path = OperationToolStorage.defaultRootDirectory().resolve("saves"),
 ) {
@@ -76,68 +53,8 @@ class MapViewerSaveRepository(
         }
     }
 
-    fun loadMap(path: Path): MapViewerSavedMap =
-        ZipFile(path.toFile()).use { zip ->
-            val game = zip.readGame()
-            require(game.formatVersion in SUPPORTED_FORMAT_VERSIONS) {
-                "Unsupported save format version ${game.formatVersion}"
-            }
-            val operationId = UUID.fromString(game.id)
-            val mapImage = zip.readImageAsset(game.map.assetId)
-            val seed = operationId.mostSignificantBits xor operationId.leastSignificantBits
-            val parsedStartX = game.map.gridStartX?.let {
-                game.map.referenceSystem.parseCoord(it, CoordAxis.X, game.map.referenceSystem.gridScale)
-            }
-            val parsedStartY = game.map.gridStartY?.let {
-                game.map.referenceSystem.parseCoord(it, CoordAxis.Y, game.map.referenceSystem.gridScale)
-            }
-            val grid = GridLayerBuilder.build(
-                width = mapImage.width,
-                height = mapImage.height,
-                gridScale = game.map.referenceSystem.gridScale,
-                unitsPerPixel = game.map.unitsPerPixel,
-                random = Random(seed),
-                mapId = game.map.mapId,
-                referenceSystem = game.map.referenceSystem,
-                verticalLineNumberStart = parsedStartX,
-                horizontalLineNumberStart = parsedStartY,
-                colour = GridColourSelector.resolve(game.map.gridColour, mapImage),
-            )
-            val settings = MapViewerSettings(
-                operationName = game.name,
-                availableLayers = listOf(
-                    StaticImageLayer(id = game.map.assetId, displayName = "Map"),
-                    MapLayer.GRID,
-                ),
-                enabledLayerIds = setOf(game.map.assetId, MapLayer.GRID.id),
-                staticLayerImages = mapOf(game.map.assetId to mapImage),
-                width = mapImage.width,
-                height = mapImage.height,
-                unitsPerPixel = game.map.unitsPerPixel,
-                mapId = grid.mapId,
-                referenceSystem = grid.referenceSystem,
-                gridStartX = grid.verticalLineNumberStart,
-                gridStartY = grid.horizontalLineNumberStart,
-                gridColour = grid.colour,
-                seed = seed,
-            )
-
-            MapViewerSavedMap(
-                operation = game.toSummary(path, zip),
-                settings = settings,
-                renderData = MapViewerRenderData(baseImage = mapImage, gridLayer = grid),
-                camera = game.camera?.let { MapViewerSavedCamera(it.x, it.y, it.zoom) },
-                ledger = zip.readLedgerEntries()
-                    .takeIf { it.isNotEmpty() }
-                    ?.let { RuntimeLedgerReplayer(zip).replay(it) }
-                    ?.let(::replayForViewer)
-                    ?: MapViewerLedgerReplay.EMPTY,
-            )
-        }
-
     fun loadOperation(path: Path): OperationDocument {
         val loaded = OperationSaveLoader().load(path)
-        val map = loadMap(path)
         val additionalData = OperationAdditionalData.fromJson(loaded.additionalDataJson)
         return OperationDocument(
             operationId = loaded.operationId,
@@ -145,13 +62,11 @@ class MapViewerSaveRepository(
             createdAt = loaded.createdAt,
             updatedAt = loaded.updatedAt,
             settings = loaded.settings,
-            renderData = map.renderData,
-            camera = map.camera,
+            renderData = loaded.renderData,
+            camera = loaded.camera,
             mapAssetSource = loaded.mapAssetSource,
-            timeline = loaded.ledgerEntries.toOperationTimeline(),
-            generatedImageAssets = loaded.generatedImageAssets.map {
-                OperationGeneratedImage(it.id, it.role, it.image)
-            },
+            timeline = loaded.timeline,
+            generatedImageAssets = loaded.generatedImageAssets,
             additionalDataJson = loaded.additionalDataJson,
             sourcePath = path,
             uiState = additionalData.operationUiState(),
@@ -183,37 +98,43 @@ class MapViewerSaveRepository(
         document: OperationDocument,
         camera: MapViewerSavedCamera? = document.camera,
         uiState: OperationUiState = document.uiState,
+        thumbnailImage: BufferedImage? = null,
     ): OperationDocument {
         val now = Instant.now()
-        val geometry = geometryFor(document.renderData.baseImage)
         val savedCamera = camera ?: MapViewerSavedCamera(0.5, 0.5, 1.0)
-        val viewport = CameraViewport(
-            centerX = geometry.mapOffsetX + savedCamera.x * document.renderData.baseImage.width,
-            centerY = geometry.mapOffsetY + savedCamera.y * document.renderData.baseImage.height,
-            zoom = savedCamera.zoom,
-            viewportWidth = 1,
-            viewportHeight = 1,
-            worldWidth = geometry.backgroundWidth,
-            worldHeight = geometry.backgroundHeight,
-        )
         val additionalData = OperationAdditionalData.fromJson(document.additionalDataJson)
             .also { it.updateOperationUiState(uiState) }
             .toJsonOrNull()
         val target = document.sourcePath ?: OperationSaveWriter().defaultSavePath(document.operationName, document.operationId)
+        val mapImage = document.renderData.baseImage
+        val geometry = geometryFor(mapImage)
+        val thumbnail = thumbnailImage ?: MapThumbnailRenderer().renderOperationThumbnail(
+            mapImage = mapImage,
+            geometry = geometry,
+            viewport = MapViewport(
+                center = ViewerPoint(geometry.mapOffsetX + savedCamera.x * mapImage.width, geometry.mapOffsetY + savedCamera.y * mapImage.height),
+                zoom = savedCamera.zoom,
+                viewportWidth = mapImage.width,
+                viewportHeight = mapImage.height,
+                worldWidth = geometry.backgroundWidth.toDouble(),
+                worldHeight = geometry.backgroundHeight.toDouble(),
+            ),
+            gridLayer = document.renderData.gridLayer,
+            content = document.content,
+        )
         OperationSaveWriter().write(
             OperationSaveRequest(
                 operationId = document.operationId,
                 operationName = document.operationName,
                 createdAt = document.createdAt,
                 updatedAt = now,
-                camera = viewport,
+                camera = savedCamera,
                 settings = document.settings,
-                mapImage = document.renderData.baseImage,
+                mapImage = mapImage,
                 mapAssetSource = document.mapAssetSource,
-                ledgerEntries = document.timeline.toLegacyEntries(),
-                generatedImageAssets = document.generatedImageAssets.map {
-                    GeneratedImageAsset(it.id, it.role, it.image)
-                },
+                timeline = document.timeline,
+                generatedImageAssets = document.generatedImageAssets,
+                thumbnailImage = thumbnail,
                 additionalDataJson = additionalData,
             ),
             target,
@@ -250,40 +171,15 @@ class MapViewerSaveRepository(
             ?.use { OperationSaveJson.objectMapper.readValue(it, GameSaveDto::class.java) }
             ?: error("Save does not contain $GAME_JSON")
 
-    private fun ZipFile.readLedgerEntries() =
-        getEntry(LEDGER_JSON)
-            ?.let(::getInputStream)
-            ?.use { OperationSaveJson.objectMapper.readValue(it, LedgerFileDto::class.java).entries }
-            .orEmpty()
-
-    private fun ZipFile.readImageAsset(assetId: String): BufferedImage =
-        readImageAssetOrNull(assetId) ?: error("Unable to decode image asset $assetId")
-
     private fun ZipFile.readImageAssetOrNull(assetId: String): BufferedImage? =
         entries().asSequence()
             .filter { !it.isDirectory }
             .firstOrNull {
                 it.name.substringAfterLast('/').substringBeforeLast('.', missingDelimiterValue = "") == assetId
             }
-            ?.let { entry -> getInputStream(entry).use(ImageIO::read) }
-            ?.toArgb()
-
-    private fun BufferedImage.toArgb(): BufferedImage =
-        takeIf { type == BufferedImage.TYPE_INT_ARGB }
-            ?: BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { target ->
-                target.createGraphics().use { graphics -> graphics.drawImage(this, 0, 0, null) }
-            }
-
-    private fun java.awt.Graphics2D.use(block: (java.awt.Graphics2D) -> Unit) =
-        try {
-            block(this)
-        } finally {
-            dispose()
-        }
+            ?.let { entry -> getInputStream(entry).use { MapViewerImageLoader.load(it.readBytes(), entry.name) } }
 
     private companion object {
         const val GAME_JSON = "game.json"
-        const val LEDGER_JSON = "ledger.json"
-        val SUPPORTED_FORMAT_VERSIONS = setOf(5, 6)
     }
 }

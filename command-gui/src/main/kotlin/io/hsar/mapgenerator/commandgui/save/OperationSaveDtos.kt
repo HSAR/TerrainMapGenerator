@@ -9,9 +9,9 @@ import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.databind.JsonNode
 import io.hsar.mapgenerator.commandgui.CustomPropertyJson
-import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.grid.ReferenceSystem
 import java.util.*
+import java.util.Collections.emptyList
 
 internal data class GameSaveDto(
     val formatVersion: Int,
@@ -155,7 +155,7 @@ internal class SavedUnitObjectDto(
     val instanceName: String,
     val destroyed: Boolean,
     val facingDegrees: Int? = null,
-    val affiliation: UnitAffiliation? = null,
+    val affiliation: UnitAffiliationSaveDto? = null,
     val mapCoordinate: MapCoordinateSaveDto,
     val normalizedWidth: Double,
     val normalizedHeight: Double,
@@ -167,7 +167,7 @@ internal class SavedUnitObjectDto(
         instanceName: String,
         destroyed: Boolean,
         facingDegrees: Int? = null,
-        affiliation: UnitAffiliation? = null,
+        affiliation: UnitAffiliationSaveDto? = null,
         mapCoordinate: MapCoordinateSaveDto,
         normalizedWidth: Double,
         normalizedHeight: Double,
@@ -306,14 +306,14 @@ internal data class UnitTemplateSnapshotSaveDto(
 internal class UnitTemplateSaveDto(
     val name: String,
     val assetId: String,
-    val affiliation: UnitAffiliation? = null,
+    val affiliation: UnitAffiliationSaveDto? = null,
 ) {
     private val customPropertiesByKey = linkedMapOf<String, String>()
 
     constructor(
         name: String,
         assetId: String,
-        affiliation: UnitAffiliation? = null,
+        affiliation: UnitAffiliationSaveDto? = null,
         customProperties: Map<String, String>,
     ) : this(
         name = name,
@@ -368,6 +368,8 @@ internal data class MapCoordinateSaveDto(
     val x: Double,
     val y: Double,
 )
+
+internal enum class UnitAffiliationSaveDto { Friend, Hostile, Neutral, Unknown }
 
 internal data class ReadOperationSave(
     val game: GameSaveDto,

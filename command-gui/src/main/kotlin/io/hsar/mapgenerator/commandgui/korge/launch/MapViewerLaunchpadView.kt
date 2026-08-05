@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
+import io.hsar.mapgenerator.commandgui.MapViewerSavedOperation
+import io.hsar.mapgenerator.commandgui.korge.adapter.toKorgeBitmap
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerScrollState
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerScrollbar
@@ -7,7 +9,6 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTextViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerThumbnailViews
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiBoxes
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
-import io.hsar.mapgenerator.commandgui.save.SavedOperationSummary
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.MouseButton
 import korlibs.korge.annotations.KorgeExperimental
@@ -26,9 +27,9 @@ internal class MapViewerLaunchpadView(
     private val root: Container,
     viewportWidth: Int,
     viewportHeight: Int,
-    savedOperations: List<SavedOperationSummary>? = null,
+    savedOperations: List<MapViewerSavedOperation>? = null,
     private val onCreateNewOperation: () -> Unit,
-    private val onLoadSavedOperation: (SavedOperationSummary) -> Unit,
+    private val onLoadSavedOperation: (MapViewerSavedOperation) -> Unit,
     private val onOpenSavePicker: () -> Unit,
     private val onExitProgram: () -> Unit,
     private val onOngoingOperationsEntered: () -> Unit = {},
@@ -128,7 +129,7 @@ internal class MapViewerLaunchpadView(
             .xy(buttonLeft, 250.0)
     }
 
-    fun updateSavedOperations(summaries: List<SavedOperationSummary>) {
+    fun updateSavedOperations(summaries: List<MapViewerSavedOperation>) {
         savedOperations = summaries
         scrollState = scrollState.copy(offset = 0.0)
         if (mode == LaunchpadMode.EXISTING_OPERATIONS) {
@@ -170,7 +171,7 @@ internal class MapViewerLaunchpadView(
 
     }
 
-    private fun renderSaveRow(parent: Container, summary: SavedOperationSummary, index: Int) {
+    private fun renderSaveRow(parent: Container, summary: MapViewerSavedOperation, index: Int) {
         val rowTop = index * SAVE_ROW_HEIGHT
         val rowWidth = layout.saveRowWidth
         val rowHeight = SAVE_ROW_HEIGHT - 12.0
@@ -186,7 +187,7 @@ internal class MapViewerLaunchpadView(
         val previewFrameWidth = previewFrameHeight * 16.0 / 9.0
         val previewFrameLeft = borderInset
         val previewFrameTop = borderInset
-        MapViewerThumbnailViews.render(row, summary.thumbnail, previewFrameLeft, previewFrameTop, previewFrameWidth, previewFrameHeight)
+        MapViewerThumbnailViews.render(row, summary.thumbnail?.toKorgeBitmap(), previewFrameLeft, previewFrameTop, previewFrameWidth, previewFrameHeight)
 
         val textLeft = previewFrameLeft + previewFrameWidth + 18.0
         MapViewerTextViews.leftBox(

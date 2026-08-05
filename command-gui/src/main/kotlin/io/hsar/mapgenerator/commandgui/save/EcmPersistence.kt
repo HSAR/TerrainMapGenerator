@@ -1,4 +1,4 @@
-package io.hsar.mapgenerator.commandgui.save
+package io.hsar.mapgenerator.commandgui.korge.persistence
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ArrayNode
@@ -7,7 +7,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import io.hsar.mapgenerator.commandgui.korge.interaction.EcmActivation
 import io.hsar.mapgenerator.commandgui.korge.interaction.EcmRules
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
+import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
 import java.util.*
+import java.util.Collections.emptySet
 
 internal class EcmPersistence private constructor(
     private val root: ObjectNode,

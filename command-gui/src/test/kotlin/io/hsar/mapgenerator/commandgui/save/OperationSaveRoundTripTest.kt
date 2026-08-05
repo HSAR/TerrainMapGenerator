@@ -1,8 +1,12 @@
 package io.hsar.mapgenerator.commandgui.save
 
 import io.hsar.mapgenerator.commandgui.AssetSource
+import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.geometryFor
+import io.hsar.mapgenerator.commandgui.korge.adapter.toLegacyEntries
+import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationTimeline
+import io.hsar.mapgenerator.commandgui.korge.adapter.toSavedCamera
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.OvalDrawing
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
@@ -31,10 +35,14 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.changeDescription
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerIconLoader
 import io.hsar.mapgenerator.commandgui.nextTestUuid
+import io.hsar.mapgenerator.commandgui.operation.OperationGeneratedImage
+import io.hsar.mapgenerator.commandgui.operation.OperationTimeline
 import io.hsar.mapgenerator.grid.ReferenceSystem
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
+import korlibs.io.lang.toByteArray
+import korlibs.io.lang.use
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -45,6 +53,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import java.util.*
+import java.util.Collections.emptyList
+import java.util.Collections.emptyMap
+import java.util.Collections.emptySet
 import java.util.zip.ZipFile
 import javax.imageio.ImageIO
 
@@ -129,7 +140,7 @@ class OperationSaveRoundTripTest {
                 operationId = operationId,
                 mapImage = mapImage,
                 mapSource = AssetSource.fromFile(mapFile.toFile()),
-                ledgerEntries = ledger,
+                timeline = ledger.toOperationTimeline(),
                 additionalDataJson = additionalData,
             ),
             tempDir.resolve("first.oct.zip"),
@@ -150,29 +161,11 @@ class OperationSaveRoundTripTest {
                 operationName = loaded.operationName,
                 createdAt = loaded.createdAt,
                 updatedAt = loaded.updatedAt,
-                camera = loaded.camera?.toViewport(
-                    geometry = geometryFor(loaded.mapImage),
-                    mapWidth = loaded.settings.width,
-                    mapHeight = loaded.settings.height,
-                    viewportWidth = loaded.settings.width,
-                    viewportHeight = loaded.settings.height,
-                ) ?: CameraViewport.centeredOnMap(
-                    geometry = geometryFor(loaded.mapImage),
-                    mapWidth = loaded.settings.width,
-                    mapHeight = loaded.settings.height,
-                    viewportWidth = loaded.settings.width,
-                    viewportHeight = loaded.settings.height,
-                    zoom = CameraViewport.fitZoomToViewport(
-                        mapWidth = loaded.settings.width,
-                        mapHeight = loaded.settings.height,
-                        viewportWidth = loaded.settings.width,
-                        viewportHeight = loaded.settings.height,
-                    ),
-                ),
+                camera = loaded.camera ?: MapViewerSavedCamera(0.5, 0.5, 1.0),
                 settings = loaded.settings,
                 mapImage = loaded.mapImage,
                 mapSource = null,
-                ledgerEntries = loaded.ledgerEntries,
+                timeline = loaded.timeline,
                 additionalDataJson = loaded.additionalDataJson,
             ),
             tempDir.resolve("second.oct.zip"),
@@ -188,6 +181,16 @@ class OperationSaveRoundTripTest {
         assertThat(reread.game.map.gridStartX != null, equalTo(true))
         assertThat(reread.game.map.gridStartY != null, equalTo(true))
         assertThat(reread.ledger.entries.size, equalTo(8))
+        assertThat(
+            reread.ledger.entries.map { it::class.simpleName },
+            equalTo(
+                listOf(
+                    "CreateUnitTemplateEntrySaveDto", "CreateObjectEntrySaveDto", "EditObjectEntrySaveDto",
+                    "CreateObjectEntrySaveDto", "DeleteObjectEntrySaveDto", "CreateNoteEntrySaveDto",
+                    "EditNoteEntrySaveDto", "DeleteNoteEntrySaveDto",
+                )
+            ),
+        )
         assertThat(reread.ledger.entries[2] is EditObjectEntrySaveDto, equalTo(true))
         assertThat((reread.ledger.entries[2] as EditObjectEntrySaveDto).forward["facingDegrees"]?.asInt(), equalTo(135))
         assertThat(reread.ledger.entries[5] is CreateNoteEntrySaveDto, equalTo(true))
@@ -232,7 +235,7 @@ class OperationSaveRoundTripTest {
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
                 mapSource = null,
-                ledgerEntries = listOf(CreateUnitTemplateAction(UnitTemplateSnapshot(template.id, template, 0))),
+                timeline = listOf(CreateUnitTemplateAction(UnitTemplateSnapshot(template.id, template, 0))).toOperationTimeline(),
             ),
             tempDir.resolve("first-icon-save.oct.zip"),
         )
@@ -248,29 +251,11 @@ class OperationSaveRoundTripTest {
                 operationName = firstLoaded.operationName,
                 createdAt = firstLoaded.createdAt,
                 updatedAt = firstLoaded.updatedAt,
-                camera = firstLoaded.camera?.toViewport(
-                    geometry = geometryFor(firstLoaded.mapImage),
-                    mapWidth = firstLoaded.settings.width,
-                    mapHeight = firstLoaded.settings.height,
-                    viewportWidth = firstLoaded.settings.width,
-                    viewportHeight = firstLoaded.settings.height,
-                ) ?: CameraViewport.centeredOnMap(
-                    geometry = geometryFor(firstLoaded.mapImage),
-                    mapWidth = firstLoaded.settings.width,
-                    mapHeight = firstLoaded.settings.height,
-                    viewportWidth = firstLoaded.settings.width,
-                    viewportHeight = firstLoaded.settings.height,
-                    zoom = CameraViewport.fitZoomToViewport(
-                        mapWidth = firstLoaded.settings.width,
-                        mapHeight = firstLoaded.settings.height,
-                        viewportWidth = firstLoaded.settings.width,
-                        viewportHeight = firstLoaded.settings.height,
-                    ),
-                ),
+                camera = firstLoaded.camera ?: MapViewerSavedCamera(0.5, 0.5, 1.0),
                 settings = firstLoaded.settings,
                 mapImage = firstLoaded.mapImage,
                 mapSource = null,
-                ledgerEntries = firstLoaded.ledgerEntries,
+                timeline = firstLoaded.timeline,
             ),
             tempDir.resolve("second-icon-save.oct.zip"),
         )
@@ -308,10 +293,10 @@ class OperationSaveRoundTripTest {
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
                 mapSource = null,
-                ledgerEntries = listOf(
+                timeline = listOf(
                     CreateUnitTemplateAction(UnitTemplateSnapshot(template.id, template, 0)),
                     CreateObjectAction(unit),
-                ),
+                ).toOperationTimeline(),
             ),
             tempDir.resolve("custom-properties-first.oct.zip"),
         )
@@ -333,7 +318,7 @@ class OperationSaveRoundTripTest {
                 operationName = loaded.operationName,
                 mapImage = loaded.mapImage,
                 mapSource = loaded.mapAssetSource,
-                ledgerEntries = loaded.ledgerEntries,
+                timeline = loaded.timeline,
             ),
             tempDir.resolve("custom-properties-second.oct.zip"),
         )
@@ -367,10 +352,10 @@ class OperationSaveRoundTripTest {
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
                 mapSource = null,
-                ledgerEntries = listOf(
+                timeline = listOf(
                     CreateUnitTemplateAction(UnitTemplateSnapshot(template.id, template, 0)),
                     CreateObjectAction(unit),
-                ),
+                ).toOperationTimeline(),
             ),
             tempDir.resolve("unit-affiliation-save.oct.zip"),
         )
@@ -408,7 +393,7 @@ class OperationSaveRoundTripTest {
                 operationId = operationId,
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
                 mapSource = null,
-                ledgerEntries = listOf(
+                timeline = listOf(
                     CreateUnitTemplateAction(UnitTemplateSnapshot(template.id, template, 0)),
                     CreateObjectAction(created),
                     EditObjectAction(
@@ -416,7 +401,7 @@ class OperationSaveRoundTripTest {
                         forward = MapPlacedObjectPatch.diff(created, edited),
                         backward = MapPlacedObjectPatch.diff(edited, created),
                     ),
-                ),
+                ).toOperationTimeline(),
             ),
             tempDir.resolve("unit-affiliation-edit-save.oct.zip"),
         )
@@ -470,7 +455,7 @@ class OperationSaveRoundTripTest {
 
         assertThat(
             unit.affiliation,
-            equalTo(UnitAffiliation.Friend),
+            equalTo(UnitAffiliationSaveDto.Friend),
         )
         assertThat(
             unit.customProperties,
@@ -588,25 +573,7 @@ class OperationSaveRoundTripTest {
                 operationName = loaded.operationName,
                 createdAt = loaded.createdAt,
                 updatedAt = loaded.updatedAt,
-                camera = loaded.camera?.toViewport(
-                    geometry = geometryFor(loaded.mapImage),
-                    mapWidth = loaded.settings.width,
-                    mapHeight = loaded.settings.height,
-                    viewportWidth = loaded.settings.width,
-                    viewportHeight = loaded.settings.height,
-                ) ?: CameraViewport.centeredOnMap(
-                    geometry = geometryFor(loaded.mapImage),
-                    mapWidth = loaded.settings.width,
-                    mapHeight = loaded.settings.height,
-                    viewportWidth = loaded.settings.width,
-                    viewportHeight = loaded.settings.height,
-                    zoom = CameraViewport.fitZoomToViewport(
-                        mapWidth = loaded.settings.width,
-                        mapHeight = loaded.settings.height,
-                        viewportWidth = loaded.settings.width,
-                        viewportHeight = loaded.settings.height,
-                    ),
-                ),
+                camera = loaded.camera ?: MapViewerSavedCamera(0.5, 0.5, 1.0),
                 settings = loaded.settings,
                 mapImage = loaded.mapImage,
                 mapSource = null,
@@ -788,7 +755,7 @@ class OperationSaveRoundTripTest {
                 mapImage = BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB),
                 mapSource = null,
                 ledgerEntries = listOf(AddTurnLedgerEntry("Turn 3", thumbnailAssetId)),
-                generatedImageAssets = listOf(GeneratedImageAsset(thumbnailAssetId, "turn-thumbnail", thumbnail)),
+                generatedImageAssets = listOf(OperationGeneratedImage(thumbnailAssetId, "turn-thumbnail", thumbnail)),
             ),
             tempDir.resolve("turn-ledger-save.oct.zip"),
         )
@@ -878,7 +845,7 @@ class OperationSaveRoundTripTest {
         operationName: String = "Round Trip",
         createdAt: Instant = Instant.parse("2026-06-19T10:00:00Z"),
         updatedAt: Instant = Instant.parse("2026-06-19T10:10:00Z"),
-        camera: CameraViewport = CameraViewport(
+        camera: MapViewerSavedCamera = CameraViewport(
             centerX = 480.0,
             centerY = 270.0,
             zoom = 1.5,
@@ -886,7 +853,7 @@ class OperationSaveRoundTripTest {
             viewportHeight = 720,
             worldWidth = 960,
             worldHeight = 540,
-        ),
+        ).toSavedCamera(geometryFor(BufferedImage(960, 540, BufferedImage.TYPE_INT_RGB)), 960, 540),
         settings: MapViewerSettings = MapViewerSettings(
             operationName = operationName,
             availableLayers = emptyList(),
@@ -898,8 +865,9 @@ class OperationSaveRoundTripTest {
         ),
         mapImage: BufferedImage,
         mapSource: AssetSource?,
-        ledgerEntries: List<io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry>,
-        generatedImageAssets: List<GeneratedImageAsset> = emptyList(),
+        ledgerEntries: List<io.hsar.mapgenerator.commandgui.korge.interaction.LedgerEntry> = emptyList(),
+        timeline: OperationTimeline = ledgerEntries.toOperationTimeline(),
+        generatedImageAssets: List<OperationGeneratedImage> = emptyList(),
         additionalDataJson: ByteArray? = null,
     ) = OperationSaveRequest(
         operationId = operationId,
@@ -910,7 +878,7 @@ class OperationSaveRoundTripTest {
         settings = settings,
         mapImage = mapImage,
         mapAssetSource = mapSource,
-        ledgerEntries = ledgerEntries,
+        timeline = timeline,
         generatedImageAssets = generatedImageAssets,
         additionalDataJson = additionalDataJson,
     )
@@ -933,3 +901,6 @@ class OperationSaveRoundTripTest {
     private fun ZipFile.read(name: String): ByteArray =
         getInputStream(getEntry(name)).use { it.readBytes() }
 }
+
+private val LoadedOperation.mapImage get() = renderData.baseImage
+private val LoadedOperation.ledgerEntries get() = timeline.toLegacyEntries()

@@ -1,6 +1,8 @@
 package io.hsar.mapgenerator.commandgui.save
 
 import io.hsar.mapgenerator.commandgui.geometryFor
+import io.hsar.mapgenerator.commandgui.korge.adapter.toMapViewport
+import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationContent
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
@@ -10,6 +12,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
+import io.hsar.mapgenerator.commandgui.operation.OperationContent
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import org.hamcrest.MatcherAssert.assertThat
@@ -36,8 +39,8 @@ class MapThumbnailRendererTest {
         val leftViewport = viewportFor(geometry.mapOffsetX + 25.0, geometry.mapOffsetY + 25.0, geometry.backgroundWidth, geometry.backgroundHeight)
         val rightViewport = viewportFor(geometry.mapOffsetX + 75.0, geometry.mapOffsetY + 25.0, geometry.backgroundWidth, geometry.backgroundHeight)
 
-        val leftThumbnail = MapThumbnailRenderer().renderOperationThumbnail(mapImage, geometry, leftViewport, null, emptyList(), outputWidth = 50)
-        val rightThumbnail = MapThumbnailRenderer().renderOperationThumbnail(mapImage, geometry, rightViewport, null, emptyList(), outputWidth = 50)
+        val leftThumbnail = MapThumbnailRenderer().renderOperationThumbnail(mapImage, geometry, leftViewport.toMapViewport(), null, OperationContent.EMPTY, outputWidth = 50)
+        val rightThumbnail = MapThumbnailRenderer().renderOperationThumbnail(mapImage, geometry, rightViewport.toMapViewport(), null, OperationContent.EMPTY, outputWidth = 50)
 
         assertThat(leftThumbnail.getRGB(25, 25), not(equalTo(rightThumbnail.getRGB(25, 25))))
     }
@@ -80,7 +83,7 @@ class MapThumbnailRendererTest {
             ),
         )
 
-        val thumbnail = MapThumbnailRenderer().renderOperationThumbnail(mapImage, geometry, viewport, null, snapshots, outputWidth = 100)
+        val thumbnail = MapThumbnailRenderer().renderOperationThumbnail(mapImage, geometry, viewport.toMapViewport(), null, snapshots.toOperationContent(), outputWidth = 100)
 
         assertThat(thumbnail.getRGB(50, 50), equalTo(Color.RED.rgb))
         assertThat(thumbnail.getRGB(10, 10), not(equalTo(Color.WHITE.rgb)))

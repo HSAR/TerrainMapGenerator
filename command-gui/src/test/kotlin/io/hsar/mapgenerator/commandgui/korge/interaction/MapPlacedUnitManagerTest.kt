@@ -1,11 +1,11 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireKey
+import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireUsage
+import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalTurnMarker
 import io.hsar.mapgenerator.commandgui.korge.ui.DestroyedUnitsDisplay
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
-import io.hsar.mapgenerator.commandgui.save.TacticalFireKey
-import io.hsar.mapgenerator.commandgui.save.TacticalFireUsage
-import io.hsar.mapgenerator.commandgui.save.TacticalTurnMarker
 import io.hsar.mapgenerator.grid.EpsilonCoord
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.ReferenceSystem
@@ -20,6 +20,7 @@ import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import java.util.*
+import java.util.Collections.emptyMap
 
 class MapPlacedUnitManagerTest {
     @Test

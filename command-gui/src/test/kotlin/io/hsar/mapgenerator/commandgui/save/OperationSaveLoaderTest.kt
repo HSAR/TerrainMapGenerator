@@ -3,6 +3,8 @@ package io.hsar.mapgenerator.commandgui.save
 import io.hsar.mapgenerator.commandgui.MapLayer
 import io.hsar.mapgenerator.grid.EpsilonCoord
 import io.hsar.mapgenerator.grid.ReferenceSystem
+import korlibs.io.lang.toByteArray
+import korlibs.io.lang.use
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.containsString
@@ -265,3 +267,5 @@ class OperationSaveLoaderTest {
         assertThat(loaded.settings.gridStartY, equalTo(EpsilonCoord.fromUnits(1_620)))
     }
 }
+
+private val LoadedOperation.mapImage get() = renderData.baseImage

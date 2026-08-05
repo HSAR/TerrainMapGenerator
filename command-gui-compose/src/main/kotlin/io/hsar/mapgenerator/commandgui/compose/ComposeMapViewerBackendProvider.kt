@@ -1862,7 +1862,7 @@ private fun MapCanvas(
                         iconWidth = width.toFloat(),
                         iconHeight = height.toFloat(),
                         facingDegrees = degrees,
-                        color = content.unitTemplate(value.unitTemplateId)?.affiliation.facingIndicatorColor(),
+                        color = (value.affiliation ?: content.unitTemplate(value.unitTemplateId)?.affiliation).facingIndicatorColor(),
                     )
                 }
                 if (value.destroyed) {

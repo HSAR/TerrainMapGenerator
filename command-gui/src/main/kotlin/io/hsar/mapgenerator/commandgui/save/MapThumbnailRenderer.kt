@@ -1,363 +1,199 @@
 package io.hsar.mapgenerator.commandgui.save
 
-import io.hsar.mapgenerator.commandgui.ViewerGeometry
-import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingOutlineBuilder
-import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
-import io.hsar.mapgenerator.commandgui.korge.interaction.CameraViewport
-import io.hsar.mapgenerator.commandgui.korge.interaction.DrawingSnapshot
-import io.hsar.mapgenerator.commandgui.korge.interaction.GraphicSnapshot
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinateSpace
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectSnapshot
-import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
-import io.hsar.mapgenerator.commandgui.korge.interaction.displayName
-import io.hsar.mapgenerator.commandgui.korge.overlay.GridLabelStyle
-import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLayoutBuilder
-import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
-import io.hsar.mapgenerator.graph.Point
-import io.hsar.mapgenerator.graph.Rectangle
+import io.hsar.mapgenerator.commandgui.*
+import io.hsar.mapgenerator.commandgui.operation.*
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.image.Palette
-import korlibs.image.bitmap.Bitmap32
-import java.awt.BasicStroke
-import java.awt.Color
-import java.awt.Font
-import java.awt.Graphics2D
-import java.awt.RenderingHints
-import java.awt.geom.Ellipse2D
-import java.awt.geom.Line2D
-import java.awt.geom.Path2D
-import java.awt.geom.Rectangle2D
+import java.awt.*
+import java.awt.geom.*
 import java.awt.image.BufferedImage
-import kotlin.math.cos
-import kotlin.math.roundToInt
-import kotlin.math.sin
+import kotlin.math.*
 
 internal class MapThumbnailRenderer {
     fun renderOperationThumbnail(
         mapImage: BufferedImage,
         geometry: ViewerGeometry,
-        viewport: CameraViewport,
+        viewport: MapViewport,
         gridLayer: GridLayer?,
-        snapshots: List<MapPlacedObjectSnapshot>,
-        outputWidth: Int = DEFAULT_THUMBNAIL_WIDTH,
-    ): BufferedImage =
-        render(
-            mapImage = mapImage,
-            geometry = geometry,
-            viewport = viewport.thumbnailViewport(outputWidth),
-            gridLayer = gridLayer,
-            snapshots = snapshots,
-        )
+        content: OperationContent,
+        outputWidth: Int = DEFAULT_WIDTH,
+    ) = render(mapImage, geometry, viewport.thumbnailViewport(outputWidth), gridLayer, content)
 
     fun renderTurnThumbnail(
         mapImage: BufferedImage,
         geometry: ViewerGeometry,
         gridLayer: GridLayer?,
-        snapshots: List<MapPlacedObjectSnapshot>,
-        outputWidth: Int = DEFAULT_THUMBNAIL_WIDTH,
+        content: OperationContent,
+        outputWidth: Int = DEFAULT_WIDTH,
     ): BufferedImage {
         val scale = outputWidth.toDouble() / mapImage.width
-        val outputHeight = (outputWidth / TURN_THUMBNAIL_ASPECT_RATIO).roundToInt().coerceAtLeast(1)
-        val visibleHeight = outputHeight / scale
+        val outputHeight = (outputWidth / TURN_ASPECT).roundToInt().coerceAtLeast(1)
         return render(
-            mapImage = mapImage,
-            geometry = geometry,
-            viewport = CameraViewport(
-                centerX = geometry.mapOffsetX + mapImage.width / 2.0,
-                centerY = geometry.mapOffsetY + mapImage.height / 2.0,
+            mapImage,
+            geometry,
+            MapViewport(
+                center = ViewerPoint(geometry.mapOffsetX + mapImage.width / 2.0, geometry.mapOffsetY + mapImage.height / 2.0),
                 zoom = scale,
                 viewportWidth = outputWidth,
                 viewportHeight = outputHeight,
-                worldWidth = geometry.backgroundWidth,
-                worldHeight = visibleHeight.roundToInt().coerceAtLeast(outputHeight),
+                worldWidth = geometry.backgroundWidth.toDouble(),
+                worldHeight = max(geometry.backgroundHeight.toDouble(), outputHeight / scale),
             ),
-            gridLayer = gridLayer,
-            snapshots = snapshots,
+            gridLayer,
+            content,
         )
     }
 
-    private fun render(
-        mapImage: BufferedImage,
-        geometry: ViewerGeometry,
-        viewport: CameraViewport,
-        gridLayer: GridLayer?,
-        snapshots: List<MapPlacedObjectSnapshot>,
-    ): BufferedImage =
+    private fun render(mapImage: BufferedImage, geometry: ViewerGeometry, viewport: MapViewport, gridLayer: GridLayer?, content: OperationContent) =
         BufferedImage(viewport.viewportWidth, viewport.viewportHeight, BufferedImage.TYPE_INT_RGB).also { output ->
-            output.createGraphics().useHighQuality {
+            output.createGraphics().highQuality {
                 color = Color.BLACK
                 fillRect(0, 0, output.width, output.height)
-                drawMapImage(mapImage, geometry, viewport)
+                drawImage(
+                    mapImage,
+                    viewport.screenX(geometry.mapOffsetX.toDouble()).roundToInt(),
+                    viewport.screenY(geometry.mapOffsetY.toDouble()).roundToInt(),
+                    (mapImage.width * viewport.zoom).roundToInt(),
+                    (mapImage.height * viewport.zoom).roundToInt(),
+                    null,
+                )
                 gridLayer?.let { drawGrid(it, mapImage, geometry, viewport) }
-                snapshots.filterIsInstance<DrawingSnapshot>().forEach { drawDrawing(it, mapImage, geometry, viewport) }
-                snapshots.filterIsInstance<UnitSnapshot>().forEach { drawUnit(it, mapImage, geometry, viewport) }
-                snapshots.filterIsInstance<GraphicSnapshot>().forEach { drawGraphic(it, mapImage, geometry, viewport) }
+                content.objects.filterIsInstance<OperationDrawingObject>().forEach { drawDrawing(it, mapImage, geometry, viewport) }
+                content.objects.filterIsInstance<OperationUnit>().forEach { drawUnit(it, content, mapImage, geometry, viewport) }
+                content.objects.filterIsInstance<OperationGraphic>().forEach { drawGraphic(it, content, mapImage, geometry, viewport) }
             }
         }
 
-    private fun Graphics2D.drawMapImage(
-        mapImage: BufferedImage,
-        geometry: ViewerGeometry,
-        viewport: CameraViewport,
-    ) {
-        drawImage(
-            mapImage,
-            viewport.screenX(geometry.mapOffsetX.toDouble()).roundToInt(),
-            viewport.screenY(geometry.mapOffsetY.toDouble()).roundToInt(),
-            (mapImage.width * viewport.zoom).roundToInt(),
-            (mapImage.height * viewport.zoom).roundToInt(),
-            null,
-        )
+    private fun Graphics2D.drawGrid(layer: GridLayer, mapImage: BufferedImage, geometry: ViewerGeometry, viewport: MapViewport) {
+        val overlay = MapViewerGridOverlayLayoutBuilder.build(
+            MapViewerGridOverlayRequest(layer, viewport, geometry.mapOffsetX.toDouble(), geometry.mapOffsetY.toDouble(), mapImage.width, mapImage.height),
+        ) { text, size, strong ->
+            font = Font(Font.SANS_SERIF, if (strong) Font.BOLD else Font.PLAIN, size.roundToInt().coerceAtLeast(1))
+            ViewerPoint(fontMetrics.stringWidth(text).toDouble(), fontMetrics.height.toDouble())
+        }
+        overlay.lineSegments.forEach { segment ->
+            color = segment.colour
+            stroke = BasicStroke(segment.thickness.toFloat(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER)
+            draw(Line2D.Double(segment.start.x, segment.start.y, segment.end.x, segment.end.y))
+        }
+        overlay.labels.forEach { label ->
+            font = Font(Font.SANS_SERIF, if (label.strong) Font.BOLD else Font.PLAIN, label.fontSize.roundToInt().coerceAtLeast(1))
+            color = label.colour
+            drawCentered(label.text, label.centre)
+        }
     }
 
-    private fun Graphics2D.drawGrid(
-        gridLayer: GridLayer,
-        mapImage: BufferedImage,
-        geometry: ViewerGeometry,
-        viewport: CameraViewport,
-    ) {
-        val mapScreenX = viewport.screenX(geometry.mapOffsetX.toDouble())
-        val mapScreenY = viewport.screenY(geometry.mapOffsetY.toDouble())
-        val visibleLeft = (viewport.left - geometry.mapOffsetX).coerceIn(0.0, mapImage.width.toDouble())
-        val visibleTop = (viewport.top - geometry.mapOffsetY).coerceIn(0.0, mapImage.height.toDouble())
-        val visibleRight = (viewport.right - geometry.mapOffsetX).coerceIn(0.0, mapImage.width.toDouble())
-        val visibleBottom = (viewport.bottom - geometry.mapOffsetY).coerceIn(0.0, mapImage.height.toDouble())
-        val layout = GridOverlayLayoutBuilder.build(
-            GridOverlayState(
-                viewport = Rectangle(Point(visibleLeft, visibleTop), Point(visibleRight, visibleBottom)),
-                mapWorldX = geometry.mapOffsetX.toDouble(),
-                mapWorldY = geometry.mapOffsetY.toDouble(),
-                mapOffsetX = mapScreenX,
-                mapOffsetY = mapScreenY,
-                scale = viewport.zoom,
-                pixelWidth = mapImage.width,
-                pixelHeight = mapImage.height,
-                backgroundWidth = geometry.backgroundWidth,
-                backgroundHeight = geometry.backgroundHeight,
-                visibleCanvasLeft = 0.0,
-                visibleCanvasTop = 0.0,
-                visibleCanvasRight = viewport.viewportWidth.toDouble(),
-                visibleCanvasBottom = viewport.viewportHeight.toDouble(),
-                activeReference = null,
-                measurement = null,
-                gridLayer = gridLayer,
-            ),
-            measureText = ::measureGridText,
-        )
+    private fun Graphics2D.drawDrawing(value: OperationDrawingObject, mapImage: BufferedImage, geometry: ViewerGeometry, viewport: MapViewport) {
+        color = Color(value.drawing.colour.value, true)
+        stroke = BasicStroke(DRAWING_STROKE, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+        when (val drawing = value.drawing) {
+            is OperationFreeformDrawing -> drawing.points.zipWithNext()
+                .forEach { (a, b) -> drawLine(a.screen(mapImage, geometry, viewport), b.screen(mapImage, geometry, viewport)) }
 
-        layout.lineRects.forEach { rect ->
-            color = rect.color
-            fill(
-                Rectangle2D.Double(
-                    mapScreenX + rect.x * viewport.zoom,
-                    mapScreenY + rect.y * viewport.zoom,
-                    rect.width * viewport.zoom,
-                    rect.height * viewport.zoom,
-                ),
+            is OperationLineDrawing -> drawLine(drawing.start.screen(mapImage, geometry, viewport), drawing.end.screen(mapImage, geometry, viewport))
+            is OperationRectangleDrawing -> {
+                val a = drawing.start.screen(mapImage, geometry, viewport);
+                val b = drawing.end.screen(mapImage, geometry, viewport)
+                withRotation((a.x + b.x) / 2, (a.y + b.y) / 2, drawing.rotationDegrees) { draw(Rectangle2D.Double(min(a.x, b.x), min(a.y, b.y), abs(b.x - a.x), abs(b.y - a.y))) }
+            }
+
+            is OperationOvalDrawing -> {
+                val center = drawing.centre.screen(mapImage, geometry, viewport)
+                val rx = drawing.xRadius * mapImage.width * viewport.zoom;
+                val ry = drawing.yRadius * mapImage.height * viewport.zoom
+                withRotation(center.x, center.y, drawing.rotationDegrees) { draw(Ellipse2D.Double(center.x - rx, center.y - ry, rx * 2, ry * 2)) }
+            }
+        }
+        value.customProperties["displayName"]?.takeIf(String::isNotBlank)?.let { label ->
+            val bounds = value.selectionBounds(mapImage.width.toDouble() / mapImage.height)
+            drawLabel(label, MapCoordinate((bounds.left + bounds.right) / 2, bounds.top).screen(mapImage, geometry, viewport))
+        }
+    }
+
+    private fun Graphics2D.drawUnit(value: OperationUnit, content: OperationContent, mapImage: BufferedImage, geometry: ViewerGeometry, viewport: MapViewport) {
+        val template = content.unitTemplate(value.unitTemplateId) ?: return
+        val center = value.coordinate.screen(mapImage, geometry, viewport)
+        val width = value.normalizedWidth * mapImage.width * viewport.zoom
+        val height = value.normalizedHeight * mapImage.height * viewport.zoom
+        val x = center.x - width / 2;
+        val y = center.y - height / 2
+        value.facingDegrees?.let { drawFacing(x, y, width, height, it) }
+        drawImage(template.image, x.roundToInt(), y.roundToInt(), width.roundToInt(), height.roundToInt(), null)
+        if (value.destroyed) drawDestroyed(x, y, width, height)
+    }
+
+    private fun Graphics2D.drawGraphic(value: OperationGraphic, content: OperationContent, mapImage: BufferedImage, geometry: ViewerGeometry, viewport: MapViewport) {
+        val template = content.graphicTemplate(value.graphicTemplateId) ?: return
+        val center = value.coordinate.screen(mapImage, geometry, viewport)
+        val width = value.normalizedWidth * mapImage.width * viewport.zoom;
+        val height = value.normalizedHeight * mapImage.height * viewport.zoom
+        drawImage(template.image, (center.x - width / 2).roundToInt(), (center.y - height / 2).roundToInt(), width.roundToInt(), height.roundToInt(), null)
+        (value.customProperties["displayName"]?.takeIf(String::isNotBlank) ?: value.instanceName.takeIf(String::isNotBlank))?.let {
+            drawLabel(
+                it,
+                ViewerPoint(center.x, center.y - height / 2)
             )
         }
-        layout.labels.forEach { label ->
-            label.shadows.forEach { shadow ->
-                drawCenteredText(label.text, label.x + shadow.offsetX, label.y + shadow.offsetY, label.style.copy(color = shadow.color))
-            }
-            drawCenteredText(label.text, label.x, label.y, label.style)
-        }
     }
 
-    private fun Graphics2D.drawDrawing(
-        snapshot: DrawingSnapshot,
-        mapImage: BufferedImage,
-        geometry: ViewerGeometry,
-        viewport: CameraViewport,
-    ) {
-        color = snapshot.drawing.color
-        stroke = BasicStroke(THUMBNAIL_DRAWING_STROKE, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
-        MapDrawingOutlineBuilder.build(
-            drawing = snapshot.drawing,
-            zoom = viewport.zoom,
-            coordinateSpace = MapCoordinateSpace(geometry, mapImage.width, mapImage.height),
-        ).forEach { segment ->
-            drawLine(segment.start, segment.end, mapImage, geometry, viewport)
-        }
-        snapshot.displayName()?.let { name ->
-            val points = MapDrawingOutlineBuilder.build(
-                drawing = snapshot.drawing,
-                zoom = viewport.zoom,
-                coordinateSpace = MapCoordinateSpace(geometry, mapImage.width, mapImage.height),
-            ).flatMap { listOf(it.start, it.end) }
-            if (points.isNotEmpty()) {
-                val centerX = (points.minOf(MapDrawingPoint::x) + points.maxOf(MapDrawingPoint::x)) * 0.5
-                val top = points.minOf(MapDrawingPoint::y)
-                drawObjectLabel(name, MapCoordinate(centerX, top).toScreen(mapImage, geometry, viewport))
-            }
-        }
+    private fun Graphics2D.drawFacing(x: Double, y: Double, width: Double, height: Double, degrees: Int) {
+        val cx = x + width / 2;
+        val cy = y + height / 2;
+        val radius = min(width, height) * .72
+        color = Color(Palette.Colours.MAIN.red, Palette.Colours.MAIN.green, Palette.Colours.MAIN.blue, 160)
+        stroke = BasicStroke((min(width, height) * .08).toFloat(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+        draw(Ellipse2D.Double(cx - radius, cy - radius, radius * 2, radius * 2))
+        val radians = Math.toRadians(degrees.toDouble());
+        val dx = sin(radians);
+        val dy = -cos(radians);
+        val px = cos(radians);
+        val py = sin(radians)
+        val tipX = cx + dx * radius * 1.22;
+        val tipY = cy + dy * radius * 1.22;
+        val baseX = cx + dx * radius * .72;
+        val baseY = cy + dy * radius * .72;
+        val half = min(width, height) * .16
+        fill(Path2D.Double().apply { moveTo(tipX, tipY); lineTo(baseX + px * half, baseY + py * half); lineTo(baseX - px * half, baseY - py * half); closePath() })
     }
 
-    private fun Graphics2D.drawUnit(
-        snapshot: UnitSnapshot,
-        mapImage: BufferedImage,
-        geometry: ViewerGeometry,
-        viewport: CameraViewport,
-    ) {
-        val center = snapshot.mapCoordinate.toScreen(mapImage, geometry, viewport)
-        val width = snapshot.normalizedWidth * mapImage.width * viewport.zoom
-        val height = snapshot.normalizedHeight * mapImage.height * viewport.zoom
-        val x = center.x - width / 2
-        val y = center.y - height / 2
-        snapshot.facingDegrees?.let { drawFacingIndicator(x, y, width, height, it) }
-        drawImage(snapshot.template.bitmap.toBufferedImage(), x.roundToInt(), y.roundToInt(), width.roundToInt(), height.roundToInt(), null)
-        if (snapshot.destroyed) {
-            drawDestroyedOverlay(x, y, width, height)
-        }
+    private fun Graphics2D.drawDestroyed(x: Double, y: Double, width: Double, height: Double) {
+        color = Color(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, 160)
+        stroke = BasicStroke((min(width, height) * .18).toFloat())
+        draw(Line2D.Double(x, y, x + width, y + height)); draw(Line2D.Double(x, y + height, x + width, y))
     }
 
-    private fun Graphics2D.drawGraphic(
-        snapshot: GraphicSnapshot,
-        mapImage: BufferedImage,
-        geometry: ViewerGeometry,
-        viewport: CameraViewport,
-    ) {
-        val center = snapshot.mapCoordinate.toScreen(mapImage, geometry, viewport)
-        val width = snapshot.normalizedWidth * mapImage.width * viewport.zoom
-        val height = snapshot.normalizedHeight * mapImage.height * viewport.zoom
-        drawImage(
-            snapshot.template.bitmap.toBufferedImage(),
-            (center.x - width / 2).roundToInt(),
-            (center.y - height / 2).roundToInt(),
-            width.roundToInt(),
-            height.roundToInt(),
-            null
-        )
-        snapshot.displayName()?.let { name ->
-            drawObjectLabel(name, Point(center.x, center.y - height * 0.5))
-        }
-    }
+    private fun Graphics2D.drawCentered(text: String, center: ViewerPoint) =
+        fontMetrics.let { drawString(text, (center.x - it.stringWidth(text) / 2).toFloat(), (center.y + (it.ascent - it.descent) / 2).toFloat()) }
 
-    private fun Graphics2D.drawLine(
-        start: MapDrawingPoint,
-        end: MapDrawingPoint,
-        mapImage: BufferedImage,
-        geometry: ViewerGeometry,
-        viewport: CameraViewport,
-    ) {
-        val startScreen = start.toScreen(mapImage, geometry, viewport)
-        val endScreen = end.toScreen(mapImage, geometry, viewport)
-        draw(Line2D.Double(startScreen.x, startScreen.y, endScreen.x, endScreen.y))
-    }
-
-    private fun Graphics2D.drawFacingIndicator(
-        x: Double,
-        y: Double,
-        width: Double,
-        height: Double,
-        facingDegrees: Int,
-    ) {
-        val centerX = x + width / 2
-        val centerY = y + height / 2
-        val radius = minOf(width, height) * 0.72
-        color = Color(Palette.Colours.MAIN.red, Palette.Colours.MAIN.green, Palette.Colours.MAIN.blue, FACING_ALPHA)
-        stroke = BasicStroke((minOf(width, height) * 0.08).toFloat(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
-        draw(Ellipse2D.Double(centerX - radius, centerY - radius, radius * 2, radius * 2))
-
-        val radians = Math.toRadians(facingDegrees.toDouble())
-        val directionX = sin(radians)
-        val directionY = -cos(radians)
-        val perpendicularX = cos(radians)
-        val perpendicularY = sin(radians)
-        val tipX = centerX + directionX * radius * 1.22
-        val tipY = centerY + directionY * radius * 1.22
-        val baseX = centerX + directionX * radius * 0.72
-        val baseY = centerY + directionY * radius * 0.72
-        val halfWidth = minOf(width, height) * 0.16
-        fill(
-            Path2D.Double().apply {
-                moveTo(tipX, tipY)
-                lineTo(baseX + perpendicularX * halfWidth, baseY + perpendicularY * halfWidth)
-                lineTo(baseX - perpendicularX * halfWidth, baseY - perpendicularY * halfWidth)
-                closePath()
-            },
-        )
-    }
-
-    private fun Graphics2D.drawDestroyedOverlay(x: Double, y: Double, width: Double, height: Double) {
-        color = Color(Palette.Colours.RED.red, Palette.Colours.RED.green, Palette.Colours.RED.blue, DESTROYED_ALPHA)
-        stroke = BasicStroke((minOf(width, height) * 0.18).toFloat(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER)
-        draw(Line2D.Double(x, y, x + width, y + height))
-        draw(Line2D.Double(x, y + height, x + width, y))
-    }
-
-    private fun Graphics2D.drawCenteredText(text: String, centerX: Double, centerY: Double, style: GridLabelStyle) {
-        font = Font(Font.SANS_SERIF, if (style.role.name == "STRONG") Font.BOLD else Font.PLAIN, style.size.roundToInt().coerceAtLeast(1))
-        color = style.color
-        val metrics = fontMetrics
-        drawString(
+    private fun Graphics2D.drawLine(start: ViewerPoint, end: ViewerPoint) = draw(Line2D.Double(start.x, start.y, end.x, end.y))
+    private fun Graphics2D.drawLabel(text: String, anchor: ViewerPoint) {
+        font = Font(Font.SANS_SERIF, Font.PLAIN, 12); color = Palette.Colours.WHITE; drawString(
             text,
-            (centerX - metrics.stringWidth(text) / 2.0).toFloat(),
-            (centerY + (metrics.ascent - metrics.descent) / 2.0).toFloat(),
+            (anchor.x - fontMetrics.stringWidth(text) / 2).toFloat(),
+            (anchor.y - 3).toFloat()
         )
     }
 
-    private fun Graphics2D.drawObjectLabel(text: String, anchor: Point) {
-        font = Font(Font.SANS_SERIF, Font.PLAIN, THUMBNAIL_LABEL_TEXT_SIZE)
-        color = Palette.Colours.WHITE
-        val metrics = fontMetrics
-        drawString(text, (anchor.x - metrics.stringWidth(text) * 0.5).toFloat(), (anchor.y - LABEL_GAP).toFloat())
-    }
-
-    private fun measureGridText(text: String, style: GridLabelStyle): Rectangle {
-        val font = Font(Font.SANS_SERIF, if (style.role.name == "STRONG") Font.BOLD else Font.PLAIN, style.size.roundToInt().coerceAtLeast(1))
-        val context = BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB).createGraphics()
-        return try {
-            context.font = font
-            val metrics = context.fontMetrics
-            Rectangle(Point.ORIGIN, Point(metrics.stringWidth(text).toDouble(), metrics.height.toDouble()))
+    private fun Graphics2D.withRotation(x: Double, y: Double, degrees: Double, block: Graphics2D.() -> Unit) {
+        val old = transform; rotate(Math.toRadians(degrees), x, y); try {
+            block()
         } finally {
-            context.dispose()
+            transform = old
         }
     }
 
-    private fun CameraViewport.thumbnailViewport(outputWidth: Int): CameraViewport {
-        val outputHeight = (outputWidth * viewportHeight.toDouble() / viewportWidth).roundToInt().coerceAtLeast(1)
-        val scale = outputWidth / visibleWidth
-        return copy(
-            zoom = scale,
-            viewportWidth = outputWidth,
-            viewportHeight = outputHeight,
-        )
-    }
+    private fun OperationDrawingPoint.screen(image: BufferedImage, geometry: ViewerGeometry, viewport: MapViewport) = MapCoordinate(x, y).screen(image, geometry, viewport)
+    private fun MapCoordinate.screen(image: BufferedImage, geometry: ViewerGeometry, viewport: MapViewport) =
+        ViewerPoint(viewport.screenX(geometry.mapOffsetX + x * image.width), viewport.screenY(geometry.mapOffsetY + y * image.height))
 
-    private fun MapDrawingPoint.toScreen(
-        mapImage: BufferedImage,
-        geometry: ViewerGeometry,
-        viewport: CameraViewport,
-    ) = MapCoordinate(x, y).toScreen(mapImage, geometry, viewport)
+    private fun MapViewport.thumbnailViewport(width: Int) =
+        copy(zoom = width / visibleWidth, viewportWidth = width, viewportHeight = (width * viewportHeight.toDouble() / viewportWidth).roundToInt().coerceAtLeast(1))
 
-    private fun MapCoordinate.toScreen(
-        mapImage: BufferedImage,
-        geometry: ViewerGeometry,
-        viewport: CameraViewport,
-    ) = Point(
-        viewport.screenX(geometry.mapOffsetX + x * mapImage.width),
-        viewport.screenY(geometry.mapOffsetY + y * mapImage.height),
-    )
-
-    private fun Bitmap32.toBufferedImage(): BufferedImage =
-        BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { image ->
-            for (y in 0 until height) {
-                for (x in 0 until width) {
-                    val rgba = getRgba(x, y)
-                    image.setRGB(x, y, (rgba.a shl 24) or (rgba.r shl 16) or (rgba.g shl 8) or rgba.b)
-                }
-            }
-        }
-
-    private fun Graphics2D.useHighQuality(block: Graphics2D.() -> Unit) {
-        setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
-        setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
-        setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-        setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
-        try {
+    private fun Graphics2D.highQuality(block: Graphics2D.() -> Unit) {
+        setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC); setRenderingHint(
+            RenderingHints.KEY_ANTIALIASING,
+            RenderingHints.VALUE_ANTIALIAS_ON
+        ); setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON); try {
             block()
         } finally {
             dispose()
@@ -365,12 +201,8 @@ internal class MapThumbnailRenderer {
     }
 
     private companion object {
-        const val DEFAULT_THUMBNAIL_WIDTH = 512
-        const val TURN_THUMBNAIL_ASPECT_RATIO = 16.0 / 9.0
-        const val THUMBNAIL_DRAWING_STROKE = 2.0f
-        const val THUMBNAIL_LABEL_TEXT_SIZE = 12
-        const val LABEL_GAP = 3.0
-        const val FACING_ALPHA = 160
-        const val DESTROYED_ALPHA = 160
+        const val DEFAULT_WIDTH = 512;
+        const val TURN_ASPECT = 16.0 / 9.0;
+        const val DRAWING_STROKE = 2f
     }
 }

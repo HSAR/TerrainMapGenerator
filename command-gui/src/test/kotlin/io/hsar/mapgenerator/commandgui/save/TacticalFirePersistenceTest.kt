@@ -1,6 +1,9 @@
 package io.hsar.mapgenerator.commandgui.save
 
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
+import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireKey
+import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFirePersistence
+import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireUsage
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test

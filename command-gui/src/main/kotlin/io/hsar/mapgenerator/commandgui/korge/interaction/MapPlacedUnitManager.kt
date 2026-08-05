@@ -3,6 +3,9 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireKey
+import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireUsage
+import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalTurnMarker
 import io.hsar.mapgenerator.commandgui.korge.ui.DestroyedUnitsDisplay
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogManager
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogPositionSync
@@ -14,15 +17,13 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUiStateStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUnitEditDialog
 import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
 import io.hsar.mapgenerator.commandgui.korge.ui.focusTargetBounds
-import io.hsar.mapgenerator.commandgui.save.TacticalFireKey
-import io.hsar.mapgenerator.commandgui.save.TacticalFireUsage
-import io.hsar.mapgenerator.commandgui.save.TacticalTurnMarker
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.image.Palette
 import korlibs.event.Key
 import korlibs.event.MouseButton
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
+import korlibs.io.util.buildList
 import korlibs.korge.internal.KorgeInternal
 import korlibs.korge.view.Container
 import korlibs.korge.view.GraphicsRenderer
@@ -34,6 +35,8 @@ import korlibs.math.geom.Angle
 import korlibs.math.geom.Point
 import korlibs.math.geom.Vector2D
 import java.awt.Color
+import java.util.Collections.emptyList
+import java.util.Collections.emptySet
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.floor

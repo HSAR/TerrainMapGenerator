@@ -8,28 +8,6 @@ internal data class MapViewerDialogSize(
     val height: Double,
 )
 
-internal data class MapViewerDialogBounds(
-    val left: Double,
-    val top: Double,
-    val width: Double,
-    val height: Double,
-) {
-    val right: Double
-        get() = left + width
-
-    val bottom: Double
-        get() = top + height
-
-    val size: MapViewerDialogSize
-        get() = MapViewerDialogSize(width, height)
-
-    fun movedTo(left: Double, top: Double): MapViewerDialogBounds =
-        copy(left = left, top = top)
-
-    fun resizedTo(width: Double, height: Double): MapViewerDialogBounds =
-        copy(width = width, height = height)
-}
-
 internal data class MapViewerDialogLayout(
     val bounds: MapViewerDialogBounds,
     val showWindowControls: Boolean,
@@ -274,7 +252,7 @@ internal object MapViewerDialogLayoutBuilder {
         viewportHeight: Int,
         minimumWidth: Double = 0.0,
     ): MapViewerDialogBounds {
-        val size = clampSize(this.size, viewportWidth, viewportHeight, minimumWidth)
+        val size = clampSize(MapViewerDialogSize(width, height), viewportWidth, viewportHeight, minimumWidth)
         return resizedTo(size.width, size.height).movedTo(
             left = left.coerceIn(OUTER_PADDING, (viewportWidth - size.width - OUTER_PADDING).coerceAtLeast(OUTER_PADDING)),
             top = top.coerceIn(OUTER_PADDING, (viewportHeight - size.height - OUTER_PADDING).coerceAtLeast(OUTER_PADDING)),

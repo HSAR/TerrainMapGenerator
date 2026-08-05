@@ -6,8 +6,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import io.hsar.mapgenerator.commandgui.MapViewerTool
 import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
 import io.hsar.mapgenerator.commandgui.ViewerPoint
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogBounds
-import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog
 import io.hsar.mapgenerator.commandgui.operation.OperationDockRegion
 import io.hsar.mapgenerator.commandgui.operation.OperationDockRegionState
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorBounds
@@ -169,10 +167,7 @@ private fun OperationWorkspaceState.mergeLegacyUnitDialogs(state: UiSessionState
 }
 
 /** Owns the complete additive additionalData.json document. */
-internal class OperationAdditionalData private constructor(private val root: ObjectNode) {
-    val sitrepContacts: SitrepContactPersistence = SitrepContactPersistence.fromRoot(root)
-    val tacticalFire: TacticalFirePersistence = TacticalFirePersistence.fromRoot(root)
-    val ecm: EcmPersistence = EcmPersistence.fromRoot(root)
+internal class OperationAdditionalData private constructor(internal val root: ObjectNode) {
 
     fun uiState(): UiSessionState {
         val state = root.path(UI_STATE_FIELD).takeIf { it.isObject } ?: return UiSessionState()
@@ -392,10 +387,7 @@ internal class OperationAdditionalData private constructor(private val root: Obj
     }
 
     fun toJsonOrNull(): ByteArray? =
-        sitrepContacts.toJson()
-            .let { tacticalFire.toJson() }
-            .let { ecm.toJson() }
-            .takeIf { root.size() > 0 }
+        OperationSaveJson.objectMapper.writeValueAsBytes(root).takeIf { root.size() > 0 }
 
     companion object {
         const val UI_STATE_FIELD = "uiState"

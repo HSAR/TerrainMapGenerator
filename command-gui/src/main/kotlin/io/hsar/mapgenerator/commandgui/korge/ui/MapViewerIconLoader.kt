@@ -1,7 +1,6 @@
-package io.hsar.mapgenerator.commandgui.korge.ui
+package io.hsar.mapgenerator.commandgui
 
-import korlibs.image.bitmap.Bitmap32
-import korlibs.image.color.RGBA
+import korlibs.io.util.buildList
 import org.apache.batik.transcoder.SVGAbstractTranscoder
 import org.apache.batik.transcoder.TranscoderInput
 import org.apache.batik.transcoder.TranscoderOutput
@@ -9,6 +8,7 @@ import org.apache.batik.transcoder.image.ImageTranscoder
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import org.w3c.dom.NamedNodeMap
+import org.w3c.dom.Node
 import org.w3c.dom.NodeList
 import org.xml.sax.InputSource
 import java.awt.Font
@@ -24,6 +24,7 @@ import java.io.StringReader
 import java.io.StringWriter
 import java.nio.charset.StandardCharsets
 import javax.imageio.ImageIO
+import javax.sound.midi.Sequence
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 import javax.xml.transform.OutputKeys
@@ -32,38 +33,38 @@ import javax.xml.transform.dom.DOMSource
 import javax.xml.transform.stream.StreamResult
 import kotlin.math.roundToInt
 
-internal object MapViewerIconLoader {
-    fun load(file: File): Bitmap32? =
+internal object MapViewerImageLoader {
+    fun load(file: File, trimTransparentBounds: Boolean = true): BufferedImage? =
         when (file.extension.lowercase()) {
             "svg" -> loadSvg(file)
-            else -> loadRaster(file)
+            else -> loadRaster(file)?.trimIfRequested(trimTransparentBounds)
         }
 
-    fun load(bytes: ByteArray, fileName: String): Bitmap32? =
+    fun load(bytes: ByteArray, fileName: String, trimTransparentBounds: Boolean = true): BufferedImage? =
         when (fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()) {
             "svg" -> loadSvg(bytes)
-            else -> loadRaster(bytes)
+            else -> loadRaster(bytes)?.trimIfRequested(trimTransparentBounds)
         }
 
-    private fun loadRaster(file: File): Bitmap32? {
+    private fun loadRaster(file: File): BufferedImage? {
         val image = ImageIO.read(file) ?: return null
-        return image.toBitmap32().trimTransparentBounds().premultipliedIfRequired()
+        return image.toArgb()
     }
 
-    private fun loadRaster(bytes: ByteArray): Bitmap32? {
+    private fun loadRaster(bytes: ByteArray): BufferedImage? {
         val image = ImageIO.read(ByteArrayInputStream(bytes)) ?: return null
-        return image.toBitmap32().trimTransparentBounds().premultipliedIfRequired()
+        return image.toArgb()
     }
 
-    private fun loadSvg(file: File): Bitmap32? = runCatching {
+    private fun loadSvg(file: File): BufferedImage? = runCatching {
         renderSvg(file.readText())
     }.getOrNull()
 
-    private fun loadSvg(bytes: ByteArray): Bitmap32? = runCatching {
+    private fun loadSvg(bytes: ByteArray): BufferedImage? = runCatching {
         renderSvg(String(bytes, StandardCharsets.UTF_8))
     }.getOrNull()
 
-    private fun renderSvg(source: String): Bitmap32 {
+    private fun renderSvg(source: String): BufferedImage {
         val transcoder = BufferedImageTranscoder().apply {
             addTranscodingHint(SVGAbstractTranscoder.KEY_EXECUTE_ONLOAD, false)
             addTranscodingHint(SVGAbstractTranscoder.KEY_ALLOW_EXTERNAL_RESOURCES, false)
@@ -71,9 +72,10 @@ internal object MapViewerIconLoader {
             source.explicitSvgDimension("height")?.let { addTranscodingHint(SVGAbstractTranscoder.KEY_HEIGHT, it.toFloat()) }
         }
         transcoder.transcode(TranscoderInput(StringReader(source.outlineSimpleTextElements())), null)
-        val bitmap = transcoder.image?.toBitmap32() ?: error("Batik did not produce an SVG image")
-        return bitmap.premultipliedIfRequired()
+        return transcoder.image?.toArgb() ?: error("Batik did not produce an SVG image")
     }
+
+    private fun BufferedImage.trimIfRequested(trim: Boolean) = if (trim) trimTransparentBounds() else this
 
     private fun String.outlineSimpleTextElements(): String = runCatching {
         val document = parseSvgDocument()
@@ -203,7 +205,7 @@ internal object MapViewerIconLoader {
             ?.substringBefore("px")
             ?.toDoubleOrNull()
 
-    private fun NamedNodeMap.asSequence(): Sequence<org.w3c.dom.Node> =
+    private fun NamedNodeMap.asSequence(): Sequence<Node> =
         (0 until length).asSequence().mapNotNull { item(it) }
 
     private fun Shape.transformed(transform: AffineTransform): Shape =
@@ -254,7 +256,7 @@ internal object MapViewerIconLoader {
             ?.roundToInt()
             ?.coerceAtLeast(1)
 
-    private fun Bitmap32.trimTransparentBounds(padding: Int = 0): Bitmap32 {
+    private fun BufferedImage.trimTransparentBounds(padding: Int = 0): BufferedImage {
         var left = width
         var top = height
         var right = -1
@@ -262,7 +264,7 @@ internal object MapViewerIconLoader {
 
         for (y in 0 until height) {
             for (x in 0 until width) {
-                if (getRgba(x, y).a == 0) {
+                if ((getRGB(x, y) ushr 24) == 0) {
                     continue
                 }
 
@@ -276,25 +278,25 @@ internal object MapViewerIconLoader {
         return if (right < left || bottom < top) {
             this
         } else {
-            copySliceWithBounds(
+            getSubimage(
                 (left - padding).coerceAtLeast(0),
                 (top - padding).coerceAtLeast(0),
-                (right + padding + 1).coerceAtMost(width),
-                (bottom + padding + 1).coerceAtMost(height),
-            )
+                ((right + padding + 1).coerceAtMost(width) - (left - padding).coerceAtLeast(0)).coerceAtLeast(1),
+                ((bottom + padding + 1).coerceAtMost(height) - (top - padding).coerceAtLeast(0)).coerceAtLeast(1),
+            ).toArgb()
         }
     }
 
-    private fun BufferedImage.toBitmap32(): Bitmap32 =
-        Bitmap32(width, height) { x, y ->
-            val argb = getRGB(x, y)
-            RGBA(
-                (argb ushr 16) and 0xFF,
-                (argb ushr 8) and 0xFF,
-                argb and 0xFF,
-                (argb ushr 24) and 0xFF,
-            )
+    private fun BufferedImage.toArgb(): BufferedImage =
+        if (type == BufferedImage.TYPE_INT_ARGB) this else BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { target ->
+            target.createGraphics().use { graphics -> graphics.drawImage(this, 0, 0, null) }
         }
+
+    private fun java.awt.Graphics2D.use(block: (java.awt.Graphics2D) -> Unit) = try {
+        block(this)
+    } finally {
+        dispose()
+    }
 
     private class BufferedImageTranscoder : ImageTranscoder() {
         var image: BufferedImage? = null

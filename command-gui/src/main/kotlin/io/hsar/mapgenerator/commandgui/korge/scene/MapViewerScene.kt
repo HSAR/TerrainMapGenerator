@@ -2,9 +2,16 @@ package io.hsar.mapgenerator.commandgui.korge.scene
 
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
+import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.MapViewerWindowTitle
+import io.hsar.mapgenerator.commandgui.korge.adapter.toLegacyEntries
+import io.hsar.mapgenerator.commandgui.korge.adapter.toMapViewport
+import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationContent
+import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationTimeline
+import io.hsar.mapgenerator.commandgui.korge.adapter.toSavedCamera
+import io.hsar.mapgenerator.commandgui.korge.adapter.toViewport
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingColour
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingManager
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
@@ -70,6 +77,9 @@ import io.hsar.mapgenerator.commandgui.korge.launch.OperationLaunchConfiguration
 import io.hsar.mapgenerator.commandgui.korge.launch.OperationMapImage
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
+import io.hsar.mapgenerator.commandgui.korge.persistence.LegacyOperationAdditionalData
+import io.hsar.mapgenerator.commandgui.korge.persistence.SitrepContactKey
+import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalTurnMarker
 import io.hsar.mapgenerator.commandgui.korge.render.MapViewerRenderer
 import io.hsar.mapgenerator.commandgui.korge.render.RenderedMap
 import io.hsar.mapgenerator.commandgui.korge.ui.DestroyedUnitsDisplay
@@ -86,20 +96,14 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerToolbar
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerTransientNotice
 import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
 import io.hsar.mapgenerator.commandgui.korge.ui.noteReferenceContextMenuActions
+import io.hsar.mapgenerator.commandgui.operation.OperationDocument
+import io.hsar.mapgenerator.commandgui.operation.OperationGeneratedImage
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
-import io.hsar.mapgenerator.commandgui.save.GeneratedImageAsset
-import io.hsar.mapgenerator.commandgui.save.LoadedOperation
 import io.hsar.mapgenerator.commandgui.save.MapThumbnailRenderer
-import io.hsar.mapgenerator.commandgui.save.OperationAdditionalData
-import io.hsar.mapgenerator.commandgui.save.OperationSaveCatalogue
-import io.hsar.mapgenerator.commandgui.save.OperationSaveLoader
 import io.hsar.mapgenerator.commandgui.save.OperationSaveRequest
 import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
 import io.hsar.mapgenerator.commandgui.save.OperationToolStorage
-import io.hsar.mapgenerator.commandgui.save.SitrepContactKey
-import io.hsar.mapgenerator.commandgui.save.TacticalTurnMarker
 import io.hsar.mapgenerator.commandgui.save.UiSessionState
-import io.hsar.mapgenerator.commandgui.save.toViewport
 import korlibs.event.Key
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.Colors
@@ -214,7 +218,7 @@ internal class MapViewerScene(
                         MapViewerSettings,
                         List<LedgerEntry>,
                         OperationMapImage?,
-                        LoadedOperation?,
+                        OperationDocument?,
                         ReplayedLedger,
                         MapViewerRenderData,
                         RenderedMap,
@@ -313,7 +317,7 @@ internal class MapViewerScene(
                         settings: MapViewerSettings,
                         initialLedgerEntries: List<LedgerEntry> = emptyList(),
                         operationMapImage: OperationMapImage? = null,
-                        loadedOperation: LoadedOperation? = null,
+                        loadedOperation: OperationDocument? = null,
                     ) {
                         val viewport = displayViewport()
                         val loadingLayer = views.stage.container().also { layer ->
@@ -333,7 +337,7 @@ internal class MapViewerScene(
                             runCatching {
                                 val renderData = renderMap(settings)
                                 val renderedMap = renderer.render(renderData)
-                                val entries = loadedOperation?.ledgerEntries ?: initialLedgerEntries
+                                val entries = loadedOperation?.timeline?.toLegacyEntries() ?: initialLedgerEntries
                                 val replayStartedAt = System.nanoTime()
                                 val replayedLedger = LedgerReplay.replay(entries)
                                 logger.info("Viewer ledger replay took {}ms for {} entries", (System.nanoTime() - replayStartedAt) / 1_000_000, entries.size)
@@ -379,7 +383,7 @@ internal class MapViewerScene(
                         )
                         gameWindow.title = settings.windowTitle()
 
-                        val additionalData = OperationAdditionalData.fromJson(loadedOperation?.additionalDataJson)
+                        val additionalData = LegacyOperationAdditionalData.fromJson(loadedOperation?.additionalDataJson)
                         val restoredUiState = additionalData.uiState()
                         var currentTool = restoredUiState.selectedTool
                         var currentDrawingMode = MapDrawingMode.FREEFORM
@@ -458,16 +462,16 @@ internal class MapViewerScene(
                         fun canStartPlacementDrag(): Boolean =
                             effectiveTool().canStartPlacementDrag()
 
-                        fun renderTurnThumbnailAsset(): GeneratedImageAsset {
+                        fun renderTurnThumbnailAsset(): OperationGeneratedImage {
                             val assetId = UUID.randomUUID()
-                            return GeneratedImageAsset(
+                            return OperationGeneratedImage(
                                 id = assetId,
                                 role = "turn-thumbnail",
                                 image = thumbnailRenderer.renderTurnThumbnail(
                                     mapImage = renderData.baseImage,
                                     geometry = renderedMap.geometry,
                                     gridLayer = renderData.gridLayer,
-                                    snapshots = objectController.snapshots(),
+                                    content = objectController.snapshots().toOperationContent(),
                                 ),
                             )
                         }
@@ -531,12 +535,12 @@ internal class MapViewerScene(
                                 operationName = settings.operationName ?: "Operation",
                                 createdAt = operationCreatedAt,
                                 updatedAt = Instant.now(),
-                                camera = saveViewport,
+                                camera = saveViewport.toSavedCamera(renderedMap.geometry, renderedMap.bitmap.width, renderedMap.bitmap.height),
                                 settings = settings,
                                 mapImage = renderData.baseImage,
                                 thumbnailImage = thumbnailImage,
                                 mapAssetSource = operationMapImage?.assetSource ?: loadedOperation?.mapAssetSource,
-                                ledgerEntries = actionHistory.fullTimelineEntries,
+                                timeline = actionHistory.toOperationTimeline(),
                                 generatedImageAssets = generatedImageAssets.values.toList(),
                                 additionalDataJson = additionalData.apply {
                                     updateUiState(
@@ -565,11 +569,12 @@ internal class MapViewerScene(
                                                 ?: thumbnailRenderer.renderOperationThumbnail(
                                                     mapImage = renderData.baseImage,
                                                     geometry = renderedMap.geometry,
-                                                    viewport = saveViewport,
+                                                    viewport = saveViewport.toMapViewport(),
                                                     gridLayer = renderData.gridLayer,
-                                                    snapshots = snapshots,
+                                                    content = snapshots.toOperationContent(),
                                                 ),
                                         ),
+                                        loadedOperation?.sourcePath ?: saveWriter.defaultSavePath(request.operationName, request.operationId),
                                     )
                                 }.onSuccess { target ->
                                     val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
@@ -1318,7 +1323,7 @@ internal class MapViewerScene(
                         objectController.restoreAll(replayedLedger.objects)
                         replayedLedger.notes.forEach(noteStore::upsert)
                         reconcileMarkedTacticalState()
-                        (loadedOperation?.ledgerEntries ?: initialLedgerEntries).forEach(actionHistory::record)
+                        (loadedOperation?.timeline?.toLegacyEntries() ?: initialLedgerEntries).forEach(actionHistory::record)
                         completeStartupReplay()
 
                         sceneLayers.ui.addUpdater {
@@ -1520,7 +1525,7 @@ internal class MapViewerScene(
                     }
 
                     fun loadExistingOperation(path: Path) {
-                        val loaded = runCatching { OperationSaveLoader().load(path) }
+                        val loaded = runCatching { MapViewerSaveRepository().loadOperation(path) }
                             .onFailure { throwable ->
                                 logger.error("Failed to load operation from {}", path, throwable)
                             }
@@ -1558,9 +1563,7 @@ internal class MapViewerScene(
                         val loadGeneration = ++saveCatalogueLoadGeneration
                         thread(name = "command-gui-save-catalogue", isDaemon = true) {
                             val savedOperations = runCatching {
-                                val saveWriter = OperationSaveWriter()
-                                saveWriter.ensureDefaultStorage()
-                                OperationSaveCatalogue().list(saveWriter.defaultSaveDirectory())
+                                MapViewerSaveRepository(OperationSaveWriter().defaultSaveDirectory()).list()
                             }.onFailure { throwable ->
                                 logger.error("Failed to list saved operations", throwable)
                             }.getOrElse { emptyList() }

@@ -120,6 +120,8 @@ data class OperationUnit(
     val normalizedWidth: Double,
     val normalizedHeight: Double,
     override val customProperties: Map<String, String> = emptyMap(),
+    /** Legacy saves may override the template affiliation for one placed unit. */
+    val affiliation: OperationUnitAffiliation? = null,
 ) : OperationObject {
     override val name = instanceName
 }
@@ -210,6 +212,8 @@ data class OperationTimelineEntry(
     val description: String,
     val turnName: String? = null,
     val turnThumbnailAssetId: UUID? = null,
+    /** Sequential neutral actions retained when one persisted top-level entry is a batch. */
+    val componentChangeSets: List<OperationChangeSet> = listOf(changeSet),
 )
 
 data class OperationTimeline(

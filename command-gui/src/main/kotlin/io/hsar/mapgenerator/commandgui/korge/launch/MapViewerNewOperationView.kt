@@ -2,7 +2,9 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.GridColourSelector
+import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
+import io.hsar.mapgenerator.commandgui.korge.adapter.toLegacyTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.BatchLedgerEntry
 import io.hsar.mapgenerator.commandgui.korge.interaction.CreateUnitTemplateAction
 import io.hsar.mapgenerator.commandgui.korge.interaction.DeleteUnitTemplateAction
@@ -40,7 +42,6 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerUniversalListItem
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
 import io.hsar.mapgenerator.commandgui.korge.ui.UiFrameStyle
 import io.hsar.mapgenerator.commandgui.korge.ui.UnitAffiliationUi
-import io.hsar.mapgenerator.commandgui.save.OperationSaveLoader
 import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
@@ -54,6 +55,7 @@ import korlibs.image.awt.toBMP32
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
 import korlibs.image.text.TextAlignment
+import korlibs.io.util.buildList
 import korlibs.korge.annotations.KorgeExperimental
 import korlibs.korge.input.mouse
 import korlibs.korge.view.Container
@@ -78,6 +80,8 @@ import java.awt.dnd.DropTargetDropEvent
 import java.awt.image.BufferedImage
 import java.io.File
 import java.util.*
+import java.util.Collections.emptyList
+import java.util.Collections.emptyMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import javax.imageio.ImageIO
 import javax.swing.JFileChooser
@@ -801,7 +805,7 @@ internal class MapViewerNewOperationView(
         render(layout.viewportWidth, layout.viewportHeight)
         thread(name = "command-gui-unit-type-import", isDaemon = true) {
             pendingUnitTypeImports += runCatching {
-                OperationSaveLoader().load(file.toPath()).ledgerEntries.latestUnitTemplates()
+                MapViewerSaveRepository().loadOperation(file.toPath()).content.unitTemplates.map { it.toLegacyTemplate() }
             }
         }
     }

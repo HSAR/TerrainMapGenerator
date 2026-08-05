@@ -1,11 +1,13 @@
-package io.hsar.mapgenerator.commandgui.save
+package io.hsar.mapgenerator.commandgui.korge.persistence
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
+import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
 import java.util.*
+import java.util.Collections.emptySet
 
 internal data class TacticalFireKey(val turnNumber: Int, val unitId: MapPlacedObjectId)
 internal data class TacticalFireUsage(val firedWeapons: Set<String> = emptySet(), val fireControlUsed: Int = 0)

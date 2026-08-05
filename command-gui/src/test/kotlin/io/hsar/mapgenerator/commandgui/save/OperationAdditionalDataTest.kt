@@ -6,6 +6,9 @@ import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
 import io.hsar.mapgenerator.commandgui.ViewerPoint
 import io.hsar.mapgenerator.commandgui.korge.interaction.EcmActivation
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
+import io.hsar.mapgenerator.commandgui.korge.persistence.LegacyOperationAdditionalData
+import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireKey
+import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireUsage
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogBounds
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorBounds
@@ -26,11 +29,11 @@ class OperationAdditionalDataTest {
     @Test
     fun `ECM activations round trip and clear before the next turn`() {
         val unit = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000004"))
-        val data = OperationAdditionalData.fromJson(null)
+        val data = LegacyOperationAdditionalData.fromJson(null)
         val activation = EcmActivation(3, unit, setOf("ecm-1"), 30.0, 6.0, 20.0, 1)
         data.ecm.add(activation)
 
-        val restored = OperationAdditionalData.fromJson(data.toJsonOrNull())
+        val restored = LegacyOperationAdditionalData.fromJson(data.toJsonOrNull())
 
         assertThat(restored.ecm.forTurn(3), equalTo(listOf(activation)))
         restored.ecm.clearBefore(4)
@@ -40,11 +43,11 @@ class OperationAdditionalDataTest {
     @Test
     fun `tactical fire usage is included in the additional-data save payload`() {
         val unit = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000003"))
-        val data = OperationAdditionalData.fromJson(null)
+        val data = LegacyOperationAdditionalData.fromJson(null)
         val key = TacticalFireKey(4, unit)
         data.tacticalFire.replace(key, TacticalFireUsage(setOf("beam-1"), 1))
 
-        val restored = OperationAdditionalData.fromJson(data.toJsonOrNull())
+        val restored = LegacyOperationAdditionalData.fromJson(data.toJsonOrNull())
 
         assertThat(restored.tacticalFire.usage(key), equalTo(TacticalFireUsage(setOf("beam-1"), 1)))
     }

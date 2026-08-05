@@ -4,10 +4,14 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepContactState
 import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepLostContact
+import io.hsar.mapgenerator.commandgui.korge.persistence.SitrepContactKey
+import io.hsar.mapgenerator.commandgui.korge.persistence.SitrepContactPersistence
+import korlibs.io.lang.toByteArray
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import java.util.*
+import java.util.Collections.emptySet
 
 class SitrepContactPersistenceTest {
 
