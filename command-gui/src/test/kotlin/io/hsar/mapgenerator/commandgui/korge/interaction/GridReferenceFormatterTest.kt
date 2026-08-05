@@ -1,5 +1,4 @@
-package io.hsar.mapgenerator.commandgui.korge.interaction
-
+package io.hsar.mapgenerator.commandgui
 import io.hsar.mapgenerator.grid.EpsilonCoord
 import io.hsar.mapgenerator.grid.EpsilonGridDesignators
 import io.hsar.mapgenerator.grid.GridLayer

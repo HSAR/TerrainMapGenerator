@@ -24,7 +24,6 @@ import java.io.StringReader
 import java.io.StringWriter
 import java.nio.charset.StandardCharsets
 import javax.imageio.ImageIO
-import javax.sound.midi.Sequence
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 import javax.xml.transform.OutputKeys

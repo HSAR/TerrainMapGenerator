@@ -67,8 +67,8 @@ internal class MapThumbnailRenderer {
     private fun Graphics2D.drawGrid(layer: GridLayer, mapImage: BufferedImage, geometry: ViewerGeometry, viewport: MapViewport) {
         val overlay = MapViewerGridOverlayLayoutBuilder.build(
             MapViewerGridOverlayRequest(layer, viewport, geometry.mapOffsetX.toDouble(), geometry.mapOffsetY.toDouble(), mapImage.width, mapImage.height),
-        ) { text, size, strong ->
-            font = Font(Font.SANS_SERIF, if (strong) Font.BOLD else Font.PLAIN, size.roundToInt().coerceAtLeast(1))
+        ) { text, size, role ->
+            font = Font(Font.SANS_SERIF, if (role == io.hsar.mapgenerator.commandgui.MapViewerGridFontRole.STRONG) Font.BOLD else Font.PLAIN, size.roundToInt().coerceAtLeast(1))
             ViewerPoint(fontMetrics.stringWidth(text).toDouble(), fontMetrics.height.toDouble())
         }
         overlay.lineSegments.forEach { segment ->

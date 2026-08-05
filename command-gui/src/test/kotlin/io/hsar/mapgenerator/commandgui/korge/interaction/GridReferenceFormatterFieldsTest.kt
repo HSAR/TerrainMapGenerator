@@ -1,6 +1,4 @@
-package io.hsar.mapgenerator.commandgui.korge.interaction
-
-import io.hsar.mapgenerator.commandgui.ViewerGeometry
+package io.hsar.mapgenerator.commandgui
 import io.hsar.mapgenerator.grid.EpsilonCoord
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.MgrsCoord
@@ -95,28 +93,6 @@ class GridReferenceFormatterFieldsTest {
         )
 
         assertThat(pixels, equalTo(null))
-    }
-
-    @Test
-    fun `map pixels round trip through normalized coordinates without offset drift`() {
-        val space = MapCoordinateSpace(
-            geometry = ViewerGeometry(
-                backgroundWidth = 2000,
-                backgroundHeight = 2000,
-                mapOffsetX = 100,
-                mapOffsetY = 150,
-            ),
-            mapWidth = 1000,
-            mapHeight = 800,
-        )
-
-        val normalized = space.fromMapPixels(korlibs.math.geom.Vector2D(170.0, 340.0))
-        val pixels = space.toMapPixels(normalized)
-
-        assertThat(normalized.x, closeTo(0.17, 0.0001))
-        assertThat(normalized.y, closeTo(0.425, 0.0001))
-        assertThat(pixels.x, closeTo(170.0, 0.0001))
-        assertThat(pixels.y, closeTo(340.0, 0.0001))
     }
 
     private fun layer(

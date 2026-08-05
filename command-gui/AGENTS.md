@@ -74,14 +74,15 @@ Completed: operation persistence is document-native. Archive loading is single-p
 discarded on restart, thumbnails and image loading consume neutral models, and KorGE conversion is confined to viewer/adaptor boundaries. The obsolete save projection and duplicate
 KorGE catalogue are deleted. Legacy tactical additional-data helpers remain under `korge.persistence`, layered over the neutral additive UI document.
 
-1. Consolidate the duplicate top-level and KorGE grid-overlay implementations behind one neutral layout contract, including top/left fading, sticky labels, major/fine switching,
-   measurements and live references. Keep renderer-specific text measurement and drawing at the edges.
+Completed: `MapViewerGridOverlayLayoutBuilder`, `GridReferenceFormatter` and `measureMapDrag` are authoritative for both viewers and thumbnails. The shared screen-space contract
+owns
+line placement, fades, sticky labels, major/fine switching, live references and measurements; KorGE and Compose retain only text measurement, coordinate conversion and drawing.
 
 Authoritative layer controls and regeneration are a future feature, not current migration work. Do not start them incidentally while completing ordinary authoring, persistence,
 grid parity or operational-rule extraction.
 
-Phase 1 gate: neutral transform fixtures cover every shape/group/modifier combination; restored editors are functional; both viewers pass the same grid-layout fixtures; no Compose
-production code references KorGE types, and save codecs remain operation-native.
+Phase 1 is complete: neutral transform fixtures cover every shape/group/modifier combination; restored editors are functional; both viewers consume the same grid layout and
+reference/measurement services; no Compose production code references KorGE types, and save codecs remain operation-native.
 
 ### Phase 2 — Complete ordinary operation authoring
 
@@ -152,8 +153,8 @@ service seam, simplify `MapViewerFrame`, and split/rename modules only where the
 - `command-gui/src/main/kotlin/io/hsar/mapgenerator/commandgui/korge/scene/MapViewerScene.kt` owns KorGE window setup, camera world wiring and scene-level composition.
 - KorGE is the compatibility backend while workflows move to Compose. New reusable behavior belongs in engine-neutral packages rather than
   under `korge/`.
-- Grid layout is currently duplicated: Compose uses top-level `MapViewerGridOverlayLayoutBuilder`, while KorGE and save thumbnails use
-  `korge/overlay/GridOverlayLayoutBuilder`. Treat the established KorGE tests as parity evidence, then converge both paths on the neutral builder described in Phase 1.
+- Grid layout, grid-reference formatting and measurement calculations are neutral top-level services. Keep KorGE grid code limited to projecting shared screen-space primitives into
+  its world-attached line layer and screen-attached label/arrow layer; do not recreate layout rules below `korge`.
     - Keep the JVM-specific KorGE 5.4 dependency for the compatibility backend until that backend is removed; do not upgrade it as part of Compose work.
     - When working in KorGE, consult the entrypoint docs first: https://docs.korge.org/entrypoint/
     - All `command-gui` bitmaps handed to KorGE views should be premultiplied before upload; call `premultipliedIfRequired()` after loading, trimming or composing bitmap content.

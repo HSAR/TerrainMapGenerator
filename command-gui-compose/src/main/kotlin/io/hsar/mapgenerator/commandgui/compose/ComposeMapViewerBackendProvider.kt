@@ -88,6 +88,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import io.hsar.mapgenerator.commandgui.GridReferenceFormatter
 import io.hsar.mapgenerator.commandgui.MapCoordinate
 import io.hsar.mapgenerator.commandgui.MapSelectionBox
 import io.hsar.mapgenerator.commandgui.MapSelectionScreenBounds
@@ -101,6 +102,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerDrawingMode
 import io.hsar.mapgenerator.commandgui.MapViewerGlobalSettings
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayLayoutBuilder
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayRequest
+import io.hsar.mapgenerator.commandgui.MapViewerGridReference
 import io.hsar.mapgenerator.commandgui.MapViewerMeasurement
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
@@ -1570,23 +1572,40 @@ private fun MapCanvas(
     var drawingGesture by remember { mutableStateOf<MapViewerDrawingGesture?>(null) }
     var measurementOrigin by remember { mutableStateOf<MapCoordinate?>(null) }
     var measurement by remember { mutableStateOf<MapViewerMeasurement?>(null) }
+    var activeReferenceCoordinate by remember { mutableStateOf<MapCoordinate?>(null) }
     LaunchedEffect(activeTool, renderData.gridLayer, cancellationEpoch) {
         transformGesture = null
         marquee = null
         drawingGesture = null
         measurementOrigin = null
         measurement = null
+        activeReferenceCoordinate = null
     }
     val unitIcons = remember(content.unitTemplates) { content.unitTemplates.associate { it.id to it.image.toImageBitmap() } }
     val graphicIcons = remember(content.graphicTemplates) { content.graphicTemplates.associate { it.id to it.image.toImageBitmap() } }
-    val gridOverlay = remember(renderData.gridLayer, currentViewport, nordFontFamily) {
+    val gridOverlay = remember(renderData.gridLayer, currentViewport, nordFontFamily, measurement, activeReferenceCoordinate) {
         renderData.gridLayer?.let { grid ->
+            val referenceCoordinate = measurement?.destination ?: activeReferenceCoordinate
             MapViewerGridOverlayLayoutBuilder.build(
-                MapViewerGridOverlayRequest(grid, currentViewport, mapOffsetX, mapOffsetY, mapWidth, mapHeight),
-            ) { text, fontSize, strong ->
+                MapViewerGridOverlayRequest(
+                    grid, currentViewport, mapOffsetX, mapOffsetY, mapWidth, mapHeight,
+                    activeReference = referenceCoordinate?.let { coordinate ->
+                        MapViewerGridReference(
+                            coordinate,
+                            GridReferenceFormatter.format(grid, mapWidth, mapHeight, coordinate.x * mapWidth, coordinate.y * mapHeight),
+                            grid.colour,
+                        )
+                    },
+                    measurement = measurement,
+                ),
+            ) { text, fontSize, role ->
                 textMeasurer.measure(
                     text,
-                    TextStyle(fontFamily = nordFontFamily, fontWeight = if (strong) FontWeight.Bold else FontWeight.Normal, fontSize = fontSize.sp),
+                    TextStyle(
+                        fontFamily = nordFontFamily,
+                        fontWeight = if (role == io.hsar.mapgenerator.commandgui.MapViewerGridFontRole.STRONG) FontWeight.Bold else FontWeight.Normal,
+                        fontSize = fontSize.sp
+                    ),
                 ).size.let { ViewerPoint(it.width.toDouble(), it.height.toDouble()) }
             }
         }
@@ -1673,6 +1692,7 @@ private fun MapCanvas(
                     return@onPointerEvent
                 }
                 if (!event.buttons.isPrimaryPressed || activeTool != MapViewerTool.SELECT) return@onPointerEvent
+                activeReferenceCoordinate = screenToMap(change.position).takeIf { it.x in 0.0..1.0 && it.y in 0.0..1.0 }
                 if (!editable) {
                     objectAtScreen(change.position)?.let { onObjectsSelected(setOf(it.id), false) }
                     return@onPointerEvent
@@ -1738,6 +1758,7 @@ private fun MapCanvas(
                 }
                 transformGesture?.let { gesture ->
                     val point = screenToMap(change.position)
+                    activeReferenceCoordinate = MapCoordinate(point.x.coerceIn(0.0, 1.0), point.y.coerceIn(0.0, 1.0))
                     val preview = gesture.preview(
                         point,
                         OperationTransformModifiers(event.keyboardModifiers.isAltPressed, event.keyboardModifiers.isShiftPressed),
@@ -1771,6 +1792,7 @@ private fun MapCanvas(
                 }
                 measurementOrigin = null
                 measurement = null
+                activeReferenceCoordinate = null
                 marquee?.let { current ->
                     val box = MapSelectionBox(
                         ViewerPoint(current.start.x.toDouble(), current.start.y.toDouble()),
@@ -1826,20 +1848,8 @@ private fun MapCanvas(
                     StrokeCap.Square
                 )
             }
-            measurement?.let { value ->
-                val colour = renderData.gridLayer?.colour?.toComposeColour() ?: Color.Red
-                val origin = Offset(
-                    currentViewport.screenX(mapOffsetX + value.origin.x * mapWidth).toFloat(),
-                    currentViewport.screenY(mapOffsetY + value.origin.y * mapHeight).toFloat(),
-                )
-                val destination = Offset(
-                    currentViewport.screenX(mapOffsetX + value.destination.x * mapWidth).toFloat(),
-                    currentViewport.screenY(mapOffsetY + value.destination.y * mapHeight).toFloat(),
-                )
-                drawLine(colour, origin, destination, 2f)
-                val style = TextStyle(colour, fontFamily = nordFontFamily, fontSize = 16.sp)
-                drawText(textMeasurer, value.distanceText, destination + Offset(12f, 12f), style)
-                drawText(textMeasurer, value.bearingText, destination + Offset(12f, 32f), style)
+            gridOverlay?.arrows?.forEach { arrow ->
+                drawLine(arrow.colour.toComposeColour(), Offset(arrow.start.x.toFloat(), arrow.start.y.toFloat()), Offset(arrow.end.x.toFloat(), arrow.end.y.toFloat()), 2f)
             }
             content.objects.filterIsInstance<OperationUnit>().forEach { value ->
                 val icon = unitIcons[value.unitTemplateId]
@@ -1937,6 +1947,17 @@ private fun MapCanvas(
                     fontSize = label.fontSize.sp
                 )
                 val measured = textMeasurer.measure(label.text, style)
+                label.shadows.forEach { shadow ->
+                    drawText(
+                        textMeasurer,
+                        label.text,
+                        Offset(
+                            (label.centre.x - measured.size.width / 2.0 + shadow.offset.x).toFloat(),
+                            (label.centre.y - measured.size.height / 2.0 + shadow.offset.y).toFloat(),
+                        ),
+                        style.copy(color = shadow.colour.toComposeColour()),
+                    )
+                }
                 drawText(textMeasurer, label.text, Offset((label.centre.x - measured.size.width / 2.0).toFloat(), (label.centre.y - measured.size.height / 2.0).toFloat()), style)
             }
         }

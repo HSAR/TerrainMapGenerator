@@ -1,5 +1,10 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.GridReferenceFormatter
+import io.hsar.mapgenerator.commandgui.MapViewerGridOverlay
+import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayLayoutBuilder
+import io.hsar.mapgenerator.commandgui.MapViewerGridReference
+import io.hsar.mapgenerator.commandgui.MapViewerMeasurement
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
 import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
@@ -12,15 +17,13 @@ import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
 import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.input.CameraPanner
 import io.hsar.mapgenerator.commandgui.korge.input.PanState
-import io.hsar.mapgenerator.commandgui.korge.overlay.GridCursorReference
-import io.hsar.mapgenerator.commandgui.korge.overlay.GridMeasurement
-import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLayoutBuilder
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayRender
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
+import io.hsar.mapgenerator.commandgui.korge.overlay.toNeutralRequest
+import io.hsar.mapgenerator.commandgui.measureMapDrag
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.grid.GridLayer
-import io.hsar.mapgenerator.image.Palette
 import korlibs.event.Key
 import korlibs.event.MouseButton
 import korlibs.korge.annotations.KorgeExperimental
@@ -68,8 +71,8 @@ internal class MapViewerInteraction(
     private val coordinateSpace = MapCoordinateSpace(geometry, mapWidth, mapHeight)
     private var overlayDirty = true
     private var lastOverlayState: GridOverlayState? = null
-    private var activeReference: GridCursorReference? = null
-    private var activeMeasurement: GridMeasurement? = null
+    private var activeReference: MapViewerGridReference? = null
+    private var activeMeasurement: MapViewerMeasurement? = null
     private var measurementOrigin: MapPointerReference? = null
     private var activeDrawing: ActiveDrawing? = null
     private var lastMovePreview: MapObjectMovePreview? = null
@@ -211,9 +214,7 @@ internal class MapViewerInteraction(
         val mapLeft = viewport.screenX(geometry.mapOffsetX.toDouble())
         val mapTop = viewport.screenY(geometry.mapOffsetY.toDouble())
         val movePreview = lastMovePreview
-        val overlayReference = activeReference ?: movePreview?.let { preview ->
-            movePreviewReference(preview, viewport)
-        }
+        val overlayReference = activeReference ?: movePreview?.let(::movePreviewReference)
         val state = GridOverlayState(
             viewport = currentViewport(viewport),
             mapWorldX = geometry.mapOffsetX.toDouble(),
@@ -231,22 +232,14 @@ internal class MapViewerInteraction(
             visibleCanvasBottom = viewportHeight.toDouble(),
             activeReference = overlayReference,
             measurement = activeMeasurement ?: movePreview?.let { preview ->
-                val origin = coordinateSpace.toMapPixels(preview.origin)
-                val destination = coordinateSpace.toMapPixels(preview.destination)
-                GridMeasurementCalculator.calculate(
-                    layer = layer,
-                    originMapX = origin.x,
-                    originMapY = origin.y,
-                    destinationMapX = destination.x,
-                    destinationMapY = destination.y,
-                )
+                measureMapDrag(layer, preview.origin, preview.destination, mapWidth, mapHeight)
             },
             gridLayer = layer,
         )
 
         if (state != lastOverlayState) {
             val startedAt = System.nanoTime()
-            val layout = GridOverlayLayoutBuilder.build(state)
+            val layout = MapViewerGridOverlayLayoutBuilder.build(state.toNeutralRequest())
             logSlowOverlayFlush(startedAt, layout)
             onOverlayStateChanged(GridOverlayRender(state, layout))
             lastOverlayState = state
@@ -259,15 +252,15 @@ internal class MapViewerInteraction(
         overlayDirty = true
     }
 
-    private fun logSlowOverlayFlush(startedAt: Long, layout: io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLayout) {
+    private fun logSlowOverlayFlush(startedAt: Long, layout: MapViewerGridOverlay) {
         val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
         if (elapsedMs >= SLOW_OVERLAY_FLUSH_MS) {
             logger.info(
                 "Grid overlay layout build took {}ms for {} rects, {} labels and {} arrows",
                 elapsedMs,
-                layout.lineRects.size,
+                layout.lineSegments.size,
                 layout.labels.size,
-                layout.overlayArrows.size,
+                layout.arrows.size,
             )
         }
     }
@@ -385,13 +378,7 @@ internal class MapViewerInteraction(
                     ?.also { measurementOrigin = it } ?: return false
             }
         val destination = createMapPointerReference(pointer, clampToMap = true, bounds = coordinateSpace.mapBounds) ?: return false
-        val nextMeasurement = GridMeasurementCalculator.calculate(
-            layer = gridLayer,
-            originMapX = origin.mapPixelX,
-            originMapY = origin.mapPixelY,
-            destinationMapX = destination.mapPixelX,
-            destinationMapY = destination.mapPixelY,
-        )
+        val nextMeasurement = measureMapDrag(gridLayer, origin.mapCoordinate, destination.mapCoordinate, mapWidth, mapHeight)
         if (nextMeasurement == activeMeasurement) {
             return false
         }
@@ -410,28 +397,19 @@ internal class MapViewerInteraction(
         return true
     }
 
-    private fun createActiveReference(pointer: Vector2D, clampToMap: Boolean): GridCursorReference? =
+    private fun createActiveReference(pointer: Vector2D, clampToMap: Boolean): MapViewerGridReference? =
         createMapPointerReference(pointer, clampToMap, coordinateSpace.mapBounds)
             ?.let { reference ->
-                GridCursorReference(
-                    screenX = pointer.x.coerceIn(
-                        cameraPanner.viewport.screenX(geometry.mapOffsetX.toDouble()),
-                        cameraPanner.viewport.screenX(geometry.mapOffsetX.toDouble() + mapWidth),
-                    ),
-                    screenY = pointer.y.coerceIn(
-                        cameraPanner.viewport.screenY(geometry.mapOffsetY.toDouble()),
-                        cameraPanner.viewport.screenY(geometry.mapOffsetY.toDouble() + mapHeight),
-                    ),
+                MapViewerGridReference(
+                    coordinate = reference.mapCoordinate,
                     text = GridReferenceFormatter.format(
                         layer = gridLayer ?: return null,
                         mapWidth = mapWidth,
                         mapHeight = mapHeight,
                         mapX = reference.mapPixelX,
                         mapY = reference.mapPixelY,
-                        gutterWidth = viewportWidth,
-                        gutterHeight = viewportHeight,
                     ),
-                    color = gridLayer?.colour ?: Palette.Colours.RED,
+                    colour = gridLayer.colour,
                 )
             }
 
@@ -454,23 +432,19 @@ internal class MapViewerInteraction(
             }
         }
 
-    private fun movePreviewReference(preview: MapObjectMovePreview, viewport: CameraViewport): GridCursorReference? {
+    private fun movePreviewReference(preview: MapObjectMovePreview): MapViewerGridReference? {
         val layer = gridLayer ?: return null
         val mapPixels = coordinateSpace.toMapPixels(preview.destination)
-        val worldPoint = coordinateSpace.toWorld(preview.destination)
-        return GridCursorReference(
-            screenX = viewport.screenX(worldPoint.x),
-            screenY = viewport.screenY(worldPoint.y),
+        return MapViewerGridReference(
+            coordinate = preview.destination,
             text = preview.referenceText ?: GridReferenceFormatter.format(
                 layer = layer,
                 mapWidth = mapWidth,
                 mapHeight = mapHeight,
                 mapX = mapPixels.x,
                 mapY = mapPixels.y,
-                gutterWidth = viewportWidth,
-                gutterHeight = viewportHeight,
             ),
-            color = preview.color ?: layer.colour,
+            colour = preview.color ?: layer.colour,
         )
     }
 

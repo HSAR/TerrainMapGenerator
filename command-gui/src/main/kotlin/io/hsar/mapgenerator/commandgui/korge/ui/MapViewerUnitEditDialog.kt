@@ -1,8 +1,8 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.GridReferenceFields
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
-import io.hsar.mapgenerator.commandgui.korge.interaction.GridReferenceFields
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnFighterLaunchStatus
 import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip
@@ -16,6 +16,8 @@ import korlibs.korge.view.Container
 import korlibs.korge.view.addUpdater
 import korlibs.korge.view.container
 import korlibs.korge.view.xy
+import java.util.Collections.emptyList
+import java.util.Collections.emptyMap
 import kotlin.math.max
 
 @OptIn(KorgeExperimental::class)

@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.GridReferenceFields
+import io.hsar.mapgenerator.commandgui.GridReferenceFormatter
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
 import io.hsar.mapgenerator.commandgui.ViewerGeometry

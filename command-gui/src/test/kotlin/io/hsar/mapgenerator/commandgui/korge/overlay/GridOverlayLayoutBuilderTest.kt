@@ -17,7 +17,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `top labels clamp to gutter while map is panned upward`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(mapOffsetY = -120.0),
             measureText = ::measureText,
         )
@@ -29,7 +29,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `top labels clamp to visible canvas when background extends above the window`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(mapOffsetY = -120.0, visibleCanvasTop = 176.0),
             measureText = ::measureText,
         )
@@ -41,7 +41,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `top labels release back to the map edge when the map top is visible`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(mapOffsetY = 80.0),
             measureText = ::measureText,
         )
@@ -53,7 +53,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `left labels clamp to gutter while map is panned left`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(mapOffsetX = -140.0),
             measureText = ::measureText,
         )
@@ -65,7 +65,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `epsilon y axis grid labels use letter designators`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(
                 mapOffsetX = 0.0,
                 mapOffsetY = 0.0,
@@ -82,7 +82,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `epsilon fine grid labels omit minor line labels`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(
                 mapOffsetX = 0.0,
                 mapOffsetY = 0.0,
@@ -104,7 +104,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `epsilon fine grid requires double the normal pixel threshold`() {
-        val belowDoubledThreshold = GridOverlayLayoutBuilder.build(
+        val belowDoubledThreshold = NeutralGridOverlayParityBuilder.build(
             state = state(
                 mapOffsetX = 0.0,
                 mapOffsetY = 0.0,
@@ -117,7 +117,7 @@ class GridOverlayLayoutBuilderTest {
             ),
             measureText = ::measureText,
         )
-        val atDoubledThreshold = GridOverlayLayoutBuilder.build(
+        val atDoubledThreshold = NeutralGridOverlayParityBuilder.build(
             state = state(
                 mapOffsetX = 0.0,
                 mapOffsetY = 0.0,
@@ -141,7 +141,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `map id remains top-left aligned rather than centered`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(mapOffsetX = -140.0, mapOffsetY = -120.0),
             measureText = ::measureText,
         )
@@ -158,7 +158,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `high zoom switches to hundred metre labels and thicker major lines`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(pixelsPerLine = 100.0, scale = 4.0),
             measureText = ::measureText,
         )
@@ -169,7 +169,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `hundred metre mode skips every other minor x-axis label`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(pixelsPerLine = 100.0, scale = 4.0),
             measureText = ::measureText,
         )
@@ -182,7 +182,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `hundred metre labels keep even cadence when x grid start is fractional`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(
                 pixelsPerLine = 100.0,
                 scale = 4.0,
@@ -213,7 +213,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `major grid labels use the strong font`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(mapOffsetX = 0.0, mapOffsetY = 0.0),
             measureText = ::measureText,
         )
@@ -229,7 +229,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `grid colour drives map id labels axis labels and grid lines`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(gridColour = Palette.Colours.LIGHT),
             measureText = ::measureText,
         )
@@ -250,7 +250,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `first visible vertical line fades in after the axis gutter`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(mapOffsetX = 0.0, mapOffsetY = 0.0),
             measureText = ::measureText,
         )
@@ -267,7 +267,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `hundred metre lines render after the axis fade boundary`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(
                 mapOffsetX = 200.0,
                 mapOffsetY = 100.0,
@@ -292,7 +292,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `fractional grid starts shift line positions by the fractional remainder`() {
-        val integerLayout = GridOverlayLayoutBuilder.build(
+        val integerLayout = NeutralGridOverlayParityBuilder.build(
             state = state(
                 mapOffsetX = 200.0,
                 mapOffsetY = 100.0,
@@ -302,7 +302,7 @@ class GridOverlayLayoutBuilderTest {
             measureText = ::measureText,
         )
 
-        val fractionalLayout = GridOverlayLayoutBuilder.build(
+        val fractionalLayout = NeutralGridOverlayParityBuilder.build(
             state = state(
                 mapOffsetX = 200.0,
                 mapOffsetY = 100.0,
@@ -335,7 +335,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `grid lines stay solid toward the bottom and right edges`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(mapOffsetX = 0.0, mapOffsetY = 0.0),
             measureText = ::measureText,
         )
@@ -360,7 +360,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `whole grid lines fade as they approach their matching axis gutter`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(mapOffsetX = 0.0, mapOffsetY = 0.0),
             measureText = ::measureText,
         )
@@ -380,7 +380,7 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `long faded lines use a compact number of rects`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(mapOffsetX = 0.0, mapOffsetY = 0.0),
             measureText = ::measureText,
         )
@@ -395,11 +395,11 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `overlay rect count stays bounded for normal and fine grid states`() {
-        val normalLayout = GridOverlayLayoutBuilder.build(
+        val normalLayout = NeutralGridOverlayParityBuilder.build(
             state = state(mapOffsetX = 0.0, mapOffsetY = 0.0),
             measureText = ::measureText,
         )
-        val fineLayout = GridOverlayLayoutBuilder.build(
+        val fineLayout = NeutralGridOverlayParityBuilder.build(
             state = state(mapOffsetX = 0.0, mapOffsetY = 0.0, pixelsPerLine = 100.0, scale = 4.0),
             measureText = ::measureText,
         )
@@ -411,11 +411,11 @@ class GridOverlayLayoutBuilderTest {
     @Test
     fun `active reference draws red crosshair and label`() {
         val gridColor = state().gridLayer.colour
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(
                 mapOffsetX = 0.0,
                 mapOffsetY = 0.0,
-                activeReference = GridCursorReference(
+                activeReference = LegacyGridCursorReference(
                     screenX = 260.0,
                     screenY = 280.0,
                     text = "0730-3900",
@@ -450,16 +450,16 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `measurement draws overlay line and tooltip below active reference`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(
                 mapOffsetX = 0.0,
                 mapOffsetY = 0.0,
-                activeReference = GridCursorReference(
+                activeReference = LegacyGridCursorReference(
                     screenX = 260.0,
                     screenY = 280.0,
                     text = "0730 3900",
                 ),
-                measurement = GridMeasurement(
+                measurement = LegacyGridMeasurement(
                     originMapX = 120.0,
                     originMapY = 180.0,
                     destinationMapX = 260.0,
@@ -491,17 +491,17 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `measurement line follows zoom rather than stale screen coordinates`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(
                 mapOffsetX = 20.0,
                 mapOffsetY = 30.0,
                 scale = 2.0,
-                activeReference = GridCursorReference(
+                activeReference = LegacyGridCursorReference(
                     screenX = 260.0,
                     screenY = 280.0,
                     text = "0730 3900",
                 ),
-                measurement = GridMeasurement(
+                measurement = LegacyGridMeasurement(
                     originMapX = 50.0,
                     originMapY = 60.0,
                     destinationMapX = 70.0,
@@ -524,17 +524,17 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `active reference colour drives move preview arrow and labels`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(
                 mapOffsetX = 0.0,
                 mapOffsetY = 0.0,
-                activeReference = GridCursorReference(
+                activeReference = LegacyGridCursorReference(
                     screenX = 260.0,
                     screenY = 280.0,
                     text = "0730 3900",
                     color = Palette.Colours.BLUE,
                 ),
-                measurement = GridMeasurement(
+                measurement = LegacyGridMeasurement(
                     originMapX = 120.0,
                     originMapY = 180.0,
                     destinationMapX = 260.0,
@@ -560,17 +560,17 @@ class GridOverlayLayoutBuilderTest {
 
     @Test
     fun `red active reference colour drives move preview crosshairs arrow and labels`() {
-        val layout = GridOverlayLayoutBuilder.build(
+        val layout = NeutralGridOverlayParityBuilder.build(
             state = state(
                 mapOffsetX = 0.0,
                 mapOffsetY = 0.0,
-                activeReference = GridCursorReference(
+                activeReference = LegacyGridCursorReference(
                     screenX = 260.0,
                     screenY = 280.0,
                     text = "0730 3900",
                     color = Palette.Colours.RED,
                 ),
-                measurement = GridMeasurement(
+                measurement = LegacyGridMeasurement(
                     originMapX = 120.0,
                     originMapY = 180.0,
                     destinationMapX = 260.0,
@@ -613,9 +613,9 @@ class GridOverlayLayoutBuilderTest {
         referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
         mapId: String = "25F XK",
         gridColour: java.awt.Color = io.hsar.mapgenerator.grid.GridPalettes.DEFAULT.lineColour,
-        activeReference: GridCursorReference? = null,
-        measurement: GridMeasurement? = null,
-    ) = GridOverlayState(
+        activeReference: LegacyGridCursorReference? = null,
+        measurement: LegacyGridMeasurement? = null,
+    ) = LegacyGridOverlayState(
         viewport = Rectangle(Point(0.0, 0.0), Point(800.0, 600.0)),
         mapWorldX = 0.0,
         mapWorldY = 0.0,
@@ -647,14 +647,14 @@ class GridOverlayLayoutBuilderTest {
         ),
     )
 
-    private fun measureText(text: String, style: GridLabelStyle): Rectangle =
+    private fun measureText(text: String, style: LegacyGridLabelStyle): Rectangle =
         when (style.role) {
             io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole.STRONG ->
                 if (style.size > 24.0) Rectangle(Point.ORIGIN, Point(60.0, 16.0)) else Rectangle(Point.ORIGIN, Point(24.0, 10.0))
             else -> Rectangle(Point.ORIGIN, Point(20.0, 10.0))
         }
 
-    private fun firstVerticalLineSpacing(layout: GridOverlayLayout): Double =
+    private fun firstVerticalLineSpacing(layout: LegacyGridOverlayLayout): Double =
         layout.lineRects
             .filter { it.height > it.width }
             .map { it.x + it.width / 2.0 }

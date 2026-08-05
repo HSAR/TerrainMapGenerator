@@ -1,6 +1,12 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.GridReferenceFormatter
+import io.hsar.mapgenerator.commandgui.korge.interaction.SensorDetection.formatPosition
 import io.hsar.mapgenerator.grid.GridLayer
+import korlibs.io.util.buildList
+import java.util.Collections.emptyList
+import java.util.Collections.emptyMap
+import java.util.Collections.emptySet
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
