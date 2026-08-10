@@ -1,6 +1,5 @@
 package io.hsar.mapgenerator.commandgui
 
-import korlibs.io.util.buildList
 import org.apache.batik.transcoder.SVGAbstractTranscoder
 import org.apache.batik.transcoder.TranscoderInput
 import org.apache.batik.transcoder.TranscoderOutput
@@ -32,7 +31,7 @@ import javax.xml.transform.dom.DOMSource
 import javax.xml.transform.stream.StreamResult
 import kotlin.math.roundToInt
 
-internal object MapViewerImageLoader {
+object MapViewerImageLoader {
     fun load(file: File, trimTransparentBounds: Boolean = true): BufferedImage? =
         when (file.extension.lowercase()) {
             "svg" -> loadSvg(file)

@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -103,6 +104,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerGlobalSettings
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayLayoutBuilder
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayRequest
 import io.hsar.mapgenerator.commandgui.MapViewerGridReference
+import io.hsar.mapgenerator.commandgui.MapViewerImageLoader
 import io.hsar.mapgenerator.commandgui.MapViewerMeasurement
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
@@ -131,6 +133,8 @@ import io.hsar.mapgenerator.commandgui.operation.OperationGraphic
 import io.hsar.mapgenerator.commandgui.operation.OperationLineDrawing
 import io.hsar.mapgenerator.commandgui.operation.OperationObject
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
+import io.hsar.mapgenerator.commandgui.operation.OperationImageDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationPropertyDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationOvalDrawing
 import io.hsar.mapgenerator.commandgui.operation.OperationRectangleDrawing
 import io.hsar.mapgenerator.commandgui.operation.OperationSelectionProjection
@@ -138,6 +142,10 @@ import io.hsar.mapgenerator.commandgui.operation.OperationTransformGesture
 import io.hsar.mapgenerator.commandgui.operation.OperationTransformModifiers
 import io.hsar.mapgenerator.commandgui.operation.OperationUnit
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitAffiliation
+import io.hsar.mapgenerator.commandgui.operation.OperationUnitAuthoring
+import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplate
+import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateId
 import io.hsar.mapgenerator.commandgui.operation.contains
 import io.hsar.mapgenerator.commandgui.operation.objectAtScreen
 import io.hsar.mapgenerator.commandgui.operation.selectionBounds
@@ -146,12 +154,10 @@ import io.hsar.mapgenerator.commandgui.operation.selectionScreenBounds
 import io.hsar.mapgenerator.commandgui.startedAt
 import io.hsar.mapgenerator.commandgui.toWorldPoint
 import io.hsar.mapgenerator.commandgui.viewerBackgroundBounds
-import jdk.internal.net.http.common.Utils.close
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
-import sun.security.krb5.internal.KDCOptions.with
 import java.awt.FileDialog
 import java.awt.Frame
 import java.io.ByteArrayOutputStream
@@ -179,11 +185,17 @@ class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
         var windowTitle by remember { mutableStateOf(MapViewerSettings().windowTitle()) }
         var closeRequestHandler by remember { mutableStateOf<() -> Unit>({ exitApplication() }) }
         val windowState = rememberWindowState(placement = COMPOSE_INITIAL_WINDOW_PLACEMENT)
+        val applicationIcon = remember {
+            requireNotNull(ComposeMapViewerBackendProvider::class.java.classLoader.getResourceAsStream("logo512.png")) {
+                "Application icon resource logo512.png is missing."
+            }.use { stream -> Image.makeFromEncoded(stream.readBytes()).toComposeImageBitmap() }
+        }
 
         Window(
             title = windowTitle,
             state = windowState,
             onCloseRequest = { closeRequestHandler() },
+            icon = BitmapPainter(applicationIcon),
         ) {
             MenuBar {
                 Menu("Workspace") {
@@ -749,6 +761,8 @@ private fun ViewerWorkspace(
     var drawingColour by remember { mutableStateOf(MapViewerDrawingColour.RED) }
     var toolGestureCancellationEpoch by remember { mutableStateOf(0) }
     var pendingExit by remember { mutableStateOf<ComposePendingExit?>(null) }
+    var unitLibraryExpanded by remember { mutableStateOf(true) }
+    var transientNotice by remember { mutableStateOf<String?>(null) }
     val autosaveScheduler = remember { ComposeAutosaveScheduler(debounceMillis = COMPOSE_AUTOSAVE_DEBOUNCE_MS) }
     val scope = rememberCoroutineScope()
 
@@ -828,8 +842,13 @@ private fun ViewerWorkspace(
             if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
             when {
                 event.key == Key.Escape && operationState.previewContent != null -> {
-                    operationState = operationState.cancelPreview()
+                    operationState = operationState.cancelPreview().cancelUnitPlacement()
                     toolGestureCancellationEpoch++
+                    true
+                }
+
+                event.key == Key.Escape && operationState.unitPlacement != null -> {
+                    operationState = operationState.cancelUnitPlacement()
                     true
                 }
 
@@ -895,6 +914,10 @@ private fun ViewerWorkspace(
                         drawingMode = drawingMode,
                         drawingColour = drawingColour,
                         onDrawingCommitted = { operationState = operationState.addDrawing(it) },
+                        unitPlacementActive = operationState.unitPlacement != null,
+                        onUnitPlacementPreview = { coordinate -> operationState = operationState.previewUnitPlacement(coordinate, unitIconSizePx) },
+                        onUnitPlacementCommitted = { operationState = operationState.commitUnitPlacement() },
+                        onUnitPlacementCancelled = { operationState = operationState.cancelUnitPlacement() },
                         cancellationEpoch = toolGestureCancellationEpoch,
                             unitIconSizePx = unitIconSizePx,
                             onUnitIconSizeChanged = { size -> unitIconSizePx = onUnitIconSizeChanged(size) },
@@ -913,6 +936,22 @@ private fun ViewerWorkspace(
                         onDrawingModeSelected = { drawingMode = it },
                         onDrawingColourSelected = { drawingColour = it },
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp),
+                    )
+                    UnitTypesPalette(
+                        templates = operationState.visibleContent.unitTemplates,
+                        expanded = unitLibraryExpanded,
+                        editable = !operationState.isReadOnly,
+                        activePlacement = operationState.unitPlacement?.templateId,
+                        onToggle = { unitLibraryExpanded = !unitLibraryExpanded },
+                        onCreate = { operationState = operationState.openNewUnitTemplateEditor() },
+                        onEdit = { operationState = operationState.openUnitTemplateEditor(it) },
+                        onPlace = { operationState = operationState.armUnitPlacement(it) },
+                        onDelete = { id ->
+                            if (!OperationUnitAuthoring.canDeleteTemplate(operationState.document.content, id)) {
+                                transientNotice = "Delete or retarget placed units before deleting this unit type."
+                            } else operationState = operationState.deleteUnitTemplate(id)
+                        },
+                        modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp),
                     )
                     Row(
                         modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
@@ -942,6 +981,14 @@ private fun ViewerWorkspace(
                             state = operationState,
                             onStateChanged = { operationState = it },
                         )
+                    }
+                    transientNotice?.let { notice ->
+                        Surface(
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).clickable { transientNotice = null },
+                            color = CommandColours.Backing,
+                            border = BorderStroke(1.dp, CommandColours.White),
+                            shape = RectangleShape,
+                        ) { Text(notice, Modifier.padding(12.dp), color = CommandColours.White) }
                     }
                 }
                 if (operationState.workspaceMode == WorkspaceMode.DOCKED) {
@@ -1024,6 +1071,75 @@ private fun ToolRail(
             }
         }
     }
+}
+
+@Composable
+private fun UnitTypesPalette(
+    templates: List<OperationUnitTemplate>,
+    expanded: Boolean,
+    editable: Boolean,
+    activePlacement: OperationUnitTemplateId?,
+    onToggle: () -> Unit,
+    onCreate: () -> Unit,
+    onEdit: (OperationUnitTemplateId) -> Unit,
+    onPlace: (OperationUnitTemplateId) -> Unit,
+    onDelete: (OperationUnitTemplateId) -> Unit,
+    modifier: Modifier = Modifier,
+) = Surface(
+    modifier = modifier.width(if (expanded) 320.dp else 92.dp),
+    color = CommandColours.Dark.copy(alpha = 0.96f),
+    border = BorderStroke(1.dp, CommandColours.White.copy(alpha = 0.7f)),
+    shape = RectangleShape,
+) {
+    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        CommandButton(onClick = onToggle, modifier = Modifier.fillMaxWidth()) { Text(if (expanded) "UNIT TYPES ◀" else "UNITS ▶") }
+        if (expanded) {
+            CommandButton(onClick = onCreate, enabled = editable, modifier = Modifier.fillMaxWidth()) { Text("CREATE UNIT TYPE") }
+            if (templates.isEmpty()) Text("No unit types", color = CommandColours.White.copy(alpha = 0.7f))
+            LazyColumn(Modifier.height(430.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                (OperationUnitAffiliation.entries.map { it as OperationUnitAffiliation? } + null).forEach { affiliation ->
+                    val group = templates.filter { it.affiliation == affiliation }
+                    if (group.isNotEmpty()) {
+                        item(key = "affiliation:${affiliation?.name ?: "none"}") {
+                            Text(affiliation?.name ?: "UNAFFILIATED", color = affiliation.composeColour(), fontWeight = FontWeight.Bold)
+                        }
+                        items(group, key = { it.id.value }) { template ->
+                            Surface(
+                                color = if (activePlacement == template.id) CommandColours.Backing else CommandColours.Dark,
+                                border = BorderStroke(1.dp, template.affiliation.composeColour()),
+                                shape = RectangleShape,
+                            ) {
+                                Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        androidx.compose.foundation.Image(
+                                            bitmap = template.image.toComposeImageBitmap(),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(42.dp),
+                                            contentScale = ContentScale.Fit,
+                                        )
+                                        Text(template.name, Modifier.weight(1f), color = CommandColours.White)
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        CommandButton(onClick = { onPlace(template.id) }, enabled = editable, active = activePlacement == template.id, modifier = Modifier.weight(1f).height(32.dp)) { Text("PLACE") }
+                                        CommandButton(onClick = { onEdit(template.id) }, enabled = editable, modifier = Modifier.weight(1f).height(32.dp)) { Text("EDIT") }
+                                        CommandButton(onClick = { onDelete(template.id) }, enabled = editable, modifier = Modifier.weight(1f).height(32.dp)) { Text("DELETE") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun OperationUnitAffiliation?.composeColour() = when (this) {
+    OperationUnitAffiliation.FRIEND -> Color(0xFF4EA1FF)
+    OperationUnitAffiliation.HOSTILE -> Color(0xFFDF4A4A)
+    OperationUnitAffiliation.NEUTRAL -> Color(0xFF66C27C)
+    OperationUnitAffiliation.UNKNOWN -> Color(0xFFE6C45A)
+    null -> CommandColours.White.copy(alpha = 0.75f)
 }
 
 @Composable
@@ -1220,6 +1336,13 @@ private fun EditorContent(
         } else UnitEditorContent(editor.id, draft, unit, state, onStateChanged, modifier)
     }
 
+    is OperationEditorDraft.UnitTemplate -> {
+        val target = editor.target as? OperationEditorTarget.UnitTemplate
+        if (target != null && state.visibleContent.unitTemplate(target.templateId) == null) {
+            Box(modifier, contentAlignment = Alignment.Center) { Text("This unit type is unavailable at this history point.") }
+        } else UnitTemplateEditorContent(editor, draft.value, state, onStateChanged, modifier)
+    }
+
     is OperationEditorDraft.Opaque -> Box(modifier, contentAlignment = Alignment.Center) { Text("This restored editor is not supported yet.") }
 }
 
@@ -1232,15 +1355,25 @@ private fun UnitEditorContent(
     onStateChanged: (ComposeOperationState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val x = draft.positionX.toDoubleOrNull()
-    val y = draft.positionY.toDoubleOrNull()
+    val coordinate = OperationUnitAuthoring.parsePosition(state.document.renderData, draft.positionX, draft.positionY)
     val facingDegrees = draft.facing.trim().takeIf(String::isNotEmpty)?.toIntOrNull()?.mod(360)
-    val valid = draft.name.isNotBlank() && x != null && y != null && (draft.facing.isBlank() || facingDegrees != null)
+    val validation = OperationUnitAuthoring.validateUnitDraft(
+        draft.name, draft.positionX, draft.positionY, draft.facing, draft.properties, state.document.renderData,
+    )
+    val selectedTemplate = draft.unitTemplateId?.let(state.document.content::unitTemplate)
+        ?: state.document.content.unitTemplate(unit.unitTemplateId)
+    val valid = validation.valid && selectedTemplate != null
     fun update(value: OperationEditorDraft.Unit) = onStateChanged(state.updateEditorDraft(editorId, value))
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(state.visibleContent.unitTemplate(unit.unitTemplateId)?.name ?: "Unit", color = CommandColours.Backing)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(draft.name, { update(draft.copy(name = it)) }, Modifier.fillMaxWidth(), enabled = !state.isReadOnly, singleLine = true, label = { Text("Name") })
+            Text("Unit type", color = CommandColours.Backing)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                state.document.content.unitTemplates.forEach { template ->
+                    CommandButton(onClick = { update(draft.copy(unitTemplateId = template.id, affiliation = template.affiliation)) }, active = selectedTemplate?.id == template.id, enabled = !state.isReadOnly) { Text(template.name) }
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     draft.positionX,
@@ -1248,16 +1381,16 @@ private fun UnitEditorContent(
                     Modifier.weight(1f),
                     enabled = !state.isReadOnly,
                     singleLine = true,
-                    isError = draft.positionX.isNotBlank() && x == null,
-                    label = { Text("Map X") })
+                    isError = "position" in validation.errors,
+                    label = { Text(if (state.document.renderData.gridLayer == null) "Map X" else "Easting") })
                 OutlinedTextField(
                     draft.positionY,
                     { update(draft.copy(positionY = it)) },
                     Modifier.weight(1f),
                     enabled = !state.isReadOnly,
                     singleLine = true,
-                    isError = draft.positionY.isNotBlank() && y == null,
-                    label = { Text("Map Y") })
+                    isError = "position" in validation.errors,
+                    label = { Text(if (state.document.renderData.gridLayer == null) "Map Y" else "Northing") })
             }
             OutlinedTextField(
                 draft.facing,
@@ -1271,14 +1404,30 @@ private fun UnitEditorContent(
                 Checkbox(draft.destroyed, { update(draft.copy(destroyed = it)) }, enabled = !state.isReadOnly)
                 Text("Destroyed")
             }
+            Text("Affiliation", color = CommandColours.Backing)
+            AffiliationButtons(draft.affiliation, !state.isReadOnly) { update(draft.copy(affiliation = it)) }
+            if (selectedTemplate?.customProperties?.isNotEmpty() == true) {
+                Text("Inherited from unit type", color = CommandColours.Backing)
+                selectedTemplate.customProperties.toSortedMap().forEach { (key, value) ->
+                    Text("$key: $value", color = CommandColours.Backing.copy(alpha = 0.75f))
+                }
+            }
+            PropertyRows(draft.properties, !state.isReadOnly, validation.errors) { update(draft.copy(properties = it)) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             CommandButton(onClick = {
                 val updated = unit.copy(
                     instanceName = draft.name.trim(),
-                    coordinate = MapCoordinate(x ?: unit.coordinate.x, y ?: unit.coordinate.y),
+                    unitTemplateId = selectedTemplate?.id ?: unit.unitTemplateId,
+                    coordinate = coordinate ?: unit.coordinate,
                     facingDegrees = facingDegrees,
                     destroyed = draft.destroyed,
+                    affiliation = draft.affiliation,
+                    customProperties = OperationUnitAuthoring.properties(draft.properties),
+                    normalizedHeight = selectedTemplate?.let { template ->
+                        unit.normalizedWidth * state.document.renderData.baseImage.width / state.document.renderData.baseImage.height.toDouble() *
+                            template.image.height / template.image.width.toDouble()
+                    } ?: unit.normalizedHeight,
                 )
                 onStateChanged(state.editUnit(updated).closeEditor(editorId))
             }, enabled = !state.isReadOnly && valid, modifier = Modifier.weight(1f)) { Text("SAVE") }
@@ -1287,9 +1436,95 @@ private fun UnitEditorContent(
     }
 }
 
+@Composable
+private fun UnitTemplateEditorContent(
+    editor: OperationEditorState,
+    draft: OperationUnitTemplateDraft,
+    state: ComposeOperationState,
+    onStateChanged: (ComposeOperationState) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var imageError by remember(editor.id) { mutableStateOf<String?>(null) }
+    val existing = (editor.target as? OperationEditorTarget.UnitTemplate)?.templateId?.let(state.document.content::unitTemplate)
+    val decoded = remember(draft.replacementImage) {
+        draft.replacementImage?.let { runCatching { MapViewerImageLoader.load(it.bytes(), it.originalFilename) }.getOrNull() }
+    }
+    val validation = OperationUnitAuthoring.validateTemplateDraft(draft, existing != null)
+    fun update(value: OperationUnitTemplateDraft) = onStateChanged(
+        state.updateEditorDraft(editor.id, OperationEditorDraft.UnitTemplate(value)),
+    )
+    fun browse() {
+        FileDialog(null as Frame?, "Choose unit image", FileDialog.LOAD).also { dialog ->
+            dialog.file = "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg"
+            dialog.isVisible = true
+            val name = dialog.file ?: return
+            val file = File(dialog.directory, name)
+            runCatching {
+                val imageDraft = OperationImageDraft.fromBytes(file.name, file.readBytes())
+                require(MapViewerImageLoader.load(imageDraft.bytes(), imageDraft.originalFilename) != null) { "Unsupported image" }
+                imageDraft
+            }.onSuccess {
+                imageError = null
+                update(draft.copy(replacementImage = it))
+            }.onFailure { imageError = it.message ?: "Could not load the selected image" }
+        }
+    }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val preview = decoded ?: existing?.image
+            preview?.let { androidx.compose.foundation.Image(it.toComposeImageBitmap(), null, Modifier.fillMaxWidth().height(130.dp), contentScale = ContentScale.Fit) }
+            CommandButton(onClick = ::browse, enabled = !state.isReadOnly, modifier = Modifier.fillMaxWidth()) {
+                Text(if (preview == null) "CHOOSE IMAGE" else "REPLACE IMAGE")
+            }
+            (imageError ?: validation.errors["image"])?.let { Text(it, color = Color(0xFFDF4A4A)) }
+            OutlinedTextField(draft.name, { update(draft.copy(name = it)) }, Modifier.fillMaxWidth(), enabled = !state.isReadOnly, isError = "name" in validation.errors, singleLine = true, label = { Text("Name") })
+            Text("Affiliation", color = CommandColours.Backing)
+            AffiliationButtons(draft.affiliation, !state.isReadOnly) { update(draft.copy(affiliation = it)) }
+            PropertyRows(draft.properties, !state.isReadOnly, validation.errors) { update(draft.copy(properties = it)) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CommandButton(onClick = { onStateChanged(state.saveUnitTemplateEditor(editor.id, decoded)) }, enabled = !state.isReadOnly && validation.valid, modifier = Modifier.weight(1f)) { Text("SAVE") }
+            CommandButton(onClick = { onStateChanged(state.closeEditor(editor.id)) }, modifier = Modifier.weight(1f)) { Text("CANCEL") }
+        }
+    }
+}
+
+@Composable
+private fun AffiliationButtons(
+    selected: OperationUnitAffiliation?,
+    enabled: Boolean,
+    onSelected: (OperationUnitAffiliation?) -> Unit,
+) = Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    (listOf(null) + OperationUnitAffiliation.entries).forEach { value ->
+        CommandButton(onClick = { onSelected(value) }, active = selected == value, enabled = enabled) { Text(value?.name ?: "NONE") }
+    }
+}
+
+@Composable
+private fun PropertyRows(
+    properties: List<OperationPropertyDraft>,
+    enabled: Boolean,
+    errors: Map<String, String>,
+    onChanged: (List<OperationPropertyDraft>) -> Unit,
+) = Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Text("Custom properties", color = CommandColours.Backing)
+    properties.forEachIndexed { index, property ->
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(property.key, { key -> onChanged(properties.mapIndexed { row, value -> if (row == index) value.copy(key = key) else value }) }, Modifier.weight(1f), enabled = enabled, singleLine = true, isError = "property:$index" in errors, supportingText = errors["property:$index"]?.let { message -> { Text(message) } }, label = { Text("Key") })
+            OutlinedTextField(property.value, { value -> onChanged(properties.mapIndexed { row, current -> if (row == index) current.copy(value = value) else current }) }, Modifier.weight(1f), enabled = enabled, singleLine = true, label = { Text("Value") })
+            CommandButton(onClick = { onChanged(properties.filterIndexed { row, _ -> row != index }) }, enabled = enabled) { Text("×") }
+        }
+    }
+    CommandButton(onClick = { onChanged(properties + OperationPropertyDraft()) }, enabled = enabled) { Text("ADD PROPERTY") }
+}
+
 private fun OperationEditorState.title(content: OperationContent): String = when (kind) {
     OperationEditorKind.OPERATION_NOTES -> "Notes"
     OperationEditorKind.UNIT -> (target as? OperationEditorTarget.Object)?.objectId?.let(content::objectById)?.name?.takeIf(String::isNotBlank) ?: "Edit Unit"
+    OperationEditorKind.UNIT_TEMPLATE -> when (val value = target) {
+        is OperationEditorTarget.UnitTemplate -> content.unitTemplate(value.templateId)?.name ?: "Edit Unit Type"
+        else -> "Create Unit Type"
+    }
     else -> kind.value
 }
 
@@ -1532,6 +1767,10 @@ private fun MapCanvas(
     drawingMode: MapViewerDrawingMode,
     drawingColour: MapViewerDrawingColour,
     onDrawingCommitted: (io.hsar.mapgenerator.commandgui.operation.OperationDrawing) -> Unit,
+    unitPlacementActive: Boolean,
+    onUnitPlacementPreview: (MapCoordinate?) -> Unit,
+    onUnitPlacementCommitted: () -> Unit,
+    onUnitPlacementCancelled: () -> Unit,
     cancellationEpoch: Int,
     unitIconSizePx: Double,
     onUnitIconSizeChanged: (Double) -> Unit,
@@ -1674,6 +1913,11 @@ private fun MapCanvas(
             .onPointerEvent(PointerEventType.Press) { event ->
                 val change = event.changes.firstOrNull() ?: return@onPointerEvent
                 if (event.buttons.isSecondaryPressed) {
+                    if (unitPlacementActive) {
+                        onUnitPlacementCancelled()
+                        change.consume()
+                        return@onPointerEvent
+                    }
                     objectAtScreen(change.position)?.let { value ->
                         rightClickTargetId = value.id
                         onContextMenuRequested(value, IntOffset(change.position.x.roundToInt(), change.position.y.roundToInt()))
@@ -1681,6 +1925,13 @@ private fun MapCanvas(
                         rightClickTargetId = null
                         onContextMenuDismissed()
                     }
+                    return@onPointerEvent
+                }
+                if (event.buttons.isPrimaryPressed && unitPlacementActive) {
+                    val coordinate = screenToMap(change.position).takeIf { it.x in 0.0..1.0 && it.y in 0.0..1.0 }
+                    onUnitPlacementPreview(coordinate)
+                    if (coordinate != null) onUnitPlacementCommitted()
+                    change.consume()
                     return@onPointerEvent
                 }
                 if (event.buttons.isPrimaryPressed && activeTool == MapViewerTool.MEASURE) {
@@ -1737,6 +1988,10 @@ private fun MapCanvas(
             }
             .onPointerEvent(PointerEventType.Move) { event ->
                 val change = event.changes.firstOrNull() ?: return@onPointerEvent
+                if (unitPlacementActive && !event.buttons.isPrimaryPressed && !event.buttons.isSecondaryPressed) {
+                    onUnitPlacementPreview(screenToMap(change.position).takeIf { it.x in 0.0..1.0 && it.y in 0.0..1.0 })
+                    return@onPointerEvent
+                }
                 if (event.buttons.isSecondaryPressed && rightClickTargetId == null) {
                     val delta = change.position - change.previousPosition
                     if (delta != Offset.Zero) {

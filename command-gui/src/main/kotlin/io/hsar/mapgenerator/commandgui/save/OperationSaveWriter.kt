@@ -5,7 +5,6 @@ import io.hsar.mapgenerator.commandgui.GridColourSelector
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplate
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplate
 import io.hsar.mapgenerator.grid.CoordAxis
-import korlibs.io.lang.use
 import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage

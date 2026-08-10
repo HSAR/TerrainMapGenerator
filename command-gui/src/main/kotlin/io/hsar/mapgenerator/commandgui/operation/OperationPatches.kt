@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import com.fasterxml.jackson.databind.node.TextNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.sun.org.apache.bcel.internal.util.Args.require
 import io.hsar.mapgenerator.commandgui.CustomPropertyJson
 import io.hsar.mapgenerator.commandgui.MapCoordinate
 import io.hsar.mapgenerator.commandgui.MapViewerLedgerEntryKind

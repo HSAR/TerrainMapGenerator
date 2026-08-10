@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.TextNode
 import io.hsar.mapgenerator.commandgui.MapCoordinate
 import io.hsar.mapgenerator.commandgui.operation.*
-import korlibs.io.util.buildList
 
 internal class LedgerEntrySaveMapper(private val assets: OperationAssetRegistry) {
     fun toDtos(timeline: OperationTimeline): List<LedgerEntrySaveDto> {

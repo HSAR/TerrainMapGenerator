@@ -16,7 +16,12 @@ import io.hsar.mapgenerator.commandgui.operation.OperationEditorState
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorTarget
 import io.hsar.mapgenerator.commandgui.operation.OperationFloatingEditorState
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
+import io.hsar.mapgenerator.commandgui.operation.OperationImageDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationPropertyDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationUiState
+import io.hsar.mapgenerator.commandgui.operation.OperationUnitAffiliation
+import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateId
 import io.hsar.mapgenerator.commandgui.operation.OperationWorkspaceState
 import java.util.*
 import java.util.Collections.emptyList
@@ -57,6 +62,8 @@ private fun migrateWorkspace(state: UiSessionState): OperationWorkspaceState {
                 positionY = draft?.path("positionY")?.textValue().orEmpty(),
                 facing = draft?.path("facing")?.textValue().orEmpty(),
                 destroyed = draft?.path("destroyed")?.booleanValue() == true,
+                affiliation = draft?.path("affiliation")?.textValue()?.let { runCatching { OperationUnitAffiliation.valueOf(it.uppercase()) }.getOrNull() },
+                properties = draft?.path("customProperties")?.properties()?.asSequence()?.map { OperationPropertyDraft(it.key, it.value.textValue().orEmpty()) }?.toList().orEmpty(),
             ),
             floating = OperationFloatingEditorState(
                 bounds = dialog.bounds.let { OperationEditorBounds(it.left, it.top, it.width, it.height) },
@@ -107,6 +114,7 @@ private fun OperationWorkspaceState.compatibilityDrafts(): Map<String, String> =
         is OperationEditorDraft.Notes -> editor.id.value to draft.body
         is OperationEditorDraft.Opaque -> editor.id.value to draft.value
         is OperationEditorDraft.Unit -> null
+        is OperationEditorDraft.UnitTemplate -> null
     }
 }.toMap()
 
@@ -133,6 +141,8 @@ private fun List<MapViewerPersistedDialog>.mergeWorkspaceDialogs(workspace: Oper
         draftJson.put("positionY", draft.positionY)
         draftJson.put("facing", draft.facing)
         draftJson.put("destroyed", draft.destroyed)
+        draft.affiliation?.let { draftJson.put("affiliation", it.name) } ?: draftJson.remove("affiliation")
+        draftJson.putObject("customProperties").also { properties -> draft.properties.forEach { properties.put(it.key, it.value) } }
         MapViewerPersistedDialog(
             type = "unit-edit",
             targetId = target.objectId.value.toString(),
@@ -293,6 +303,12 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
                 ?.let(OperationEditorTarget::Object)
                 ?: return null
 
+            "new-unit-template" -> OperationEditorTarget.NewUnitTemplate
+            "unit-template" -> targetNode.path("templateId").textValue()
+                ?.let { runCatching { OperationUnitTemplateId(UUID.fromString(it)) }.getOrNull() }
+                ?.let(OperationEditorTarget::UnitTemplate)
+                ?: return null
+
             else -> OperationEditorTarget.Opaque(targetNode.path("value").textValue())
         }
         val draftNode = node.path("draft")
@@ -304,6 +320,23 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
                 positionY = draftNode.path("positionY").textValue().orEmpty(),
                 facing = draftNode.path("facing").textValue().orEmpty(),
                 destroyed = draftNode.path("destroyed").booleanValue(),
+                unitTemplateId = draftNode.path("unitTemplateId").textValue()?.let { runCatching { OperationUnitTemplateId(UUID.fromString(it)) }.getOrNull() },
+                affiliation = draftNode.path("affiliation").textValue()?.let { runCatching { OperationUnitAffiliation.valueOf(it) }.getOrNull() },
+                properties = readProperties(draftNode.path("properties")),
+            )
+
+            OperationEditorKind.UNIT_TEMPLATE -> OperationEditorDraft.UnitTemplate(
+                OperationUnitTemplateDraft(
+                    name = draftNode.path("name").textValue().orEmpty(),
+                    affiliation = draftNode.path("affiliation").textValue()?.let { runCatching { OperationUnitAffiliation.valueOf(it) }.getOrNull() },
+                    replacementImage = draftNode.path("image").takeIf(JsonNode::isObject)?.let { image ->
+                        val name = image.path("originalFilename").textValue() ?: return@let null
+                        val mediaType = image.path("mediaType").textValue() ?: return@let null
+                        val bytes = image.path("base64Bytes").textValue() ?: return@let null
+                        runCatching { OperationImageDraft.fromBase64(name, mediaType, bytes) }.getOrNull()
+                    },
+                    properties = readProperties(draftNode.path("properties")),
+                ),
             )
 
             else -> OperationEditorDraft.Opaque(draftNode.path("value").textValue().orEmpty())
@@ -330,6 +363,15 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
                 mapAnchor = anchor,
             ),
         )
+    }
+
+    private fun readProperties(node: JsonNode): List<OperationPropertyDraft> =
+        node.takeIf(JsonNode::isArray)?.map { value ->
+            OperationPropertyDraft(value.path("key").textValue().orEmpty(), value.path("value").textValue().orEmpty())
+        }.orEmpty()
+
+    private fun writeProperties(properties: List<OperationPropertyDraft>) = JsonNodeFactory.instance.arrayNode().also { values ->
+        properties.forEach { property -> values.addObject().apply { put("key", property.key); put("value", property.value) } }
     }
 
     private fun writeWorkspace(workspace: OperationWorkspaceState) = JsonNodeFactory.instance.objectNode().apply {
@@ -359,6 +401,11 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
                     put("type", "object"); put("objectId", target.objectId.value.toString())
                 }
 
+                OperationEditorTarget.NewUnitTemplate -> put("type", "new-unit-template")
+                is OperationEditorTarget.UnitTemplate -> {
+                    put("type", "unit-template"); put("templateId", target.templateId.value.toString())
+                }
+
                 is OperationEditorTarget.Opaque -> {
                     put("type", "opaque"); target.value?.let { put("value", it) }
                 }
@@ -370,6 +417,18 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
                 is OperationEditorDraft.Unit -> {
                     put("name", draft.name); put("positionX", draft.positionX); put("positionY", draft.positionY)
                     put("facing", draft.facing); put("destroyed", draft.destroyed)
+                    draft.unitTemplateId?.let { put("unitTemplateId", it.value.toString()) }
+                    draft.affiliation?.let { put("affiliation", it.name) }
+                    set<com.fasterxml.jackson.databind.node.ArrayNode>("properties", writeProperties(draft.properties))
+                }
+
+                is OperationEditorDraft.UnitTemplate -> {
+                    put("name", draft.value.name)
+                    draft.value.affiliation?.let { put("affiliation", it.name) }
+                    draft.value.replacementImage?.let { image -> putObject("image").apply {
+                        put("originalFilename", image.originalFilename); put("mediaType", image.mediaType); put("base64Bytes", image.base64Bytes)
+                    } }
+                    set<com.fasterxml.jackson.databind.node.ArrayNode>("properties", writeProperties(draft.value.properties))
                 }
 
                 is OperationEditorDraft.Opaque -> put("value", draft.value)
@@ -391,7 +450,7 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
 
     companion object {
         const val UI_STATE_FIELD = "uiState"
-        const val CURRENT_UI_SCHEMA_VERSION = 3
+        const val CURRENT_UI_SCHEMA_VERSION = 4
 
         fun fromJson(json: ByteArray?): OperationAdditionalData = OperationAdditionalData(
             runCatching {

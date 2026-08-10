@@ -23,6 +23,9 @@ import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntry
 import io.hsar.mapgenerator.commandgui.operation.OperationUiState
 import io.hsar.mapgenerator.commandgui.operation.OperationUnit
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateId
+import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplate
+import io.hsar.mapgenerator.commandgui.operation.OperationImageDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationValueChange
 import io.hsar.mapgenerator.commandgui.operation.OperationWorkspaceState
 import org.hamcrest.MatcherAssert.assertThat
@@ -215,6 +218,61 @@ class ComposeOperationStateTest {
         assertThat(failed.hasUnsavedChanges, equalTo(true))
         assertThat(retried.saveStatus, equalTo(ComposeSaveStatus.CLEAN))
         assertThat(retried.hasUnsavedChanges, equalTo(false))
+    }
+
+    @Test
+    fun `unit placement previews without a ledger entry and commits exactly once`() {
+        val template = OperationUnitTemplate(unit.unitTemplateId, "Scout", BufferedImage(20, 10, BufferedImage.TYPE_INT_ARGB), 0)
+        val templateEntry = OperationTimelineEntry(
+            OperationChangeSet(unitTemplates = listOf(OperationValueChange(after = template))),
+            MapViewerLedgerEntryKind.UNIT_TEMPLATE,
+            "created unit template Scout",
+        )
+        val document = documentWith(unit).copy(timeline = OperationTimeline().record(templateEntry))
+        val viewport = MapViewport.centered(166.0, 166.0, 100, 100, 1.0)
+
+        val preview = ComposeOperationState(document).updateViewport(viewport)
+            .armUnitPlacement(template.id)
+            .previewUnitPlacement(MapCoordinate(.4, .6), 64.0)
+        val committed = preview.commitUnitPlacement()
+
+        assertThat(preview.document.timeline.entries.size, equalTo(1))
+        assertThat(preview.visibleContent.objects.size, equalTo(1))
+        assertThat(committed.document.timeline.entries.size, equalTo(2))
+        assertThat(committed.document.content.objects.filterIsInstance<OperationUnit>().single().coordinate, equalTo(MapCoordinate(.4, .6)))
+        assertThat(committed.unitPlacement, equalTo(null))
+    }
+
+    @Test
+    fun `template deletion is blocked while referenced`() {
+        val template = OperationUnitTemplate(unit.unitTemplateId, "Scout", BufferedImage(20, 10, BufferedImage.TYPE_INT_ARGB), 0)
+        val timeline = OperationTimeline()
+            .record(OperationTimelineEntry(OperationChangeSet(unitTemplates = listOf(OperationValueChange(after = template))), MapViewerLedgerEntryKind.UNIT_TEMPLATE, "template"))
+            .record(OperationTimelineEntry(OperationChangeSet(objects = listOf(OperationValueChange(after = unit))), MapViewerLedgerEntryKind.OBJECT, "unit"))
+        val document = documentWith(unit).copy(timeline = timeline)
+
+        val state = ComposeOperationState(document).deleteUnitTemplate(template.id)
+
+        assertThat(state.document.timeline, equalTo(timeline))
+        assertThat(state.document.content.unitTemplate(template.id), equalTo(template))
+    }
+
+    @Test
+    fun `saving a new template editor records one template entry and closes the draft`() {
+        val image = BufferedImage(20, 10, BufferedImage.TYPE_INT_ARGB)
+        val editorId = OperationEditorId("unit-template:new")
+        val opened = ComposeOperationState(documentWith(unit)).openNewUnitTemplateEditor()
+        val draft = OperationUnitTemplateDraft(
+            name = "Scout",
+            replacementImage = OperationImageDraft.fromBytes("scout.png", byteArrayOf(1, 2, 3)),
+        )
+
+        val saved = opened.updateEditorDraft(editorId, OperationEditorDraft.UnitTemplate(draft))
+            .saveUnitTemplateEditor(editorId, image)
+
+        assertThat(saved.document.content.unitTemplates.single().name, equalTo("Scout"))
+        assertThat(saved.document.timeline.entries.last().kind, equalTo(MapViewerLedgerEntryKind.UNIT_TEMPLATE))
+        assertThat(saved.workspace.editor(editorId), equalTo(null))
     }
 
     private fun documentWith(value: OperationUnit): OperationDocument {

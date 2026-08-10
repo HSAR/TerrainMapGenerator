@@ -1,6 +1,5 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
-import com.sun.org.apache.bcel.internal.util.Args.require
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.bitmap.Bitmap32
 import korlibs.image.color.RGBA
@@ -110,7 +109,14 @@ object MapViewerAppIconExporter {
                 thickness.roundToInt().toDouble(),
                 length.roundToInt().toDouble(),
             )
-            graphics.fill(Area(horizontal).apply { add(Area(vertical)) })
+            val bracket = Area(horizontal).apply { add(Area(vertical)) }
+            val outlineWidth = (thickness * BRACKET_OUTLINE_WIDTH_RATIO).roundToInt().coerceAtLeast(1).toFloat()
+            val outline = Area(BasicStroke(outlineWidth * 2, BasicStroke.CAP_SQUARE, BasicStroke.JOIN_MITER).createStrokedShape(bracket))
+                .apply { subtract(Area(bracket)) }
+            graphics.color = Palette.Colours.DARK
+            graphics.fill(outline)
+            graphics.color = java.awt.Color(Palette.Colours.WHITE.red, Palette.Colours.WHITE.green, Palette.Colours.WHITE.blue, BRACKET_ALPHA)
+            graphics.fill(bracket)
         }
     }
 
@@ -141,5 +147,6 @@ object MapViewerAppIconExporter {
     private const val BRACKET_INSET_RATIO = 0.13
     private const val BRACKET_LENGTH_RATIO = 0.16
     private const val BRACKET_THICKNESS_RATIO = 0.035
+    private const val BRACKET_OUTLINE_WIDTH_RATIO = 0.25
     private const val BRACKET_ALPHA = 230
 }

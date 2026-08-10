@@ -1,6 +1,5 @@
 package io.hsar.mapgenerator.commandgui.operation
 
-import com.sun.org.apache.bcel.internal.util.Args.require
 import io.hsar.mapgenerator.commandgui.AssetSource
 import io.hsar.mapgenerator.commandgui.MapCoordinate
 import io.hsar.mapgenerator.commandgui.MapViewerLedgerEntryKind

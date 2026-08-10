@@ -12,12 +12,15 @@ value class OperationEditorKind(val value: String) {
     companion object {
         val OPERATION_NOTES = OperationEditorKind("operation-notes")
         val UNIT = OperationEditorKind("unit")
+        val UNIT_TEMPLATE = OperationEditorKind("unit-template")
     }
 }
 
 sealed interface OperationEditorTarget {
     data object OperationNotes : OperationEditorTarget
     data class Object(val objectId: OperationObjectId) : OperationEditorTarget
+    data object NewUnitTemplate : OperationEditorTarget
+    data class UnitTemplate(val templateId: OperationUnitTemplateId) : OperationEditorTarget
     data class Opaque(val value: String?) : OperationEditorTarget
 }
 
@@ -29,7 +32,12 @@ sealed interface OperationEditorDraft {
         val positionY: String,
         val facing: String,
         val destroyed: Boolean,
+        val unitTemplateId: OperationUnitTemplateId? = null,
+        val affiliation: OperationUnitAffiliation? = null,
+        val properties: List<OperationPropertyDraft> = emptyList(),
     ) : OperationEditorDraft
+
+    data class UnitTemplate(val value: OperationUnitTemplateDraft = OperationUnitTemplateDraft()) : OperationEditorDraft
 
     data class Opaque(val value: String = "") : OperationEditorDraft
 }
@@ -153,16 +161,35 @@ data class OperationWorkspaceState(
 
 fun OperationUnit.editorState(
     bounds: OperationEditorBounds = OperationEditorBounds(96.0, 96.0, 520.0, 560.0),
+    renderData: io.hsar.mapgenerator.commandgui.MapViewerRenderData? = null,
+): OperationEditorState {
+    val position = renderData?.let { OperationUnitAuthoring.formatPosition(it, coordinate) }
+        ?: io.hsar.mapgenerator.commandgui.GridReferenceFields(coordinate.x.toString(), coordinate.y.toString())
+    return OperationEditorState(
+        id = OperationEditorId("unit:${id.value}"),
+        kind = OperationEditorKind.UNIT,
+        target = OperationEditorTarget.Object(id),
+        draft = OperationEditorDraft.Unit(
+            name = instanceName, positionX = position.easting, positionY = position.northing,
+            facing = facingDegrees?.toString().orEmpty(), destroyed = destroyed, unitTemplateId = unitTemplateId, affiliation = affiliation,
+            properties = customProperties.map { OperationPropertyDraft(it.key, it.value) },
+        ),
+        floating = OperationFloatingEditorState(bounds),
+    )
+}
+
+fun OperationUnitTemplate.editorState(
+    bounds: OperationEditorBounds = OperationEditorBounds(96.0, 96.0, 520.0, 600.0),
 ) = OperationEditorState(
-    id = OperationEditorId("unit:${id.value}"),
-    kind = OperationEditorKind.UNIT,
-    target = OperationEditorTarget.Object(id),
-    draft = OperationEditorDraft.Unit(
-        name = instanceName,
-        positionX = coordinate.x.toString(),
-        positionY = coordinate.y.toString(),
-        facing = facingDegrees?.toString().orEmpty(),
-        destroyed = destroyed,
+    id = OperationEditorId("unit-template:${id.value}"),
+    kind = OperationEditorKind.UNIT_TEMPLATE,
+    target = OperationEditorTarget.UnitTemplate(id),
+    draft = OperationEditorDraft.UnitTemplate(
+        OperationUnitTemplateDraft(
+            name = name,
+            affiliation = affiliation,
+            properties = customProperties.map { OperationPropertyDraft(it.key, it.value) },
+        ),
     ),
     floating = OperationFloatingEditorState(bounds),
 )

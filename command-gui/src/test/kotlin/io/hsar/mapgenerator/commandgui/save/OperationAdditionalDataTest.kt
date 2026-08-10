@@ -13,6 +13,14 @@ import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogBounds
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorBounds
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorId
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorKind
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorState
+import io.hsar.mapgenerator.commandgui.operation.OperationEditorTarget
+import io.hsar.mapgenerator.commandgui.operation.OperationFloatingEditorState
+import io.hsar.mapgenerator.commandgui.operation.OperationImageDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationPropertyDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.operation.OperationUnit
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateId
@@ -160,7 +168,7 @@ class OperationAdditionalDataTest {
 
         // Assert
         assertThat(restored, equalTo(state))
-        assertThat(OperationSaveJson.objectMapper.readTree(json).path("uiState").path("schemaVersion").intValue(), equalTo(3))
+        assertThat(OperationSaveJson.objectMapper.readTree(json).path("uiState").path("schemaVersion").intValue(), equalTo(4))
         assertThat(restored.dialogs.single(), equalTo(dialog))
         assertThat(String(json).contains("\"custom\" : \"keep\""), equalTo(true))
     }
@@ -219,6 +227,23 @@ class OperationAdditionalDataTest {
         assertThat(restored.uiState().dialogs.single().type, equalTo("unit-edit"))
         assertThat(restored.uiState().dialogs.single().draft!!.path("name").textValue(), equalTo("Working Alpha"))
         assertThat(OperationSaveJson.objectMapper.readTree(json).path("uiState").path("customUi").textValue(), equalTo("keep"))
+    }
+
+    @Test
+    fun `version four preserves an unfinished unit template draft with embedded image`() {
+        val image = OperationImageDraft.fromBytes("scout.svg", "<svg/>".toByteArray())
+        val editor = OperationEditorState(
+            OperationEditorId("unit-template:new"), OperationEditorKind.UNIT_TEMPLATE,
+            OperationEditorTarget.NewUnitTemplate,
+            OperationEditorDraft.UnitTemplate(OperationUnitTemplateDraft("Scout", replacementImage = image, properties = listOf(OperationPropertyDraft("Class", "F")))),
+            OperationFloatingEditorState(OperationEditorBounds(10.0, 20.0, 520.0, 600.0)),
+        )
+        val data = OperationAdditionalData.fromJson(null)
+
+        data.updateOperationUiState(io.hsar.mapgenerator.commandgui.operation.OperationUiState(workspace = OperationWorkspaceState.default().open(editor)))
+        val restored = OperationAdditionalData.fromJson(data.toJsonOrNull()).operationUiState().workspace.editor(editor.id)!!
+
+        assertThat(restored, equalTo(editor))
     }
 
     @Test

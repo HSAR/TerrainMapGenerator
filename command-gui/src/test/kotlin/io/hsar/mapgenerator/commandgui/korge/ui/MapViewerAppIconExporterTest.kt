@@ -50,6 +50,7 @@ class MapViewerAppIconExporterTest {
             assertThat(image.getRGB(0, 0) ushr 24, equalTo(0))
             assertThat(image.getRGB(128, 80) shr 16 and 0xFF, equalTo(Palette.Colours.RED.red))
             assertThat(image.getRGB(33, 33) ushr 24, equalTo(230))
+            assertThat(image.getRGB(31, 34) shr 16 and 0xFF, equalTo(Palette.Colours.DARK.red))
         }
     }
 }
