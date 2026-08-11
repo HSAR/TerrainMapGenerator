@@ -19,6 +19,8 @@ import io.hsar.mapgenerator.commandgui.operation.OperationGraphicDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateId
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
+import io.hsar.mapgenerator.commandgui.operation.OperationNoteDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationNoteId
 import io.hsar.mapgenerator.commandgui.operation.OperationImageDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationPropertyDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationUiState
@@ -76,11 +78,41 @@ private fun migrateWorkspace(state: UiSessionState): OperationWorkspaceState {
             ),
         )
     }
-    val legacyById = legacyUnitEditors.associateBy { it.id }
+    val legacyNotesBrowser = state.dialogs.lastOrNull { it.type == "notes" }?.let { dialog ->
+        OperationWorkspaceState.default().editors.single().copy(
+            floating = OperationFloatingEditorState(
+                OperationEditorBounds(dialog.bounds.left, dialog.bounds.top, dialog.bounds.width, dialog.bounds.height),
+                dialog.minimized, dialog.pinned, dialog.pinAnchor,
+            ),
+        )
+    }
+    val legacyNoteEditors = state.dialogs.filter { it.type == "note" }.mapNotNull { dialog ->
+        val noteId = dialog.targetId?.let { runCatching { OperationNoteId(UUID.fromString(it)) }.getOrNull() } ?: return@mapNotNull null
+        val draft = dialog.draft
+        OperationEditorState(
+            id = OperationEditorId("note:${noteId.value}"),
+            kind = OperationEditorKind.NOTE,
+            target = OperationEditorTarget.Note(noteId),
+            draft = OperationEditorDraft.Note(OperationNoteDraft(
+                id = noteId,
+                title = draft?.path("title")?.textValue().orEmpty(),
+                body = draft?.path("body")?.textValue().orEmpty(),
+                referencedObjectIds = draft?.path("references")?.mapNotNull { value ->
+                    value.textValue()?.let { runCatching { OperationObjectId(UUID.fromString(it)) }.getOrNull() }
+                }.orEmpty().distinct(),
+            )),
+            floating = OperationFloatingEditorState(
+                OperationEditorBounds(dialog.bounds.left, dialog.bounds.top, dialog.bounds.width, dialog.bounds.height),
+                dialog.minimized, dialog.pinned, dialog.pinAnchor,
+            ),
+        )
+    }
+    val legacyEditors = legacyUnitEditors + legacyNoteEditors + listOfNotNull(legacyNotesBrowser)
+    val legacyById = legacyEditors.associateBy { it.id }
     val idEditors = state.openEditorIds.map { value ->
         val id = OperationEditorId(value)
         legacyById[id] ?: when {
-            value == OperationWorkspaceState.DEFAULT_NOTES_ID.value -> OperationWorkspaceState.default(state.drafts[value].orEmpty()).editors.single()
+            value == OperationWorkspaceState.DEFAULT_NOTES_ID.value -> OperationWorkspaceState.default().editors.single()
             value.startsWith("unit:") -> value.removePrefix("unit:").let { raw ->
                 runCatching { OperationObjectId(UUID.fromString(raw)) }.getOrNull()?.let { objectId ->
                     OperationEditorState(
@@ -98,7 +130,7 @@ private fun migrateWorkspace(state: UiSessionState): OperationWorkspaceState {
             )
         }
     }.filterNotNull()
-    val editors = (idEditors + legacyUnitEditors).distinctBy { it.id }.ifEmpty { OperationWorkspaceState.default().editors }
+    val editors = (idEditors + legacyEditors).distinctBy { it.id }.ifEmpty { OperationWorkspaceState.default().editors }
     val validIds = editors.mapTo(hashSetOf()) { it.id }
     val docks = state.dockPanels.mapNotNull { panel ->
         val region = OperationDockRegion.entries.firstOrNull { it.name.equals(panel.region, ignoreCase = true) } ?: return@mapNotNull null
@@ -114,7 +146,8 @@ private fun migrateWorkspace(state: UiSessionState): OperationWorkspaceState {
 
 private fun OperationWorkspaceState.compatibilityDrafts(): Map<String, String> = editors.mapNotNull { editor ->
     when (val draft = editor.draft) {
-        is OperationEditorDraft.Notes -> editor.id.value to draft.body
+        is OperationEditorDraft.Notes -> null
+        is OperationEditorDraft.Note -> null
         is OperationEditorDraft.Opaque -> editor.id.value to draft.value
         is OperationEditorDraft.Unit -> null
         is OperationEditorDraft.UnitTemplate -> null
@@ -133,8 +166,10 @@ private fun OperationDockRegionState.toCompatibilityPanel() = DockPanelSessionSt
 
 private fun List<MapViewerPersistedDialog>.mergeWorkspaceDialogs(workspace: OperationWorkspaceState): List<MapViewerPersistedDialog> {
     val existingUnits = filter { it.type == "unit-edit" }.associateBy(MapViewerPersistedDialog::targetId)
-    val retained = filterNot { it.type == "unit-edit" }
-    val generated = workspace.editors.mapNotNull { editor ->
+    val existingNotes = filter { it.type == "note" }.associateBy(MapViewerPersistedDialog::targetId)
+    val existingNotesPanel = lastOrNull { it.type == "notes" }
+    val retained = filterNot { it.type in setOf("unit-edit", "note", "notes") }
+    val generatedUnits = workspace.editors.mapNotNull { editor ->
         val target = editor.target as? OperationEditorTarget.Object ?: return@mapNotNull null
         val draft = editor.draft as? OperationEditorDraft.Unit ?: return@mapNotNull null
         if (editor.kind != OperationEditorKind.UNIT) return@mapNotNull null
@@ -158,18 +193,49 @@ private fun List<MapViewerPersistedDialog>.mergeWorkspaceDialogs(workspace: Oper
             pinAnchor = editor.floating.mapAnchor,
         )
     }
-    return retained + generated
+    val generatedNotes = workspace.editors.mapNotNull { editor ->
+        val target = editor.target as? OperationEditorTarget.Note ?: return@mapNotNull null
+        val draft = (editor.draft as? OperationEditorDraft.Note)?.value ?: return@mapNotNull null
+        val original = existingNotes[target.noteId.value.toString()]
+        val draftJson = original?.draft?.takeIf(JsonNode::isObject)?.deepCopy<ObjectNode>()
+            ?: JsonNodeFactory.instance.objectNode()
+        draftJson.put("title", draft.title)
+        draftJson.put("body", draft.body)
+        draftJson.putArray("references").also { values -> draft.referencedObjectIds.forEach { values.add(it.value.toString()) } }
+        MapViewerPersistedDialog(
+            type = "note",
+            targetId = target.noteId.value.toString(),
+            bounds = editor.floating.bounds.let { MapViewerDialogBounds(it.left, it.top, it.width, it.height) },
+            draft = draftJson,
+            minimized = editor.floating.minimized,
+            pinned = editor.floating.pinned,
+            pinAnchor = editor.floating.mapAnchor,
+        )
+    }
+    val generatedPanel = workspace.editors.firstOrNull { it.kind == OperationEditorKind.OPERATION_NOTES }?.let { editor ->
+        MapViewerPersistedDialog(
+            type = "notes",
+            bounds = editor.floating.bounds.let { MapViewerDialogBounds(it.left, it.top, it.width, it.height) },
+            draft = existingNotesPanel?.draft,
+            minimized = editor.floating.minimized,
+            pinned = editor.floating.pinned,
+            pinAnchor = editor.floating.mapAnchor,
+        )
+    }
+    return retained + generatedUnits + generatedNotes + listOfNotNull(generatedPanel)
 }
 
-private fun OperationWorkspaceState.mergeLegacyUnitDialogs(state: UiSessionState): OperationWorkspaceState {
-    val legacyUnits = migrateWorkspace(state.copy(openEditorIds = emptyList(), drafts = emptyMap()))
-        .editors.filter { it.kind == OperationEditorKind.UNIT }
-    val retained = editors.filterNot { it.kind == OperationEditorKind.UNIT }
-    val merged = retained + legacyUnits
+private fun OperationWorkspaceState.mergeLegacyDialogs(state: UiSessionState): OperationWorkspaceState {
+    val relevantDialogs = state.dialogs.filter { it.type == "unit-edit" || it.type == "note" || it.type == "notes" }
+    if (relevantDialogs.isEmpty()) return this
+    val legacy = migrateWorkspace(state.copy(dialogs = relevantDialogs, openEditorIds = emptyList(), drafts = emptyMap()))
+        .editors.filter { it.kind == OperationEditorKind.UNIT || it.kind == OperationEditorKind.NOTE || it.kind == OperationEditorKind.OPERATION_NOTES }
+        .filter { candidate -> editors.none { it.id == candidate.id } }
+    val merged = editors + legacy
     val ids = merged.mapTo(hashSetOf()) { it.id }
     val regions = dockRegions.map { dock ->
         val retainedIds = dock.editorIds.filter(ids::contains)
-        val appended = if (dock.region == OperationDockRegion.RIGHT) legacyUnits.map { it.id }.filterNot(retainedIds::contains) else emptyList()
+        val appended = if (dock.region == OperationDockRegion.RIGHT) legacy.map { it.id }.filterNot(retainedIds::contains) else emptyList()
         val editorIds = retainedIds + appended
         dock.copy(editorIds = editorIds, activeEditorId = dock.activeEditorId?.takeIf(ids::contains) ?: editorIds.lastOrNull())
     }
@@ -223,7 +289,7 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
         root.set<ObjectNode>(UI_STATE_FIELD, value)
         val workspace = state.workspace ?: value.path("workspace").takeIf(JsonNode::isObject)
             ?.let(::readWorkspace)
-            ?.mergeLegacyUnitDialogs(state)
+            ?.mergeLegacyDialogs(state)
         value.put("schemaVersion", CURRENT_UI_SCHEMA_VERSION)
         value.put("selectedTool", state.selectedTool.name)
         value.putArray("selectedObjectIds").also { ids -> state.selectedObjectIds.forEach { ids.add(it.value.toString()) } }
@@ -265,7 +331,7 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
             selectedTool = state.selectedTool,
             selectedObjectIds = state.selectedObjectIds.toCollection(linkedSetOf()),
             enabledLayerIds = state.enabledLayerIds,
-            workspace = state.workspace ?: migrateWorkspace(state).let { migrated ->
+            workspace = state.workspace?.mergeLegacyDialogs(state) ?: migrateWorkspace(state).let { migrated ->
                 val schemaVersion = root.path(UI_STATE_FIELD).path("schemaVersion").intValue()
                 if (schemaVersion < 2 && state.dialogs.isEmpty()) migrated.copy(mode = MapViewerWorkspaceMode.DOCKED) else migrated
             },
@@ -303,6 +369,14 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
         val targetNode = node.path("target")
         val target = when (targetNode.path("type").textValue()) {
             "operation-notes" -> OperationEditorTarget.OperationNotes
+            "new-note" -> targetNode.path("noteId").textValue()
+                ?.let { runCatching { OperationNoteId(UUID.fromString(it)) }.getOrNull() }
+                ?.let(OperationEditorTarget::NewNote)
+                ?: return null
+            "note" -> targetNode.path("noteId").textValue()
+                ?.let { runCatching { OperationNoteId(UUID.fromString(it)) }.getOrNull() }
+                ?.let(OperationEditorTarget::Note)
+                ?: return null
             "object" -> targetNode.path("objectId").textValue()
                 ?.let { runCatching { OperationObjectId(UUID.fromString(it)) }.getOrNull() }
                 ?.let(OperationEditorTarget::Object)
@@ -324,7 +398,22 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
         }
         val draftNode = node.path("draft")
         val draft = when (kind) {
-            OperationEditorKind.OPERATION_NOTES -> OperationEditorDraft.Notes(draftNode.path("body").textValue().orEmpty())
+            OperationEditorKind.OPERATION_NOTES -> OperationEditorDraft.Notes()
+            OperationEditorKind.NOTE -> {
+                val noteId = when (target) {
+                    is OperationEditorTarget.NewNote -> target.noteId
+                    is OperationEditorTarget.Note -> target.noteId
+                    else -> return null
+                }
+                OperationEditorDraft.Note(OperationNoteDraft(
+                    id = noteId,
+                    title = draftNode.path("title").textValue().orEmpty(),
+                    body = draftNode.path("body").textValue().orEmpty(),
+                    referencedObjectIds = draftNode.path("referencedObjectIds").mapNotNull { value ->
+                        value.textValue()?.let { runCatching { OperationObjectId(UUID.fromString(it)) }.getOrNull() }
+                    }.distinct(),
+                ))
+            }
             OperationEditorKind.UNIT -> OperationEditorDraft.Unit(
                 name = draftNode.path("name").textValue().orEmpty(),
                 positionX = draftNode.path("positionX").textValue().orEmpty(),
@@ -436,6 +525,8 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
         putObject("target").apply {
             when (val target = editor.target) {
                 OperationEditorTarget.OperationNotes -> put("type", "operation-notes")
+                is OperationEditorTarget.NewNote -> { put("type", "new-note"); put("noteId", target.noteId.value.toString()) }
+                is OperationEditorTarget.Note -> { put("type", "note"); put("noteId", target.noteId.value.toString()) }
                 is OperationEditorTarget.Object -> {
                     put("type", "object"); put("objectId", target.objectId.value.toString())
                 }
@@ -457,7 +548,11 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
         }
         putObject("draft").apply {
             when (val draft = editor.draft) {
-                is OperationEditorDraft.Notes -> put("body", draft.body)
+                is OperationEditorDraft.Notes -> Unit
+                is OperationEditorDraft.Note -> {
+                    put("title", draft.value.title); put("body", draft.value.body)
+                    putArray("referencedObjectIds").also { ids -> draft.value.referencedObjectIds.forEach { ids.add(it.value.toString()) } }
+                }
                 is OperationEditorDraft.Unit -> {
                     put("name", draft.name); put("positionX", draft.positionX); put("positionY", draft.positionY)
                     put("facing", draft.facing); put("destroyed", draft.destroyed)
@@ -509,7 +604,7 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
 
     companion object {
         const val UI_STATE_FIELD = "uiState"
-        const val CURRENT_UI_SCHEMA_VERSION = 5
+        const val CURRENT_UI_SCHEMA_VERSION = 6
 
         fun fromJson(json: ByteArray?): OperationAdditionalData = OperationAdditionalData(
             runCatching {

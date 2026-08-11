@@ -38,21 +38,21 @@ Treat the following as implemented and protected behavior, not future work:
   cancellation and one-entry commit. Measure is transient, grid-aware and remains available during historical replay.
 - The live ledger supports current/history selection, read-only preview, undo/redo, branch truncation and selection pruning. Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+S, Delete and Escape
   are wired.
-- Operation notes, unit/graphic-template editors and ordinary unit/graphic editors share typed editor instances in a resizable right dock or floating windows. The Compose unit and
+- The notes browser, note/unit/graphic-template editors and ordinary unit/graphic editors share typed editor instances in a resizable right dock or floating windows. Notes are
+  timeline-backed and support multiline drafts, ordering, map-picked object references, missing-reference preservation and object-context links. The Compose unit and
   graphic palettes create, edit and safely delete templates, and their click-then-map placement modes use immutable previews before recording one object entry. Graphic dimensions
   are template-owned and propagate to every live instance; archive and KorGE boundaries mirror them through the established normalized-size property keys. Unit edits cover
   template, grid-aware position, name, facing, destroyed state, affiliation and custom properties; graphic edits cover template, display label, grid-aware position and instance
   properties. Campaign-specific Olympiad Dawn panels remain deferred to Phase 3.
 - Revisioned two-second autosave, manual save, save-gated return/close, in-flight mutation handling and Retry/Cancel Exit are implemented. New operations save without requiring a
   first edit.
-- Additive UI schema version 5 stores typed unit/graphic template drafts (including bounded embedded source images), graphic drafts and expanded unit drafts while continuing to write version-2
-  IDs/drafts/dock panels and KorGE `unit-edit` dialog records. Version-1 through version-3 and legacy unit-dialog saves migrate into functional typed editors; unknown
+- Additive UI schema version 6 stores typed note, unit and graphic drafts (including bounded embedded template images) while continuing to write version-2
+  IDs/drafts/dock panels and KorGE `notes`, `note` and `unit-edit` dialog records. Version-1 through version-5 and recognized legacy dialogs migrate into functional typed editors; unknown
   additional-data and unsupported legacy dialog/draft fields remain preserved.
 
 Do not overstate these partial implementations:
 
 - `enabledLayerIds` is state/persistence only; Compose has no real layer controller and Canvas still paints the supplied base map and grid directly.
-- The notes panels edit one string draft, not timeline-backed `OperationNote` records with references and ordering.
 - The workspace implementation is deliberately a prototype: only the right dock is rendered, tabs cannot yet be interactively reordered or moved between regions, and only notes
   plus the ordinary unit/graphic and template editors have functional Compose bodies. The neutral model already retains generic regions, tab order and opaque restored editor
   records for later ports.
@@ -99,8 +99,9 @@ Completed: Compose has an operation-native graphic palette, typed template impor
 display label, grid-aware position and custom properties. `OperationGraphicAuthoring` owns validation, aspect-derived default sizing, placement, retargeting and shared-size
 propagation. Typed dimensions round-trip through legacy `normalizedWidth`/`normalizedHeight` template properties at archive and KorGE boundaries. Drag placement, bulk import and
 template reordering remain deferred.
-3. Replace the notes draft with timeline-backed `OperationNote` CRUD, ordering and object references. Use standard Compose multiline text fields and preserve drafts independently
-   from committed notes.
+Completed: Compose notes use neutral timeline-backed create/edit/delete/reorder actions. New and edited note drafts remain workspace-only until Save; references can target every
+map object kind through a cancellable map-pick mode, retain order and missing IDs, and round-trip through legacy KorGE note dialogs. Pre-schema-6 scratchpad text is intentionally
+discarded rather than converted into a ledger entry.
 4. Finish drawing/measurement polish: exact KorGE creation constraints, pointer cancellation/capture edge cases, drawing labels/context actions, and renderer/input tests. Draw and
    Measure themselves are already implemented; do not recreate their reducers in Compose.
 5. Replace the ledger prototype presentation with the complete turn workflow, descriptions, turn thumbnails and editor-opening behavior while retaining current history preview,

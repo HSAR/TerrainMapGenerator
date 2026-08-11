@@ -137,6 +137,9 @@ import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateId
 import io.hsar.mapgenerator.commandgui.operation.OperationLineDrawing
 import io.hsar.mapgenerator.commandgui.operation.OperationObject
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
+import io.hsar.mapgenerator.commandgui.operation.OperationNote
+import io.hsar.mapgenerator.commandgui.operation.OperationNoteDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationNoteId
 import io.hsar.mapgenerator.commandgui.operation.OperationImageDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationPropertyDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationOvalDrawing
@@ -852,7 +855,7 @@ private fun ViewerWorkspace(
                     true
                 }
 
-                event.key == Key.Escape && (operationState.unitPlacement != null || operationState.graphicPlacement != null) -> {
+                event.key == Key.Escape && (operationState.unitPlacement != null || operationState.graphicPlacement != null || operationState.noteReferencePick != null) -> {
                     operationState = operationState.cancelPlacements()
                     true
                 }
@@ -911,7 +914,13 @@ private fun ViewerWorkspace(
                             onObjectsSelected = { ids, additive -> operationState = operationState.selectBox(ids, additive) },
                             onContextMenuRequested = { mapObject, position ->
                                 operationState = operationState.selectObject(mapObject.id)
-                                contextMenu = ComposeMapContextMenu(mapObject.id, mapObject.displayName(operationState.visibleContent), position, mapObject.contextMenuItems())
+                                contextMenu = ComposeMapContextMenu(
+                                    mapObject.id,
+                                    mapObject.displayName(operationState.visibleContent),
+                                    position,
+                                    mapObject.contextMenuItems(),
+                                    operationState.visibleContent.notes.filter { mapObject.id in it.referencedObjectIds },
+                                )
                             },
                             onContextMenuDismissed = { contextMenu = null },
                         onPreviewChanged = { operationState = operationState.preview(it) },
@@ -927,6 +936,11 @@ private fun ViewerWorkspace(
                         onGraphicPlacementPreview = { coordinate -> operationState = operationState.previewGraphicPlacement(coordinate) },
                         onGraphicPlacementCommitted = { operationState = operationState.commitGraphicPlacement() },
                         onGraphicPlacementCancelled = { operationState = operationState.cancelGraphicPlacement() },
+                        noteReferencePickActive = operationState.noteReferencePick != null,
+                        noteReferenceHoveredObjectId = operationState.noteReferencePick?.hoveredObjectId,
+                        onNoteReferencePreview = { operationState = operationState.previewNoteReference(it) },
+                        onNoteReferencePicked = { operationState = operationState.addPickedNoteReference(it) },
+                        onNoteReferenceCancelled = { operationState = operationState.cancelNoteReferencePick() },
                         cancellationEpoch = toolGestureCancellationEpoch,
                             unitIconSizePx = unitIconSizePx,
                             onUnitIconSizeChanged = { size -> unitIconSizePx = onUnitIconSizeChanged(size) },
@@ -994,6 +1008,19 @@ private fun ViewerWorkspace(
                         CommandButton(onClick = { escapeMenuOpen = true }) { Text("MENU") }
                         CommandButton(onClick = { operationState = operationState.openNotes() }) { Text("NOTES") }
                     }
+                    if (operationState.noteReferencePick != null) {
+                        Surface(
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 92.dp),
+                            color = CommandColours.Dark.copy(alpha = 0.96f),
+                            border = BorderStroke(1.dp, CommandColours.Backing),
+                            shape = RectangleShape,
+                        ) {
+                            Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("PICK NOTE REFERENCES — CLICK OBJECTS", color = CommandColours.White)
+                                CommandButton(onClick = { operationState = operationState.cancelNoteReferencePick() }) { Text("DONE") }
+                            }
+                        }
+                    }
                     contextMenu?.let { menu ->
                         ComposeMapContextMenu(
                             menu = menu,
@@ -1005,6 +1032,10 @@ private fun ViewerWorkspace(
                                         operationState = operationState.selectObject(menu.objectId).deleteSelection()
                                     }
                                 }
+                                contextMenu = null
+                            },
+                            onNoteSelected = { noteId ->
+                                operationState = operationState.openNoteEditor(noteId)
                                 contextMenu = null
                             },
                             onDismiss = { contextMenu = null },
@@ -1227,22 +1258,45 @@ private fun OperationUnitAffiliation?.composeColour() = when (this) {
 
 @Composable
 private fun NotesPanel(
-    note: String,
-    onNoteChanged: (String) -> Unit,
+    state: ComposeOperationState,
+    onStateChanged: (ComposeOperationState) -> Unit,
     modifier: Modifier = Modifier,
 ) = Column(
     modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp),
     verticalArrangement = Arrangement.spacedBy(8.dp),
 ) {
-    Text("Inspector & notes", style = MaterialTheme.typography.titleMedium)
-    Text("Compose provides native cursor, selection, wrapping, clipboard, IME, and newline handling.")
-    OutlinedTextField(
-        value = note,
-        onValueChange = onNoteChanged,
-        modifier = Modifier.fillMaxWidth().weight(1f),
-        label = { Text("Operation notes") },
-        minLines = 8,
-    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("OPERATION NOTES", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+        CommandButton(onClick = { onStateChanged(state.openNewNoteEditor()) }, enabled = !state.isReadOnly) { Text("CREATE") }
+    }
+    if (state.visibleContent.notes.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No notes") }
+    } else LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(state.visibleContent.notes, key = { it.id.value }) { note ->
+            val index = state.visibleContent.notes.indexOf(note)
+            Surface(color = CommandColours.Dark, border = BorderStroke(1.dp, CommandColours.White.copy(alpha = 0.55f)), shape = RectangleShape) {
+                Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(note.title.ifBlank { "Untitled Note" }, color = CommandColours.White, fontWeight = FontWeight.Bold)
+                    Text(note.body.lineSequence().firstOrNull().orEmpty(), color = CommandColours.Backing, maxLines = 1)
+                    Text("${note.referencedObjectIds.size} reference${if (note.referencedObjectIds.size == 1) "" else "s"}", color = CommandColours.White.copy(alpha = 0.65f))
+                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        CommandButton({ onStateChanged(state.openNoteEditor(note.id)) }, modifier = Modifier.weight(1f).height(32.dp)) { Text("OPEN") }
+                        CommandButton({
+                            val ids = state.visibleContent.notes.map(OperationNote::id).toMutableList()
+                            if (index > 0) java.util.Collections.swap(ids, index, index - 1)
+                            onStateChanged(state.reorderNotes(ids))
+                        }, enabled = !state.isReadOnly && index > 0, modifier = Modifier.height(32.dp)) { Text("↑") }
+                        CommandButton({
+                            val ids = state.visibleContent.notes.map(OperationNote::id).toMutableList()
+                            if (index < ids.lastIndex) java.util.Collections.swap(ids, index, index + 1)
+                            onStateChanged(state.reorderNotes(ids))
+                        }, enabled = !state.isReadOnly && index < state.visibleContent.notes.lastIndex, modifier = Modifier.height(32.dp)) { Text("↓") }
+                        CommandButton({ onStateChanged(state.deleteNote(note.id)) }, enabled = !state.isReadOnly, modifier = Modifier.height(32.dp)) { Text("DELETE") }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -1405,11 +1459,16 @@ private fun EditorContent(
     onStateChanged: (ComposeOperationState) -> Unit,
     modifier: Modifier = Modifier,
 ) = when (val draft = editor.draft) {
-    is OperationEditorDraft.Notes -> NotesPanel(
-        note = draft.body,
-        onNoteChanged = { onStateChanged(state.updateEditorDraft(editor.id, draft.copy(body = it))) },
-        modifier = modifier,
-    )
+    is OperationEditorDraft.Notes -> NotesPanel(state, onStateChanged, modifier)
+
+    is OperationEditorDraft.Note -> {
+        val target = editor.target as? OperationEditorTarget.Note
+        if (target != null && state.visibleContent.notes.none { it.id == target.noteId }) {
+            Box(modifier, contentAlignment = Alignment.Center) {
+                Text(if (state.isReadOnly) "This note is unavailable at this history point." else "This note no longer exists.")
+            }
+        } else NoteEditorContent(editor.id, draft.value, state, onStateChanged, modifier)
+    }
 
     is OperationEditorDraft.Unit -> {
         val target = editor.target as? OperationEditorTarget.Object
@@ -1442,6 +1501,73 @@ private fun EditorContent(
     }
 
     is OperationEditorDraft.Opaque -> Box(modifier, contentAlignment = Alignment.Center) { Text("This restored editor is not supported yet.") }
+}
+
+@Composable
+private fun NoteEditorContent(
+    editorId: OperationEditorId,
+    draft: OperationNoteDraft,
+    state: ComposeOperationState,
+    onStateChanged: (ComposeOperationState) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    fun update(value: OperationNoteDraft) = onStateChanged(state.updateEditorDraft(editorId, OperationEditorDraft.Note(value)))
+    val picking = state.noteReferencePick?.editorId == editorId
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        OutlinedTextField(
+            draft.title,
+            { update(draft.copy(title = it)) },
+            Modifier.fillMaxWidth(),
+            enabled = !state.isReadOnly,
+            singleLine = true,
+            label = { Text("Title") },
+        )
+        OutlinedTextField(
+            draft.body,
+            { update(draft.copy(body = it)) },
+            Modifier.fillMaxWidth().weight(1f),
+            enabled = !state.isReadOnly,
+            minLines = 8,
+            label = { Text("Body") },
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("REFERENCES (${draft.referencedObjectIds.size})", Modifier.weight(1f), color = CommandColours.Backing)
+            CommandButton(
+                onClick = { onStateChanged(if (picking) state.cancelNoteReferencePick() else state.armNoteReferencePick(editorId)) },
+                active = picking,
+                enabled = !state.isReadOnly,
+            ) { Text(if (picking) "DONE PICKING" else "PICK REFERENCES") }
+        }
+        Column(Modifier.fillMaxWidth().height(150.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            if (draft.referencedObjectIds.isEmpty()) Text("No referenced map objects", color = CommandColours.White.copy(alpha = 0.65f))
+            draft.referencedObjectIds.forEachIndexed { index, objectId ->
+                val value = state.visibleContent.objectById(objectId)
+                Surface(color = CommandColours.Dark, border = BorderStroke(1.dp, CommandColours.White.copy(alpha = 0.45f)), shape = RectangleShape) {
+                    Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(value?.let { "${it.objectTypeLabel()}: ${it.displayName(state.visibleContent)}" } ?: "Missing object", Modifier.weight(1f))
+                        CommandButton({
+                            val ids = draft.referencedObjectIds.toMutableList()
+                            if (index > 0) java.util.Collections.swap(ids, index, index - 1)
+                            update(draft.copy(referencedObjectIds = ids))
+                        }, enabled = !state.isReadOnly && index > 0) { Text("↑") }
+                        CommandButton({
+                            val ids = draft.referencedObjectIds.toMutableList()
+                            if (index < ids.lastIndex) java.util.Collections.swap(ids, index, index + 1)
+                            update(draft.copy(referencedObjectIds = ids))
+                        }, enabled = !state.isReadOnly && index < draft.referencedObjectIds.lastIndex) { Text("↓") }
+                        CommandButton({ update(draft.copy(referencedObjectIds = draft.referencedObjectIds.filterNot { it == objectId })) }, enabled = !state.isReadOnly) { Text("×") }
+                    }
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CommandButton({ onStateChanged(state.saveNoteEditor(editorId)) }, enabled = !state.isReadOnly, modifier = Modifier.weight(1f)) { Text("SAVE") }
+            if (state.document.content.notes.any { it.id == draft.id }) {
+                CommandButton({ onStateChanged(state.deleteNote(draft.id)) }, enabled = !state.isReadOnly, modifier = Modifier.weight(1f)) { Text("DELETE") }
+            }
+            CommandButton({ onStateChanged(state.closeEditor(editorId)) }, modifier = Modifier.weight(1f)) { Text("CANCEL") }
+        }
+    }
 }
 
 @Composable
@@ -1720,6 +1846,10 @@ private fun PropertyRows(
 
 private fun OperationEditorState.title(content: OperationContent): String = when (kind) {
     OperationEditorKind.OPERATION_NOTES -> "Notes"
+    OperationEditorKind.NOTE -> when (val value = target) {
+        is OperationEditorTarget.Note -> content.notes.firstOrNull { it.id == value.noteId }?.title ?: "Edit Note"
+        else -> "New Note"
+    }
     OperationEditorKind.UNIT -> (target as? OperationEditorTarget.Object)?.objectId?.let(content::objectById)?.name?.takeIf(String::isNotBlank) ?: "Edit Unit"
     OperationEditorKind.UNIT_TEMPLATE -> when (val value = target) {
         is OperationEditorTarget.UnitTemplate -> content.unitTemplate(value.templateId)?.name ?: "Edit Unit Type"
@@ -1797,12 +1927,14 @@ private data class ComposeMapContextMenu(
     val objectName: String,
     val position: IntOffset,
     val actions: List<MapViewerContextMenuItem>,
+    val referencedNotes: List<OperationNote> = emptyList(),
 )
 
 @Composable
 private fun ComposeMapContextMenu(
     menu: ComposeMapContextMenu,
     onActionSelected: (MapViewerContextMenuItem) -> Unit,
+    onNoteSelected: (OperationNoteId) -> Unit,
     onDismiss: () -> Unit,
 ) = CommandPanel(
     modifier = Modifier.offset { menu.position }.width(220.dp),
@@ -1811,6 +1943,15 @@ private fun ComposeMapContextMenu(
     menu.actions.forEach { action ->
         CommandButton(onClick = { onActionSelected(action) }, modifier = Modifier.fillMaxWidth()) {
             Text(action.label.uppercase())
+        }
+    }
+    if (menu.referencedNotes.isNotEmpty()) {
+        HorizontalDivider()
+        Text("REFERENCED NOTES", color = CommandColours.Backing)
+        menu.referencedNotes.forEach { note ->
+            CommandButton(onClick = { onNoteSelected(note.id) }, modifier = Modifier.fillMaxWidth()) {
+                Text(note.title.ifBlank { "Untitled Note" }.uppercase())
+            }
         }
     }
     CommandButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
@@ -1824,6 +1965,12 @@ private fun OperationObject.displayName(content: OperationContent): String = whe
         ?: instanceName.ifBlank { content.graphicTemplate(graphicTemplateId)?.name ?: "Graphic" }
 
     is OperationDrawingObject -> drawing.displayName
+}
+
+private fun OperationObject.objectTypeLabel() = when (this) {
+    is OperationUnit -> "Unit"
+    is OperationGraphic -> "Graphic"
+    is OperationDrawingObject -> "Drawing"
 }
 
 private fun OperationObject.contextMenuItems(): List<MapViewerContextMenuItem> = when (this) {
@@ -1980,6 +2127,11 @@ private fun MapCanvas(
     onGraphicPlacementPreview: (MapCoordinate?) -> Unit,
     onGraphicPlacementCommitted: () -> Unit,
     onGraphicPlacementCancelled: () -> Unit,
+    noteReferencePickActive: Boolean,
+    noteReferenceHoveredObjectId: OperationObjectId?,
+    onNoteReferencePreview: (OperationObjectId?) -> Unit,
+    onNoteReferencePicked: (OperationObjectId) -> Unit,
+    onNoteReferenceCancelled: () -> Unit,
     cancellationEpoch: Int,
     unitIconSizePx: Double,
     onUnitIconSizeChanged: (Double) -> Unit,
@@ -2122,6 +2274,11 @@ private fun MapCanvas(
             .onPointerEvent(PointerEventType.Press) { event ->
                 val change = event.changes.firstOrNull() ?: return@onPointerEvent
                 if (event.buttons.isSecondaryPressed) {
+                    if (noteReferencePickActive) {
+                        onNoteReferenceCancelled()
+                        change.consume()
+                        return@onPointerEvent
+                    }
                     if (unitPlacementActive || graphicPlacementActive) {
                         if (unitPlacementActive) onUnitPlacementCancelled() else onGraphicPlacementCancelled()
                         change.consume()
@@ -2134,6 +2291,11 @@ private fun MapCanvas(
                         rightClickTargetId = null
                         onContextMenuDismissed()
                     }
+                    return@onPointerEvent
+                }
+                if (event.buttons.isPrimaryPressed && noteReferencePickActive) {
+                    objectAtScreen(change.position)?.id?.let(onNoteReferencePicked)
+                    change.consume()
                     return@onPointerEvent
                 }
                 if (event.buttons.isPrimaryPressed && unitPlacementActive) {
@@ -2204,6 +2366,10 @@ private fun MapCanvas(
             }
             .onPointerEvent(PointerEventType.Move) { event ->
                 val change = event.changes.firstOrNull() ?: return@onPointerEvent
+                if (noteReferencePickActive && !event.buttons.isPrimaryPressed && !event.buttons.isSecondaryPressed) {
+                    onNoteReferencePreview(objectAtScreen(change.position)?.id)
+                    return@onPointerEvent
+                }
                 if (unitPlacementActive && !event.buttons.isPrimaryPressed && !event.buttons.isSecondaryPressed) {
                     onUnitPlacementPreview(screenToMap(change.position).takeIf { it.x in 0.0..1.0 && it.y in 0.0..1.0 })
                     return@onPointerEvent
@@ -2374,6 +2540,14 @@ private fun MapCanvas(
                     Offset(bounds.left.toFloat(), bounds.top.toFloat()),
                     androidx.compose.ui.geometry.Size((bounds.right - bounds.left).toFloat(), (bounds.bottom - bounds.top).toFloat()),
                     style = androidx.compose.ui.graphics.drawscope.Stroke(2f)
+                )
+            }
+            noteReferenceHoveredObjectId?.let(content::objectById)?.selectionScreenBounds(selectionProjection)?.let { bounds ->
+                drawRect(
+                    CommandColours.Backing,
+                    Offset(bounds.left.toFloat(), bounds.top.toFloat()),
+                    androidx.compose.ui.geometry.Size((bounds.right - bounds.left).toFloat(), (bounds.bottom - bounds.top).toFloat()),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(3f),
                 )
             }
             if (debugMapObjects) {

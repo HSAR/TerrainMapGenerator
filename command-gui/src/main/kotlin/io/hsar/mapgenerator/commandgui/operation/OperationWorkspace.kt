@@ -11,6 +11,7 @@ value class OperationEditorId(val value: String)
 value class OperationEditorKind(val value: String) {
     companion object {
         val OPERATION_NOTES = OperationEditorKind("operation-notes")
+        val NOTE = OperationEditorKind("note")
         val UNIT = OperationEditorKind("unit")
         val UNIT_TEMPLATE = OperationEditorKind("unit-template")
         val GRAPHIC = OperationEditorKind("graphic")
@@ -20,6 +21,8 @@ value class OperationEditorKind(val value: String) {
 
 sealed interface OperationEditorTarget {
     data object OperationNotes : OperationEditorTarget
+    data class NewNote(val noteId: OperationNoteId) : OperationEditorTarget
+    data class Note(val noteId: OperationNoteId) : OperationEditorTarget
     data class Object(val objectId: OperationObjectId) : OperationEditorTarget
     data object NewUnitTemplate : OperationEditorTarget
     data class UnitTemplate(val templateId: OperationUnitTemplateId) : OperationEditorTarget
@@ -30,6 +33,7 @@ sealed interface OperationEditorTarget {
 
 sealed interface OperationEditorDraft {
     data class Notes(val body: String = "") : OperationEditorDraft
+    data class Note(val value: OperationNoteDraft = OperationNoteDraft()) : OperationEditorDraft
     data class Unit(
         val name: String,
         val positionX: String,
@@ -153,17 +157,27 @@ data class OperationWorkspaceState(
     companion object {
         val DEFAULT_NOTES_ID = OperationEditorId("operation-notes")
 
-        fun default(notes: String = "") = OperationWorkspaceState().open(
+        fun default() = OperationWorkspaceState().open(
             OperationEditorState(
                 id = DEFAULT_NOTES_ID,
                 kind = OperationEditorKind.OPERATION_NOTES,
                 target = OperationEditorTarget.OperationNotes,
-                draft = OperationEditorDraft.Notes(notes),
+                draft = OperationEditorDraft.Notes(),
                 floating = OperationFloatingEditorState(OperationEditorBounds(32.0, 32.0, 340.0, 360.0)),
             ),
         )
     }
 }
+
+fun OperationNote.editorState(
+    bounds: OperationEditorBounds = OperationEditorBounds(128.0, 96.0, 560.0, 640.0),
+) = OperationEditorState(
+    id = OperationEditorId("note:${id.value}"),
+    kind = OperationEditorKind.NOTE,
+    target = OperationEditorTarget.Note(id),
+    draft = OperationEditorDraft.Note(toDraft()),
+    floating = OperationFloatingEditorState(bounds),
+)
 
 fun OperationUnit.editorState(
     bounds: OperationEditorBounds = OperationEditorBounds(96.0, 96.0, 520.0, 560.0),

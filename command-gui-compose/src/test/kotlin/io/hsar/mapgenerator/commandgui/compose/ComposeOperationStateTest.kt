@@ -18,6 +18,9 @@ import io.hsar.mapgenerator.commandgui.operation.OperationEditorId
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorKind
 import io.hsar.mapgenerator.commandgui.operation.OperationLineDrawing
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
+import io.hsar.mapgenerator.commandgui.operation.OperationNote
+import io.hsar.mapgenerator.commandgui.operation.OperationNoteDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationNoteId
 import io.hsar.mapgenerator.commandgui.operation.OperationTimeline
 import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntry
 import io.hsar.mapgenerator.commandgui.operation.OperationUiState
@@ -154,12 +157,12 @@ class ComposeOperationStateTest {
     }
 
     @Test
-    fun `loaded document restores authoritative workspace layers editors and drafts without becoming dirty`() {
+    fun `loaded document restores authoritative workspace layers and editors without becoming dirty`() {
         val uiState = OperationUiState(
             selectedTool = MapViewerTool.MEASURE,
             selectedObjectIds = setOf(objectId),
             enabledLayerIds = setOf("GRID"),
-            workspace = OperationWorkspaceState.default("restored").copy(mode = MapViewerWorkspaceMode.FLOATING),
+            workspace = OperationWorkspaceState.default().copy(mode = MapViewerWorkspaceMode.FLOATING),
         )
 
         val state = ComposeOperationState(documentWith(unit).copy(uiState = uiState, persisted = true))
@@ -168,7 +171,7 @@ class ComposeOperationStateTest {
         assertThat(state.workspaceMode, equalTo(MapViewerWorkspaceMode.FLOATING))
         assertThat(state.enabledLayerIds, equalTo(setOf("GRID")))
         assertThat(state.openEditors.single().id, equalTo(OperationWorkspaceState.DEFAULT_NOTES_ID))
-        assertThat((state.openEditors.single().draft as OperationEditorDraft.Notes).body, equalTo("restored"))
+        assertThat((state.openEditors.single().draft as OperationEditorDraft.Notes).body, equalTo(""))
         assertThat(state.saveStatus, equalTo(ComposeSaveStatus.CLEAN))
         assertThat(state.hasUnsavedChanges, equalTo(false))
     }
@@ -329,6 +332,78 @@ class ComposeOperationStateTest {
 
         assertThat(historical.graphicPlacement, equalTo(null))
         assertThat(historical.document.timeline, equalTo(timeline))
+    }
+
+    @Test
+    fun `new note remains a draft until one save entry is recorded`() {
+        val opened = ComposeOperationState(documentWith(unit)).openNewNoteEditor()
+        val editor = opened.openEditors.single { it.kind == OperationEditorKind.NOTE }
+        val draft = (editor.draft as OperationEditorDraft.Note).value.copy(title = "", body = "Line one\nLine two")
+
+        val edited = opened.updateEditorDraft(editor.id, OperationEditorDraft.Note(draft))
+        val saved = edited.saveNoteEditor(editor.id)
+
+        assertThat(edited.document.content.notes, equalTo(emptyList()))
+        assertThat(saved.document.content.notes.single().title, equalTo("Untitled Note"))
+        assertThat(saved.document.content.notes.single().body, equalTo("Line one\nLine two"))
+        assertThat(saved.document.timeline.entries.size, equalTo(2))
+        assertThat(saved.workspace.editor(editor.id), equalTo(null))
+    }
+
+    @Test
+    fun `reference picking accepts every map object kind updates only the draft and remains armed`() {
+        val drawing = OperationDrawingObject(OperationObjectId(UUID(0, 50)), OperationLineDrawing(
+            OperationDrawingPoint(.1, .1), OperationDrawingPoint(.2, .2), OperationArgb.of(255, 255, 255, 255),
+        ))
+        val graphic = OperationGraphic(OperationObjectId(UUID(0, 51)), OperationGraphicTemplateId(UUID(0, 52)), "Marker", MapCoordinate(.3, .3), .03, .03)
+        val document = documentWith(unit)
+        val entry = OperationTimelineEntry(
+            OperationChangeSet(objects = listOf(OperationValueChange(after = drawing), OperationValueChange(after = graphic))),
+            MapViewerLedgerEntryKind.BATCH, "objects",
+        )
+        val opened = ComposeOperationState(document.copy(timeline = document.timeline.record(entry))).openNewNoteEditor()
+        val editor = opened.openEditors.single { it.kind == OperationEditorKind.NOTE }
+        val armed = opened.armNoteReferencePick(editor.id).previewNoteReference(objectId)
+
+        val picked = armed.addPickedNoteReference(objectId)
+            .addPickedNoteReference(drawing.id)
+            .addPickedNoteReference(graphic.id)
+            .previewNoteReference(objectId)
+            .addPickedNoteReference(objectId)
+
+        val draft = (picked.workspace.editor(editor.id)!!.draft as OperationEditorDraft.Note).value
+        assertThat(draft.referencedObjectIds, equalTo(listOf(objectId, drawing.id, graphic.id)))
+        assertThat(picked.document.content.notes, equalTo(emptyList()))
+        assertThat(picked.noteReferencePick?.hoveredObjectId, equalTo(objectId))
+    }
+
+    @Test
+    fun `history tool change and editor close cancel note reference picking`() {
+        val opened = ComposeOperationState(documentWith(unit)).openNewNoteEditor()
+        val editor = opened.openEditors.single { it.kind == OperationEditorKind.NOTE }
+        val armed = opened.armNoteReferencePick(editor.id)
+
+        assertThat(armed.previewHistory(0).noteReferencePick, equalTo(null))
+        assertThat(armed.selectTool(MapViewerTool.DRAW).noteReferencePick, equalTo(null))
+        assertThat(armed.closeEditor(editor.id).noteReferencePick, equalTo(null))
+    }
+
+    @Test
+    fun `note reorder and delete each record one timeline entry`() {
+        val first = OperationNote(OperationNoteId(UUID(0, 40)), "First", "")
+        val second = OperationNote(OperationNoteId(UUID(0, 41)), "Second", "")
+        val notesEntry = OperationTimelineEntry(
+            OperationChangeSet(notes = listOf(OperationValueChange(after = first), OperationValueChange(after = second))),
+            MapViewerLedgerEntryKind.BATCH, "notes",
+        )
+        val state = ComposeOperationState(documentWith(unit).copy(timeline = documentWith(unit).timeline.record(notesEntry)))
+
+        val reordered = state.reorderNotes(listOf(second.id, first.id))
+        val deleted = reordered.deleteNote(first.id)
+
+        assertThat(reordered.document.content.notes.map(OperationNote::id), equalTo(listOf(second.id, first.id)))
+        assertThat(deleted.document.content.notes, equalTo(listOf(second)))
+        assertThat(deleted.document.timeline.entries.size, equalTo(state.document.timeline.entries.size + 2))
     }
 
     private fun graphicTemplate() = OperationGraphicTemplate(

@@ -23,6 +23,8 @@ import io.hsar.mapgenerator.commandgui.operation.OperationImageDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationPropertyDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
+import io.hsar.mapgenerator.commandgui.operation.OperationNoteDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationNoteId
 import io.hsar.mapgenerator.commandgui.operation.OperationUnit
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateId
 import io.hsar.mapgenerator.commandgui.operation.OperationWorkspaceState
@@ -169,7 +171,7 @@ class OperationAdditionalDataTest {
 
         // Assert
         assertThat(restored, equalTo(state))
-        assertThat(OperationSaveJson.objectMapper.readTree(json).path("uiState").path("schemaVersion").intValue(), equalTo(5))
+        assertThat(OperationSaveJson.objectMapper.readTree(json).path("uiState").path("schemaVersion").intValue(), equalTo(6))
         assertThat(restored.dialogs.single(), equalTo(dialog))
         assertThat(String(json).contains("\"custom\" : \"keep\""), equalTo(true))
     }
@@ -225,8 +227,9 @@ class OperationAdditionalDataTest {
         val restoredEditor = restored.operationUiState().workspace.editor(editor.id)!!
         assertThat((restoredEditor.draft as OperationEditorDraft.Unit).name, equalTo("Working Alpha"))
         assertThat(restoredEditor.floating.mapAnchor, equalTo(ViewerPoint(40.0, 50.0)))
-        assertThat(restored.uiState().dialogs.single().type, equalTo("unit-edit"))
-        assertThat(restored.uiState().dialogs.single().draft!!.path("name").textValue(), equalTo("Working Alpha"))
+        val unitDialog = restored.uiState().dialogs.single { it.type == "unit-edit" }
+        assertThat(unitDialog.type, equalTo("unit-edit"))
+        assertThat(unitDialog.draft!!.path("name").textValue(), equalTo("Working Alpha"))
         assertThat(OperationSaveJson.objectMapper.readTree(json).path("uiState").path("customUi").textValue(), equalTo("keep"))
     }
 
@@ -263,7 +266,7 @@ class OperationAdditionalDataTest {
         val restored = OperationAdditionalData.fromJson(bytes).operationUiState().workspace.editor(editor.id)!!
 
         assertThat(restored, equalTo(editor))
-        assertThat(OperationSaveJson.objectMapper.readTree(bytes).path("uiState").path("schemaVersion").intValue(), equalTo(5))
+        assertThat(OperationSaveJson.objectMapper.readTree(bytes).path("uiState").path("schemaVersion").intValue(), equalTo(6))
         assertThat(OperationSaveJson.objectMapper.readTree(bytes).path("custom").textValue(), equalTo("keep"))
     }
 
@@ -280,5 +283,56 @@ class OperationAdditionalDataTest {
         val editor = state.workspace.editors.single()
         assertThat((editor.draft as OperationEditorDraft.Unit).name, equalTo("Legacy"))
         assertThat(editor.kind.value, equalTo("unit"))
+    }
+
+    @Test
+    fun `version six preserves an unfinished note draft and ordered missing references`() {
+        val noteId = OperationNoteId(UUID.fromString("00000000-0000-0000-0000-000000000031"))
+        val first = OperationObjectId(UUID.fromString("00000000-0000-0000-0000-000000000032"))
+        val missing = OperationObjectId(UUID.fromString("00000000-0000-0000-0000-000000000033"))
+        val editor = OperationEditorState(
+            OperationEditorId("note:new:${noteId.value}"), OperationEditorKind.NOTE,
+            OperationEditorTarget.NewNote(noteId),
+            OperationEditorDraft.Note(OperationNoteDraft(noteId, "Orders", "Hold\r\nPosition", listOf(first, missing))),
+            OperationFloatingEditorState(OperationEditorBounds(20.0, 30.0, 560.0, 640.0), minimized = true),
+        )
+        val data = OperationAdditionalData.fromJson(null)
+
+        data.updateOperationUiState(io.hsar.mapgenerator.commandgui.operation.OperationUiState(workspace = OperationWorkspaceState.default().open(editor)))
+        val bytes = data.toJsonOrNull()!!
+        val restored = OperationAdditionalData.fromJson(bytes).operationUiState().workspace.editor(editor.id)
+
+        assertThat(restored, equalTo(editor))
+        assertThat(OperationSaveJson.objectMapper.readTree(bytes).path("uiState").path("schemaVersion").intValue(), equalTo(6))
+        assertThat(OperationAdditionalData.fromJson(bytes).uiState().dialogs.none { it.type == "note" && it.targetId == noteId.value.toString() }, equalTo(true))
+    }
+
+    @Test
+    fun `legacy note dialogs migrate to typed editors and retain unsupported draft fields`() {
+        val noteId = "00000000-0000-0000-0000-000000000034"
+        val objectId = "00000000-0000-0000-0000-000000000035"
+        val json = """{"uiState":{"workspaceMode":"FLOATING","dialogs":[
+            {"type":"notes","bounds":{"left":1,"top":2,"width":320,"height":400}},
+            {"type":"note","targetId":"$noteId","bounds":{"left":10,"top":20,"width":560,"height":640},"draft":{"title":"Legacy","body":"Draft","referencesExpanded":true,"references":["$objectId"]}}
+        ]}}"""
+        val data = OperationAdditionalData.fromJson(json.toByteArray())
+
+        val state = data.operationUiState()
+        val editor = state.workspace.editor(OperationEditorId("note:$noteId"))!!
+        data.updateOperationUiState(state)
+        val projected = data.uiState().dialogs.single { it.type == "note" }
+
+        assertThat((editor.draft as OperationEditorDraft.Note).value.referencedObjectIds.map { it.value.toString() }, equalTo(listOf(objectId)))
+        assertThat(projected.draft!!.path("referencesExpanded").booleanValue(), equalTo(true))
+        assertThat(projected.bounds, equalTo(MapViewerDialogBounds(10.0, 20.0, 560.0, 640.0)))
+    }
+
+    @Test
+    fun `legacy Compose scratchpad text is deliberately discarded`() {
+        val json = """{"uiState":{"schemaVersion":5,"workspace":{"mode":"DOCKED","activeEditorId":"operation-notes","editors":[{"id":"operation-notes","kind":"operation-notes","target":{"type":"operation-notes"},"draft":{"body":"discard me"},"floating":{"bounds":{"left":1,"top":2,"width":340,"height":360},"minimized":false,"pinned":false}}],"dockRegions":[{"region":"RIGHT","size":320,"editorIds":["operation-notes"],"activeEditorId":"operation-notes","collapsed":false}]}}}"""
+
+        val workspace = OperationAdditionalData.fromJson(json.toByteArray()).operationUiState().workspace
+
+        assertThat((workspace.editor(OperationWorkspaceState.DEFAULT_NOTES_ID)!!.draft as OperationEditorDraft.Notes).body, equalTo(""))
     }
 }

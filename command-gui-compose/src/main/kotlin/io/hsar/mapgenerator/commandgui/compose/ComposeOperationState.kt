@@ -21,6 +21,10 @@ import io.hsar.mapgenerator.commandgui.operation.OperationGraphic
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphicAuthoring
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateId
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
+import io.hsar.mapgenerator.commandgui.operation.OperationNote
+import io.hsar.mapgenerator.commandgui.operation.OperationNoteAuthoring
+import io.hsar.mapgenerator.commandgui.operation.OperationNoteDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationNoteId
 import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntry
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitAuthoring
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateId
@@ -48,6 +52,11 @@ data class ComposeGraphicPlacement(
     val coordinate: io.hsar.mapgenerator.commandgui.MapCoordinate? = null,
 )
 
+data class ComposeNoteReferencePick(
+    val editorId: OperationEditorId,
+    val hoveredObjectId: OperationObjectId? = null,
+)
+
 data class ComposeOperationState(
     val document: OperationDocument,
     val viewport: MapViewport? = null,
@@ -60,6 +69,7 @@ data class ComposeOperationState(
     val previewContent: OperationContent? = null,
     val unitPlacement: ComposeUnitPlacement? = null,
     val graphicPlacement: ComposeGraphicPlacement? = null,
+    val noteReferencePick: ComposeNoteReferencePick? = null,
     val revision: Long = if (document.persisted) 0L else 1L,
     val savingRevision: Long? = null,
     val savedRevision: Long = 0L,
@@ -97,6 +107,23 @@ data class ComposeOperationState(
         )
 
     fun openNotes() = updateWorkspace(workspace.open(OperationWorkspaceState.default().editors.single()))
+
+    fun openNewNoteEditor(): ComposeOperationState {
+        if (isReadOnly) return this
+        val draft = OperationNoteDraft()
+        return updateWorkspace(workspace.open(OperationEditorState(
+            id = OperationEditorId("note:new:${draft.id.value}"),
+            kind = OperationEditorKind.NOTE,
+            target = OperationEditorTarget.NewNote(draft.id),
+            draft = OperationEditorDraft.Note(draft),
+            floating = io.hsar.mapgenerator.commandgui.operation.OperationFloatingEditorState(OperationEditorBounds(128.0, 96.0, 560.0, 640.0)),
+        )))
+    }
+
+    fun openNoteEditor(id: OperationNoteId): ComposeOperationState {
+        val note = visibleContent.notes.firstOrNull { it.id == id } ?: return this
+        return updateWorkspace(workspace.open(note.editorState()))
+    }
 
     fun openUnitEditor(id: OperationObjectId): ComposeOperationState {
         val unit = document.content.objectById(id) as? OperationUnit ?: return this
@@ -147,11 +174,74 @@ data class ComposeOperationState(
 
     fun activateEditor(id: OperationEditorId) = updateWorkspace(workspace.activate(id))
 
-    fun closeEditor(id: OperationEditorId) = updateWorkspace(workspace.close(id))
+    fun closeEditor(id: OperationEditorId) = updateWorkspace(workspace.close(id)).let { state ->
+        if (state.noteReferencePick?.editorId == id) state.copy(noteReferencePick = null) else state
+    }
 
     fun updateEditorDraft(id: OperationEditorId, draft: OperationEditorDraft) = updateWorkspace(
         workspace.updateEditor(id) { it.copy(draft = draft) },
     )
+
+    fun saveNoteEditor(id: OperationEditorId): ComposeOperationState {
+        if (isReadOnly) return this
+        val editor = workspace.editor(id) ?: return this
+        val draft = (editor.draft as? OperationEditorDraft.Note)?.value ?: return this
+        val before = (editor.target as? OperationEditorTarget.Note)?.noteId
+            ?.let { noteId -> document.content.notes.firstOrNull { it.id == noteId } }
+        val changes = before?.let { OperationNoteAuthoring.editChange(it, draft) }
+            ?: OperationNoteAuthoring.createChange(document.content, draft)
+        if (changes.isEmpty) return closeEditor(id)
+        val note = OperationNoteAuthoring.note(draft)
+        return withTimelineEntry(OperationTimelineEntry(
+            changes, MapViewerLedgerEntryKind.NOTE,
+            if (before == null) "created note ${note.title}" else "edited note ${note.title}",
+        )).closeEditor(id)
+    }
+
+    fun deleteNote(id: OperationNoteId): ComposeOperationState {
+        if (isReadOnly) return this
+        val note = document.content.notes.firstOrNull { it.id == id } ?: return this
+        val changes = OperationNoteAuthoring.deleteChange(document.content, id)
+        if (changes.isEmpty) return this
+        val nextWorkspace = workspace.editors
+            .filter { (it.target as? OperationEditorTarget.Note)?.noteId == id }
+            .fold(workspace) { value, editor -> value.close(editor.id) }
+        return withTimelineEntry(OperationTimelineEntry(
+            changes, MapViewerLedgerEntryKind.NOTE, "deleted note ${note.title}",
+        )).copy(workspace = nextWorkspace, noteReferencePick = noteReferencePick?.takeUnless { nextWorkspace.editor(it.editorId) == null })
+    }
+
+    fun reorderNotes(orderedIds: List<OperationNoteId>): ComposeOperationState {
+        if (isReadOnly) return this
+        val changes = OperationNoteAuthoring.reorderChange(document.content, orderedIds)
+        return if (changes.isEmpty) this else withTimelineEntry(OperationTimelineEntry(
+            changes, MapViewerLedgerEntryKind.NOTE, "reordered notes",
+        ))
+    }
+
+    fun armNoteReferencePick(editorId: OperationEditorId): ComposeOperationState {
+        if (isReadOnly || workspace.editor(editorId)?.draft !is OperationEditorDraft.Note) return this
+        return cancelPlacements().copy(noteReferencePick = ComposeNoteReferencePick(editorId))
+    }
+
+    fun previewNoteReference(objectId: OperationObjectId?): ComposeOperationState {
+        val pick = noteReferencePick ?: return this
+        val valid = objectId?.takeIf { id -> visibleContent.objectById(id) != null }
+        return if (pick.hoveredObjectId == valid) this else copy(noteReferencePick = pick.copy(hoveredObjectId = valid))
+    }
+
+    fun addPickedNoteReference(objectId: OperationObjectId): ComposeOperationState {
+        val pick = noteReferencePick ?: return this
+        if (visibleContent.objectById(objectId) == null) return this
+        val editor = workspace.editor(pick.editorId) ?: return cancelNoteReferencePick()
+        val draft = (editor.draft as? OperationEditorDraft.Note)?.value ?: return cancelNoteReferencePick()
+        if (objectId in draft.referencedObjectIds) return this
+        return updateEditorDraft(editor.id, OperationEditorDraft.Note(
+            draft.copy(referencedObjectIds = draft.referencedObjectIds + objectId),
+        )).copy(noteReferencePick = pick.copy(hoveredObjectId = objectId))
+    }
+
+    fun cancelNoteReferencePick() = copy(noteReferencePick = null)
 
     fun updateFloatingEditor(id: OperationEditorId, bounds: OperationEditorBounds) = updateWorkspace(
         workspace.updateEditor(id) { editor -> editor.copy(floating = editor.floating.copy(bounds = bounds)) },
@@ -309,7 +399,7 @@ data class ComposeOperationState(
 
     fun armUnitPlacement(id: OperationUnitTemplateId) =
         if (isReadOnly || document.content.unitTemplate(id) == null) this
-        else copy(unitPlacement = ComposeUnitPlacement(id), graphicPlacement = null, previewContent = null)
+        else copy(unitPlacement = ComposeUnitPlacement(id), graphicPlacement = null, noteReferencePick = null, previewContent = null)
 
     fun previewUnitPlacement(
         coordinate: io.hsar.mapgenerator.commandgui.MapCoordinate?,
@@ -342,7 +432,7 @@ data class ComposeOperationState(
 
     fun armGraphicPlacement(id: OperationGraphicTemplateId) =
         if (isReadOnly || document.content.graphicTemplate(id) == null) this
-        else copy(graphicPlacement = ComposeGraphicPlacement(id), unitPlacement = null, previewContent = null)
+        else copy(graphicPlacement = ComposeGraphicPlacement(id), unitPlacement = null, noteReferencePick = null, previewContent = null)
 
     fun previewGraphicPlacement(coordinate: io.hsar.mapgenerator.commandgui.MapCoordinate?): ComposeOperationState {
         val placement = graphicPlacement ?: return this
@@ -365,7 +455,7 @@ data class ComposeOperationState(
 
     fun cancelGraphicPlacement() = copy(graphicPlacement = null, previewContent = null)
 
-    fun cancelPlacements() = copy(unitPlacement = null, graphicPlacement = null, previewContent = null)
+    fun cancelPlacements() = copy(unitPlacement = null, graphicPlacement = null, noteReferencePick = null, previewContent = null)
 
     fun addDrawing(drawing: OperationDrawing): ComposeOperationState {
         if (isReadOnly) return this
@@ -397,9 +487,10 @@ data class ComposeOperationState(
         selectedObjectIds = emptySet(),
         unitPlacement = null,
         graphicPlacement = null,
+        noteReferencePick = null,
     )
 
-    fun returnToCurrent() = copy(historyPreviewCount = null, previewContent = null, unitPlacement = null, graphicPlacement = null).pruneSelection().pruneEditors()
+    fun returnToCurrent() = copy(historyPreviewCount = null, previewContent = null, unitPlacement = null, graphicPlacement = null, noteReferencePick = null).pruneSelection().pruneEditors()
 
     fun saveStarted(targetRevision: Long = revision) = copy(
         savingRevision = targetRevision,
@@ -490,6 +581,7 @@ data class ComposeOperationState(
             (editor.target as? OperationEditorTarget.Object)?.objectId?.let { it !in liveIds } == true ||
                 (editor.target as? OperationEditorTarget.UnitTemplate)?.templateId?.let { document.content.unitTemplate(it) == null } == true
                 || (editor.target as? OperationEditorTarget.GraphicTemplate)?.templateId?.let { document.content.graphicTemplate(it) == null } == true
+                || (editor.target as? OperationEditorTarget.Note)?.noteId?.let { noteId -> document.content.notes.none { it.id == noteId } } == true
         }.map(OperationEditorState::id)
         return if (invalid.isEmpty()) this else copy(workspace = invalid.fold(workspace, OperationWorkspaceState::close))
     }
@@ -501,6 +593,7 @@ private fun OperationWorkspaceState.hydrate(content: OperationContent, renderDat
             is OperationEditorTarget.Object -> content.objectById(target.objectId) != null
             is OperationEditorTarget.UnitTemplate -> content.unitTemplate(target.templateId) != null
             is OperationEditorTarget.GraphicTemplate -> content.graphicTemplate(target.templateId) != null
+            is OperationEditorTarget.Note -> content.notes.any { it.id == target.noteId }
             else -> true
         }
     }.map { editor ->
