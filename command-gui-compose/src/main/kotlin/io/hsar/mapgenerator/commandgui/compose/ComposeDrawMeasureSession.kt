@@ -36,6 +36,13 @@ internal data class ComposeDrawMeasureSession(
 
     fun finishDrawing(): OperationDrawing? = drawing?.committedOrNull()
 
+    fun release(): ComposeDrawMeasureOutcome = finishDrawing()
+        ?.let(ComposeDrawMeasureOutcome::DrawingCommitted)
+        ?: if (active) ComposeDrawMeasureOutcome.Cleared else ComposeDrawMeasureOutcome.NoOp
+
+    fun cancel(): ComposeDrawMeasureOutcome =
+        if (active) ComposeDrawMeasureOutcome.Cleared else ComposeDrawMeasureOutcome.NoOp
+
     companion object {
         fun startDrawing(
             mode: MapViewerDrawingMode,
@@ -51,4 +58,10 @@ internal data class ComposeDrawMeasureSession(
             point.takeIf { !blocked && gridLayer != null && it.x in 0.0..1.0 && it.y in 0.0..1.0 }
                 ?.let { ComposeDrawMeasureSession(measurementOrigin = it) }
     }
+}
+
+internal sealed interface ComposeDrawMeasureOutcome {
+    data class DrawingCommitted(val drawing: OperationDrawing) : ComposeDrawMeasureOutcome
+    data object Cleared : ComposeDrawMeasureOutcome
+    data object NoOp : ComposeDrawMeasureOutcome
 }

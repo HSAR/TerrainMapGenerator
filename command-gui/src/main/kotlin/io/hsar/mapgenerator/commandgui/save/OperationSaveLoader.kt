@@ -144,7 +144,7 @@ private class OperationLedgerLoader(private val zip: ZipFile) {
             )
         )
 
-        is AddTurnEntrySaveDto -> DecodedLedgerEntry(OperationChangeSet(), dto.name, dto.thumbnailAssetId)
+        is AddTurnEntrySaveDto -> DecodedLedgerEntry(OperationChangeSet(), dto.name, dto.thumbnailAssetId, emptyList())
         is BatchLedgerEntrySaveDto -> {
             var after = content
             val components = dto.entries.map { nested ->

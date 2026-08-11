@@ -108,7 +108,7 @@ internal fun applyOperationNotePatch(note: OperationNote, changes: Map<String, J
         }
     }
 
-internal fun operationEntryDescription(
+fun operationEntryDescription(
     changeSet: OperationChangeSet,
     before: OperationContent,
     turnName: String? = null,

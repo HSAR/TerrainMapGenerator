@@ -11,6 +11,9 @@ import io.hsar.mapgenerator.commandgui.save.LedgerFileDto
 import io.hsar.mapgenerator.commandgui.save.MapSaveDto
 import io.hsar.mapgenerator.commandgui.save.NoteSaveDto
 import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
+import io.hsar.mapgenerator.commandgui.operation.OPERATION_START_TURN_NAME
+import io.hsar.mapgenerator.commandgui.operation.OperationGeneratedImage
+import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntries
 import korlibs.io.lang.use
 import org.apache.batik.ext.awt.image.GraphicsUtil.createGraphics
 import org.hamcrest.MatcherAssert.assertThat
@@ -34,6 +37,44 @@ class MapViewerSaveRepositoryTest {
 
     @TempDir
     lateinit var savesDirectory: Path
+
+    @Test
+    fun `new operations begin at the operation start turn`() {
+        val created = MapViewerSaveRepository(savesDirectory).createOperation(
+            MapViewerSettings(operationName = "New"),
+            MapViewerRenderData(BufferedImage(20, 10, BufferedImage.TYPE_INT_ARGB)),
+        )
+
+        assertThat(created.timeline.entries.single().turnName, equalTo(OPERATION_START_TURN_NAME))
+        assertThat(created.timeline.appliedCount, equalTo(1))
+    }
+
+    @Test
+    fun `repository writes only applied turn thumbnails`() {
+        val repository = MapViewerSaveRepository(savesDirectory)
+        val firstId = UUID.fromString("00000000-0000-0000-0000-000000000071")
+        val futureId = UUID.fromString("00000000-0000-0000-0000-000000000072")
+        val image = BufferedImage(32, 18, BufferedImage.TYPE_INT_RGB)
+        val created = repository.createOperation(
+            MapViewerSettings(operationName = "Turns"), MapViewerRenderData(BufferedImage(20, 10, BufferedImage.TYPE_INT_ARGB)),
+        )
+        val timeline = created.timeline
+            .record(OperationTimelineEntries.turn("Turn 1", firstId))
+            .record(OperationTimelineEntries.turn("Turn 2", futureId))
+            .withAppliedCount(2)
+
+        val saved = repository.saveOperation(created.copy(
+            timeline = timeline,
+            generatedImageAssets = listOf(
+                OperationGeneratedImage(firstId, "turn-thumbnail", image),
+                OperationGeneratedImage(futureId, "turn-thumbnail", image),
+            ),
+        ))
+        val loaded = repository.loadOperation(saved.sourcePath!!)
+
+        assertThat(loaded.timeline.entries.mapNotNull { it.turnName }, equalTo(listOf(OPERATION_START_TURN_NAME, "Turn 1")))
+        assertThat(loaded.generatedImageAssets.map { it.id }, equalTo(listOf(firstId)))
+    }
 
     @Test
     fun `lists saves by update time and skips invalid archives`() {

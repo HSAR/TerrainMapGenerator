@@ -41,6 +41,18 @@ class ComposeDrawMeasureSessionTest {
         assertThat(session.measurement!!.destination, equalTo(MapCoordinate(1.0, 0.0)))
     }
 
+    @Test
+    fun `release commits a drawing while cancellation and inactive release do not`() {
+        val started = ComposeDrawMeasureSession.startDrawing(
+            MapViewerDrawingMode.LINE, MapViewerDrawingColour.RED.argb, MapCoordinate(.1, .1), padded,
+        )!!
+        val updated = started.update(MapCoordinate(.2, .2), false, 1.0, .01, null, 100, 100)
+
+        assertThat(updated.release() is ComposeDrawMeasureOutcome.DrawingCommitted, equalTo(true))
+        assertThat(updated.cancel(), equalTo(ComposeDrawMeasureOutcome.Cleared))
+        assertThat(ComposeDrawMeasureSession().release(), equalTo(ComposeDrawMeasureOutcome.NoOp))
+    }
+
     private fun grid() = GridLayer(
         "TEST", gridScale = 1000, unitsPerPixel = 1.0, detailLevel = 1, pixelsPerLine = 10.0,
         verticalLineNumberStart = MgrsCoord.fromMetres(0), horizontalLineNumberStart = MgrsCoord.fromMetres(0),

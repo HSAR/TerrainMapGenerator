@@ -1,6 +1,5 @@
 package io.hsar.mapgenerator.commandgui.compose
 
-import io.hsar.mapgenerator.commandgui.MapViewerLedgerEntryKind
 import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
 import io.hsar.mapgenerator.commandgui.MapViewerTool
 import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
@@ -21,12 +20,14 @@ import io.hsar.mapgenerator.commandgui.operation.OperationEditorTarget
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphic
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphicAuthoring
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateId
+import io.hsar.mapgenerator.commandgui.operation.OperationGeneratedImage
+import io.hsar.mapgenerator.commandgui.operation.OperationLedgerTarget
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.operation.OperationNote
 import io.hsar.mapgenerator.commandgui.operation.OperationNoteAuthoring
 import io.hsar.mapgenerator.commandgui.operation.OperationNoteDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationNoteId
-import io.hsar.mapgenerator.commandgui.operation.optionalDisplayName
+import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntries
 import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntry
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitAuthoring
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateId
@@ -36,6 +37,7 @@ import io.hsar.mapgenerator.commandgui.operation.OperationWorkspaceState
 import io.hsar.mapgenerator.commandgui.operation.changesFrom
 import io.hsar.mapgenerator.commandgui.operation.delete
 import io.hsar.mapgenerator.commandgui.operation.editorState
+import io.hsar.mapgenerator.commandgui.operation.nextTurnName
 import java.util.*
 import java.util.Collections.emptyMap
 import java.util.Collections.emptySet
@@ -193,32 +195,25 @@ data class ComposeOperationState(
         val changes = before?.let { OperationNoteAuthoring.editChange(it, draft) }
             ?: OperationNoteAuthoring.createChange(document.content, draft)
         if (changes.isEmpty) return closeEditor(id)
-        val note = OperationNoteAuthoring.note(draft)
-        return withTimelineEntry(OperationTimelineEntry(
-            changes, MapViewerLedgerEntryKind.NOTE,
-            if (before == null) "created note ${note.title}" else "edited note ${note.title}",
-        )).closeEditor(id)
+        return withChangeSet(changes).closeEditor(id)
     }
 
     fun deleteNote(id: OperationNoteId): ComposeOperationState {
         if (isReadOnly) return this
-        val note = document.content.notes.firstOrNull { it.id == id } ?: return this
+        document.content.notes.firstOrNull { it.id == id } ?: return this
         val changes = OperationNoteAuthoring.deleteChange(document.content, id)
         if (changes.isEmpty) return this
         val nextWorkspace = workspace.editors
             .filter { (it.target as? OperationEditorTarget.Note)?.noteId == id }
             .fold(workspace) { value, editor -> value.close(editor.id) }
-        return withTimelineEntry(OperationTimelineEntry(
-            changes, MapViewerLedgerEntryKind.NOTE, "deleted note ${note.title}",
-        )).copy(workspace = nextWorkspace, noteReferencePick = noteReferencePick?.takeUnless { nextWorkspace.editor(it.editorId) == null })
+        return withChangeSet(changes)
+            .copy(workspace = nextWorkspace, noteReferencePick = noteReferencePick?.takeUnless { nextWorkspace.editor(it.editorId) == null })
     }
 
     fun reorderNotes(orderedIds: List<OperationNoteId>): ComposeOperationState {
         if (isReadOnly) return this
         val changes = OperationNoteAuthoring.reorderChange(document.content, orderedIds)
-        return if (changes.isEmpty) this else withTimelineEntry(OperationTimelineEntry(
-            changes, MapViewerLedgerEntryKind.NOTE, "reordered notes",
-        ))
+        return if (changes.isEmpty) this else withChangeSet(changes)
     }
 
     fun armNoteReferencePick(editorId: OperationEditorId): ComposeOperationState {
@@ -293,32 +288,24 @@ data class ComposeOperationState(
 
     fun cancelPreview() = copy(previewContent = null)
 
-    fun commitPreview(
-        kind: MapViewerLedgerEntryKind = MapViewerLedgerEntryKind.OBJECT,
-        description: String,
-    ): ComposeOperationState {
+    fun commitPreview(): ComposeOperationState {
         val after = previewContent ?: return this
         val changes = after.changesFrom(document.content)
         if (changes.isEmpty || isReadOnly) return cancelPreview()
-        return withTimelineEntry(OperationTimelineEntry(changes, kind, description)).copy(previewContent = null)
+        return withChangeSet(changes).copy(previewContent = null)
     }
 
     fun deleteSelection(): ComposeOperationState {
         if (isReadOnly || selectedObjectIds.isEmpty()) return this
         val after = document.content.delete(selectedObjectIds)
-        return preview(after).commitPreview(
-            description = if (selectedObjectIds.size == 1) "deleted an item" else "deleted ${selectedObjectIds.size} items",
-        ).copy(selectedObjectIds = emptySet())
+        return preview(after).commitPreview().copy(selectedObjectIds = emptySet())
     }
 
     fun editUnit(updated: OperationUnit): ComposeOperationState {
         if (isReadOnly) return this
         val before = document.content.objectById(updated.id) as? OperationUnit ?: return this
         if (before == updated) return this
-        return withTimelineEntry(OperationTimelineEntry(
-            OperationUnitAuthoring.editUnitChange(before, updated), MapViewerLedgerEntryKind.OBJECT,
-            "edited ${updated.instanceName.ifBlank { "unit" }}",
-        ))
+        return withChangeSet(OperationUnitAuthoring.editUnitChange(before, updated))
     }
 
     fun saveUnitTemplateEditor(id: OperationEditorId, image: java.awt.image.BufferedImage?): ComposeOperationState {
@@ -335,22 +322,14 @@ data class ComposeOperationState(
         val changes = existing?.let { OperationUnitAuthoring.editTemplateChange(it, updated) }
             ?: OperationUnitAuthoring.createTemplateChange(updated)
         if (changes.isEmpty) return closeEditor(id)
-        return withTimelineEntry(OperationTimelineEntry(
-            changes,
-            MapViewerLedgerEntryKind.UNIT_TEMPLATE,
-            if (existing == null) "created unit template ${updated.name}" else "edited unit template ${updated.name}",
-        )).closeEditor(id)
+        return withChangeSet(changes).closeEditor(id)
     }
 
     fun deleteUnitTemplate(id: OperationUnitTemplateId): ComposeOperationState {
         if (isReadOnly || !OperationUnitAuthoring.canDeleteTemplate(document.content, id)) return this
-        val template = document.content.unitTemplate(id) ?: return this
+        document.content.unitTemplate(id) ?: return this
         val changes = OperationUnitAuthoring.deleteTemplateChange(document.content, id) ?: return this
-        return withTimelineEntry(OperationTimelineEntry(
-            changes,
-            MapViewerLedgerEntryKind.UNIT_TEMPLATE,
-            "deleted unit template ${template.name}",
-        )).copy(workspace = workspace.editors.filter { it.target == OperationEditorTarget.UnitTemplate(id) }
+        return withChangeSet(changes).copy(workspace = workspace.editors.filter { it.target == OperationEditorTarget.UnitTemplate(id) }
             .fold(workspace) { value, editor -> value.close(editor.id) })
     }
 
@@ -367,20 +346,14 @@ data class ComposeOperationState(
         val changes = existing?.let { OperationGraphicAuthoring.editTemplateChange(document.content, it, updated) }
             ?: OperationGraphicAuthoring.createTemplateChange(updated)
         if (changes.isEmpty) return closeEditor(id)
-        return withTimelineEntry(OperationTimelineEntry(
-            changes,
-            MapViewerLedgerEntryKind.GRAPHIC_TEMPLATE,
-            if (existing == null) "created graphic template ${updated.name}" else "edited graphic template ${updated.name}",
-        )).closeEditor(id)
+        return withChangeSet(changes).closeEditor(id)
     }
 
     fun deleteGraphicTemplate(id: OperationGraphicTemplateId): ComposeOperationState {
         if (isReadOnly || !OperationGraphicAuthoring.canDeleteTemplate(document.content, id)) return this
-        val template = document.content.graphicTemplate(id) ?: return this
+        document.content.graphicTemplate(id) ?: return this
         val changes = OperationGraphicAuthoring.deleteTemplateChange(document.content, id) ?: return this
-        return withTimelineEntry(OperationTimelineEntry(
-            changes, MapViewerLedgerEntryKind.GRAPHIC_TEMPLATE, "deleted graphic template ${template.name}",
-        )).copy(workspace = workspace.editors.filter { it.target == OperationEditorTarget.GraphicTemplate(id) }
+        return withChangeSet(changes).copy(workspace = workspace.editors.filter { it.target == OperationEditorTarget.GraphicTemplate(id) }
             .fold(workspace) { value, editor -> value.close(editor.id) })
     }
 
@@ -394,9 +367,7 @@ data class ComposeOperationState(
         val after = OperationGraphicAuthoring.editGraphic(before, draft, document.content, document.renderData)
         val changes = OperationGraphicAuthoring.editGraphicChange(before, after)
         if (changes.isEmpty) return closeEditor(id)
-        return withTimelineEntry(OperationTimelineEntry(
-            changes, MapViewerLedgerEntryKind.OBJECT, "edited ${draft.displayName.ifBlank { after.instanceName }}",
-        )).closeEditor(id)
+        return withChangeSet(changes).closeEditor(id)
     }
 
     fun armUnitPlacement(id: OperationUnitTemplateId) =
@@ -425,9 +396,8 @@ data class ComposeOperationState(
     fun commitUnitPlacement(): ComposeOperationState {
         val placement = unitPlacement ?: return this
         val unit = previewContent?.objectById(placement.objectId) as? OperationUnit ?: return cancelUnitPlacement()
-        return withTimelineEntry(OperationTimelineEntry(
-            OperationUnitAuthoring.placeUnitChange(unit), MapViewerLedgerEntryKind.OBJECT, "created ${unit.instanceName}",
-        )).copy(unitPlacement = null, previewContent = null, selectedObjectIds = setOf(unit.id))
+        return withChangeSet(OperationUnitAuthoring.placeUnitChange(unit))
+            .copy(unitPlacement = null, previewContent = null, selectedObjectIds = setOf(unit.id))
     }
 
     fun cancelUnitPlacement() = copy(unitPlacement = null, previewContent = null)
@@ -450,9 +420,8 @@ data class ComposeOperationState(
     fun commitGraphicPlacement(): ComposeOperationState {
         val placement = graphicPlacement ?: return this
         val graphic = previewContent?.objectById(placement.objectId) as? OperationGraphic ?: return cancelGraphicPlacement()
-        return withTimelineEntry(OperationTimelineEntry(
-            OperationGraphicAuthoring.placeGraphicChange(graphic), MapViewerLedgerEntryKind.OBJECT, "created ${graphic.instanceName}",
-        )).copy(graphicPlacement = null, previewContent = null, selectedObjectIds = setOf(graphic.id))
+        return withChangeSet(OperationGraphicAuthoring.placeGraphicChange(graphic))
+            .copy(graphicPlacement = null, previewContent = null, selectedObjectIds = setOf(graphic.id))
     }
 
     fun cancelGraphicPlacement() = copy(graphicPlacement = null, previewContent = null)
@@ -463,20 +432,61 @@ data class ComposeOperationState(
         if (isReadOnly) return this
         val drawingObject = OperationDrawingObject(OperationObjectId(UUID.randomUUID()), drawing)
         return preview(document.content.copy(objects = document.content.objects + drawingObject))
-            .commitPreview(description = "created ${drawing.displayName.lowercase()}")
+            .commitPreview()
             .copy(selectedObjectIds = setOf(drawingObject.id))
     }
 
     fun renameDrawing(id: OperationObjectId, displayName: String): ComposeOperationState {
         if (isReadOnly) return this
-        val drawing = document.content.objectById(id) as? OperationDrawingObject ?: return this
+        document.content.objectById(id) as? OperationDrawingObject ?: return this
         val changes = OperationDrawingAuthoring.rename(document.content, id, displayName)
         if (changes.isEmpty) return this
-        val normalized = (changes.objects.single().after as OperationDrawingObject).optionalDisplayName
-        val description = normalized
-            ?.let { "renamed ${drawing.drawing.displayName.lowercase()} to $it" }
-            ?: "cleared ${drawing.drawing.displayName.lowercase()} name"
-        return withTimelineEntry(OperationTimelineEntry(changes, MapViewerLedgerEntryKind.OBJECT, description))
+        return withChangeSet(changes)
+    }
+
+    fun addTurn(name: String, thumbnail: java.awt.image.BufferedImage, assetId: UUID = UUID.randomUUID()): ComposeOperationState {
+        if (isReadOnly) return this
+        val resolvedName = name.takeIf(String::isNotBlank) ?: document.timeline.nextTurnName()
+        val asset = OperationGeneratedImage(assetId, TURN_THUMBNAIL_ROLE, thumbnail)
+        return withTimelineEntry(
+            OperationTimelineEntries.turn(resolvedName, assetId),
+            document.generatedImageAssets + asset,
+        ).cancelTransientWorkflows()
+    }
+
+    fun revertToTurn(entryIndex: Int): ComposeOperationState {
+        document.timeline.entries.getOrNull(entryIndex)?.takeIf { it.turnName != null } ?: return this
+        val nextTimeline = document.timeline.withAppliedCount(entryIndex + 1)
+        if (nextTimeline == document.timeline && historyPreviewCount == nextTimeline.appliedCount.takeIf { it < nextTimeline.entries.size }) return this
+        return persistentCopy(document = document.copy(timeline = nextTimeline), previewContent = null)
+            .copy(
+                historyPreviewCount = nextTimeline.appliedCount.takeIf { it < nextTimeline.entries.size },
+                selectedObjectIds = emptySet(),
+            )
+            .cancelTransientWorkflows()
+    }
+
+    fun openLedgerTarget(target: OperationLedgerTarget): ComposeOperationState {
+        if (isReadOnly) return this
+        return when (target) {
+            is OperationLedgerTarget.Object -> when (document.content.objectById(target.id)) {
+                is OperationUnit -> openUnitEditor(target.id)
+                is OperationGraphic -> openGraphicEditor(target.id)
+                else -> this
+            }
+            is OperationLedgerTarget.UnitTemplate -> openUnitTemplateEditor(target.id)
+            is OperationLedgerTarget.GraphicTemplate -> openGraphicTemplateEditor(target.id)
+            is OperationLedgerTarget.Note -> openNoteEditor(target.id)
+            OperationLedgerTarget.Notes -> openNotes()
+        }
+    }
+
+    fun isLedgerTargetAvailable(target: OperationLedgerTarget): Boolean = !isReadOnly && when (target) {
+        is OperationLedgerTarget.Object -> document.content.objectById(target.id) != null
+        is OperationLedgerTarget.UnitTemplate -> document.content.unitTemplate(target.id) != null
+        is OperationLedgerTarget.GraphicTemplate -> document.content.graphicTemplate(target.id) != null
+        is OperationLedgerTarget.Note -> document.content.notes.any { it.id == target.id }
+        OperationLedgerTarget.Notes -> true
     }
 
     fun undo(): ComposeOperationState {
@@ -484,7 +494,7 @@ data class ComposeOperationState(
         return persistentCopy(
             document = document.copy(timeline = document.timeline.undo()),
             previewContent = null,
-        ).pruneSelection().pruneEditors()
+        ).cancelTransientWorkflows().pruneSelection().pruneEditors()
     }
 
     fun redo(): ComposeOperationState {
@@ -492,7 +502,7 @@ data class ComposeOperationState(
         return persistentCopy(
             document = document.copy(timeline = document.timeline.redo()),
             previewContent = null,
-        ).pruneSelection().pruneEditors()
+        ).cancelTransientWorkflows().pruneSelection().pruneEditors()
     }
 
     fun previewHistory(entryIndex: Int?) = copy(
@@ -504,7 +514,15 @@ data class ComposeOperationState(
         noteReferencePick = null,
     )
 
-    fun returnToCurrent() = copy(historyPreviewCount = null, previewContent = null, unitPlacement = null, graphicPlacement = null, noteReferencePick = null).pruneSelection().pruneEditors()
+    fun returnToCurrent(): ComposeOperationState {
+        val timeline = document.timeline
+        val restored = if (timeline.appliedCount < timeline.entries.size) {
+            persistentCopy(document = document.copy(timeline = timeline.withAppliedCount(timeline.entries.size)))
+        } else {
+            this
+        }
+        return restored.copy(historyPreviewCount = null).cancelTransientWorkflows().pruneSelection().pruneEditors()
+    }
 
     fun saveStarted(targetRevision: Long = revision) = copy(
         savingRevision = targetRevision,
@@ -550,9 +568,27 @@ data class ComposeOperationState(
         workspace = workspace,
     )
 
-    private fun withTimelineEntry(entry: OperationTimelineEntry) = persistentCopy(
-        document = document.copy(timeline = document.timeline.record(entry)),
-    ).pruneSelection().pruneEditors()
+    private fun withChangeSet(changeSet: io.hsar.mapgenerator.commandgui.operation.OperationChangeSet): ComposeOperationState =
+        OperationTimelineEntries.change(document.content, changeSet)?.let(::withTimelineEntry) ?: this
+
+    private fun withTimelineEntry(
+        entry: OperationTimelineEntry,
+        generatedImageAssets: List<OperationGeneratedImage> = document.generatedImageAssets,
+    ): ComposeOperationState {
+        val timeline = document.timeline.record(entry)
+        val retainedThumbnailIds = timeline.entries.mapNotNullTo(hashSetOf(), OperationTimelineEntry::turnThumbnailAssetId)
+        val retainedAssets = generatedImageAssets.filter { it.role != TURN_THUMBNAIL_ROLE || it.id in retainedThumbnailIds }
+        return persistentCopy(document = document.copy(timeline = timeline, generatedImageAssets = retainedAssets))
+            .pruneSelection()
+            .pruneEditors()
+    }
+
+    private fun cancelTransientWorkflows() = copy(
+        previewContent = null,
+        unitPlacement = null,
+        graphicPlacement = null,
+        noteReferencePick = null,
+    )
 
     private fun updateWorkspace(value: OperationWorkspaceState) =
         if (value == workspace) this else persistentCopy(workspace = value)
@@ -600,6 +636,8 @@ data class ComposeOperationState(
         return if (invalid.isEmpty()) this else copy(workspace = invalid.fold(workspace, OperationWorkspaceState::close))
     }
 }
+
+private const val TURN_THUMBNAIL_ROLE = "turn-thumbnail"
 
 private fun OperationWorkspaceState.hydrate(content: OperationContent, renderData: io.hsar.mapgenerator.commandgui.MapViewerRenderData): OperationWorkspaceState {
     val hydrated = editors.filter { editor ->

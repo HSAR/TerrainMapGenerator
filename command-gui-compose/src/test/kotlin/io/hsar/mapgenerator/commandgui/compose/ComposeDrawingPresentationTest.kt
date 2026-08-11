@@ -23,4 +23,13 @@ class ComposeDrawingPresentationTest {
         assertThat(position.x, closeTo(130.0, .0001))
         assertThat(position.y, closeTo(56.0, .0001))
     }
+
+    @Test
+    fun `freeform sampling remains two screen pixels at every zoom`() {
+        listOf(.25, 1.0, 4.0).forEach { zoom ->
+            val normalized = ComposeDrawingPresentation.minimumFreeformMapDistance(zoom, 200, 100)
+
+            assertThat(normalized * 100 * zoom, closeTo(2.0, .0001))
+        }
+    }
 }

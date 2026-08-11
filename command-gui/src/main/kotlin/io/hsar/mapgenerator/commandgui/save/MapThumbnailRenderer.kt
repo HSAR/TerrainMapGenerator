@@ -9,8 +9,8 @@ import java.awt.geom.*
 import java.awt.image.BufferedImage
 import kotlin.math.*
 
-internal class MapThumbnailRenderer {
-    fun renderOperationThumbnail(
+class MapThumbnailRenderer {
+    internal fun renderOperationThumbnail(
         mapImage: BufferedImage,
         geometry: ViewerGeometry,
         viewport: MapViewport,
@@ -20,6 +20,13 @@ internal class MapThumbnailRenderer {
     ) = render(mapImage, geometry, viewport.thumbnailViewport(outputWidth), gridLayer, content)
 
     fun renderTurnThumbnail(
+        mapImage: BufferedImage,
+        gridLayer: GridLayer?,
+        content: OperationContent,
+        outputWidth: Int = DEFAULT_WIDTH,
+    ) = renderTurnThumbnail(mapImage, geometryFor(mapImage), gridLayer, content, outputWidth)
+
+    internal fun renderTurnThumbnail(
         mapImage: BufferedImage,
         geometry: ViewerGeometry,
         gridLayer: GridLayer?,

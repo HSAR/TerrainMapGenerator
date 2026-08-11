@@ -134,6 +134,7 @@ import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplate
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateId
 import io.hsar.mapgenerator.commandgui.operation.OperationLineDrawing
+import io.hsar.mapgenerator.commandgui.operation.OperationLedgerTarget
 import io.hsar.mapgenerator.commandgui.operation.OperationObject
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.operation.OPERATION_DISPLAY_NAME_PROPERTY
@@ -153,12 +154,16 @@ import io.hsar.mapgenerator.commandgui.operation.OperationUnitAuthoring
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplate
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateId
+import io.hsar.mapgenerator.commandgui.operation.OperationTurnGroup
 import io.hsar.mapgenerator.commandgui.operation.contains
 import io.hsar.mapgenerator.commandgui.operation.objectAtScreen
 import io.hsar.mapgenerator.commandgui.operation.optionalDisplayName
 import io.hsar.mapgenerator.commandgui.operation.selectionBounds
 import io.hsar.mapgenerator.commandgui.operation.selectionFrame
 import io.hsar.mapgenerator.commandgui.operation.selectionScreenBounds
+import io.hsar.mapgenerator.commandgui.operation.nextTurnName
+import io.hsar.mapgenerator.commandgui.operation.turnGroups
+import io.hsar.mapgenerator.commandgui.save.MapThumbnailRenderer
 import io.hsar.mapgenerator.commandgui.toWorldPoint
 import io.hsar.mapgenerator.commandgui.viewerBackgroundBounds
 import kotlinx.coroutines.Dispatchers
@@ -773,6 +778,7 @@ private fun ViewerWorkspace(
     var graphicLibraryExpanded by remember { mutableStateOf(false) }
     var transientNotice by remember { mutableStateOf<String?>(null) }
     val autosaveScheduler = remember { ComposeAutosaveScheduler(debounceMillis = COMPOSE_AUTOSAVE_DEBOUNCE_MS) }
+    val turnThumbnailRenderer = remember { MapThumbnailRenderer() }
     val scope = rememberCoroutineScope()
 
     fun autosaveObservation() = ComposeAutosaveObservation(
@@ -925,7 +931,7 @@ private fun ViewerWorkspace(
                             },
                             onContextMenuDismissed = { contextMenu = null },
                         onPreviewChanged = { operationState = operationState.preview(it) },
-                        onPreviewCommitted = { description -> operationState = operationState.commitPreview(description = description) },
+                        onPreviewCommitted = { _ -> operationState = operationState.commitPreview() },
                         drawingMode = drawingMode,
                         drawingColour = drawingColour,
                         onDrawingCommitted = { operationState = operationState.addDrawing(it) },
@@ -1073,10 +1079,51 @@ private fun ViewerWorkspace(
             }
             OperationLedgerPanel(
                 state = operationState,
-                onUndo = { operationState = operationState.undo() },
-                onRedo = { operationState = operationState.redo() },
-                onPreviewIndex = { operationState = operationState.previewHistory(it) },
-                onCurrent = { operationState = operationState.returnToCurrent() },
+                onUndo = {
+                    toolGestureCancellationEpoch++
+                    contextMenu = null
+                    operationState = operationState.undo()
+                },
+                onRedo = {
+                    toolGestureCancellationEpoch++
+                    contextMenu = null
+                    operationState = operationState.redo()
+                },
+                onPreviewIndex = {
+                    toolGestureCancellationEpoch++
+                    contextMenu = null
+                    operationState = operationState.previewHistory(it)
+                },
+                onTurnSelected = {
+                    toolGestureCancellationEpoch++
+                    contextMenu = null
+                    operationState = operationState.revertToTurn(it)
+                },
+                onCurrent = {
+                    toolGestureCancellationEpoch++
+                    contextMenu = null
+                    operationState = operationState.returnToCurrent()
+                },
+                onAddTurn = { name ->
+                    val document = operationState.document
+                    val thumbnail = turnThumbnailRenderer.renderTurnThumbnail(
+                        document.renderData.baseImage,
+                        document.renderData.gridLayer,
+                        document.content,
+                    )
+                    toolGestureCancellationEpoch++
+                    contextMenu = null
+                    operationState = operationState.addTurn(name, thumbnail)
+                },
+                onOpenTarget = { target ->
+                    val drawing = (target as? OperationLedgerTarget.Object)?.id
+                        ?.let(operationState.document.content::objectById) as? OperationDrawingObject
+                    if (drawing != null) {
+                        drawingNameEdit = ComposeDrawingNameEdit(drawing.id, drawing.optionalDisplayName.orEmpty())
+                    } else {
+                        operationState = operationState.openLedgerTarget(target)
+                    }
+                },
                 onSave = { saveNow() },
             )
         }
@@ -2040,13 +2087,22 @@ private fun OperationLedgerPanel(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onPreviewIndex: (Int) -> Unit,
+    onTurnSelected: (Int) -> Unit,
     onCurrent: () -> Unit,
+    onAddTurn: (String) -> Unit,
+    onOpenTarget: (OperationLedgerTarget) -> Unit,
     onSave: () -> Unit,
 ) {
-    val entries = state.document.timeline.entries
+    val timeline = state.document.timeline
+    val groups = timeline.turnGroups()
     val currentSelectedIndex = state.historyPreviewCount?.minus(1)
+    var turnName by remember(state.document.operationId) { mutableStateOf(timeline.nextTurnName()) }
+    var collapsedGroups by remember(state.document.operationId) { mutableStateOf(emptySet<String>()) }
+    LaunchedEffect(timeline.entries.size) {
+        if (turnName.isBlank()) turnName = timeline.nextTurnName()
+    }
     Column(
-        Modifier.fillMaxWidth().height(230.dp)
+        Modifier.fillMaxWidth().height(300.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Row(
@@ -2057,8 +2113,25 @@ private fun OperationLedgerPanel(
             Text("LEDGER", style = MaterialTheme.typography.titleMedium)
             CommandButton(onClick = onUndo, enabled = state.document.timeline.canUndo && !state.isReadOnly) { Text("UNDO") }
             CommandButton(onClick = onRedo, enabled = state.document.timeline.canRedo && !state.isReadOnly) { Text("REDO") }
-            CommandButton(onClick = onCurrent, active = !state.isReadOnly) { Text("CURRENT") }
+            CommandButton(
+                onClick = onCurrent,
+                active = !state.isReadOnly && timeline.appliedCount == timeline.entries.size,
+            ) { Text("CURRENT") }
             CommandButton(onClick = onSave, enabled = state.savingRevision == null) { Text("SAVE") }
+            OutlinedTextField(
+                value = turnName,
+                onValueChange = { turnName = it },
+                modifier = Modifier.width(180.dp).height(48.dp),
+                singleLine = true,
+                label = { Text("TURN NAME") },
+            )
+            CommandButton(
+                onClick = {
+                    onAddTurn(turnName)
+                    turnName = ""
+                },
+                enabled = !state.isReadOnly,
+            ) { Text("ADD TURN") }
             Spacer(Modifier.weight(1f))
             Text(
                 when (state.saveStatus) {
@@ -2071,61 +2144,119 @@ private fun OperationLedgerPanel(
             )
         }
         HorizontalDivider()
-        Row(Modifier.fillMaxSize()) {
-            LazyColumn(Modifier.weight(1.15f).fillMaxHeight()) {
-                if (entries.isEmpty()) {
-                    item {
-                        Text(
-                            "No persisted ledger entries",
-                            modifier = Modifier.padding(12.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                items(entries.indices.toList(), key = { it }) { index ->
-                    val entry = entries[index]
-                    val selectedEntry = index == currentSelectedIndex
+        LazyColumn(Modifier.fillMaxSize()) {
+            if (groups.isEmpty()) {
+                item { Text("No persisted ledger entries", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            items(groups, key = { group -> group.marker?.entryIndex?.let { "turn:$it" } ?: "unmarked" }) { group ->
+                val groupKey = group.marker?.entryIndex?.let { "turn:$it" } ?: "unmarked"
+                val collapsed = groupKey in collapsedGroups
+                OperationTurnHeader(
+                    state = state,
+                    group = group,
+                    collapsed = collapsed,
+                    onToggle = {
+                        collapsedGroups = if (collapsed) collapsedGroups - groupKey else collapsedGroups + groupKey
+                    },
+                    onSelect = group.marker?.let { marker -> { onTurnSelected(marker.entryIndex) } },
+                )
+                if (!collapsed) group.actions.forEach { action ->
+                    val selectedEntry = action.entryIndex == currentSelectedIndex
                     Surface(
-                        modifier = Modifier.fillMaxWidth().clickable { onPreviewIndex(index) },
+                        modifier = Modifier.fillMaxWidth().clickable(enabled = !action.isFuture) { onPreviewIndex(action.entryIndex) },
                         color = if (selectedEntry) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            modifier = Modifier.padding(start = 46.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            Text("${index + 1}", style = MaterialTheme.typography.labelMedium)
-                            Text(entry.kind.name.lowercase().replace('_', ' '), modifier = Modifier.width(110.dp))
-                            Text(entry.description, modifier = Modifier.weight(1f))
+                            Text("${action.entryIndex + 1}", style = MaterialTheme.typography.labelMedium)
+                            Text(action.entry.kind.name.lowercase().replace('_', ' '), modifier = Modifier.width(110.dp))
+                            Text(
+                                action.entry.description,
+                                modifier = Modifier.weight(1f),
+                                color = if (action.isFuture) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .55f)
+                                else MaterialTheme.colorScheme.onSurface,
+                            )
+                            action.targets.forEach { target ->
+                                CommandButton(
+                                    onClick = { onOpenTarget(target) },
+                                    enabled = !action.isFuture && state.isLedgerTargetAvailable(target),
+                                    modifier = Modifier.height(30.dp),
+                                ) { Text("OPEN ${ledgerTargetLabel(state, target)}") }
+                            }
                         }
                     }
                 }
-            }
-            VerticalDivider()
-            Column(
-                modifier = Modifier.weight(0.85f).fillMaxHeight()
-                    .verticalScroll(rememberScrollState()).padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                Text(if (state.isReadOnly) "READ-ONLY HISTORY" else "CURRENT STATE", style = MaterialTheme.typography.titleSmall)
-                currentSelectedIndex?.let { index ->
-                    entries.getOrNull(index)?.let { Text("Action ${index + 1}: ${it.description}") }
-                    HorizontalDivider()
-                }
-                state.visibleContent.objects.take(PROTOTYPE_STATE_ROW_LIMIT).forEach { mapObject ->
-                    Text("${mapObject::class.simpleName?.removePrefix("Operation")?.lowercase()}: ${mapObject.displayName(state.visibleContent)}")
-                }
-                state.visibleContent.notes.take(PROTOTYPE_STATE_ROW_LIMIT).forEach { note ->
-                    Text("note: ${note.title}")
-                }
-                if (state.visibleContent.objects.isEmpty() && state.visibleContent.notes.isEmpty()) {
-                    Text(
-                        "No live objects or notes at the ledger head.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                HorizontalDivider()
             }
         }
     }
+}
+
+@Composable
+private fun OperationTurnHeader(
+    state: ComposeOperationState,
+    group: OperationTurnGroup,
+    collapsed: Boolean,
+    onToggle: () -> Unit,
+    onSelect: (() -> Unit)?,
+) {
+    val marker = group.marker
+    val thumbnail = marker?.thumbnailAssetId
+        ?.let { id -> state.document.generatedImageAssets.firstOrNull { it.id == id } }
+        ?.image
+    val active = marker?.appliedCount == state.document.timeline.appliedCount &&
+        (state.historyPreviewCount == null || state.historyPreviewCount == marker.appliedCount)
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .background(if (active) MaterialTheme.colorScheme.secondaryContainer else CommandColours.Backing.copy(alpha = .18f))
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        CommandButton(onClick = onToggle, modifier = Modifier.size(30.dp)) { Text(if (collapsed) "+" else "−") }
+        if (thumbnail != null) {
+            Image(
+                bitmap = remember(thumbnail) { thumbnail.toImageBitmap() },
+                contentDescription = "${group.name} thumbnail",
+                modifier = Modifier.width(96.dp).height(54.dp),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Box(
+                Modifier.width(96.dp).height(54.dp).background(MaterialTheme.colorScheme.surface).border(1.dp, CommandColours.Backing),
+                contentAlignment = Alignment.Center,
+            ) { Text("NO IMAGE", style = MaterialTheme.typography.labelSmall) }
+        }
+        Column(
+            Modifier.weight(1f).clickable(enabled = onSelect != null) { onSelect?.invoke() },
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(group.name, style = MaterialTheme.typography.titleSmall)
+            Text(
+                marker?.let { "ENTRY ${it.appliedCount}${if (it.isFuture) " · FUTURE" else ""}" } ?: "BEFORE FIRST TURN",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text("${group.actions.size} ACTION${if (group.actions.size == 1) "" else "S"}", style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+private fun ledgerTargetLabel(state: ComposeOperationState, target: OperationLedgerTarget): String = when (target) {
+    is OperationLedgerTarget.Object -> state.document.content.objectById(target.id)?.let { value ->
+        when (value) {
+            is OperationUnit -> "UNIT"
+            is OperationGraphic -> "GRAPHIC"
+            is OperationDrawingObject -> "DRAWING"
+        }
+    } ?: "MISSING"
+    is OperationLedgerTarget.UnitTemplate -> "UNIT TYPE"
+    is OperationLedgerTarget.GraphicTemplate -> "GRAPHIC TYPE"
+    is OperationLedgerTarget.Note -> "NOTE"
+    OperationLedgerTarget.Notes -> "NOTES"
 }
 
 private const val PROTOTYPE_STATE_ROW_LIMIT = 12
@@ -2331,18 +2462,24 @@ private fun MapCanvas(
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                             if (!change.pressed || event.buttons.isSecondaryPressed) {
-                                if (!event.buttons.isSecondaryPressed) toolSession?.finishDrawing()?.let(onDrawingCommitted)
+                                if (!event.buttons.isSecondaryPressed) {
+                                    (toolSession?.release() as? ComposeDrawMeasureOutcome.DrawingCommitted)?.drawing?.let(onDrawingCommitted)
+                                } else {
+                                    toolSession?.cancel()
+                                }
                                 toolSession = null
                                 change.consume()
                                 break
                             }
                             toolSession = toolSession?.update(
                                 screenToMap(change.position, pointerViewport), event.keyboardModifiers.isShiftPressed, aspectRatio,
-                                2.0 / minOf(mapWidth.toDouble(), mapHeight.toDouble()), renderData.gridLayer, mapWidth, mapHeight,
+                                ComposeDrawingPresentation.minimumFreeformMapDistance(pointerViewport.zoom, mapWidth, mapHeight),
+                                renderData.gridLayer, mapWidth, mapHeight,
                             )
                             change.consume()
                         }
                     } finally {
+                        toolSession?.cancel()
                         toolSession = null
                     }
                 }
@@ -2362,6 +2499,7 @@ private fun MapCanvas(
                 val change = event.changes.firstOrNull() ?: return@onPointerEvent
                 if (event.buttons.isSecondaryPressed) {
                     if (toolSession?.active == true) {
+                        toolSession?.cancel()
                         toolSession = null
                         change.consume()
                         return@onPointerEvent

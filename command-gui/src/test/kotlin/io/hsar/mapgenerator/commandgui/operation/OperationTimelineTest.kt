@@ -4,6 +4,7 @@ import io.hsar.mapgenerator.commandgui.MapCoordinate
 import io.hsar.mapgenerator.commandgui.MapViewerLedgerEntryKind
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.instanceOf
 import org.junit.jupiter.api.Test
 import java.util.*
 
@@ -48,12 +49,43 @@ class OperationTimelineTest {
                 OperationChangeSet(objects = listOf(OperationValueChange(after = unit))),
                 OperationChangeSet(objects = listOf(OperationValueChange(unit, moved))),
             ),
-            description = "created and moved unit",
         )
 
         assertThat(timeline.entries.size, equalTo(1))
+        assertThat(timeline.entries.single().componentChangeSets.size, equalTo(2))
         assertThat((timeline.contentAt().objects.single() as OperationUnit).coordinate, equalTo(moved.coordinate))
         assertThat(timeline.undo().contentAt(), equalTo(OperationContent.EMPTY))
+    }
+
+    @Test
+    fun `canonical entry splits aggregate targets and derives stable metadata`() {
+        val second = unit.copy(id = OperationObjectId(UUID.fromString("00000000-0000-0000-0000-000000000012")), instanceName = "Second")
+
+        val entry = OperationTimelineEntries.change(
+            OperationContent.EMPTY,
+            OperationChangeSet(objects = listOf(OperationValueChange(after = unit), OperationValueChange(after = second))),
+        )!!
+
+        assertThat(entry.kind, equalTo(MapViewerLedgerEntryKind.BATCH))
+        assertThat(entry.componentChangeSets.size, equalTo(2))
+        assertThat(entry.description, equalTo("created unit Unit () and 1 other item"))
+    }
+
+    @Test
+    fun `turn groups retain unmarked actions future state targets and numbering`() {
+        val created = OperationTimeline().recordChange(OperationChangeSet(objects = listOf(OperationValueChange(after = unit))))
+        val withStart = created.record(OperationTimelineEntries.turn(OPERATION_START_TURN_NAME))
+        val note = OperationNote(OperationNoteId(UUID.fromString("00000000-0000-0000-0000-000000000013")), "Orders", "Hold")
+        val complete = withStart.recordChange(OperationChangeSet(notes = listOf(OperationValueChange(after = note))))
+            .record(OperationTimelineEntries.turn("Turn 1"))
+            .withAppliedCount(2)
+
+        val groups = complete.turnGroups()
+
+        assertThat(groups.map(OperationTurnGroup::name), equalTo(listOf("Unmarked History", OPERATION_START_TURN_NAME, "Turn 1")))
+        assertThat(groups.first().actions.single().targets.single(), instanceOf(OperationLedgerTarget.Object::class.java))
+        assertThat(groups.last().marker!!.isFuture, equalTo(true))
+        assertThat(complete.nextTurnName(), equalTo("Turn 2"))
     }
 
     private fun entry(changes: OperationChangeSet, description: String) =

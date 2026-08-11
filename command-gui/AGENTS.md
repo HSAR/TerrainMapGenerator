@@ -9,6 +9,8 @@ The migration is intentionally incomplete. Keep these boundaries accurate while 
 - `command-gui` is a mixed facade/core/legacy module, not yet the final module split. Engine-neutral code belongs in the top-level `commandgui` or `commandgui.operation` packages;
   KorGE views, events and bitmap types stay below `korge`. Compose and Skia types stay in `command-gui-compose`.
 - `operation/OperationCore.kt` is the source of truth for Compose operation content: templates, units, graphics, drawings, notes, change sets, timeline and document metadata.
+  `operation/OperationTimelineAuthoring.kt` is the authoritative constructor and presentation model for timeline entries, turn markers/groups, canonical descriptions and affected
+  editor targets. Compose and archive adapters must use it rather than assigning entry kinds or descriptions independently.
   `operation/OperationTransforms.kt`, `OperationTransformGestures.kt` and `OperationSelectionGeometry.kt` are authoritative for transforms, hit testing, selection frames and
   marquee geometry in both viewers. KorGE adapts these rules through snapshot/projection wrappers; do not recreate transform math below `korge` or in Compose.
 - `ComposeOperationState` is the authoritative Compose session state. It owns the document/head replay, camera, tool, selection, historical preview, transform preview, save
@@ -106,11 +108,13 @@ Completed: Draw creation now uses `MapViewerDrawingGesture` in both viewers, inc
 suppression. Compose owns Draw/Measure pointer streams through a cancellable captured session, renders constant-screen-width drawing strokes and EF Nord drawing labels, and exposes
 legacy-compatible optional name editing through the shared `displayName` custom property. Measurements remain transient, map-clamped, grid-aware and available during history.
 
-4. Replace the ledger prototype presentation with the complete turn workflow, descriptions, turn thumbnails and editor-opening behavior while retaining current history preview,
-   undo/redo and applied-head semantics.
+Completed: Compose now presents the ledger as expandable turn groups with neutral canonical action descriptions, generated turn thumbnails, affected-editor links and explicit
+future/current states. New operations begin with `Operation Start`; adding a turn creates one marker entry. Selecting a turn moves the applied head and remains read-only until
+Current reapplies the retained branch, while selecting an individual action remains a non-mutating history preview. Applied saves omit redo-only thumbnail assets.
 
-Phase 2 gate: a user can create and maintain templates, units, graphics, drawings, notes and turns entirely in Compose; representative Compose→KorGE→Compose saves retain content,
-IDs, images, applied head and descriptions.
+Phase 2 is complete: a user can create and maintain templates, units, graphics, drawings, notes and turns entirely in Compose. All Compose authoring records through the neutral
+timeline-entry factory, so batches, descriptions and affected targets retain their meaning across archive and KorGE boundaries. Representative Compose→KorGE→Compose fixtures
+must continue retaining content, IDs, images, applied head, turn thumbnails and descriptions.
 
 ### Phase 3 — Extract and port operational rules
 

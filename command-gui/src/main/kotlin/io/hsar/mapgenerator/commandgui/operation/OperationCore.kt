@@ -235,19 +235,12 @@ data class OperationTimeline(
         appliedCount = appliedCount + 1,
     )
 
-    fun recordBatch(
-        changes: List<OperationChangeSet>,
-        description: String,
-        kind: MapViewerLedgerEntryKind = MapViewerLedgerEntryKind.BATCH,
-    ): OperationTimeline {
-        val before = contentAt()
-        val after = changes.fold(before) { content, change -> change.applyTo(content) }
-        val combined = after.changesFrom(before)
-        return if (combined.isEmpty) this else record(OperationTimelineEntry(combined, kind, description))
-    }
+    fun recordBatch(changes: List<OperationChangeSet>): OperationTimeline =
+        OperationTimelineEntries.changes(contentAt(), changes)?.let(::record) ?: this
 
     fun undo() = if (canUndo) copy(appliedCount = appliedCount - 1) else this
     fun redo() = if (canRedo) copy(appliedCount = appliedCount + 1) else this
+    fun withAppliedCount(count: Int) = copy(appliedCount = count.coerceIn(0, entries.size))
 }
 
 data class OperationGeneratedImage(

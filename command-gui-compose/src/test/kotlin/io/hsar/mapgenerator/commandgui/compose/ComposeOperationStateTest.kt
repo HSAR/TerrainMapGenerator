@@ -17,6 +17,7 @@ import io.hsar.mapgenerator.commandgui.operation.OperationEditorDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorId
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorKind
 import io.hsar.mapgenerator.commandgui.operation.OperationLineDrawing
+import io.hsar.mapgenerator.commandgui.operation.OperationLedgerTarget
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.operation.OperationNote
 import io.hsar.mapgenerator.commandgui.operation.OperationNoteDraft
@@ -74,7 +75,7 @@ class ComposeOperationStateTest {
         val state = ComposeOperationState(documentWith(unit)).editUnit(updated)
 
         assertThat(state.document.content.objectById(objectId), equalTo(updated))
-        assertThat(state.document.timeline.entries.last().description, equalTo("edited Renamed"))
+        assertThat(state.document.timeline.entries.last().description, equalTo("unit Renamed (): renamed to Renamed, facing 90°"))
     }
 
     @Test
@@ -99,7 +100,7 @@ class ComposeOperationStateTest {
         val renamed = initial.renameDrawing(drawing.id, "  Objective  ")
 
         assertThat((renamed.document.content.objectById(drawing.id) as OperationDrawingObject).customProperties["displayName"], equalTo("Objective"))
-        assertThat(renamed.document.timeline.entries.last().description, equalTo("renamed line drawing to Objective"))
+        assertThat(renamed.document.timeline.entries.last().description, equalTo("line drawing: displayName set to Objective"))
         assertThat(renamed.renameDrawing(drawing.id, "Objective"), equalTo(renamed))
         assertThat(renamed.undo().document.content.objectById(drawing.id), equalTo(drawing))
     }
@@ -141,7 +142,7 @@ class ComposeOperationStateTest {
         val moved = initial.document.content.copy(objects = listOf(unit.copy(coordinate = MapCoordinate(0.7, 0.5))))
 
         val preview = initial.preview(moved)
-        val committed = preview.commitPreview(description = "moved unit")
+        val committed = preview.commitPreview()
 
         assertThat(preview.document.timeline.entries.size, equalTo(1))
         assertThat((preview.visibleContent.objects.single() as OperationUnit).coordinate.x, equalTo(0.7))
@@ -420,6 +421,50 @@ class ComposeOperationStateTest {
         assertThat(reordered.document.content.notes.map(OperationNote::id), equalTo(listOf(second.id, first.id)))
         assertThat(deleted.document.content.notes, equalTo(listOf(second)))
         assertThat(deleted.document.timeline.entries.size, equalTo(state.document.timeline.entries.size + 2))
+    }
+
+    @Test
+    fun `turn selection moves the applied head read only and current restores the future`() {
+        val thumbnail = BufferedImage(32, 18, BufferedImage.TYPE_INT_RGB)
+        val assetId = UUID.fromString("00000000-0000-0000-0000-000000000060")
+        val opened = ComposeOperationState(documentWith(unit)).openUnitEditor(objectId)
+        val withTurn = opened.addTurn("Turn 1", thumbnail, assetId)
+        val renamed = withTurn.editUnit(unit.copy(instanceName = "Renamed"))
+        val turnIndex = renamed.document.timeline.entries.indexOfFirst { it.turnName == "Turn 1" }
+
+        val reverted = renamed.revertToTurn(turnIndex)
+        val current = reverted.returnToCurrent()
+
+        assertThat(reverted.isReadOnly, equalTo(true))
+        assertThat(reverted.document.timeline.appliedCount, equalTo(turnIndex + 1))
+        assertThat(reverted.openEditors.any { it.kind == OperationEditorKind.UNIT }, equalTo(true))
+        assertThat((current.document.content.objectById(objectId) as OperationUnit).instanceName, equalTo("Renamed"))
+        assertThat(current.isReadOnly, equalTo(false))
+        assertThat(current.revision, equalTo(reverted.revision + 1))
+    }
+
+    @Test
+    fun `branching after an undone turn prunes its generated thumbnail`() {
+        val assetId = UUID.fromString("00000000-0000-0000-0000-000000000061")
+        val withTurn = ComposeOperationState(documentWith(unit)).addTurn(
+            "Turn 1", BufferedImage(32, 18, BufferedImage.TYPE_INT_RGB), assetId,
+        )
+
+        val branched = withTurn.undo().addDrawing(OperationLineDrawing(
+            OperationDrawingPoint(.1, .1), OperationDrawingPoint(.2, .2), OperationArgb.of(255, 255, 255, 255),
+        ))
+
+        assertThat(branched.document.timeline.entries.any { it.turnThumbnailAssetId == assetId }, equalTo(false))
+        assertThat(branched.document.generatedImageAssets.any { it.id == assetId }, equalTo(false))
+    }
+
+    @Test
+    fun `ledger target opening reuses the ordinary typed editor`() {
+        val state = ComposeOperationState(documentWith(unit))
+            .openLedgerTarget(OperationLedgerTarget.Object(objectId))
+            .openLedgerTarget(OperationLedgerTarget.Object(objectId))
+
+        assertThat(state.openEditors.count { it.kind == OperationEditorKind.UNIT }, equalTo(1))
     }
 
     private fun graphicTemplate() = OperationGraphicTemplate(

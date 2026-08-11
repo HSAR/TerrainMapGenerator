@@ -23,15 +23,16 @@ internal fun List<LedgerEntry>.toOperationTimeline(): OperationTimeline {
     return fold(OperationTimeline()) { timeline, entry ->
         val changeSet = entry.toOperationChangeSet(before)
         val after = changeSet.applyTo(before)
+        val components = entry.toOperationComponentChangeSets(before)
+        val turn = entry as? AddTurnLedgerEntry
+        val (derivedKind, description) = operationEntryDescription(changeSet, before, turn?.name, components)
         val timelineEntry = OperationTimelineEntry(
             changeSet = changeSet,
-            kind = entry.toOperationKind(),
-            description = entry.changeDescription(LedgerActionDirection.Redo) { id ->
-                before.objects.firstOrNull { it.id.value == id.value }?.toLegacyObject(before)
-            },
-            turnName = (entry as? AddTurnLedgerEntry)?.name,
-            turnThumbnailAssetId = (entry as? AddTurnLedgerEntry)?.thumbnailAssetId,
-            componentChangeSets = entry.toOperationComponentChangeSets(before),
+            kind = if (entry is BatchLedgerEntry) MapViewerLedgerEntryKind.BATCH else derivedKind,
+            description = description,
+            turnName = turn?.name,
+            turnThumbnailAssetId = turn?.thumbnailAssetId,
+            componentChangeSets = components,
         )
         before = after
         timeline.record(timelineEntry)
@@ -39,7 +40,9 @@ internal fun List<LedgerEntry>.toOperationTimeline(): OperationTimeline {
 }
 
 private fun LedgerEntry.toOperationComponentChangeSets(content: OperationContent): List<OperationChangeSet> =
-    if (this !is BatchLedgerEntry) {
+    if (this is AddTurnLedgerEntry) {
+        emptyList()
+    } else if (this !is BatchLedgerEntry) {
         listOf(toOperationChangeSet(content))
     } else {
         var current = content
@@ -337,15 +340,6 @@ internal fun OperationDrawing.toLegacyDrawing(): MapDrawing = when (this) {
     is OperationLineDrawing -> LineDrawing(start.toLegacy(), end.toLegacy(), colour.toAwt())
     is OperationRectangleDrawing -> RectangleDrawing(start.toLegacy(), end.toLegacy(), colour.toAwt(), rotationDegrees)
     is OperationOvalDrawing -> OvalDrawing(centre.toLegacy(), xRadius, yRadius, colour.toAwt(), rotationDegrees)
-}
-
-private fun LedgerEntry.toOperationKind() = when (this) {
-    is CreateObjectAction, is DeleteObjectAction, is EditObjectAction -> MapViewerLedgerEntryKind.OBJECT
-    is CreateUnitTemplateAction, is DeleteUnitTemplateAction, is EditUnitTemplateAction -> MapViewerLedgerEntryKind.UNIT_TEMPLATE
-    is CreateGraphicTemplateAction, is DeleteGraphicTemplateAction, is EditGraphicTemplateAction -> MapViewerLedgerEntryKind.GRAPHIC_TEMPLATE
-    is CreateNoteAction, is DeleteNoteAction, is EditNoteAction, is ReorderNotesAction -> MapViewerLedgerEntryKind.NOTE
-    is AddTurnLedgerEntry -> MapViewerLedgerEntryKind.TURN
-    else -> MapViewerLedgerEntryKind.BATCH
 }
 
 internal fun OperationObjectId.toLegacy() = MapPlacedObjectId(value)

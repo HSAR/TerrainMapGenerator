@@ -1,7 +1,9 @@
 package io.hsar.mapgenerator.commandgui
 
 import io.hsar.mapgenerator.commandgui.operation.OperationDocument
+import io.hsar.mapgenerator.commandgui.operation.OPERATION_START_TURN_NAME
 import io.hsar.mapgenerator.commandgui.operation.OperationTimeline
+import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntries
 import io.hsar.mapgenerator.commandgui.operation.OperationUiState
 import io.hsar.mapgenerator.commandgui.save.GameSaveDto
 import io.hsar.mapgenerator.commandgui.save.MapThumbnailRenderer
@@ -89,7 +91,7 @@ class MapViewerSaveRepository(
             updatedAt = now,
             settings = settings,
             renderData = renderData,
-            timeline = OperationTimeline(),
+            timeline = OperationTimeline().record(OperationTimelineEntries.turn(OPERATION_START_TURN_NAME)),
             sourcePath = writer.defaultSavePath(operationName, operationId),
         )
     }
@@ -133,7 +135,9 @@ class MapViewerSaveRepository(
                 mapImage = mapImage,
                 mapAssetSource = document.mapAssetSource,
                 timeline = document.timeline,
-                generatedImageAssets = document.generatedImageAssets,
+                generatedImageAssets = document.generatedImageAssets.filter { asset ->
+                    document.timeline.appliedEntries.any { it.turnThumbnailAssetId == asset.id }
+                },
                 thumbnailImage = thumbnail,
                 additionalDataJson = additionalData,
             ),
