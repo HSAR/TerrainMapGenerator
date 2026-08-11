@@ -17,6 +17,9 @@ import io.hsar.mapgenerator.commandgui.operation.OperationEditorId
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorKind
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorState
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorTarget
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphic
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphicAuthoring
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateId
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntry
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitAuthoring
@@ -39,6 +42,12 @@ data class ComposeUnitPlacement(
     val coordinate: io.hsar.mapgenerator.commandgui.MapCoordinate? = null,
 )
 
+data class ComposeGraphicPlacement(
+    val templateId: OperationGraphicTemplateId,
+    val objectId: OperationObjectId = OperationObjectId(UUID.randomUUID()),
+    val coordinate: io.hsar.mapgenerator.commandgui.MapCoordinate? = null,
+)
+
 data class ComposeOperationState(
     val document: OperationDocument,
     val viewport: MapViewport? = null,
@@ -50,6 +59,7 @@ data class ComposeOperationState(
     val historyPreviewCount: Int? = null,
     val previewContent: OperationContent? = null,
     val unitPlacement: ComposeUnitPlacement? = null,
+    val graphicPlacement: ComposeGraphicPlacement? = null,
     val revision: Long = if (document.persisted) 0L else 1L,
     val savingRevision: Long? = null,
     val savedRevision: Long = 0L,
@@ -66,7 +76,7 @@ data class ComposeOperationState(
     val openEditors get() = workspace.editors
 
     fun selectTool(tool: MapViewerTool) =
-        if (tool == activeTool) cancelUnitPlacement() else persistentCopy(activeTool = tool).cancelUnitPlacement()
+        if (tool == activeTool) cancelPlacements() else persistentCopy(activeTool = tool).cancelPlacements()
 
     fun selectObject(id: OperationObjectId?, additive: Boolean = false) =
         copy(selectedObjectIds = selectedObjectIds.withSelection(id, additive)).markUiDirtyIfChanged(selectedObjectIds)
@@ -109,6 +119,29 @@ data class ComposeOperationState(
 
     fun openUnitTemplateEditor(id: OperationUnitTemplateId): ComposeOperationState {
         val template = document.content.unitTemplate(id) ?: return this
+        return updateWorkspace(workspace.open(template.editorState()))
+    }
+
+    fun openGraphicEditor(id: OperationObjectId): ComposeOperationState {
+        val graphic = document.content.objectById(id) as? OperationGraphic ?: return this
+        val cascade = workspace.editors.count { it.kind == OperationEditorKind.GRAPHIC } * 32.0
+        return updateWorkspace(workspace.open(graphic.editorState(document.renderData, OperationEditorBounds(112.0 + cascade, 112.0 + cascade, 520.0, 560.0))))
+    }
+
+    fun openNewGraphicTemplateEditor(): ComposeOperationState {
+        val existing = workspace.editors.firstOrNull { it.target == OperationEditorTarget.NewGraphicTemplate }
+        if (existing != null) return activateEditor(existing.id)
+        return updateWorkspace(workspace.open(OperationEditorState(
+            id = OperationEditorId("graphic-template:new"),
+            kind = OperationEditorKind.GRAPHIC_TEMPLATE,
+            target = OperationEditorTarget.NewGraphicTemplate,
+            draft = OperationEditorDraft.GraphicTemplate(),
+            floating = io.hsar.mapgenerator.commandgui.operation.OperationFloatingEditorState(OperationEditorBounds(112.0, 112.0, 520.0, 620.0)),
+        )))
+    }
+
+    fun openGraphicTemplateEditor(id: OperationGraphicTemplateId): ComposeOperationState {
+        val template = document.content.graphicTemplate(id) ?: return this
         return updateWorkspace(workspace.open(template.editorState()))
     }
 
@@ -229,9 +262,54 @@ data class ComposeOperationState(
             .fold(workspace) { value, editor -> value.close(editor.id) })
     }
 
+    fun saveGraphicTemplateEditor(id: OperationEditorId, image: java.awt.image.BufferedImage?): ComposeOperationState {
+        if (isReadOnly) return this
+        val editor = workspace.editor(id) ?: return this
+        val draft = (editor.draft as? OperationEditorDraft.GraphicTemplate)?.value ?: return this
+        val existing = (editor.target as? OperationEditorTarget.GraphicTemplate)?.templateId?.let(document.content::graphicTemplate)
+        if (draft.replacementImage != null && image == null) return this
+        val resolvedImage = image ?: existing?.image ?: return this
+        if (!OperationGraphicAuthoring.validateTemplateDraft(draft, existing != null).valid) return this
+        val updated = existing?.let { OperationGraphicAuthoring.editTemplate(it, draft, image) }
+            ?: OperationGraphicAuthoring.createTemplate(document.content, draft, resolvedImage)
+        val changes = existing?.let { OperationGraphicAuthoring.editTemplateChange(document.content, it, updated) }
+            ?: OperationGraphicAuthoring.createTemplateChange(updated)
+        if (changes.isEmpty) return closeEditor(id)
+        return withTimelineEntry(OperationTimelineEntry(
+            changes,
+            MapViewerLedgerEntryKind.GRAPHIC_TEMPLATE,
+            if (existing == null) "created graphic template ${updated.name}" else "edited graphic template ${updated.name}",
+        )).closeEditor(id)
+    }
+
+    fun deleteGraphicTemplate(id: OperationGraphicTemplateId): ComposeOperationState {
+        if (isReadOnly || !OperationGraphicAuthoring.canDeleteTemplate(document.content, id)) return this
+        val template = document.content.graphicTemplate(id) ?: return this
+        val changes = OperationGraphicAuthoring.deleteTemplateChange(document.content, id) ?: return this
+        return withTimelineEntry(OperationTimelineEntry(
+            changes, MapViewerLedgerEntryKind.GRAPHIC_TEMPLATE, "deleted graphic template ${template.name}",
+        )).copy(workspace = workspace.editors.filter { it.target == OperationEditorTarget.GraphicTemplate(id) }
+            .fold(workspace) { value, editor -> value.close(editor.id) })
+    }
+
+    fun saveGraphicEditor(id: OperationEditorId): ComposeOperationState {
+        if (isReadOnly) return this
+        val editor = workspace.editor(id) ?: return this
+        val objectId = (editor.target as? OperationEditorTarget.Object)?.objectId ?: return this
+        val before = document.content.objectById(objectId) as? OperationGraphic ?: return this
+        val draft = (editor.draft as? OperationEditorDraft.Graphic)?.value ?: return this
+        if (!OperationGraphicAuthoring.validateGraphicDraft(draft, document.content, document.renderData).valid) return this
+        val after = OperationGraphicAuthoring.editGraphic(before, draft, document.content, document.renderData)
+        val changes = OperationGraphicAuthoring.editGraphicChange(before, after)
+        if (changes.isEmpty) return closeEditor(id)
+        return withTimelineEntry(OperationTimelineEntry(
+            changes, MapViewerLedgerEntryKind.OBJECT, "edited ${draft.displayName.ifBlank { after.instanceName }}",
+        )).closeEditor(id)
+    }
+
     fun armUnitPlacement(id: OperationUnitTemplateId) =
         if (isReadOnly || document.content.unitTemplate(id) == null) this
-        else copy(unitPlacement = ComposeUnitPlacement(id), previewContent = null)
+        else copy(unitPlacement = ComposeUnitPlacement(id), graphicPlacement = null, previewContent = null)
 
     fun previewUnitPlacement(
         coordinate: io.hsar.mapgenerator.commandgui.MapCoordinate?,
@@ -262,6 +340,33 @@ data class ComposeOperationState(
 
     fun cancelUnitPlacement() = copy(unitPlacement = null, previewContent = null)
 
+    fun armGraphicPlacement(id: OperationGraphicTemplateId) =
+        if (isReadOnly || document.content.graphicTemplate(id) == null) this
+        else copy(graphicPlacement = ComposeGraphicPlacement(id), unitPlacement = null, previewContent = null)
+
+    fun previewGraphicPlacement(coordinate: io.hsar.mapgenerator.commandgui.MapCoordinate?): ComposeOperationState {
+        val placement = graphicPlacement ?: return this
+        val template = document.content.graphicTemplate(placement.templateId) ?: return cancelGraphicPlacement()
+        if (coordinate == null) return copy(graphicPlacement = placement.copy(coordinate = null), previewContent = null)
+        val graphic = OperationGraphicAuthoring.placeGraphic(template, coordinate, placement.objectId)
+        return copy(
+            graphicPlacement = placement.copy(coordinate = coordinate),
+            previewContent = document.content.copy(objects = document.content.objects + graphic),
+        )
+    }
+
+    fun commitGraphicPlacement(): ComposeOperationState {
+        val placement = graphicPlacement ?: return this
+        val graphic = previewContent?.objectById(placement.objectId) as? OperationGraphic ?: return cancelGraphicPlacement()
+        return withTimelineEntry(OperationTimelineEntry(
+            OperationGraphicAuthoring.placeGraphicChange(graphic), MapViewerLedgerEntryKind.OBJECT, "created ${graphic.instanceName}",
+        )).copy(graphicPlacement = null, previewContent = null, selectedObjectIds = setOf(graphic.id))
+    }
+
+    fun cancelGraphicPlacement() = copy(graphicPlacement = null, previewContent = null)
+
+    fun cancelPlacements() = copy(unitPlacement = null, graphicPlacement = null, previewContent = null)
+
     fun addDrawing(drawing: OperationDrawing): ComposeOperationState {
         if (isReadOnly) return this
         val drawingObject = OperationDrawingObject(OperationObjectId(UUID.randomUUID()), drawing)
@@ -291,9 +396,10 @@ data class ComposeOperationState(
         previewContent = null,
         selectedObjectIds = emptySet(),
         unitPlacement = null,
+        graphicPlacement = null,
     )
 
-    fun returnToCurrent() = copy(historyPreviewCount = null, previewContent = null, unitPlacement = null).pruneSelection().pruneEditors()
+    fun returnToCurrent() = copy(historyPreviewCount = null, previewContent = null, unitPlacement = null, graphicPlacement = null).pruneSelection().pruneEditors()
 
     fun saveStarted(targetRevision: Long = revision) = copy(
         savingRevision = targetRevision,
@@ -355,6 +461,7 @@ data class ComposeOperationState(
         enabledLayerIds: Set<String> = this.enabledLayerIds,
         previewContent: OperationContent? = this.previewContent,
         unitPlacement: ComposeUnitPlacement? = this.unitPlacement,
+        graphicPlacement: ComposeGraphicPlacement? = this.graphicPlacement,
     ) = copy(
         document = document,
         viewport = viewport,
@@ -364,6 +471,7 @@ data class ComposeOperationState(
         enabledLayerIds = enabledLayerIds,
         previewContent = previewContent,
         unitPlacement = unitPlacement,
+        graphicPlacement = graphicPlacement,
         revision = revision + 1,
         saveStatus = if (saveStatus == ComposeSaveStatus.SAVING) saveStatus else ComposeSaveStatus.DIRTY,
         saveFailure = null,
@@ -381,6 +489,7 @@ data class ComposeOperationState(
         val invalid = workspace.editors.filter { editor ->
             (editor.target as? OperationEditorTarget.Object)?.objectId?.let { it !in liveIds } == true ||
                 (editor.target as? OperationEditorTarget.UnitTemplate)?.templateId?.let { document.content.unitTemplate(it) == null } == true
+                || (editor.target as? OperationEditorTarget.GraphicTemplate)?.templateId?.let { document.content.graphicTemplate(it) == null } == true
         }.map(OperationEditorState::id)
         return if (invalid.isEmpty()) this else copy(workspace = invalid.fold(workspace, OperationWorkspaceState::close))
     }
@@ -391,14 +500,20 @@ private fun OperationWorkspaceState.hydrate(content: OperationContent, renderDat
         when (val target = editor.target) {
             is OperationEditorTarget.Object -> content.objectById(target.objectId) != null
             is OperationEditorTarget.UnitTemplate -> content.unitTemplate(target.templateId) != null
+            is OperationEditorTarget.GraphicTemplate -> content.graphicTemplate(target.templateId) != null
             else -> true
         }
     }.map { editor ->
         val target = editor.target as? OperationEditorTarget.Object
-        val unit = target?.objectId?.let(content::objectById) as? OperationUnit
+        val mapObject = target?.objectId?.let(content::objectById)
+        val unit = mapObject as? OperationUnit
+        val graphic = mapObject as? OperationGraphic
         val draft = editor.draft as? OperationEditorDraft.Unit
         if (unit != null && draft != null && draft.name.isEmpty() && draft.positionX.isEmpty() && draft.positionY.isEmpty()) {
             editor.copy(draft = unit.editorState(editor.floating.bounds, renderData).draft)
+        } else if (graphic != null && editor.draft is OperationEditorDraft.Graphic) {
+            val draft = (editor.draft as OperationEditorDraft.Graphic).value
+            if (draft.positionX.isEmpty() && draft.positionY.isEmpty()) editor.copy(draft = graphic.editorState(renderData, editor.floating.bounds).draft) else editor
         } else editor
     }
     val ids = hydrated.mapTo(hashSetOf()) { it.id }

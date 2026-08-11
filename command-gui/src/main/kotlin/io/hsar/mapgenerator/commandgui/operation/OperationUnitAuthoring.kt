@@ -24,7 +24,7 @@ data class OperationImageDraft(
         const val MAX_BYTES = 20 * 1024 * 1024
 
         fun fromBytes(fileName: String, bytes: ByteArray): OperationImageDraft {
-            require(bytes.size <= MAX_BYTES) { "Unit images must be 20 MiB or smaller" }
+            require(bytes.size <= MAX_BYTES) { "Images must be 20 MiB or smaller" }
             return OperationImageDraft(
                 originalFilename = fileName,
                 mediaType = AssetSource.mediaTypeForExtension(fileName.substringAfterLast('.', "")),
@@ -33,8 +33,8 @@ data class OperationImageDraft(
         }
 
         fun fromBase64(fileName: String, mediaType: String, base64Bytes: String): OperationImageDraft {
-            require(base64Bytes.length <= ((MAX_BYTES + 2) / 3) * 4) { "Unit images must be 20 MiB or smaller" }
-            require(Base64.getDecoder().decode(base64Bytes).size <= MAX_BYTES) { "Unit images must be 20 MiB or smaller" }
+            require(base64Bytes.length <= ((MAX_BYTES + 2) / 3) * 4) { "Images must be 20 MiB or smaller" }
+            require(Base64.getDecoder().decode(base64Bytes).size <= MAX_BYTES) { "Images must be 20 MiB or smaller" }
             return OperationImageDraft(fileName, mediaType, base64Bytes)
         }
     }

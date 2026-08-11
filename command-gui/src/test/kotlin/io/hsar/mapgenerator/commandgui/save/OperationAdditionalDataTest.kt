@@ -18,6 +18,7 @@ import io.hsar.mapgenerator.commandgui.operation.OperationEditorKind
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorState
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorTarget
 import io.hsar.mapgenerator.commandgui.operation.OperationFloatingEditorState
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationImageDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationPropertyDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateDraft
@@ -168,7 +169,7 @@ class OperationAdditionalDataTest {
 
         // Assert
         assertThat(restored, equalTo(state))
-        assertThat(OperationSaveJson.objectMapper.readTree(json).path("uiState").path("schemaVersion").intValue(), equalTo(4))
+        assertThat(OperationSaveJson.objectMapper.readTree(json).path("uiState").path("schemaVersion").intValue(), equalTo(5))
         assertThat(restored.dialogs.single(), equalTo(dialog))
         assertThat(String(json).contains("\"custom\" : \"keep\""), equalTo(true))
     }
@@ -244,6 +245,26 @@ class OperationAdditionalDataTest {
         val restored = OperationAdditionalData.fromJson(data.toJsonOrNull()).operationUiState().workspace.editor(editor.id)!!
 
         assertThat(restored, equalTo(editor))
+    }
+
+    @Test
+    fun `version five preserves an unfinished graphic template draft with dimensions and embedded image`() {
+        val image = OperationImageDraft.fromBytes("arrow.svg", "<svg/>".toByteArray())
+        val editor = OperationEditorState(
+            OperationEditorId("graphic-template:new"), OperationEditorKind.GRAPHIC_TEMPLATE,
+            OperationEditorTarget.NewGraphicTemplate,
+            OperationEditorDraft.GraphicTemplate(OperationGraphicTemplateDraft("Arrow", "3.2", "1.6", image, listOf(OperationPropertyDraft("role", "axis")))),
+            OperationFloatingEditorState(OperationEditorBounds(10.0, 20.0, 520.0, 620.0)),
+        )
+        val data = OperationAdditionalData.fromJson("""{"custom":"keep"}""".toByteArray())
+
+        data.updateOperationUiState(io.hsar.mapgenerator.commandgui.operation.OperationUiState(workspace = OperationWorkspaceState.default().open(editor)))
+        val bytes = data.toJsonOrNull()!!
+        val restored = OperationAdditionalData.fromJson(bytes).operationUiState().workspace.editor(editor.id)!!
+
+        assertThat(restored, equalTo(editor))
+        assertThat(OperationSaveJson.objectMapper.readTree(bytes).path("uiState").path("schemaVersion").intValue(), equalTo(5))
+        assertThat(OperationSaveJson.objectMapper.readTree(bytes).path("custom").textValue(), equalTo("keep"))
     }
 
     @Test

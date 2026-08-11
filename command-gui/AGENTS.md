@@ -38,12 +38,14 @@ Treat the following as implemented and protected behavior, not future work:
   cancellation and one-entry commit. Measure is transient, grid-aware and remains available during historical replay.
 - The live ledger supports current/history selection, read-only preview, undo/redo, branch truncation and selection pruning. Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+S, Delete and Escape
   are wired.
-- Operation notes, unit-template editors and ordinary unit editors share typed editor instances in a resizable right dock or floating windows. The Compose unit-type palette creates,
-  edits and safely deletes templates, and its click-then-map placement mode uses immutable previews before recording one object entry. Unit edits cover template, grid-aware position,
-  name, facing, destroyed state, affiliation and custom properties. Campaign-specific Olympiad Dawn panels remain deferred to Phase 3.
+- Operation notes, unit/graphic-template editors and ordinary unit/graphic editors share typed editor instances in a resizable right dock or floating windows. The Compose unit and
+  graphic palettes create, edit and safely delete templates, and their click-then-map placement modes use immutable previews before recording one object entry. Graphic dimensions
+  are template-owned and propagate to every live instance; archive and KorGE boundaries mirror them through the established normalized-size property keys. Unit edits cover
+  template, grid-aware position, name, facing, destroyed state, affiliation and custom properties; graphic edits cover template, display label, grid-aware position and instance
+  properties. Campaign-specific Olympiad Dawn panels remain deferred to Phase 3.
 - Revisioned two-second autosave, manual save, save-gated return/close, in-flight mutation handling and Retry/Cancel Exit are implemented. New operations save without requiring a
   first edit.
-- Additive UI schema version 4 stores typed template drafts (including bounded embedded source images) and expanded unit drafts while continuing to write version-2
+- Additive UI schema version 5 stores typed unit/graphic template drafts (including bounded embedded source images), graphic drafts and expanded unit drafts while continuing to write version-2
   IDs/drafts/dock panels and KorGE `unit-edit` dialog records. Version-1 through version-3 and legacy unit-dialog saves migrate into functional typed editors; unknown
   additional-data and unsupported legacy dialog/draft fields remain preserved.
 
@@ -52,9 +54,10 @@ Do not overstate these partial implementations:
 - `enabledLayerIds` is state/persistence only; Compose has no real layer controller and Canvas still paints the supplied base map and grid directly.
 - The notes panels edit one string draft, not timeline-backed `OperationNote` records with references and ordering.
 - The workspace implementation is deliberately a prototype: only the right dock is rendered, tabs cannot yet be interactively reordered or moved between regions, and only notes
-  plus the basic unit editor have functional Compose bodies. The neutral model already retains generic regions, tab order and opaque restored editor records for later ports.
-- Unit-template creation/edit/delete, unit placement, `Edit Unit` and delete context-menu actions are functional. Graphic editing/placement, SITREP and the other legacy commands
-  are still absent.
+  plus the ordinary unit/graphic and template editors have functional Compose bodies. The neutral model already retains generic regions, tab order and opaque restored editor
+  records for later ports.
+- Unit/graphic-template creation/edit/delete, unit/graphic placement, ordinary `Edit Unit`/`Edit Graphic`, and delete context-menu actions are functional. SITREP and the other
+  legacy commands are still absent.
 - The old `loadMap()`, `MapViewerSavedMap`, `MapViewerLedgerReplay`, replay Canvas and projection-only tests have been removed. Do not add a second map/replay loader; derive views
   from `OperationDocument.content` or its timeline.
 - Layer management remains deliberately deferred. `enabledLayerIds` is persisted state only; do not treat it as authoritative rendering until a separately approved layer slice.
@@ -92,8 +95,10 @@ Completed: Compose has an operation-native unit-type palette, typed template cre
 grid-aware position, name, facing, destroyed state, affiliation and custom properties. `OperationUnitAuthoring` owns validation, stable instance naming, placement sizing and
 change construction; do not recreate these rules in Compose. Drag placement, bulk catalogue import, template reordering and campaign-specific unit panels remain intentionally
 deferred.
-2. Port graphic-template import/list/create/edit/delete, graphic placement and Edit Graphic. Shared template-size changes must update every instance and round-trip through both
-   viewers while KorGE remains available.
+Completed: Compose has an operation-native graphic palette, typed template import/create/editing, guarded deletion, click-then-map placement, and ordinary graphic editing for type,
+display label, grid-aware position and custom properties. `OperationGraphicAuthoring` owns validation, aspect-derived default sizing, placement, retargeting and shared-size
+propagation. Typed dimensions round-trip through legacy `normalizedWidth`/`normalizedHeight` template properties at archive and KorGE boundaries. Drag placement, bulk import and
+template reordering remain deferred.
 3. Replace the notes draft with timeline-backed `OperationNote` CRUD, ordering and object references. Use standard Compose multiline text fields and preserve drafts independently
    from committed notes.
 4. Finish drawing/measurement polish: exact KorGE creation constraints, pointer cancellation/capture edge cases, drawing labels/context actions, and renderer/input tests. Draw and

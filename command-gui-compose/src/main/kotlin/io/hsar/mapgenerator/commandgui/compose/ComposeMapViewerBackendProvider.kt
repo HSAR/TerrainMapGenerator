@@ -130,6 +130,10 @@ import io.hsar.mapgenerator.commandgui.operation.OperationEditorState
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorTarget
 import io.hsar.mapgenerator.commandgui.operation.OperationFreeformDrawing
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphic
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphicAuthoring
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplate
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateId
 import io.hsar.mapgenerator.commandgui.operation.OperationLineDrawing
 import io.hsar.mapgenerator.commandgui.operation.OperationObject
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
@@ -762,6 +766,7 @@ private fun ViewerWorkspace(
     var toolGestureCancellationEpoch by remember { mutableStateOf(0) }
     var pendingExit by remember { mutableStateOf<ComposePendingExit?>(null) }
     var unitLibraryExpanded by remember { mutableStateOf(true) }
+    var graphicLibraryExpanded by remember { mutableStateOf(false) }
     var transientNotice by remember { mutableStateOf<String?>(null) }
     val autosaveScheduler = remember { ComposeAutosaveScheduler(debounceMillis = COMPOSE_AUTOSAVE_DEBOUNCE_MS) }
     val scope = rememberCoroutineScope()
@@ -842,13 +847,13 @@ private fun ViewerWorkspace(
             if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
             when {
                 event.key == Key.Escape && operationState.previewContent != null -> {
-                    operationState = operationState.cancelPreview().cancelUnitPlacement()
+                    operationState = operationState.cancelPreview().cancelPlacements()
                     toolGestureCancellationEpoch++
                     true
                 }
 
-                event.key == Key.Escape && operationState.unitPlacement != null -> {
-                    operationState = operationState.cancelUnitPlacement()
+                event.key == Key.Escape && (operationState.unitPlacement != null || operationState.graphicPlacement != null) -> {
+                    operationState = operationState.cancelPlacements()
                     true
                 }
 
@@ -918,6 +923,10 @@ private fun ViewerWorkspace(
                         onUnitPlacementPreview = { coordinate -> operationState = operationState.previewUnitPlacement(coordinate, unitIconSizePx) },
                         onUnitPlacementCommitted = { operationState = operationState.commitUnitPlacement() },
                         onUnitPlacementCancelled = { operationState = operationState.cancelUnitPlacement() },
+                        graphicPlacementActive = operationState.graphicPlacement != null,
+                        onGraphicPlacementPreview = { coordinate -> operationState = operationState.previewGraphicPlacement(coordinate) },
+                        onGraphicPlacementCommitted = { operationState = operationState.commitGraphicPlacement() },
+                        onGraphicPlacementCancelled = { operationState = operationState.cancelGraphicPlacement() },
                         cancellationEpoch = toolGestureCancellationEpoch,
                             unitIconSizePx = unitIconSizePx,
                             onUnitIconSizeChanged = { size -> unitIconSizePx = onUnitIconSizeChanged(size) },
@@ -937,22 +946,47 @@ private fun ViewerWorkspace(
                         onDrawingColourSelected = { drawingColour = it },
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp),
                     )
-                    UnitTypesPalette(
-                        templates = operationState.visibleContent.unitTemplates,
-                        expanded = unitLibraryExpanded,
-                        editable = !operationState.isReadOnly,
-                        activePlacement = operationState.unitPlacement?.templateId,
-                        onToggle = { unitLibraryExpanded = !unitLibraryExpanded },
-                        onCreate = { operationState = operationState.openNewUnitTemplateEditor() },
-                        onEdit = { operationState = operationState.openUnitTemplateEditor(it) },
-                        onPlace = { operationState = operationState.armUnitPlacement(it) },
-                        onDelete = { id ->
-                            if (!OperationUnitAuthoring.canDeleteTemplate(operationState.document.content, id)) {
-                                transientNotice = "Delete or retarget placed units before deleting this unit type."
-                            } else operationState = operationState.deleteUnitTemplate(id)
-                        },
-                        modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp),
-                    )
+                    Column(
+                        Modifier.align(Alignment.CenterStart).padding(start = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        UnitTypesPalette(
+                            templates = operationState.visibleContent.unitTemplates,
+                            expanded = unitLibraryExpanded,
+                            editable = !operationState.isReadOnly,
+                            activePlacement = operationState.unitPlacement?.templateId,
+                            onToggle = {
+                                unitLibraryExpanded = !unitLibraryExpanded
+                                if (unitLibraryExpanded) graphicLibraryExpanded = false
+                            },
+                            onCreate = { operationState = operationState.openNewUnitTemplateEditor() },
+                            onEdit = { operationState = operationState.openUnitTemplateEditor(it) },
+                            onPlace = { operationState = operationState.armUnitPlacement(it) },
+                            onDelete = { id ->
+                                if (!OperationUnitAuthoring.canDeleteTemplate(operationState.document.content, id)) {
+                                    transientNotice = "Delete or retarget placed units before deleting this unit type."
+                                } else operationState = operationState.deleteUnitTemplate(id)
+                            },
+                        )
+                        GraphicTypesPalette(
+                            templates = operationState.visibleContent.graphicTemplates,
+                            expanded = graphicLibraryExpanded,
+                            editable = !operationState.isReadOnly,
+                            activePlacement = operationState.graphicPlacement?.templateId,
+                            onToggle = {
+                                graphicLibraryExpanded = !graphicLibraryExpanded
+                                if (graphicLibraryExpanded) unitLibraryExpanded = false
+                            },
+                            onCreate = { operationState = operationState.openNewGraphicTemplateEditor() },
+                            onEdit = { operationState = operationState.openGraphicTemplateEditor(it) },
+                            onPlace = { operationState = operationState.armGraphicPlacement(it) },
+                            onDelete = { id ->
+                                if (!OperationGraphicAuthoring.canDeleteTemplate(operationState.document.content, id)) {
+                                    transientNotice = "Delete or retarget placed graphics before deleting this graphic type."
+                                } else operationState = operationState.deleteGraphicTemplate(id)
+                            },
+                        )
+                    }
                     Row(
                         modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -966,6 +1000,7 @@ private fun ViewerWorkspace(
                             onActionSelected = { action ->
                                 when (action.action) {
                                     MapViewerContextMenuCommand.EDIT_UNIT -> operationState = operationState.openUnitEditor(menu.objectId)
+                                    MapViewerContextMenuCommand.EDIT_GRAPHIC -> operationState = operationState.openGraphicEditor(menu.objectId)
                                     else -> if (action.action.name.startsWith("DELETE")) {
                                         operationState = operationState.selectObject(menu.objectId).deleteSelection()
                                     }
@@ -1125,6 +1160,54 @@ private fun UnitTypesPalette(
                                         CommandButton(onClick = { onDelete(template.id) }, enabled = editable, modifier = Modifier.weight(1f).height(32.dp)) { Text("DELETE") }
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GraphicTypesPalette(
+    templates: List<OperationGraphicTemplate>,
+    expanded: Boolean,
+    editable: Boolean,
+    activePlacement: OperationGraphicTemplateId?,
+    onToggle: () -> Unit,
+    onCreate: () -> Unit,
+    onEdit: (OperationGraphicTemplateId) -> Unit,
+    onPlace: (OperationGraphicTemplateId) -> Unit,
+    onDelete: (OperationGraphicTemplateId) -> Unit,
+    modifier: Modifier = Modifier,
+) = Surface(
+    modifier = modifier.width(if (expanded) 320.dp else 92.dp),
+    color = CommandColours.Dark.copy(alpha = 0.96f),
+    border = BorderStroke(1.dp, CommandColours.White.copy(alpha = 0.7f)),
+    shape = RectangleShape,
+) {
+    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        CommandButton(onClick = onToggle, modifier = Modifier.fillMaxWidth()) { Text(if (expanded) "GRAPHICS ◀" else "GRAPHICS ▶") }
+        if (expanded) {
+            CommandButton(onClick = onCreate, enabled = editable, modifier = Modifier.fillMaxWidth()) { Text("CREATE GRAPHIC TYPE") }
+            if (templates.isEmpty()) Text("No graphic types", color = CommandColours.White.copy(alpha = 0.7f))
+            LazyColumn(Modifier.height(330.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(templates.sortedBy(OperationGraphicTemplate::index), key = { it.id.value }) { template ->
+                    Surface(
+                        color = if (activePlacement == template.id) CommandColours.Backing else CommandColours.Dark,
+                        border = BorderStroke(1.dp, CommandColours.White.copy(alpha = 0.7f)),
+                        shape = RectangleShape,
+                    ) {
+                        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                androidx.compose.foundation.Image(template.image.toComposeImageBitmap(), null, Modifier.size(42.dp), contentScale = ContentScale.Fit)
+                                Text(template.name, Modifier.weight(1f), color = CommandColours.White)
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                CommandButton({ onPlace(template.id) }, enabled = editable, active = activePlacement == template.id, modifier = Modifier.weight(1f).height(32.dp)) { Text("PLACE") }
+                                CommandButton({ onEdit(template.id) }, enabled = editable, modifier = Modifier.weight(1f).height(32.dp)) { Text("EDIT") }
+                                CommandButton({ onDelete(template.id) }, enabled = editable, modifier = Modifier.weight(1f).height(32.dp)) { Text("DELETE") }
                             }
                         }
                     }
@@ -1343,6 +1426,21 @@ private fun EditorContent(
         } else UnitTemplateEditorContent(editor, draft.value, state, onStateChanged, modifier)
     }
 
+    is OperationEditorDraft.Graphic -> {
+        val target = editor.target as? OperationEditorTarget.Object
+        val graphic = target?.objectId?.let(state.visibleContent::objectById) as? OperationGraphic
+        if (graphic == null) Box(modifier, contentAlignment = Alignment.Center) {
+            Text(if (state.isReadOnly) "This graphic is unavailable at this history point." else "This graphic no longer exists.")
+        } else GraphicEditorContent(editor.id, draft.value, graphic, state, onStateChanged, modifier)
+    }
+
+    is OperationEditorDraft.GraphicTemplate -> {
+        val target = editor.target as? OperationEditorTarget.GraphicTemplate
+        if (target != null && state.visibleContent.graphicTemplate(target.templateId) == null) {
+            Box(modifier, contentAlignment = Alignment.Center) { Text("This graphic type is unavailable at this history point.") }
+        } else GraphicTemplateEditorContent(editor, draft.value, state, onStateChanged, modifier)
+    }
+
     is OperationEditorDraft.Opaque -> Box(modifier, contentAlignment = Alignment.Center) { Text("This restored editor is not supported yet.") }
 }
 
@@ -1490,6 +1588,108 @@ private fun UnitTemplateEditorContent(
 }
 
 @Composable
+private fun GraphicEditorContent(
+    editorId: OperationEditorId,
+    draft: io.hsar.mapgenerator.commandgui.operation.OperationGraphicDraft,
+    graphic: OperationGraphic,
+    state: ComposeOperationState,
+    onStateChanged: (ComposeOperationState) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val validation = OperationGraphicAuthoring.validateGraphicDraft(draft, state.document.content, state.document.renderData)
+    val selectedTemplate = draft.graphicTemplateId?.let(state.document.content::graphicTemplate)
+    fun update(value: io.hsar.mapgenerator.commandgui.operation.OperationGraphicDraft) =
+        onStateChanged(state.updateEditorDraft(editorId, OperationEditorDraft.Graphic(value)))
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            selectedTemplate?.let { template ->
+                androidx.compose.foundation.Image(template.image.toComposeImageBitmap(), null, Modifier.fillMaxWidth().height(120.dp), contentScale = ContentScale.Fit)
+            }
+            OutlinedTextField(draft.displayName, { update(draft.copy(displayName = it)) }, Modifier.fillMaxWidth(), enabled = !state.isReadOnly, singleLine = true, label = { Text("Display label (optional)") })
+            Text("Graphic type", color = CommandColours.Backing)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                state.document.content.graphicTemplates.sortedBy(OperationGraphicTemplate::index).forEach { template ->
+                    CommandButton({ update(draft.copy(graphicTemplateId = template.id)) }, active = selectedTemplate?.id == template.id, enabled = !state.isReadOnly) { Text(template.name) }
+                }
+            }
+            validation.errors["template"]?.let { Text(it, color = Color(0xFFDF4A4A)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(draft.positionX, { update(draft.copy(positionX = it)) }, Modifier.weight(1f), enabled = !state.isReadOnly, singleLine = true, isError = "position" in validation.errors, label = { Text(if (state.document.renderData.gridLayer == null) "Map X" else "Easting") })
+                OutlinedTextField(draft.positionY, { update(draft.copy(positionY = it)) }, Modifier.weight(1f), enabled = !state.isReadOnly, singleLine = true, isError = "position" in validation.errors, label = { Text(if (state.document.renderData.gridLayer == null) "Map Y" else "Northing") })
+            }
+            validation.errors["position"]?.let { Text(it, color = Color(0xFFDF4A4A)) }
+            if (selectedTemplate?.customProperties?.isNotEmpty() == true) {
+                Text("Inherited from graphic type", color = CommandColours.Backing)
+                selectedTemplate.customProperties.toSortedMap().forEach { (key, value) -> Text("$key: $value", color = CommandColours.Backing.copy(alpha = 0.75f)) }
+            }
+            PropertyRows(draft.properties, !state.isReadOnly, validation.errors) { update(draft.copy(properties = it)) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CommandButton({ onStateChanged(state.saveGraphicEditor(editorId)) }, enabled = !state.isReadOnly && validation.valid, modifier = Modifier.weight(1f)) { Text("SAVE") }
+            CommandButton({ onStateChanged(state.closeEditor(editorId)) }, modifier = Modifier.weight(1f)) { Text("CANCEL") }
+        }
+    }
+}
+
+@Composable
+private fun GraphicTemplateEditorContent(
+    editor: OperationEditorState,
+    draft: OperationGraphicTemplateDraft,
+    state: ComposeOperationState,
+    onStateChanged: (ComposeOperationState) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var imageError by remember(editor.id) { mutableStateOf<String?>(null) }
+    val existing = (editor.target as? OperationEditorTarget.GraphicTemplate)?.templateId?.let(state.document.content::graphicTemplate)
+    val decoded = remember(draft.replacementImage) { draft.replacementImage?.let { runCatching { MapViewerImageLoader.load(it.bytes(), it.originalFilename) }.getOrNull() } }
+    val validation = OperationGraphicAuthoring.validateTemplateDraft(draft, existing != null)
+    fun update(value: OperationGraphicTemplateDraft) = onStateChanged(state.updateEditorDraft(editor.id, OperationEditorDraft.GraphicTemplate(value)))
+    fun browse() {
+        FileDialog(null as Frame?, "Choose graphic image", FileDialog.LOAD).also { dialog ->
+            dialog.file = "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg"
+            dialog.isVisible = true
+            val name = dialog.file ?: return
+            val file = File(dialog.directory, name)
+            runCatching {
+                val imageDraft = OperationImageDraft.fromBytes(file.name, file.readBytes())
+                val image = requireNotNull(MapViewerImageLoader.load(imageDraft.bytes(), imageDraft.originalFilename)) { "Unsupported image" }
+                imageDraft to image
+            }.onSuccess { (imageDraft, image) ->
+                imageError = null
+                val height = draft.heightPercent.takeIf(String::isNotBlank)
+                    ?: OperationGraphicAuthoring.defaultHeightPercent(
+                        image, state.document.renderData.baseImage.width, state.document.renderData.baseImage.height,
+                        draft.widthPercent.toDoubleOrNull() ?: io.hsar.mapgenerator.commandgui.operation.DEFAULT_GRAPHIC_WIDTH_PERCENT,
+                    ).toString()
+                update(draft.copy(
+                    name = draft.name.ifBlank { file.nameWithoutExtension },
+                    replacementImage = imageDraft,
+                    heightPercent = height,
+                ))
+            }.onFailure { imageError = it.message ?: "Could not load the selected image" }
+        }
+    }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val preview = decoded ?: existing?.image
+            preview?.let { androidx.compose.foundation.Image(it.toComposeImageBitmap(), null, Modifier.fillMaxWidth().height(130.dp), contentScale = ContentScale.Fit) }
+            CommandButton(::browse, enabled = !state.isReadOnly, modifier = Modifier.fillMaxWidth()) { Text(if (preview == null) "CHOOSE IMAGE" else "REPLACE IMAGE") }
+            (imageError ?: validation.errors["image"])?.let { Text(it, color = Color(0xFFDF4A4A)) }
+            OutlinedTextField(draft.name, { update(draft.copy(name = it)) }, Modifier.fillMaxWidth(), enabled = !state.isReadOnly, isError = "name" in validation.errors, singleLine = true, label = { Text("Name") })
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(draft.widthPercent, { update(draft.copy(widthPercent = it)) }, Modifier.weight(1f), enabled = !state.isReadOnly, isError = "width" in validation.errors, singleLine = true, label = { Text("Map width %") })
+                OutlinedTextField(draft.heightPercent, { update(draft.copy(heightPercent = it)) }, Modifier.weight(1f), enabled = !state.isReadOnly, isError = "height" in validation.errors, singleLine = true, label = { Text("Map height %") })
+            }
+            PropertyRows(draft.properties, !state.isReadOnly, validation.errors) { update(draft.copy(properties = it)) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CommandButton({ onStateChanged(state.saveGraphicTemplateEditor(editor.id, decoded)) }, enabled = !state.isReadOnly && validation.valid, modifier = Modifier.weight(1f)) { Text("SAVE") }
+            CommandButton({ onStateChanged(state.closeEditor(editor.id)) }, modifier = Modifier.weight(1f)) { Text("CANCEL") }
+        }
+    }
+}
+
+@Composable
 private fun AffiliationButtons(
     selected: OperationUnitAffiliation?,
     enabled: Boolean,
@@ -1524,6 +1724,11 @@ private fun OperationEditorState.title(content: OperationContent): String = when
     OperationEditorKind.UNIT_TEMPLATE -> when (val value = target) {
         is OperationEditorTarget.UnitTemplate -> content.unitTemplate(value.templateId)?.name ?: "Edit Unit Type"
         else -> "Create Unit Type"
+    }
+    OperationEditorKind.GRAPHIC -> (target as? OperationEditorTarget.Object)?.objectId?.let(content::objectById)?.name?.takeIf(String::isNotBlank) ?: "Edit Graphic"
+    OperationEditorKind.GRAPHIC_TEMPLATE -> when (val value = target) {
+        is OperationEditorTarget.GraphicTemplate -> content.graphicTemplate(value.templateId)?.name ?: "Edit Graphic Type"
+        else -> "Create Graphic Type"
     }
     else -> kind.value
 }
@@ -1771,6 +1976,10 @@ private fun MapCanvas(
     onUnitPlacementPreview: (MapCoordinate?) -> Unit,
     onUnitPlacementCommitted: () -> Unit,
     onUnitPlacementCancelled: () -> Unit,
+    graphicPlacementActive: Boolean,
+    onGraphicPlacementPreview: (MapCoordinate?) -> Unit,
+    onGraphicPlacementCommitted: () -> Unit,
+    onGraphicPlacementCancelled: () -> Unit,
     cancellationEpoch: Int,
     unitIconSizePx: Double,
     onUnitIconSizeChanged: (Double) -> Unit,
@@ -1913,8 +2122,8 @@ private fun MapCanvas(
             .onPointerEvent(PointerEventType.Press) { event ->
                 val change = event.changes.firstOrNull() ?: return@onPointerEvent
                 if (event.buttons.isSecondaryPressed) {
-                    if (unitPlacementActive) {
-                        onUnitPlacementCancelled()
+                    if (unitPlacementActive || graphicPlacementActive) {
+                        if (unitPlacementActive) onUnitPlacementCancelled() else onGraphicPlacementCancelled()
                         change.consume()
                         return@onPointerEvent
                     }
@@ -1931,6 +2140,13 @@ private fun MapCanvas(
                     val coordinate = screenToMap(change.position).takeIf { it.x in 0.0..1.0 && it.y in 0.0..1.0 }
                     onUnitPlacementPreview(coordinate)
                     if (coordinate != null) onUnitPlacementCommitted()
+                    change.consume()
+                    return@onPointerEvent
+                }
+                if (event.buttons.isPrimaryPressed && graphicPlacementActive) {
+                    val coordinate = screenToMap(change.position).takeIf { it.x in 0.0..1.0 && it.y in 0.0..1.0 }
+                    onGraphicPlacementPreview(coordinate)
+                    if (coordinate != null) onGraphicPlacementCommitted()
                     change.consume()
                     return@onPointerEvent
                 }
@@ -1990,6 +2206,10 @@ private fun MapCanvas(
                 val change = event.changes.firstOrNull() ?: return@onPointerEvent
                 if (unitPlacementActive && !event.buttons.isPrimaryPressed && !event.buttons.isSecondaryPressed) {
                     onUnitPlacementPreview(screenToMap(change.position).takeIf { it.x in 0.0..1.0 && it.y in 0.0..1.0 })
+                    return@onPointerEvent
+                }
+                if (graphicPlacementActive && !event.buttons.isPrimaryPressed && !event.buttons.isSecondaryPressed) {
+                    onGraphicPlacementPreview(screenToMap(change.position).takeIf { it.x in 0.0..1.0 && it.y in 0.0..1.0 })
                     return@onPointerEvent
                 }
                 if (event.buttons.isSecondaryPressed && rightClickTargetId == null) {

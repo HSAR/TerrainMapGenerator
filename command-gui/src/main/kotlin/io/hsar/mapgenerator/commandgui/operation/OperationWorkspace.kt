@@ -13,6 +13,8 @@ value class OperationEditorKind(val value: String) {
         val OPERATION_NOTES = OperationEditorKind("operation-notes")
         val UNIT = OperationEditorKind("unit")
         val UNIT_TEMPLATE = OperationEditorKind("unit-template")
+        val GRAPHIC = OperationEditorKind("graphic")
+        val GRAPHIC_TEMPLATE = OperationEditorKind("graphic-template")
     }
 }
 
@@ -21,6 +23,8 @@ sealed interface OperationEditorTarget {
     data class Object(val objectId: OperationObjectId) : OperationEditorTarget
     data object NewUnitTemplate : OperationEditorTarget
     data class UnitTemplate(val templateId: OperationUnitTemplateId) : OperationEditorTarget
+    data object NewGraphicTemplate : OperationEditorTarget
+    data class GraphicTemplate(val templateId: OperationGraphicTemplateId) : OperationEditorTarget
     data class Opaque(val value: String?) : OperationEditorTarget
 }
 
@@ -38,6 +42,8 @@ sealed interface OperationEditorDraft {
     ) : OperationEditorDraft
 
     data class UnitTemplate(val value: OperationUnitTemplateDraft = OperationUnitTemplateDraft()) : OperationEditorDraft
+    data class Graphic(val value: OperationGraphicDraft = OperationGraphicDraft()) : OperationEditorDraft
+    data class GraphicTemplate(val value: OperationGraphicTemplateDraft = OperationGraphicTemplateDraft()) : OperationEditorDraft
 
     data class Opaque(val value: String = "") : OperationEditorDraft
 }
@@ -188,6 +194,45 @@ fun OperationUnitTemplate.editorState(
         OperationUnitTemplateDraft(
             name = name,
             affiliation = affiliation,
+            properties = customProperties.map { OperationPropertyDraft(it.key, it.value) },
+        ),
+    ),
+    floating = OperationFloatingEditorState(bounds),
+)
+
+fun OperationGraphic.editorState(
+    renderData: io.hsar.mapgenerator.commandgui.MapViewerRenderData,
+    bounds: OperationEditorBounds = OperationEditorBounds(112.0, 112.0, 520.0, 560.0),
+): OperationEditorState {
+    val position = OperationUnitAuthoring.formatPosition(renderData, coordinate)
+    return OperationEditorState(
+        id = OperationEditorId("graphic:${id.value}"),
+        kind = OperationEditorKind.GRAPHIC,
+        target = OperationEditorTarget.Object(id),
+        draft = OperationEditorDraft.Graphic(
+            OperationGraphicDraft(
+                graphicTemplateId = graphicTemplateId,
+                displayName = customProperties[GRAPHIC_DISPLAY_NAME_PROPERTY].orEmpty(),
+                positionX = position.easting,
+                positionY = position.northing,
+                properties = customProperties.filterKeys { it != GRAPHIC_DISPLAY_NAME_PROPERTY }.map { OperationPropertyDraft(it.key, it.value) },
+            ),
+        ),
+        floating = OperationFloatingEditorState(bounds),
+    )
+}
+
+fun OperationGraphicTemplate.editorState(
+    bounds: OperationEditorBounds = OperationEditorBounds(112.0, 112.0, 520.0, 620.0),
+) = OperationEditorState(
+    id = OperationEditorId("graphic-template:${id.value}"),
+    kind = OperationEditorKind.GRAPHIC_TEMPLATE,
+    target = OperationEditorTarget.GraphicTemplate(id),
+    draft = OperationEditorDraft.GraphicTemplate(
+        OperationGraphicTemplateDraft(
+            name = name,
+            widthPercent = (normalizedWidth * 100.0).toString(),
+            heightPercent = (normalizedHeight * 100.0).toString(),
             properties = customProperties.map { OperationPropertyDraft(it.key, it.value) },
         ),
     ),

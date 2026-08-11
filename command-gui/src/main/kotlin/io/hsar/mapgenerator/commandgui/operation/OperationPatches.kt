@@ -78,7 +78,6 @@ internal fun applyOperationUnitTemplatePatch(
         "affiliation" -> current.copy(affiliation = value?.takeUnless(JsonNode::isNull)?.asText()?.toOperationAffiliation())
         "assetId" -> value?.takeUnless(JsonNode::isNull)?.asText()?.let(UUID::fromString)?.let(resolveAsset)
             ?.let { (image, source) -> current.copy(image = image, assetSource = source) } ?: current
-
         else -> current.copy(customProperties = current.customProperties.applyProperty(key, value))
     }
 }
@@ -92,6 +91,8 @@ internal fun applyOperationGraphicTemplatePatch(
         "name" -> current.copy(name = value.required().asText())
         "assetId" -> value?.takeUnless(JsonNode::isNull)?.asText()?.let(UUID::fromString)?.let(resolveAsset)
             ?.let { (image, source) -> current.copy(image = image, assetSource = source) } ?: current
+        GRAPHIC_TEMPLATE_WIDTH_PROPERTY -> current.copy(normalizedWidth = value.required().asDouble())
+        GRAPHIC_TEMPLATE_HEIGHT_PROPERTY -> current.copy(normalizedHeight = value.required().asDouble())
 
         else -> current.copy(customProperties = current.customProperties.applyProperty(key, value))
     }
@@ -307,6 +308,8 @@ private fun operationUnitTemplateDiff(before: OperationUnitTemplate, after: Oper
 
 private fun operationGraphicTemplateDiff(before: OperationGraphicTemplate, after: OperationGraphicTemplate) = buildMap<String, JsonNode?> {
     if (before.name != after.name) put("name", TextNode(after.name))
+    putChanged(GRAPHIC_TEMPLATE_WIDTH_PROPERTY, before.normalizedWidth, after.normalizedWidth)
+    putChanged(GRAPHIC_TEMPLATE_HEIGHT_PROPERTY, before.normalizedHeight, after.normalizedHeight)
     putAll(CustomPropertyJson.diff(before.customProperties, after.customProperties, GRAPHIC_TEMPLATE_FIELDS))
 }
 
@@ -373,5 +376,5 @@ private val UNIT_FIELDS = setOf("unitTemplateId", "instanceName", "destroyed", "
 private val GRAPHIC_FIELDS = setOf("graphicTemplateId", "instanceName", "mapCoordinate", "normalizedWidth", "normalizedHeight")
 private val DRAWING_FIELDS = setOf("drawing", "points", "color", "start", "end", "rotationDegrees", "center", "xRadius", "yRadius")
 private val UNIT_TEMPLATE_FIELDS = setOf("name", "affiliation", "assetId")
-private val GRAPHIC_TEMPLATE_FIELDS = setOf("name", "assetId")
+private val GRAPHIC_TEMPLATE_FIELDS = setOf("name", "assetId", GRAPHIC_TEMPLATE_WIDTH_PROPERTY, GRAPHIC_TEMPLATE_HEIGHT_PROPERTY)
 private val UUID_REGEX = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")

@@ -244,7 +244,9 @@ internal fun GraphicTemplateSnapshot.toOperationTemplate() = OperationGraphicTem
     image = template.bitmap.toBufferedImage(),
     index = index,
     assetSource = template.assetSource,
-    customProperties = template.customProperties,
+    normalizedWidth = template.normalizedSize()?.width ?: 0.1,
+    normalizedHeight = template.normalizedSize()?.height ?: 0.1,
+    customProperties = template.customProperties.withoutGraphicTemplateDimensions(),
 )
 
 internal fun MapNoteSnapshot.toOperationNote() = OperationNote(
@@ -280,7 +282,7 @@ internal fun OperationObject.toLegacyObject(content: OperationContent): MapPlace
     is OperationGraphic -> GraphicSnapshot(
         id = id.toLegacy(),
         graphicTemplateId = graphicTemplateId.toLegacy(),
-        template = content.graphicTemplate(graphicTemplateId)?.toLegacyTemplate()?.template ?: error("Missing graphic template ${graphicTemplateId.value}"),
+        template = content.graphicTemplate(graphicTemplateId)?.toLegacyTemplate(includeDimensions = false)?.template ?: error("Missing graphic template ${graphicTemplateId.value}"),
         instanceName = instanceName,
         mapCoordinate = coordinate,
         normalizedWidth = normalizedWidth,
@@ -311,14 +313,14 @@ internal fun OperationUnitTemplate.toLegacyTemplate() = UnitTemplateSnapshot(
     index = index,
 )
 
-internal fun OperationGraphicTemplate.toLegacyTemplate() = GraphicTemplateSnapshot(
+internal fun OperationGraphicTemplate.toLegacyTemplate(includeDimensions: Boolean = true) = GraphicTemplateSnapshot(
     id = id.toLegacy(),
     template = MapViewerGraphicTemplate(
         id = id.toLegacy(),
         name = name,
         bitmap = image.toBitmap32(),
         assetSource = assetSource,
-        customProperties = customProperties,
+        customProperties = if (includeDimensions) archiveCustomProperties() else customProperties,
     ),
     index = index,
 )

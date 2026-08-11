@@ -167,7 +167,14 @@ private class OperationLedgerLoader(private val zip: ZipFile) {
     }
 
     private fun GraphicTemplateSaveDto.toOperation() = asset(UUID.fromString(assetId))!!.let { (image, source) ->
-        OperationGraphicTemplate(OperationGraphicTemplateId(id), name, image, index = 0, assetSource = source, customProperties = customProperties)
+        val dimensions = customProperties.graphicTemplateDimensions()
+        OperationGraphicTemplate(
+            OperationGraphicTemplateId(id), name, image, index = 0,
+            normalizedWidth = dimensions?.first ?: Double.NaN,
+            normalizedHeight = dimensions?.second ?: Double.NaN,
+            assetSource = source,
+            customProperties = customProperties.withoutGraphicTemplateDimensions(),
+        )
     }
 }
 
@@ -209,7 +216,10 @@ private fun OperationContent.withGraphicSizesFromInstances(): OperationContent {
     val sizes = objects.filterIsInstance<OperationGraphic>().groupBy(OperationGraphic::graphicTemplateId)
         .mapValues { it.value.first().let { graphic -> graphic.normalizedWidth to graphic.normalizedHeight } }
     return copy(graphicTemplates = graphicTemplates.map { template ->
-        sizes[template.id]?.let { template.copy(normalizedWidth = it.first, normalizedHeight = it.second) } ?: template
+        if (!template.normalizedWidth.isFinite() || !template.normalizedHeight.isFinite()) {
+            sizes[template.id]?.let { template.copy(normalizedWidth = it.first, normalizedHeight = it.second) }
+                ?: template.copy(normalizedWidth = 0.1, normalizedHeight = 0.1)
+        } else template
     })
 }
 

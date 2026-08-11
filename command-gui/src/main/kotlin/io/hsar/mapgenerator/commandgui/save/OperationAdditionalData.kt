@@ -15,6 +15,9 @@ import io.hsar.mapgenerator.commandgui.operation.OperationEditorKind
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorState
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorTarget
 import io.hsar.mapgenerator.commandgui.operation.OperationFloatingEditorState
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphicDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateId
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.operation.OperationImageDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationPropertyDraft
@@ -115,6 +118,8 @@ private fun OperationWorkspaceState.compatibilityDrafts(): Map<String, String> =
         is OperationEditorDraft.Opaque -> editor.id.value to draft.value
         is OperationEditorDraft.Unit -> null
         is OperationEditorDraft.UnitTemplate -> null
+        is OperationEditorDraft.Graphic -> null
+        is OperationEditorDraft.GraphicTemplate -> null
     }
 }.toMap()
 
@@ -309,6 +314,12 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
                 ?.let(OperationEditorTarget::UnitTemplate)
                 ?: return null
 
+            "new-graphic-template" -> OperationEditorTarget.NewGraphicTemplate
+            "graphic-template" -> targetNode.path("templateId").textValue()
+                ?.let { runCatching { OperationGraphicTemplateId(UUID.fromString(it)) }.getOrNull() }
+                ?.let(OperationEditorTarget::GraphicTemplate)
+                ?: return null
+
             else -> OperationEditorTarget.Opaque(targetNode.path("value").textValue())
         }
         val draftNode = node.path("draft")
@@ -338,6 +349,27 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
                     properties = readProperties(draftNode.path("properties")),
                 ),
             )
+
+            OperationEditorKind.GRAPHIC -> if (target is OperationEditorTarget.Object) OperationEditorDraft.Graphic(
+                OperationGraphicDraft(
+                    graphicTemplateId = draftNode.path("graphicTemplateId").textValue()
+                        ?.let { runCatching { OperationGraphicTemplateId(UUID.fromString(it)) }.getOrNull() },
+                    displayName = draftNode.path("displayName").textValue().orEmpty(),
+                    positionX = draftNode.path("positionX").textValue().orEmpty(),
+                    positionY = draftNode.path("positionY").textValue().orEmpty(),
+                    properties = readProperties(draftNode.path("properties")),
+                ),
+            ) else OperationEditorDraft.Opaque(draftNode.path("value").textValue().orEmpty())
+
+            OperationEditorKind.GRAPHIC_TEMPLATE -> if (target == OperationEditorTarget.NewGraphicTemplate || target is OperationEditorTarget.GraphicTemplate) OperationEditorDraft.GraphicTemplate(
+                OperationGraphicTemplateDraft(
+                    name = draftNode.path("name").textValue().orEmpty(),
+                    widthPercent = draftNode.path("widthPercent").textValue().orEmpty(),
+                    heightPercent = draftNode.path("heightPercent").textValue().orEmpty(),
+                    replacementImage = readImageDraft(draftNode.path("image")),
+                    properties = readProperties(draftNode.path("properties")),
+                ),
+            ) else OperationEditorDraft.Opaque(draftNode.path("value").textValue().orEmpty())
 
             else -> OperationEditorDraft.Opaque(draftNode.path("value").textValue().orEmpty())
         }
@@ -369,6 +401,13 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
         node.takeIf(JsonNode::isArray)?.map { value ->
             OperationPropertyDraft(value.path("key").textValue().orEmpty(), value.path("value").textValue().orEmpty())
         }.orEmpty()
+
+    private fun readImageDraft(node: JsonNode) = node.takeIf(JsonNode::isObject)?.let { image ->
+        val name = image.path("originalFilename").textValue() ?: return@let null
+        val mediaType = image.path("mediaType").textValue() ?: return@let null
+        val bytes = image.path("base64Bytes").textValue() ?: return@let null
+        runCatching { OperationImageDraft.fromBase64(name, mediaType, bytes) }.getOrNull()
+    }
 
     private fun writeProperties(properties: List<OperationPropertyDraft>) = JsonNodeFactory.instance.arrayNode().also { values ->
         properties.forEach { property -> values.addObject().apply { put("key", property.key); put("value", property.value) } }
@@ -406,6 +445,11 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
                     put("type", "unit-template"); put("templateId", target.templateId.value.toString())
                 }
 
+                OperationEditorTarget.NewGraphicTemplate -> put("type", "new-graphic-template")
+                is OperationEditorTarget.GraphicTemplate -> {
+                    put("type", "graphic-template"); put("templateId", target.templateId.value.toString())
+                }
+
                 is OperationEditorTarget.Opaque -> {
                     put("type", "opaque"); target.value?.let { put("value", it) }
                 }
@@ -431,6 +475,21 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
                     set<com.fasterxml.jackson.databind.node.ArrayNode>("properties", writeProperties(draft.value.properties))
                 }
 
+                is OperationEditorDraft.Graphic -> {
+                    draft.value.graphicTemplateId?.let { put("graphicTemplateId", it.value.toString()) }
+                    put("displayName", draft.value.displayName)
+                    put("positionX", draft.value.positionX); put("positionY", draft.value.positionY)
+                    set<com.fasterxml.jackson.databind.node.ArrayNode>("properties", writeProperties(draft.value.properties))
+                }
+
+                is OperationEditorDraft.GraphicTemplate -> {
+                    put("name", draft.value.name); put("widthPercent", draft.value.widthPercent); put("heightPercent", draft.value.heightPercent)
+                    draft.value.replacementImage?.let { image -> putObject("image").apply {
+                        put("originalFilename", image.originalFilename); put("mediaType", image.mediaType); put("base64Bytes", image.base64Bytes)
+                    } }
+                    set<com.fasterxml.jackson.databind.node.ArrayNode>("properties", writeProperties(draft.value.properties))
+                }
+
                 is OperationEditorDraft.Opaque -> put("value", draft.value)
             }
         }
@@ -450,7 +509,7 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
 
     companion object {
         const val UI_STATE_FIELD = "uiState"
-        const val CURRENT_UI_SCHEMA_VERSION = 4
+        const val CURRENT_UI_SCHEMA_VERSION = 5
 
         fun fromJson(json: ByteArray?): OperationAdditionalData = OperationAdditionalData(
             runCatching {

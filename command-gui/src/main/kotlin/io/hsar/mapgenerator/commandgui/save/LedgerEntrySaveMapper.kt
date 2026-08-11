@@ -132,7 +132,7 @@ private fun OperationGraphicTemplate.toDto(assets: OperationAssetRegistry) = Gra
     id = id.value,
     name = name,
     assetId = assets.registerGraphicTemplate(this).id.toString(),
-    customProperties = customProperties,
+    customProperties = archiveCustomProperties(),
 )
 
 private fun OperationNote.toDto() = NoteSaveDto(id.value, title, body, referencedObjectIds.map { it.value })

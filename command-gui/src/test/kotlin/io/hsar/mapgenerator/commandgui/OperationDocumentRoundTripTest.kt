@@ -87,6 +87,31 @@ class OperationDocumentRoundTripTest {
         assertThat(OperationSaveJson.objectMapper.readTree(loaded.additionalDataJson).path("unknown").path("keep").booleanValue(), equalTo(true))
     }
 
+    @Test
+    fun `unused graphic template dimensions survive archive round trip through legacy property keys`() {
+        val repository = MapViewerSaveRepository(directory)
+        val template = OperationGraphicTemplate(graphicTemplateId, "Unused", icon(), 0, .073, .041)
+        val timeline = OperationTimeline().record(OperationTimelineEntry(
+            OperationChangeSet(graphicTemplates = listOf(OperationValueChange(after = template))),
+            MapViewerLedgerEntryKind.GRAPHIC_TEMPLATE,
+            "created graphic template Unused",
+        ))
+        val target = directory.resolve("unused-graphic.oct.zip")
+        val document = OperationDocument(
+            operationId = UUID(0, 100), operationName = "Unused Graphic", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH,
+            settings = MapViewerSettings(operationName = "Unused Graphic", width = 40, height = 20),
+            renderData = MapViewerRenderData(BufferedImage(40, 20, BufferedImage.TYPE_INT_ARGB)),
+            timeline = timeline, sourcePath = target,
+        )
+
+        repository.saveOperation(document, null, OperationUiState())
+        val loaded = repository.loadOperation(target).content.graphicTemplates.single()
+
+        assertThat(loaded.normalizedWidth, equalTo(.073))
+        assertThat(loaded.normalizedHeight, equalTo(.041))
+        assertThat(loaded.customProperties.containsKey(GRAPHIC_TEMPLATE_WIDTH_PROPERTY), equalTo(false))
+    }
+
     private fun id(number: Int) = OperationObjectId(UUID(0L, number.toLong()))
     private fun icon() = BufferedImage(4, 4, BufferedImage.TYPE_INT_ARGB)
     private val unitTemplateId = OperationUnitTemplateId(UUID(0L, 20L))

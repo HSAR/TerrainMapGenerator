@@ -25,6 +25,10 @@ import io.hsar.mapgenerator.commandgui.operation.OperationUnit
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateId
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplate
 import io.hsar.mapgenerator.commandgui.operation.OperationImageDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphic
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplate
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateDraft
+import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateId
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationValueChange
 import io.hsar.mapgenerator.commandgui.operation.OperationWorkspaceState
@@ -274,6 +278,62 @@ class ComposeOperationStateTest {
         assertThat(saved.document.timeline.entries.last().kind, equalTo(MapViewerLedgerEntryKind.UNIT_TEMPLATE))
         assertThat(saved.workspace.editor(editorId), equalTo(null))
     }
+
+    @Test
+    fun `graphic placement previews and commits one selected object`() {
+        val template = graphicTemplate()
+        val document = documentWith(unit).copy(timeline = OperationTimeline().record(OperationTimelineEntry(
+            OperationChangeSet(graphicTemplates = listOf(OperationValueChange(after = template))),
+            MapViewerLedgerEntryKind.GRAPHIC_TEMPLATE, "template",
+        )))
+
+        val preview = ComposeOperationState(document).armGraphicPlacement(template.id).previewGraphicPlacement(MapCoordinate(.4, .6))
+        val committed = preview.commitGraphicPlacement()
+
+        assertThat(preview.document.timeline.entries.size, equalTo(1))
+        assertThat(preview.visibleContent.objects.filterIsInstance<OperationGraphic>().size, equalTo(1))
+        assertThat(committed.document.timeline.entries.size, equalTo(2))
+        assertThat(committed.selectedObjectIds, equalTo(setOf(committed.document.content.objects.single().id)))
+        assertThat(committed.graphicPlacement, equalTo(null))
+    }
+
+    @Test
+    fun `saving graphic template size updates all instances in one timeline entry`() {
+        val template = graphicTemplate()
+        val graphic = OperationGraphic(OperationObjectId(UUID(0, 30)), template.id, template.name, MapCoordinate(.5, .5), .032, .032)
+        val timeline = OperationTimeline().record(OperationTimelineEntry(
+            OperationChangeSet(graphicTemplates = listOf(OperationValueChange(after = template)), objects = listOf(OperationValueChange(after = graphic))),
+            MapViewerLedgerEntryKind.BATCH, "fixture",
+        ))
+        val editorId = OperationEditorId("graphic-template:${template.id.value}")
+        val state = ComposeOperationState(documentWith(unit).copy(timeline = timeline)).openGraphicTemplateEditor(template.id)
+        val draft = OperationGraphicTemplateDraft("Arrow", "8", "4")
+
+        val saved = state.updateEditorDraft(editorId, OperationEditorDraft.GraphicTemplate(draft)).saveGraphicTemplateEditor(editorId, null)
+
+        assertThat(saved.document.timeline.entries.size, equalTo(2))
+        assertThat(saved.document.content.graphicTemplate(template.id)!!.normalizedWidth, equalTo(.08))
+        assertThat((saved.document.content.objectById(graphic.id) as OperationGraphic).normalizedHeight, equalTo(.04))
+    }
+
+    @Test
+    fun `history preview cancels armed graphic placement without recording`() {
+        val template = graphicTemplate()
+        val timeline = OperationTimeline().record(OperationTimelineEntry(
+            OperationChangeSet(graphicTemplates = listOf(OperationValueChange(after = template))),
+            MapViewerLedgerEntryKind.GRAPHIC_TEMPLATE, "template",
+        ))
+        val state = ComposeOperationState(documentWith(unit).copy(timeline = timeline)).armGraphicPlacement(template.id)
+
+        val historical = state.previewHistory(0)
+
+        assertThat(historical.graphicPlacement, equalTo(null))
+        assertThat(historical.document.timeline, equalTo(timeline))
+    }
+
+    private fun graphicTemplate() = OperationGraphicTemplate(
+        OperationGraphicTemplateId(UUID(0, 20)), "Arrow", BufferedImage(20, 10, BufferedImage.TYPE_INT_ARGB), 0, .032, .032,
+    )
 
     private fun documentWith(value: OperationUnit): OperationDocument {
         val create = OperationTimelineEntry(
