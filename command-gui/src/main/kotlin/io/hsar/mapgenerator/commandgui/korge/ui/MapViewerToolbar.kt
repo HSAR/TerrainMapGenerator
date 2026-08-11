@@ -1,7 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
-import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingColour
-import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
+import io.hsar.mapgenerator.commandgui.MapViewerDrawingColour
+import io.hsar.mapgenerator.commandgui.MapViewerDrawingMode
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerTool
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.input.mouse
@@ -17,20 +17,20 @@ internal class MapViewerToolbar(
     viewportWidth: Int,
     viewportHeight: Int,
     private val selectedTool: () -> MapViewerTool,
-    private val selectedDrawingMode: () -> MapDrawingMode,
-    private val selectedDrawingColour: () -> MapDrawingColour,
+    private val selectedDrawingMode: () -> MapViewerDrawingMode,
+    private val selectedDrawingColour: () -> MapViewerDrawingColour,
     private val isReadOnly: () -> Boolean,
     private val onToolSelected: (MapViewerTool) -> Unit,
-    private val onDrawingModeSelected: (MapDrawingMode) -> Unit,
-    private val onDrawingColourSelected: (MapDrawingColour) -> Unit,
+    private val onDrawingModeSelected: (MapViewerDrawingMode) -> Unit,
+    private val onDrawingColourSelected: (MapViewerDrawingColour) -> Unit,
 ) {
     private val toolButtons = listOf(
         ToolbarButtonSpec(MapViewerTool.SELECT, "Select"),
         ToolbarButtonSpec(MapViewerTool.MEASURE, "Measure"),
         ToolbarButtonSpec(MapViewerTool.DRAW, "Draw"),
     )
-    private val drawingModeButtons = MapDrawingMode.entries
-    private val drawingColourButtons = MapDrawingColour.entries
+    private val drawingModeButtons = MapViewerDrawingMode.entries
+    private val drawingColourButtons = MapViewerDrawingColour.entries
     private val overlay = root.container()
     private val content = overlay.container()
     private var currentViewportWidth = viewportWidth
@@ -104,7 +104,7 @@ internal class MapViewerToolbar(
         }.xy(left, 0.0)
     }
 
-    private fun addDrawingModeButton(mode: MapDrawingMode, left: Double) {
+    private fun addDrawingModeButton(mode: MapViewerDrawingMode, left: Double) {
         val active = selectedDrawingMode() == mode
         val button = MapViewerUiBoxes.button(
             content,
@@ -130,7 +130,7 @@ internal class MapViewerToolbar(
         }
     }
 
-    private fun addDrawingColourButton(colour: MapDrawingColour, left: Double) {
+    private fun addDrawingColourButton(colour: MapViewerDrawingColour, left: Double) {
         val active = selectedDrawingColour() == colour
         val button = MapViewerUiBoxes.box(
             content,
@@ -139,7 +139,7 @@ internal class MapViewerToolbar(
             active = active,
             style = {
                 UiFrameStyle(
-                    fillColor = colour.color,
+                    fillColor = java.awt.Color(colour.argb.value, true),
                     fillAlpha = MapViewerUiStateStyle.ACTIVE_ALPHA,
                     borderColor = Palette.Colours.WHITE,
                     borderAlpha = MapViewerUiStateStyle.ACTIVE_ALPHA,

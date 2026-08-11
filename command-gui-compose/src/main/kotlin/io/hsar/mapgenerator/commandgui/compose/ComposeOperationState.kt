@@ -10,6 +10,7 @@ import io.hsar.mapgenerator.commandgui.operation.OperationContent
 import io.hsar.mapgenerator.commandgui.operation.OperationDockRegion
 import io.hsar.mapgenerator.commandgui.operation.OperationDocument
 import io.hsar.mapgenerator.commandgui.operation.OperationDrawing
+import io.hsar.mapgenerator.commandgui.operation.OperationDrawingAuthoring
 import io.hsar.mapgenerator.commandgui.operation.OperationDrawingObject
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorBounds
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorDraft
@@ -25,6 +26,7 @@ import io.hsar.mapgenerator.commandgui.operation.OperationNote
 import io.hsar.mapgenerator.commandgui.operation.OperationNoteAuthoring
 import io.hsar.mapgenerator.commandgui.operation.OperationNoteDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationNoteId
+import io.hsar.mapgenerator.commandgui.operation.optionalDisplayName
 import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntry
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitAuthoring
 import io.hsar.mapgenerator.commandgui.operation.OperationUnitTemplateId
@@ -463,6 +465,18 @@ data class ComposeOperationState(
         return preview(document.content.copy(objects = document.content.objects + drawingObject))
             .commitPreview(description = "created ${drawing.displayName.lowercase()}")
             .copy(selectedObjectIds = setOf(drawingObject.id))
+    }
+
+    fun renameDrawing(id: OperationObjectId, displayName: String): ComposeOperationState {
+        if (isReadOnly) return this
+        val drawing = document.content.objectById(id) as? OperationDrawingObject ?: return this
+        val changes = OperationDrawingAuthoring.rename(document.content, id, displayName)
+        if (changes.isEmpty) return this
+        val normalized = (changes.objects.single().after as OperationDrawingObject).optionalDisplayName
+        val description = normalized
+            ?.let { "renamed ${drawing.drawing.displayName.lowercase()} to $it" }
+            ?: "cleared ${drawing.drawing.displayName.lowercase()} name"
+        return withTimelineEntry(OperationTimelineEntry(changes, MapViewerLedgerEntryKind.OBJECT, description))
     }
 
     fun undo(): ComposeOperationState {

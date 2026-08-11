@@ -7,7 +7,7 @@ import java.util.UUID
 
 const val GRAPHIC_TEMPLATE_WIDTH_PROPERTY = "normalizedWidth"
 const val GRAPHIC_TEMPLATE_HEIGHT_PROPERTY = "normalizedHeight"
-const val GRAPHIC_DISPLAY_NAME_PROPERTY = "displayName"
+const val GRAPHIC_DISPLAY_NAME_PROPERTY = OPERATION_DISPLAY_NAME_PROPERTY
 
 data class OperationGraphicTemplateDraft(
     val name: String = "",

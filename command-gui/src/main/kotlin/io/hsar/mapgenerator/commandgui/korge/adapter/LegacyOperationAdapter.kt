@@ -332,7 +332,7 @@ private fun OperationNote.toLegacyNote() = MapNoteSnapshot(
     referencedObjectIds = referencedObjectIds.map(OperationObjectId::toLegacy),
 )
 
-private fun OperationDrawing.toLegacyDrawing(): MapDrawing = when (this) {
+internal fun OperationDrawing.toLegacyDrawing(): MapDrawing = when (this) {
     is OperationFreeformDrawing -> FreeformDrawing(points.map(OperationDrawingPoint::toLegacy), colour.toAwt())
     is OperationLineDrawing -> LineDrawing(start.toLegacy(), end.toLegacy(), colour.toAwt())
     is OperationRectangleDrawing -> RectangleDrawing(start.toLegacy(), end.toLegacy(), colour.toAwt(), rotationDegrees)

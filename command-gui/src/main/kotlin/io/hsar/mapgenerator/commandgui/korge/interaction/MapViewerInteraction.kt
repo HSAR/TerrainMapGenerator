@@ -5,22 +5,22 @@ import io.hsar.mapgenerator.commandgui.MapViewerGridOverlay
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayLayoutBuilder
 import io.hsar.mapgenerator.commandgui.MapViewerGridReference
 import io.hsar.mapgenerator.commandgui.MapViewerMeasurement
+import io.hsar.mapgenerator.commandgui.MapViewerDrawingGesture
+import io.hsar.mapgenerator.commandgui.MapViewerDrawingColour
+import io.hsar.mapgenerator.commandgui.MapViewerDrawingMode
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
-import io.hsar.mapgenerator.commandgui.korge.drawing.FreeformDrawing
-import io.hsar.mapgenerator.commandgui.korge.drawing.LineDrawing
+import io.hsar.mapgenerator.commandgui.korge.adapter.toLegacyDrawing
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawing
-import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingGeometry
-import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
-import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingPoint
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingState
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
-import io.hsar.mapgenerator.commandgui.korge.drawing.RectangleDrawing
 import io.hsar.mapgenerator.commandgui.korge.input.CameraPanner
 import io.hsar.mapgenerator.commandgui.korge.input.PanState
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayRender
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayState
 import io.hsar.mapgenerator.commandgui.korge.overlay.toNeutralRequest
 import io.hsar.mapgenerator.commandgui.measureMapDrag
+import io.hsar.mapgenerator.commandgui.operation.OperationArgb
+import io.hsar.mapgenerator.commandgui.startedAt
 import io.hsar.mapgenerator.graph.Point
 import io.hsar.mapgenerator.graph.Rectangle
 import io.hsar.mapgenerator.grid.GridLayer
@@ -35,8 +35,6 @@ import korlibs.korge.view.addUpdater
 import korlibs.math.geom.Vector2D
 import korlibs.render.GameWindow
 import org.apache.logging.log4j.LogManager
-import java.awt.Color
-import kotlin.math.hypot
 import kotlin.math.pow
 
 @OptIn(KorgeExperimental::class)
@@ -51,8 +49,8 @@ internal class MapViewerInteraction(
     private val gridLayer: GridLayer?,
     private val initialViewport: CameraViewport? = null,
     private val currentTool: () -> MapViewerTool = { MapViewerTool.SELECT },
-    private val currentDrawingMode: () -> MapDrawingMode = { MapDrawingMode.FREEFORM },
-    private val currentDrawingColour: () -> Color = { Color.RED },
+    private val currentDrawingMode: () -> MapViewerDrawingMode = { MapViewerDrawingMode.FREEFORM },
+    private val currentDrawingColour: () -> OperationArgb = { MapViewerDrawingColour.RED.argb },
     private val drawingStore: MapDrawingStore = MapDrawingStore(),
     private val isScreenOverlayBlocking: (Vector2D) -> Boolean = { false },
     private val isMovableObjectUnderPointer: (Vector2D) -> Boolean = { false },
@@ -74,11 +72,11 @@ internal class MapViewerInteraction(
     private var activeReference: MapViewerGridReference? = null
     private var activeMeasurement: MapViewerMeasurement? = null
     private var measurementOrigin: MapPointerReference? = null
-    private var activeDrawing: ActiveDrawing? = null
+    private var activeDrawing: MapViewerDrawingGesture? = null
     private var lastMovePreview: MapObjectMovePreview? = null
     private var previousLeftHeld = false
     private var previousTool = MapViewerTool.SELECT
-    private var previousDrawingMode = MapDrawingMode.FREEFORM
+    private var previousDrawingMode = MapViewerDrawingMode.FREEFORM
     private val cameraPanner = CameraPanner(
         initialViewport = initialViewport ?: CameraViewport.centeredOnMap(
             geometry = geometry,
@@ -301,7 +299,7 @@ internal class MapViewerInteraction(
         pointer: Vector2D,
         leftHeld: Boolean,
         tool: MapViewerTool,
-        mode: MapDrawingMode,
+        mode: MapViewerDrawingMode,
         shiftHeld: Boolean,
     ): Boolean {
         if (tool != MapViewerTool.DRAW) {
@@ -317,25 +315,23 @@ internal class MapViewerInteraction(
                 return false
             }
             createMapPointerReference(pointer, clampToMap = false, bounds = coordinateSpace.backgroundBounds)
-                ?.mapCoordinate
-                ?.toDrawingPoint() ?: return false
+                ?.mapCoordinate ?: return false
         } else {
             createMapPointerReference(pointer, clampToMap = true, bounds = coordinateSpace.backgroundBounds)
-                ?.mapCoordinate
-                ?.toDrawingPoint() ?: return false
+                ?.mapCoordinate ?: return false
         }
-        val nextDrawing = activeDrawing?.updated(
+        val nextDrawing = activeDrawing?.update(
             point = point,
-            minimumFreeformPointDistance = minimumFreeformPointDistance(mapWidth, mapHeight),
+            minimumFreeformDistance = minimumFreeformPointDistance(mapWidth, mapHeight),
             aspectRatio = coordinateSpace.aspectRatio,
             shiftHeld = shiftHeld,
-        ) ?: mode.startedAt(point, currentDrawingColour())
+        ) ?: mode.startedAt(point, currentDrawingColour(), coordinateSpace.backgroundBounds) ?: return false
         if (nextDrawing == activeDrawing) {
             return false
         }
 
         activeDrawing = nextDrawing
-        drawingStore.preview(nextDrawing.preview)
+        drawingStore.preview(nextDrawing.preview.toLegacyDrawing())
         return true
     }
 
@@ -343,7 +339,7 @@ internal class MapViewerInteraction(
         val drawing = activeDrawing?.committedOrNull() ?: return clearActiveDrawingPreview()
         activeDrawing = null
         drawingStore.clearPreview()
-        onDrawingCommitted(drawing)
+        onDrawingCommitted(drawing.toLegacyDrawing())
         return true
     }
 
@@ -448,8 +444,6 @@ internal class MapViewerInteraction(
         )
     }
 
-    private fun MapCoordinate.toDrawingPoint() = MapDrawingPoint(x, y)
-
     private fun handleUndoRedo(input: korlibs.korge.input.Input): Boolean {
         if (!canUseUndoRedo() || activeDrawing != null || input.mouseButtonPressed(MouseButton.LEFT) || input.mouseButtonPressed(MouseButton.RIGHT)) {
             return false
@@ -466,14 +460,6 @@ internal class MapViewerInteraction(
         }
         return true
     }
-
-    private fun MapDrawingMode.startedAt(point: MapDrawingPoint, color: Color): ActiveDrawing =
-        when (this) {
-            MapDrawingMode.FREEFORM -> ActiveDrawing.Freeform(points = listOf(point), color = color)
-            MapDrawingMode.LINE -> ActiveDrawing.Line(start = point, end = point, color = color)
-            MapDrawingMode.RECTANGLE -> ActiveDrawing.Rectangle(start = point, end = point, color = color)
-            MapDrawingMode.OVAL -> ActiveDrawing.Oval(start = point, end = point, color = color)
-        }
 
     private fun currentViewport(viewport: CameraViewport): Rectangle {
         val visibleLeft = maxOf(0.0, viewport.left - geometry.mapOffsetX)
@@ -504,103 +490,6 @@ internal class MapViewerInteraction(
         val mapPixelY: Double,
     )
 
-    private sealed interface ActiveDrawing {
-        val preview: MapDrawing
-
-        fun updated(
-            point: MapDrawingPoint,
-            minimumFreeformPointDistance: Double,
-            aspectRatio: Double,
-            shiftHeld: Boolean,
-        ): ActiveDrawing
-
-        fun committedOrNull(): MapDrawing?
-
-        data class Freeform(
-            val points: List<MapDrawingPoint>,
-            val color: Color,
-        ) : ActiveDrawing {
-            override val preview: MapDrawing
-                get() = FreeformDrawing(points.toList(), color)
-
-            override fun updated(
-                point: MapDrawingPoint,
-                minimumFreeformPointDistance: Double,
-                aspectRatio: Double,
-                shiftHeld: Boolean,
-            ): ActiveDrawing {
-                val lastPoint = points.last()
-                return if (hypot(point.x - lastPoint.x, point.y - lastPoint.y) >= minimumFreeformPointDistance) {
-                    copy(points = points + point)
-                } else {
-                    this
-                }
-            }
-
-            override fun committedOrNull(): MapDrawing? =
-                points.takeIf { it.size >= 2 }?.let { FreeformDrawing(it.toList(), color) }
-        }
-
-        data class Rectangle(
-            val start: MapDrawingPoint,
-            val end: MapDrawingPoint,
-            val color: Color,
-        ) : ActiveDrawing {
-            override val preview: MapDrawing
-                get() = RectangleDrawing(start, end, color)
-
-            override fun updated(
-                point: MapDrawingPoint,
-                minimumFreeformPointDistance: Double,
-                aspectRatio: Double,
-                shiftHeld: Boolean,
-            ): ActiveDrawing =
-                copy(end = if (shiftHeld) MapDrawingGeometry.squareEnd(start, point, aspectRatio) else point)
-
-            override fun committedOrNull(): MapDrawing? =
-                preview.takeIf { start != end }
-        }
-
-        data class Line(
-            val start: MapDrawingPoint,
-            val end: MapDrawingPoint,
-            val color: Color,
-        ) : ActiveDrawing {
-            override val preview: MapDrawing
-                get() = LineDrawing(start, end, color)
-
-            override fun updated(
-                point: MapDrawingPoint,
-                minimumFreeformPointDistance: Double,
-                aspectRatio: Double,
-                shiftHeld: Boolean,
-            ): ActiveDrawing =
-                copy(end = point)
-
-            override fun committedOrNull(): MapDrawing? =
-                preview.takeIf { start != end }
-        }
-
-        data class Oval(
-            val start: MapDrawingPoint,
-            val end: MapDrawingPoint,
-            val color: Color,
-        ) : ActiveDrawing {
-            override val preview: MapDrawing
-                get() = MapDrawingGeometry.ovalFromBounds(start, end, color)
-
-            override fun updated(
-                point: MapDrawingPoint,
-                minimumFreeformPointDistance: Double,
-                aspectRatio: Double,
-                shiftHeld: Boolean,
-            ): ActiveDrawing =
-                copy(end = if (shiftHeld) MapDrawingGeometry.squareEnd(start, point, aspectRatio) else point)
-
-            override fun committedOrNull(): MapDrawing? =
-                preview.takeIf { start != end }
-        }
-    }
 }
 
 internal fun minimumFreeformPointDistance(mapWidth: Int, mapHeight: Int): Double =

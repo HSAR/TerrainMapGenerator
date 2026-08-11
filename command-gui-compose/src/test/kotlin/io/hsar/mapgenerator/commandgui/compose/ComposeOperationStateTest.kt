@@ -89,6 +89,22 @@ class ComposeOperationStateTest {
     }
 
     @Test
+    fun `renaming a drawing records one undoable edit and suppresses no ops`() {
+        val shape = OperationLineDrawing(
+            OperationDrawingPoint(.1, .1), OperationDrawingPoint(.2, .2), OperationArgb.of(255, 255, 0, 0),
+        )
+        val initial = ComposeOperationState(documentWith(unit)).addDrawing(shape)
+        val drawing = initial.document.content.objects.last() as OperationDrawingObject
+
+        val renamed = initial.renameDrawing(drawing.id, "  Objective  ")
+
+        assertThat((renamed.document.content.objectById(drawing.id) as OperationDrawingObject).customProperties["displayName"], equalTo("Objective"))
+        assertThat(renamed.document.timeline.entries.last().description, equalTo("renamed line drawing to Objective"))
+        assertThat(renamed.renameDrawing(drawing.id, "Objective"), equalTo(renamed))
+        assertThat(renamed.undo().document.content.objectById(drawing.id), equalTo(drawing))
+    }
+
+    @Test
     fun `keeps several independently identified editors open`() {
         val state = ComposeOperationState(documentWith(unit)).openUnitEditor(objectId).openUnitEditor(objectId)
 

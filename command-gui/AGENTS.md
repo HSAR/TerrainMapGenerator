@@ -102,9 +102,11 @@ template reordering remain deferred.
 Completed: Compose notes use neutral timeline-backed create/edit/delete/reorder actions. New and edited note drafts remain workspace-only until Save; references can target every
 map object kind through a cancellable map-pick mode, retain order and missing IDs, and round-trip through legacy KorGE note dialogs. Pre-schema-6 scratchpad text is intentionally
 discarded rather than converted into a ledger entry.
-4. Finish drawing/measurement polish: exact KorGE creation constraints, pointer cancellation/capture edge cases, drawing labels/context actions, and renderer/input tests. Draw and
-   Measure themselves are already implemented; do not recreate their reducers in Compose.
-5. Replace the ledger prototype presentation with the complete turn workflow, descriptions, turn thumbnails and editor-opening behavior while retaining current history preview,
+Completed: Draw creation now uses `MapViewerDrawingGesture` in both viewers, including padded-background start/clamping, physical Shift constraints, freeform spacing and no-op
+suppression. Compose owns Draw/Measure pointer streams through a cancellable captured session, renders constant-screen-width drawing strokes and EF Nord drawing labels, and exposes
+legacy-compatible optional name editing through the shared `displayName` custom property. Measurements remain transient, map-clamped, grid-aware and available during history.
+
+4. Replace the ledger prototype presentation with the complete turn workflow, descriptions, turn thumbnails and editor-opening behavior while retaining current history preview,
    undo/redo and applied-head semantics.
 
 Phase 2 gate: a user can create and maintain templates, units, graphics, drawings, notes and turns entirely in Compose; representative Compose→KorGE→Compose saves retain content,

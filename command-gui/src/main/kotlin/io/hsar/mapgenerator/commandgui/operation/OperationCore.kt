@@ -142,7 +142,7 @@ data class OperationDrawingObject(
     val drawing: OperationDrawing,
     override val customProperties: Map<String, String> = emptyMap(),
 ) : OperationObject {
-    override val name = drawing.displayName
+    override val name get() = displayName
 }
 
 data class OperationNote(

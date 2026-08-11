@@ -1,6 +1,8 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
-internal const val DISPLAY_NAME_PROPERTY = "displayName"
+import io.hsar.mapgenerator.commandgui.operation.OPERATION_DISPLAY_NAME_PROPERTY
+
+internal const val DISPLAY_NAME_PROPERTY = OPERATION_DISPLAY_NAME_PROPERTY
 
 internal fun MapPlacedObjectSnapshot.displayName(): String? =
     when (this) {

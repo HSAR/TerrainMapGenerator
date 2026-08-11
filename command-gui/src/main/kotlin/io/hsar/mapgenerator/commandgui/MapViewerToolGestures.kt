@@ -49,14 +49,19 @@ fun measureMapDrag(layer: GridLayer, origin: MapCoordinate, destination: MapCoor
     )
 
 sealed interface MapViewerDrawingGesture {
+    val bounds: MapCoordinateBounds
     val preview: OperationDrawing
     fun update(point: MapCoordinate, shiftHeld: Boolean, aspectRatio: Double, minimumFreeformDistance: Double): MapViewerDrawingGesture
     fun committedOrNull(): OperationDrawing?
 
-    data class Freeform(val points: List<OperationDrawingPoint>, val colour: OperationArgb) : MapViewerDrawingGesture {
+    data class Freeform(
+        val points: List<OperationDrawingPoint>,
+        val colour: OperationArgb,
+        override val bounds: MapCoordinateBounds,
+    ) : MapViewerDrawingGesture {
         override val preview get() = OperationFreeformDrawing(points, colour)
         override fun update(point: MapCoordinate, shiftHeld: Boolean, aspectRatio: Double, minimumFreeformDistance: Double) =
-            OperationDrawingPoint(point.x, point.y).let { next ->
+            bounds.clamp(point).let { clamped -> OperationDrawingPoint(clamped.x, clamped.y) }.let { next ->
                 if (hypot(
                         next.x - points.last().x,
                         next.y - points.last().y
@@ -67,37 +72,75 @@ sealed interface MapViewerDrawingGesture {
         override fun committedOrNull() = preview.takeIf { points.size >= 2 }
     }
 
-    data class Line(val start: OperationDrawingPoint, val end: OperationDrawingPoint, val colour: OperationArgb) : MapViewerDrawingGesture {
+    data class Line(
+        val start: OperationDrawingPoint,
+        val end: OperationDrawingPoint,
+        val colour: OperationArgb,
+        override val bounds: MapCoordinateBounds,
+    ) : MapViewerDrawingGesture {
         override val preview get() = OperationLineDrawing(start, end, colour)
-        override fun update(point: MapCoordinate, shiftHeld: Boolean, aspectRatio: Double, minimumFreeformDistance: Double) = copy(end = OperationDrawingPoint(point.x, point.y))
+        override fun update(point: MapCoordinate, shiftHeld: Boolean, aspectRatio: Double, minimumFreeformDistance: Double) =
+            bounds.clamp(point).let { copy(end = OperationDrawingPoint(it.x, it.y)) }
         override fun committedOrNull() = preview.takeIf { start != end }
     }
 
-    data class Rectangle(val start: OperationDrawingPoint, val end: OperationDrawingPoint, val colour: OperationArgb) : MapViewerDrawingGesture {
+    data class Rectangle(
+        val start: OperationDrawingPoint,
+        val end: OperationDrawingPoint,
+        val colour: OperationArgb,
+        override val bounds: MapCoordinateBounds,
+    ) : MapViewerDrawingGesture {
         override val preview get() = OperationRectangleDrawing(start, end, colour)
         override fun update(point: MapCoordinate, shiftHeld: Boolean, aspectRatio: Double, minimumFreeformDistance: Double) =
-            copy(end = constrainedEnd(start, point, shiftHeld, aspectRatio))
+            copy(end = constrainedEnd(start, bounds.clamp(point), shiftHeld, aspectRatio).fitFrom(start, bounds))
 
         override fun committedOrNull() = preview.takeIf { start != end }
     }
 
-    data class Oval(val start: OperationDrawingPoint, val end: OperationDrawingPoint, val colour: OperationArgb) : MapViewerDrawingGesture {
+    data class Oval(
+        val start: OperationDrawingPoint,
+        val end: OperationDrawingPoint,
+        val colour: OperationArgb,
+        override val bounds: MapCoordinateBounds,
+    ) : MapViewerDrawingGesture {
         override val preview get() = OperationOvalDrawing(centre(start, end), abs(end.x - start.x) * .5, abs(end.y - start.y) * .5, colour)
         override fun update(point: MapCoordinate, shiftHeld: Boolean, aspectRatio: Double, minimumFreeformDistance: Double) =
-            copy(end = constrainedEnd(start, point, shiftHeld, aspectRatio))
+            copy(end = constrainedEnd(start, bounds.clamp(point), shiftHeld, aspectRatio).fitFrom(start, bounds))
 
         override fun committedOrNull() = preview.takeIf { start != end }
     }
 }
 
-fun MapViewerDrawingMode.startedAt(point: MapCoordinate, colour: OperationArgb): MapViewerDrawingGesture {
+fun MapViewerDrawingMode.startedAt(
+    point: MapCoordinate,
+    colour: OperationArgb,
+    bounds: MapCoordinateBounds,
+): MapViewerDrawingGesture? {
+    if (!bounds.contains(point)) return null
     val start = OperationDrawingPoint(point.x, point.y)
     return when (this) {
-        MapViewerDrawingMode.FREEFORM -> MapViewerDrawingGesture.Freeform(listOf(start), colour)
-        MapViewerDrawingMode.LINE -> MapViewerDrawingGesture.Line(start, start, colour)
-        MapViewerDrawingMode.RECTANGLE -> MapViewerDrawingGesture.Rectangle(start, start, colour)
-        MapViewerDrawingMode.OVAL -> MapViewerDrawingGesture.Oval(start, start, colour)
+        MapViewerDrawingMode.FREEFORM -> MapViewerDrawingGesture.Freeform(listOf(start), colour, bounds)
+        MapViewerDrawingMode.LINE -> MapViewerDrawingGesture.Line(start, start, colour, bounds)
+        MapViewerDrawingMode.RECTANGLE -> MapViewerDrawingGesture.Rectangle(start, start, colour, bounds)
+        MapViewerDrawingMode.OVAL -> MapViewerDrawingGesture.Oval(start, start, colour, bounds)
     }
+}
+
+private fun OperationDrawingPoint.fitFrom(start: OperationDrawingPoint, bounds: MapCoordinateBounds): OperationDrawingPoint {
+    val dx = x - start.x
+    val dy = y - start.y
+    val xScale = when {
+        dx > 0.0 -> (bounds.right - start.x) / dx
+        dx < 0.0 -> (bounds.left - start.x) / dx
+        else -> 1.0
+    }
+    val yScale = when {
+        dy > 0.0 -> (bounds.bottom - start.y) / dy
+        dy < 0.0 -> (bounds.top - start.y) / dy
+        else -> 1.0
+    }
+    val scale = minOf(1.0, xScale, yScale).coerceAtLeast(0.0)
+    return OperationDrawingPoint(start.x + dx * scale, start.y + dy * scale)
 }
 
 private fun constrainedEnd(start: OperationDrawingPoint, point: MapCoordinate, shift: Boolean, aspect: Double): OperationDrawingPoint {

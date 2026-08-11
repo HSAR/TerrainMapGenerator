@@ -9,6 +9,7 @@ enum class MapViewerContextMenuCommand {
     SITREP,
     EDIT_GRAPHIC,
     DELETE_GRAPHIC,
+    EDIT_DRAWING_NAME,
     DELETE_DRAWING,
 }
 

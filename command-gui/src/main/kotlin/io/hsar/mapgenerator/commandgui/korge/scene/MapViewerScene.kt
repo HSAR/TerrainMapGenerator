@@ -1,6 +1,8 @@
 package io.hsar.mapgenerator.commandgui.korge.scene
 
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
+import io.hsar.mapgenerator.commandgui.MapViewerDrawingColour
+import io.hsar.mapgenerator.commandgui.MapViewerDrawingMode
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
@@ -12,9 +14,7 @@ import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationContent
 import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationTimeline
 import io.hsar.mapgenerator.commandgui.korge.adapter.toSavedCamera
 import io.hsar.mapgenerator.commandgui.korge.adapter.toViewport
-import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingColour
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingManager
-import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingMode
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingStore
 import io.hsar.mapgenerator.commandgui.korge.drawing.MapDrawingView
 import io.hsar.mapgenerator.commandgui.korge.interaction.AddTurnLedgerEntry
@@ -386,8 +386,8 @@ internal class MapViewerScene(
                         val additionalData = LegacyOperationAdditionalData.fromJson(loadedOperation?.additionalDataJson)
                         val restoredUiState = additionalData.uiState()
                         var currentTool = restoredUiState.selectedTool
-                        var currentDrawingMode = MapDrawingMode.FREEFORM
-                        var currentDrawingColour = MapDrawingColour.RED
+                        var currentDrawingMode = MapViewerDrawingMode.FREEFORM
+                        var currentDrawingColour = MapViewerDrawingColour.RED
                         lateinit var world: Camera
                         lateinit var sceneLayers: MapViewerSceneLayers
                         var escapeMenu: MapViewerEscapeMenu? = null
@@ -1237,7 +1237,7 @@ internal class MapViewerScene(
                                 if (!(isReadOnly() && it != MapViewerTool.MEASURE)) {
                                     currentTool = it
                                     if (it != MapViewerTool.DRAW) {
-                                        currentDrawingMode = MapDrawingMode.FREEFORM
+                                        currentDrawingMode = MapViewerDrawingMode.FREEFORM
                                     }
                                     if (it != MapViewerTool.SELECT) {
                                         selectionController.clear()
@@ -1433,7 +1433,7 @@ internal class MapViewerScene(
                             initialViewport = currentViewport,
                             currentTool = { effectiveTool() },
                             currentDrawingMode = { currentDrawingMode },
-                            currentDrawingColour = { currentDrawingColour.color },
+                            currentDrawingColour = { currentDrawingColour.argb },
                             drawingStore = drawingStore,
                             canUseUndoRedo = {
                                 !dialogManager.isTextInputActive() &&
