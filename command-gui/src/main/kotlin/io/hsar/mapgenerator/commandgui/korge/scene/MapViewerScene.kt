@@ -62,6 +62,8 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.canStartPlacementDrag
 import io.hsar.mapgenerator.commandgui.korge.interaction.changeDescription
 import io.hsar.mapgenerator.commandgui.korge.interaction.displayName
+import io.hsar.mapgenerator.commandgui.korge.interaction.korge
+import io.hsar.mapgenerator.commandgui.korge.interaction.operation
 import io.hsar.mapgenerator.commandgui.korge.interaction.turnOriginFor
 import io.hsar.mapgenerator.commandgui.korge.interaction.withDisplayName
 import io.hsar.mapgenerator.commandgui.korge.launch.LaunchBackgroundGenerationSegments
@@ -78,7 +80,6 @@ import io.hsar.mapgenerator.commandgui.korge.launch.OperationMapImage
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayLinesView
 import io.hsar.mapgenerator.commandgui.korge.overlay.GridOverlayView
 import io.hsar.mapgenerator.commandgui.korge.persistence.LegacyOperationAdditionalData
-import io.hsar.mapgenerator.commandgui.korge.persistence.SitrepContactKey
 import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalTurnMarker
 import io.hsar.mapgenerator.commandgui.korge.render.MapViewerRenderer
 import io.hsar.mapgenerator.commandgui.korge.render.RenderedMap
@@ -99,6 +100,7 @@ import io.hsar.mapgenerator.commandgui.korge.ui.noteReferenceContextMenuActions
 import io.hsar.mapgenerator.commandgui.operation.OperationDocument
 import io.hsar.mapgenerator.commandgui.operation.OperationGeneratedImage
 import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
+import io.hsar.mapgenerator.commandgui.save.SitrepContactKey
 import io.hsar.mapgenerator.commandgui.save.MapThumbnailRenderer
 import io.hsar.mapgenerator.commandgui.save.OperationSaveRequest
 import io.hsar.mapgenerator.commandgui.save.OperationSaveWriter
@@ -655,7 +657,7 @@ internal class MapViewerScene(
                                     .associate { it.toPair() },
                             )
                             ecmPersistence.reconcileMarked(
-                                markedUnits.flatMap { snapshot -> TacticalTurnMarker.activations(snapshot.customProperties, snapshot.id) },
+                                markedUnits.flatMap { snapshot -> TacticalTurnMarker.activations(snapshot.customProperties, snapshot.id) }.map { it.operation() },
                             )
                             unitManager.refreshEcmFields()
                         }
@@ -816,20 +818,20 @@ internal class MapViewerScene(
                             onTacticalFireUsageChanged = { key, usage ->
                                 tacticalFirePersistence.replace(key, usage)
                             },
-                            ecmActivationsProvider = ecmPersistence::forTurn,
-                            onEcmActivation = ecmPersistence::add,
+                            ecmActivationsProvider = { turn -> ecmPersistence.forTurn(turn).map { it.korge() } },
+                            onEcmActivation = { ecmPersistence.add(it.operation()) },
                             sitrepContactStateProvider = { turnNumber, observerId ->
-                                sitrepContactPersistence.stateFor(SitrepContactKey(turnNumber, observerId))
+                                sitrepContactPersistence.stateFor(SitrepContactKey(turnNumber, OperationObjectId(observerId.value))).korge()
                             },
                             sitrepPreviousContactStateProvider = { turnNumber, observerId ->
                                 if (turnNumber <= 1) {
                                     io.hsar.mapgenerator.commandgui.korge.interaction.SitrepContactState()
                                 } else {
-                                    sitrepContactPersistence.stateFor(SitrepContactKey(turnNumber - 1, observerId))
+                                    sitrepContactPersistence.stateFor(SitrepContactKey(turnNumber - 1, OperationObjectId(observerId.value))).korge()
                                 }
                             },
                             onSitrepContactStateChanged = { turnNumber, observerId, state ->
-                                sitrepContactPersistence.update(SitrepContactKey(turnNumber, observerId), state)
+                                sitrepContactPersistence.update(SitrepContactKey(turnNumber, OperationObjectId(observerId.value)), state.operation())
                             },
                         )
                         unitManagerReady = true

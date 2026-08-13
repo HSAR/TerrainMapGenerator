@@ -1,11 +1,9 @@
 package io.hsar.mapgenerator.commandgui.save
 
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
-import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepContactState
-import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepLostContact
-import io.hsar.mapgenerator.commandgui.korge.persistence.SitrepContactKey
-import io.hsar.mapgenerator.commandgui.korge.persistence.SitrepContactPersistence
+import io.hsar.mapgenerator.commandgui.MapCoordinate
+import io.hsar.mapgenerator.commandgui.operation.OperationLostContact
+import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
+import io.hsar.mapgenerator.commandgui.operation.OperationSitrepContactState
 import korlibs.io.lang.toByteArray
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
@@ -24,11 +22,11 @@ class SitrepContactPersistenceTest {
 
         persistence.update(
             SitrepContactKey(2, observerLater),
-            SitrepContactState(sensorContactIds = setOf(contact), sierraContactNumbers = mapOf(contact to 2)),
+            OperationSitrepContactState(sensorContactIds = setOf(contact), sierraContactNumbers = mapOf(contact to 2)),
         )
         persistence.update(
             SitrepContactKey(1, observerEarlier),
-            SitrepContactState(sensorContactIds = setOf(contact), identifiedIds = setOf(contact), sierraContactNumbers = mapOf(contact to 1)),
+            OperationSitrepContactState(sensorContactIds = setOf(contact), identifiedIds = setOf(contact), sierraContactNumbers = mapOf(contact to 1)),
         )
 
         val json = persistence.toJson().toString(Charsets.UTF_8)
@@ -39,7 +37,7 @@ class SitrepContactPersistenceTest {
         assertThat(
             restored.stateFor(SitrepContactKey(1, observerEarlier)),
             equalTo(
-                SitrepContactState(
+                OperationSitrepContactState(
                     setOf(contact),
                     setOf(contact),
                     mapOf(contact to 1),
@@ -59,8 +57,8 @@ class SitrepContactPersistenceTest {
         val contact = id("00000000-0000-0000-0000-000000000011")
         val persistence = SitrepContactPersistence.fromJson(null)
         val key = SitrepContactKey(1, observer)
-        persistence.update(key, SitrepContactState(sensorContactIds = setOf(contact)))
-        persistence.update(key, SitrepContactState())
+        persistence.update(key, OperationSitrepContactState(sensorContactIds = setOf(contact)))
+        persistence.update(key, OperationSitrepContactState())
 
         assertThat(persistence.toJsonOrNull(), equalTo(null))
     }
@@ -74,7 +72,7 @@ class SitrepContactPersistenceTest {
 
         persistence.update(
             key,
-            SitrepContactState(
+            OperationSitrepContactState(
                 sensorContactIds = setOf(contact),
                 sierraContactNumbers = mapOf(contact to 4),
                 usedSierraContactNumbers = setOf(4),
@@ -82,13 +80,13 @@ class SitrepContactPersistenceTest {
         )
         persistence.update(
             key,
-            SitrepContactState(usedSierraContactNumbers = setOf(4)),
+            OperationSitrepContactState(usedSierraContactNumbers = setOf(4)),
         )
 
         val restored = SitrepContactPersistence.fromJson(persistence.toJson())
         assertThat(
             restored.stateFor(key),
-            equalTo(SitrepContactState(usedSierraContactNumbers = setOf(4))),
+            equalTo(OperationSitrepContactState(usedSierraContactNumbers = setOf(4))),
         )
     }
 
@@ -101,7 +99,7 @@ class SitrepContactPersistenceTest {
 
         persistence.update(
             key,
-            SitrepContactState(
+            OperationSitrepContactState(
                 sensorContactIds = setOf(contact),
                 sierraContactNumbers = mapOf(contact to 8),
                 usedSierraContactNumbers = setOf(8),
@@ -109,7 +107,7 @@ class SitrepContactPersistenceTest {
         )
         persistence.update(
             key,
-            SitrepContactState(
+            OperationSitrepContactState(
                 sierraContactNumbers = mapOf(contact to 8),
                 usedSierraContactNumbers = setOf(8),
             ),
@@ -128,7 +126,7 @@ class SitrepContactPersistenceTest {
         val observer = id("00000000-0000-0000-0000-000000000020")
         val contact = id("00000000-0000-0000-0000-000000000021")
         val persistence = SitrepContactPersistence.fromJson(null)
-        val state = SitrepContactState(
+        val state = OperationSitrepContactState(
             sensorContactIds = setOf(contact),
             identifiedIds = setOf(contact),
             sierraContactNumbers = mapOf(contact to 7),
@@ -148,7 +146,7 @@ class SitrepContactPersistenceTest {
         val observer = id("00000000-0000-0000-0000-000000000030")
         val contact = id("00000000-0000-0000-0000-000000000031")
         val key = SitrepContactKey(1, observer)
-        val lost = SitrepLostContact(
+        val lost = OperationLostContact(
             contactId = contact,
             sierraNumber = 3,
             lastSeenPosition = MapCoordinate(0.4, 0.5),
@@ -164,7 +162,7 @@ class SitrepContactPersistenceTest {
         )
         val persistence = SitrepContactPersistence.fromJson(null)
 
-        persistence.update(key, SitrepContactState(lostContacts = listOf(lost)))
+        persistence.update(key, OperationSitrepContactState(lostContacts = listOf(lost)))
 
         assertThat(
             SitrepContactPersistence.fromJson(persistence.toJson()).stateFor(key).lostContacts,
@@ -172,6 +170,6 @@ class SitrepContactPersistenceTest {
         )
     }
 
-    private fun id(value: String): MapPlacedObjectId =
-        MapPlacedObjectId(UUID.fromString(value))
+    private fun id(value: String): OperationObjectId =
+        OperationObjectId(UUID.fromString(value))
 }

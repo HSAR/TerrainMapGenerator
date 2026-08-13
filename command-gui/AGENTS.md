@@ -123,7 +123,9 @@ Move rules out of `korge/interaction` before building their Compose UI. Use neut
 Completed: `OperationUnitQueryService`, the Olympiad Dawn definition/damage/fighter domain, unit metadata labels and status presentation now live in
 `commandgui.operation`. KorGE projects its runtime units/templates into neutral content at its boundary; its query compatibility view delegates to the neutral spatial service,
 and renderer-specific status panels retain only layout and input adaptation. Persisted property keys, damage/definition JSON and random four-character fighter IDs are unchanged.
-2. Extract sensor visibility, contact/Sierra lifecycle, ECM geometry and SITREP/SCIREP/NAVREP generation, preserving the contracts documented under **SITREP Contacts** below.
+Completed: sensor visibility, contact/Sierra lifecycle, ECM geometry and SITREP/SCIREP/NAVREP generation now live in `commandgui.operation`. The neutral report service returns
+immutable assessments and normalized per-turn contact state; low-confidence tracks use candidate-to-last-seen distance, and hidden or destroyed contacts cannot remain active or
+identified. Additive SITREP/ECM persistence uses neutral IDs and types, while KorGE retains runtime projection, dialog controls, overlays, clipboard and pointer handling.
 3. Extract fire arcs, tactical targeting, ammunition/fire-control usage, combat resolution and damage application.
 4. Build Compose SITREP/SCIREP, GUNREP, tactical and Olympiad Dawn editors/reports on those neutral services, including map overlays and persisted per-turn state.
 

@@ -1,6 +1,8 @@
 package io.hsar.mapgenerator.commandgui.korge.persistence
 
 import io.hsar.mapgenerator.commandgui.save.OperationAdditionalData
+import io.hsar.mapgenerator.commandgui.save.EcmPersistence
+import io.hsar.mapgenerator.commandgui.save.SitrepContactPersistence
 import io.hsar.mapgenerator.commandgui.save.UiSessionState
 
 /** KorGE-only tactical records layered over the neutral additive additional-data document. */

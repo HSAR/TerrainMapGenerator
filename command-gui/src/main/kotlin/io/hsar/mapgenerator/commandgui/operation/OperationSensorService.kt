@@ -1,49 +1,42 @@
-package io.hsar.mapgenerator.commandgui.korge.interaction
+package io.hsar.mapgenerator.commandgui.operation
 
 import io.hsar.mapgenerator.commandgui.GridReferenceFormatter
-import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationUnit
-import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationUnitContent
-import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip
-import io.hsar.mapgenerator.commandgui.operation.OperationUnitPresentation
-import io.hsar.mapgenerator.commandgui.korge.interaction.SensorDetection.formatPosition
+import io.hsar.mapgenerator.commandgui.MapCoordinate
+import io.hsar.mapgenerator.commandgui.operation.OperationSensorService.formatPosition
 import io.hsar.mapgenerator.grid.GridLayer
-import korlibs.io.util.buildList
-import java.util.Collections.emptyList
-import java.util.Collections.emptyMap
-import java.util.Collections.emptySet
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-internal data class SensorContact(
-    val unit: UnitSnapshot,
+internal data class OperationSensorContact(
+    val unit: OperationUnit,
     val distanceUnits: Double,
     val detectionRangeUnits: Double,
     val baseDetectionRangeUnits: Double,
 )
 
-internal enum class SensorReportMode {
+internal enum class OperationSensorReportMode {
     SCIREP,
     NAVREP,
 }
 
-internal enum class EcmSensorContact {
+internal enum class OperationEcmSensorContact {
     NONE,
     FAINT_TRACK,
     SENSOR_GHOST,
 }
 
-internal data class SensorObserverProfile(
+internal data class OperationSensorObserverProfile(
     val unitClass: String?,
     val activeSensors: Boolean,
     val advancedSensorsBonus: Double,
 ) {
     companion object {
-        val LOWEST_FIGHTER_SEEKER = SensorObserverProfile("F", activeSensors = false, advancedSensorsBonus = 0.0)
+        val LOWEST_FIGHTER_SEEKER = OperationSensorObserverProfile("F", activeSensors = false, advancedSensorsBonus = 0.0)
     }
 }
 
-internal data class SensorVisibilityCheck(
-    val unit: UnitSnapshot,
+internal data class OperationSensorVisibilityCheck(
+    val unit: OperationUnit,
     val visible: Boolean,
     val detected: Boolean,
     val distanceUnits: Double,
@@ -55,32 +48,32 @@ internal data class SensorVisibilityCheck(
     val naturalDetected: Boolean = detected,
     val ecmIntensity: Int = 0,
     val ecmTransitionIntensity: Int? = null,
-    val ecmContact: EcmSensorContact = EcmSensorContact.NONE,
+    val ecmContact: OperationEcmSensorContact = OperationEcmSensorContact.NONE,
     val legacyEcmLevel: Int = 0,
 )
 
-internal data class SitrepVisibilityReport(
+internal data class OperationSensorAssessment(
     val displayText: String,
     val copyText: String,
-    val visibleChecks: List<SensorVisibilityCheck>,
-    val detectedChecks: List<SensorVisibilityCheck>,
-    val unidentifiedChecks: List<SensorVisibilityCheck> = emptyList(),
-    val hiddenChecks: List<SensorVisibilityCheck>,
-    val ecmGhostChecks: List<SensorVisibilityCheck> = emptyList(),
+    val visibleChecks: List<OperationSensorVisibilityCheck>,
+    val detectedChecks: List<OperationSensorVisibilityCheck>,
+    val unidentifiedChecks: List<OperationSensorVisibilityCheck> = emptyList(),
+    val hiddenChecks: List<OperationSensorVisibilityCheck>,
+    val ecmGhostChecks: List<OperationSensorVisibilityCheck> = emptyList(),
 )
 
-internal data class SitrepContactState(
-    val sensorContactIds: Set<MapPlacedObjectId> = emptySet(),
-    val identifiedIds: Set<MapPlacedObjectId> = emptySet(),
-    val sierraContactNumbers: Map<MapPlacedObjectId, Int> = emptyMap(),
+internal data class OperationSitrepContactState(
+    val sensorContactIds: Set<OperationObjectId> = emptySet(),
+    val identifiedIds: Set<OperationObjectId> = emptySet(),
+    val sierraContactNumbers: Map<OperationObjectId, Int> = emptyMap(),
     val usedSierraContactNumbers: Set<Int> = emptySet(),
-    val lastSeenPositions: Map<MapPlacedObjectId, MapCoordinate> = emptyMap(),
-    val lastSeenContacts: Map<MapPlacedObjectId, SitrepLostContact> = emptyMap(),
-    val lostContacts: List<SitrepLostContact> = emptyList(),
+    val lastSeenPositions: Map<OperationObjectId, MapCoordinate> = emptyMap(),
+    val lastSeenContacts: Map<OperationObjectId, OperationLostContact> = emptyMap(),
+    val lostContacts: List<OperationLostContact> = emptyList(),
 )
 
-internal data class SitrepLostContact(
-    val contactId: MapPlacedObjectId,
+internal data class OperationLostContact(
+    val contactId: OperationObjectId,
     val sierraNumber: Int,
     val lastSeenPosition: MapCoordinate,
     val lastSeenRangeUnits: Double,
@@ -94,40 +87,16 @@ internal data class SitrepLostContact(
     val unitInstanceName: String? = null,
 )
 
-internal data class ScirepContactSegment(
-    val contactId: MapPlacedObjectId,
+internal data class OperationScirepContactSegment(
+    val contactId: OperationObjectId,
     val sierraNumber: Int,
     val opening: String,
     val clauses: List<String>,
 )
 
-internal fun UnitSnapshot.isNavrepUnit(): Boolean =
-    neutralPresentation { unit, content -> OperationUnitPresentation.isNavrepUnit(unit, content) }
-
-internal fun UnitSnapshot.sitrepValidationError(): String? =
-    neutralPresentation { unit, content -> OperationUnitPresentation.sitrepValidationError(unit, content) }
-
-internal fun UnitSnapshot.displayName(): String =
-    neutralPresentation { unit, content -> OperationUnitPresentation.displayName(unit, content) }
-
-internal fun UnitSnapshot.navrepMenuLabel(): String =
-    neutralPresentation { unit, content -> OperationUnitPresentation.navrepMenuLabel(unit, content) }
-
-internal fun UnitSnapshot.navrepReportLabel(): String =
-    neutralPresentation { unit, content -> OperationUnitPresentation.navrepReportLabel(unit, content) }
-
-internal fun UnitSnapshot.unitClassLabel(): String? =
-    neutralPresentation { unit, content -> OperationUnitPresentation.unitClass(unit, content) }
-
-private fun UnitSnapshot.mass(): Int? =
-    neutralPresentation { unit, content -> OperationUnitPresentation.mass(unit, content) }
-
-private fun <T> UnitSnapshot.neutralPresentation(format: (io.hsar.mapgenerator.commandgui.operation.OperationUnit, io.hsar.mapgenerator.commandgui.operation.OperationContent) -> T): T =
-    listOf(this).toOperationUnitContent().let { content -> format(toOperationUnit(), content) }
-
-internal val NAVREP_ELIGIBLE_CLASSES = OperationUnitPresentation.navrepEligibleClasses
-internal val SENSOR_UNIT_CLASS_NAMES = OperationUnitPresentation.classNames
-internal val SENSOR_UNIT_CLASS_BRACKETS = OperationUnitPresentation.classBrackets
+internal val OPERATION_NAVREP_ELIGIBLE_CLASSES = OperationUnitPresentation.navrepEligibleClasses
+internal val OPERATION_SENSOR_UNIT_CLASS_NAMES = OperationUnitPresentation.classNames
+internal val OPERATION_SENSOR_UNIT_CLASS_BRACKETS = OperationUnitPresentation.classBrackets
 private const val DETECTION_RANGE_BAND_MULTIPLIER = 2.0
 
 private fun Map<String, String>.warpBonus(): Int? {
@@ -148,32 +117,19 @@ private fun Map<String, String>.intProperty(key: String): Int? =
 private fun Map<String, String>.stringProperty(key: String): String? =
     entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value?.trim()?.takeIf { it.isNotBlank() }
 
-internal object SensorDetection {
+internal object OperationSensorService {
     fun visibleContacts(
-        observer: UnitSnapshot,
-        candidates: List<UnitSnapshot>,
-        mapWidth: Int,
-        mapHeight: Int,
-        mapUnitsPerPixel: Double,
+        observer: OperationUnit,
+        unitQueryService: OperationUnitQueryService,
         gridLayer: GridLayer? = null,
-        candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
-        sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
+        candidateFilter: (OperationUnit) -> Boolean = { OperationUnitPresentation.affiliation(it, unitQueryService.content) == OperationUnitPresentation.affiliation(observer, unitQueryService.content) },
+        sensorReportMode: OperationSensorReportMode = OperationSensorReportMode.SCIREP,
         ecmIntensity: Int = 0,
-    ): List<SensorContact> =
-        visibleContacts(observer, KorgeUnitQueryAdapter(candidates, mapWidth, mapHeight, mapUnitsPerPixel), gridLayer, candidateFilter, sensorReportMode, ecmIntensity)
-
-    fun visibleContacts(
-        observer: UnitSnapshot,
-        unitQueryService: KorgeUnitQueryAdapter,
-        gridLayer: GridLayer? = null,
-        candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
-        sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
-        ecmIntensity: Int = 0,
-    ): List<SensorContact> =
+    ): List<OperationSensorContact> =
         visibilityChecks(observer, unitQueryService, gridLayer, candidateFilter, sensorReportMode, ecmIntensity)
             .filter { it.detected }
             .map {
-                SensorContact(
+                OperationSensorContact(
                     unit = it.unit,
                     distanceUnits = it.distanceUnits,
                     detectionRangeUnits = it.detectionRangeUnits,
@@ -182,90 +138,79 @@ internal object SensorDetection {
             }
 
     fun visibilityChecks(
-        observer: UnitSnapshot,
-        unitQueryService: KorgeUnitQueryAdapter,
+        observer: OperationUnit,
+        unitQueryService: OperationUnitQueryService,
         gridLayer: GridLayer? = null,
-        candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
-        sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
+        candidateFilter: (OperationUnit) -> Boolean = { OperationUnitPresentation.affiliation(it, unitQueryService.content) == OperationUnitPresentation.affiliation(observer, unitQueryService.content) },
+        sensorReportMode: OperationSensorReportMode = OperationSensorReportMode.SCIREP,
         ecmIntensity: Int = 0,
-    ): List<SensorVisibilityCheck> =
+    ): List<OperationSensorVisibilityCheck> =
         unitQueryService.allUnits().asSequence()
             .filter { it.id != observer.id }
             .filter(candidateFilter)
             .mapNotNull { candidate ->
                 visibilityCheck(
-                    observer, candidate, unitQueryService.distanceBetween(observer, candidate), sensorReportMode, ecmIntensity,
+                    observer, candidate, unitQueryService.distanceBetween(observer, candidate), unitQueryService.content, sensorReportMode, ecmIntensity,
                 )
             }
             .sortedWith(
-                compareBy<SensorVisibilityCheck> { it.distanceUnits }
-                    .thenBy { it.unit.instanceName.lowercase() }
-                    .thenBy { it.unit.unitClassLabel() },
+                compareBy<OperationSensorVisibilityCheck> { it.distanceUnits }
+                    .thenBy(String.CASE_INSENSITIVE_ORDER) { OperationUnitPresentation.displayName(it.unit, unitQueryService.content) }
+                    .thenBy { OperationUnitPresentation.unitClass(it.unit, unitQueryService.content) }
+                    .thenBy { it.unit.id.value },
             )
             .toList()
 
-    fun visibilityChecks(
-        observer: UnitSnapshot,
-        candidates: List<UnitSnapshot>,
-        mapWidth: Int,
-        mapHeight: Int,
-        mapUnitsPerPixel: Double,
-        gridLayer: GridLayer? = null,
-        candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
-        sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
-        ecmIntensity: Int = 0,
-    ): List<SensorVisibilityCheck> =
-        visibilityChecks(observer, KorgeUnitQueryAdapter(candidates, mapWidth, mapHeight, mapUnitsPerPixel), gridLayer, candidateFilter, sensorReportMode, ecmIntensity)
-
     fun visibilityCheck(
-        observer: UnitSnapshot,
-        candidate: UnitSnapshot,
+        observer: OperationUnit,
+        candidate: OperationUnit,
         distanceUnits: Double,
-        sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
+        content: OperationContent,
+        sensorReportMode: OperationSensorReportMode = OperationSensorReportMode.SCIREP,
         ecmIntensity: Int = 0,
-        observerProfile: SensorObserverProfile? = null,
-    ): SensorVisibilityCheck? {
+        observerProfile: OperationSensorObserverProfile? = null,
+    ): OperationSensorVisibilityCheck? {
         val intensity = ecmIntensity.coerceIn(0, MAXIMUM_ECM_INTENSITY)
-        val natural = candidate.sensorRanges(observer, sensorReportMode, 0, observerProfile) ?: return null
-        val degraded = candidate.sensorRanges(observer, sensorReportMode, intensity, observerProfile) ?: return null
+        val natural = candidate.sensorRanges(observer, content, sensorReportMode, 0, observerProfile) ?: return null
+        val degraded = candidate.sensorRanges(observer, content, sensorReportMode, intensity, observerProfile) ?: return null
         val naturalVisible = candidate.transmissionInScope() || distanceUnits <= natural.identification
         val naturalDetected = candidate.transmissionInScope() || distanceUnits <= natural.detection
         val visible = candidate.transmissionInScope() || distanceUnits <= degraded.identification
         val detected = candidate.transmissionInScope() || distanceUnits <= degraded.detection
         val contact = when {
-            naturalDetected && !detected -> EcmSensorContact.SENSOR_GHOST
-            naturalVisible && !visible && detected -> EcmSensorContact.FAINT_TRACK
-            else -> EcmSensorContact.NONE
+            naturalDetected && !detected -> OperationEcmSensorContact.SENSOR_GHOST
+            naturalVisible && !visible && detected -> OperationEcmSensorContact.FAINT_TRACK
+            else -> OperationEcmSensorContact.NONE
         }
         val transitionIntensity = when (contact) {
-            EcmSensorContact.FAINT_TRACK -> (1..intensity).firstOrNull { level ->
-                candidate.sensorRanges(observer, sensorReportMode, level, observerProfile)
+            OperationEcmSensorContact.FAINT_TRACK -> (1..intensity).firstOrNull { level ->
+                candidate.sensorRanges(observer, content, sensorReportMode, level, observerProfile)
                     ?.let { ranges -> distanceUnits > ranges.identification && distanceUnits <= ranges.detection } == true
             }
 
-            EcmSensorContact.SENSOR_GHOST -> (1..intensity).firstOrNull { level ->
-                candidate.sensorRanges(observer, sensorReportMode, level, observerProfile)
+            OperationEcmSensorContact.SENSOR_GHOST -> (1..intensity).firstOrNull { level ->
+                candidate.sensorRanges(observer, content, sensorReportMode, level, observerProfile)
                     ?.let { ranges -> distanceUnits > ranges.detection } == true
             }
 
-            EcmSensorContact.NONE -> null
+            OperationEcmSensorContact.NONE -> null
         }
         val legacyLevel = transitionIntensity?.let { transition ->
-            ((if (contact == EcmSensorContact.SENSOR_GHOST) 2 else 1) + intensity - transition)
+            ((if (contact == OperationEcmSensorContact.SENSOR_GHOST) 2 else 1) + intensity - transition)
                 .coerceAtMost(MAXIMUM_ECM_INTENSITY)
         } ?: 0
-        val notes = candidate.visibilityNotes(sensorReportMode) + buildList {
+        val notes = candidate.visibilityNotes(content, sensorReportMode) + buildList {
             if (intensity > 0) add("Electronic warfare: -${ecmBandPenalty(intensity, observerProfile?.activeSensors ?: observer.activeSensors())} detection bands.")
             add(if (detected) "Detected within range." else "Outside detection range.")
         }
-        return SensorVisibilityCheck(
+        return OperationSensorVisibilityCheck(
             unit = candidate,
             visible = visible,
             detected = detected,
             distanceUnits = distanceUnits,
             identificationRangeUnits = degraded.identification,
             detectionRangeUnits = degraded.detection,
-            baseDetectionRangeUnits = candidate.effectiveSensorBand().baseDetectionRangeUnits,
+            baseDetectionRangeUnits = candidate.effectiveSensorBand(content).baseDetectionRangeUnits,
             notes = if (candidate.transmissionInScope()) notes + "Transmitting in scope: automatically detected." else notes,
             naturalVisible = naturalVisible,
             naturalDetected = naturalDetected,
@@ -277,89 +222,65 @@ internal object SensorDetection {
     }
 
     fun visibilityReport(
-        observer: UnitSnapshot,
-        unitQueryService: KorgeUnitQueryAdapter,
+        observer: OperationUnit,
+        unitQueryService: OperationUnitQueryService,
         gridLayer: GridLayer? = null,
-        includedIds: Set<MapPlacedObjectId>? = null,
-        unidentifiedIds: Set<MapPlacedObjectId> = emptySet(),
-        candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
+        includedIds: Set<OperationObjectId>? = null,
+        unidentifiedIds: Set<OperationObjectId> = emptySet(),
+        candidateFilter: (OperationUnit) -> Boolean = { OperationUnitPresentation.affiliation(it, unitQueryService.content) == OperationUnitPresentation.affiliation(observer, unitQueryService.content) },
         emptySummaryText: String = "No allied contacts to report.",
-        sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
+        sensorReportMode: OperationSensorReportMode = OperationSensorReportMode.SCIREP,
         ecmIntensity: Int = 0,
-    ): SitrepVisibilityReport {
+    ): OperationSensorAssessment {
         val checks = visibilityChecks(observer, unitQueryService, gridLayer, candidateFilter, sensorReportMode, ecmIntensity)
         val effectiveIncludedIds = includedIds ?: checks.filter { it.visible }.mapTo(mutableSetOf()) { it.unit.id }
         val visibleChecks = checks.filter { it.unit.id in effectiveIncludedIds }
         val unidentifiedChecks = checks.filter { it.unit.id in unidentifiedIds && it.unit.id !in effectiveIncludedIds }
         val hiddenChecks = checks.filterNot { it.unit.id in effectiveIncludedIds || it.unit.id in unidentifiedIds }
         val lines = buildList {
-            add(buildPositionSummary(observer, visibleChecks, unitQueryService.mapWidth, unitQueryService.mapHeight, gridLayer, emptySummaryText))
+            add(buildPositionSummary(observer, visibleChecks, unitQueryService.content, unitQueryService.mapWidth, unitQueryService.mapHeight, gridLayer, emptySummaryText))
         }
         val reportText = lines.joinToString("\n")
-        val navrepConditions = if (sensorReportMode == SensorReportMode.NAVREP) buildList {
+        val navrepConditions = if (sensorReportMode == OperationSensorReportMode.NAVREP) buildList {
             if (observer.customProperties.booleanProperty("inNebula")) add(NEBULAR_INTERFERENCE_CONDITIONS)
             if (ecmIntensity > 0) add(ELECTRONIC_WARFARE_CONDITIONS)
         } else emptyList()
         val displayText = (navrepConditions + reportText).joinToString("\n")
-        return SitrepVisibilityReport(
+        return OperationSensorAssessment(
             displayText = displayText,
             copyText = displayText,
             visibleChecks = visibleChecks,
             detectedChecks = checks.filter { it.detected },
             unidentifiedChecks = unidentifiedChecks,
             hiddenChecks = hiddenChecks,
-            ecmGhostChecks = checks.filter { it.ecmContact == EcmSensorContact.SENSOR_GHOST },
+            ecmGhostChecks = checks.filter { it.ecmContact == OperationEcmSensorContact.SENSOR_GHOST },
         )
     }
 
-    fun visibilityReport(
-        observer: UnitSnapshot,
-        candidates: List<UnitSnapshot>,
-        mapWidth: Int,
-        mapHeight: Int,
-        mapUnitsPerPixel: Double,
-        gridLayer: GridLayer? = null,
-        includedIds: Set<MapPlacedObjectId>? = null,
-        unidentifiedIds: Set<MapPlacedObjectId> = emptySet(),
-        candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
-        emptySummaryText: String = "No allied contacts to report.",
-        sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
-        ecmIntensity: Int = 0,
-    ): SitrepVisibilityReport =
-        visibilityReport(
-            observer,
-            KorgeUnitQueryAdapter(candidates, mapWidth, mapHeight, mapUnitsPerPixel),
-            gridLayer,
-            includedIds,
-            unidentifiedIds,
-            candidateFilter,
-            emptySummaryText,
-            sensorReportMode,
-            ecmIntensity,
-        )
-
     fun hiddenContactLabel(
-        observer: UnitSnapshot,
-        check: SensorVisibilityCheck,
+        observer: OperationUnit,
+        check: OperationSensorVisibilityCheck,
+        content: OperationContent,
         mapWidth: Int,
         mapHeight: Int,
         gridLayer: GridLayer? = null,
     ): String =
-        buildHiddenLine(observer, check, mapWidth, mapHeight, gridLayer)
+        buildHiddenLine(observer, check, content, mapWidth, mapHeight, gridLayer)
 
     fun scirepText(
-        checks: List<SensorVisibilityCheck>,
-        identifiedIds: Set<MapPlacedObjectId>,
-        contactNumbers: Map<MapPlacedObjectId, Int>,
+        checks: List<OperationSensorVisibilityCheck>,
+        identifiedIds: Set<OperationObjectId>,
+        contactNumbers: Map<OperationObjectId, Int>,
+        content: OperationContent,
         mapWidth: Int,
         mapHeight: Int,
         gridLayer: GridLayer? = null,
         emptySummaryText: String,
-        observerAffiliation: UnitAffiliation? = null,
-        identificationAnnouncements: List<SensorVisibilityCheck> = emptyList(),
-        previouslyDetectedIds: Set<MapPlacedObjectId> = emptySet(),
-        lostContacts: List<SitrepLostContact> = emptyList(),
-        lowConfidenceContacts: Map<MapPlacedObjectId, SitrepLostContact> = emptyMap(),
+        observerAffiliation: OperationUnitAffiliation? = null,
+        identificationAnnouncements: List<OperationSensorVisibilityCheck> = emptyList(),
+        previouslyDetectedIds: Set<OperationObjectId> = emptySet(),
+        lostContacts: List<OperationLostContact> = emptyList(),
+        lowConfidenceContacts: Map<OperationObjectId, OperationLostContact> = emptyMap(),
         sensorConditionsPoor: Boolean = false,
         electronicWarfare: Boolean = false,
     ): String {
@@ -389,26 +310,26 @@ internal object SensorDetection {
                         "Contact Master ${contactNumbers.getValue(check.unit.id)}"
                     }
                     val classification = when {
-                        check.ecmContact == EcmSensorContact.FAINT_TRACK -> "is faint sensor track"
-                        check.ecmContact == EcmSensorContact.SENSOR_GHOST -> "is sensor ghost"
+                        check.ecmContact == OperationEcmSensorContact.FAINT_TRACK -> "is faint sensor track"
+                        check.ecmContact == OperationEcmSensorContact.SENSOR_GHOST -> "is sensor ghost"
                         check.unit.id in identifiedIds && lowConfidence != null ->
-                            check.unit.identificationClause("was", observerAffiliation)
+                            check.unit.identificationClause(content, "was", observerAffiliation)
 
-                        newlyIdentified -> check.unit.identificationClause(observerAffiliation = observerAffiliation)
+                        newlyIdentified -> check.unit.identificationClause(content, observerAffiliation = observerAffiliation)
 
                         check.unit.id in identifiedIds ->
-                            check.unit.identificationClause("was previously", observerAffiliation)
+                            check.unit.identificationClause(content, "was previously", observerAffiliation)
 
-                        else -> "has unknown ${check.unit.unknownClassificationBracket()} classification"
+                        else -> "has unknown ${check.unit.unknownClassificationBracket(content)} classification"
                     }
-                    ScirepContactSegment(
+                    OperationScirepContactSegment(
                         contactId = check.unit.id,
                         sierraNumber = contactNumbers.getValue(check.unit.id),
                         opening = opening,
                         clauses = listOf(
                             "at ${
                                 lowConfidence?.let { formatPosition(it.lastSeenPosition, mapWidth, mapHeight, gridLayer) } ?: formatPosition(
-                                    check.unit,
+                                    check.unit.coordinate,
                                     mapWidth,
                                     mapHeight,
                                     gridLayer
@@ -419,7 +340,7 @@ internal object SensorDetection {
                         ),
                     )
                 } + lostContacts.map { lost ->
-                    ScirepContactSegment(
+                    OperationScirepContactSegment(
                         contactId = lost.contactId,
                         sierraNumber = lost.sierraNumber,
                         opening = lostContactText(lost),
@@ -435,7 +356,7 @@ internal object SensorDetection {
         return (conditions + report).joinToString("\n")
     }
 
-    fun lostContactText(lost: SitrepLostContact): String =
+    fun lostContactText(lost: OperationLostContact): String =
         buildString {
             append("Contact Sierra ${lost.sierraNumber} lost")
             if (lost.lostDueToEnemyAction) append(" due to enemy action")
@@ -452,40 +373,42 @@ internal object SensorDetection {
         }
 
     fun navrepObserverPositionText(
-        observer: UnitSnapshot,
+        observer: OperationUnit,
         mapWidth: Int,
         mapHeight: Int,
         gridLayer: GridLayer? = null,
     ): String =
-        "Position ${formatPosition(observer, mapWidth, mapHeight, gridLayer)} bearing ${formatBearing(observer.facingDegrees)}."
+        "Position ${formatPosition(observer.coordinate, mapWidth, mapHeight, gridLayer)} bearing ${formatBearing(observer.facingDegrees)}."
 
     fun navrepIdentificationText(
-        observer: UnitSnapshot,
-        checks: List<SensorVisibilityCheck>,
-        contactNumbers: Map<MapPlacedObjectId, Int>,
+        observer: OperationUnit,
+        checks: List<OperationSensorVisibilityCheck>,
+        contactNumbers: Map<OperationObjectId, Int>,
+        content: OperationContent,
         mapWidth: Int,
         mapHeight: Int,
         gridLayer: GridLayer? = null,
-        previouslyDetectedIds: Set<MapPlacedObjectId> = emptySet(),
-        previouslyIdentifiedIds: Set<MapPlacedObjectId> = emptySet(),
+        previouslyDetectedIds: Set<OperationObjectId> = emptySet(),
+        previouslyIdentifiedIds: Set<OperationObjectId> = emptySet(),
     ): String =
         checks
             .sortedBy { contactNumbers.getValue(it.unit.id) }
             .joinToString("\n") { check ->
-                val position = formatPosition(check.unit, mapWidth, mapHeight, gridLayer)
+                val position = formatPosition(check.unit.coordinate, mapWidth, mapHeight, gridLayer)
                 if (check.unit.id in previouslyDetectedIds) {
                     "Contact Sierra ${contactNumbers.getValue(check.unit.id)} at $position bearing ${formatBearing(check.unit.facingDegrees)} ${
                         check.unit.navrepIdentificationClause(
                             observer,
+                            content,
                             wasPreviouslyIdentified = check.unit.id in previouslyIdentifiedIds,
                         )
                     }."
                 } else {
-                    "Contact detected at $position ${check.unit.navrepIdentificationClause(observer)}."
+                    "Contact detected at $position ${check.unit.navrepIdentificationClause(observer, content)}."
                 }
             }
 
-    fun combineScirepContactSegments(segments: List<ScirepContactSegment>): String =
+    fun combineScirepContactSegments(segments: List<OperationScirepContactSegment>): String =
         segments
             .groupBy { it.contactId }
             .values
@@ -503,41 +426,43 @@ internal object SensorDetection {
                 }
             }
 
-    private fun UnitSnapshot.identificationClause(
+    private fun OperationUnit.identificationClause(
+        content: OperationContent,
         verb: String = "is",
-        observerAffiliation: UnitAffiliation? = null,
+        observerAffiliation: OperationUnitAffiliation? = null,
     ): String =
-        "$verb identified as ${affiliationDescription(observerAffiliation)} ${identificationDescription()}"
+        "$verb identified as ${affiliationDescription(content, observerAffiliation)} ${identificationDescription(content)}"
 
-    private fun UnitSnapshot.navrepIdentificationClause(
-        observer: UnitSnapshot,
+    private fun OperationUnit.navrepIdentificationClause(
+        observer: OperationUnit,
+        content: OperationContent,
         wasPreviouslyIdentified: Boolean = false,
     ): String =
         "${if (wasPreviouslyIdentified) "was previously" else "is"} identified as ${
-            if (template.affiliation == observer.template.affiliation) "allied" else affiliationDescription()
-        } ${identificationDescription()}"
+            if (OperationUnitPresentation.affiliation(this, content) == OperationUnitPresentation.affiliation(observer, content)) "allied" else affiliationDescription(content)
+        } ${identificationDescription(content)}"
 
-    private fun UnitSnapshot.affiliationDescription(observerAffiliation: UnitAffiliation? = null): String =
-        when (template.affiliation) {
-            UnitAffiliation.Friend -> if (observerAffiliation == UnitAffiliation.Hostile) "enemy" else "allied"
-            UnitAffiliation.Hostile -> "enemy"
-            UnitAffiliation.Neutral -> "neutral"
-            UnitAffiliation.Unknown -> "unknown"
+    private fun OperationUnit.affiliationDescription(content: OperationContent, observerAffiliation: OperationUnitAffiliation? = null): String =
+        when (OperationUnitPresentation.affiliation(this, content)) {
+            OperationUnitAffiliation.FRIEND -> if (observerAffiliation == OperationUnitAffiliation.HOSTILE) "enemy" else "allied"
+            OperationUnitAffiliation.HOSTILE -> "enemy"
+            OperationUnitAffiliation.NEUTRAL -> "neutral"
+            OperationUnitAffiliation.UNKNOWN -> "unknown"
             null -> "unaffiliated"
         }
 
-    private fun UnitSnapshot.identificationDescription(): String =
+    private fun OperationUnit.identificationDescription(content: OperationContent): String =
         buildString {
-            append(template.name.ifBlank { "Unknown" })
+            append(content.unitTemplate(unitTemplateId)?.name?.ifBlank { "Unknown" } ?: "Unknown")
             append("-class ")
-            append(unitClassLabel() ?: "UKN")
-            if (name.isNotBlank() && name != template.name) {
+            append(OperationUnitPresentation.unitClass(this@identificationDescription, content) ?: "UKN")
+            if (instanceName.isNotBlank() && instanceName != content.unitTemplate(unitTemplateId)?.name) {
                 append(' ')
-                append(displayName())
+                append(OperationUnitPresentation.displayName(this@identificationDescription, content))
             }
         }
 
-    private fun UnitSnapshot.unknownClassificationBracket(): String = effectiveSensorBand().label
+    private fun OperationUnit.unknownClassificationBracket(content: OperationContent): String = effectiveSensorBand(content).label
 
     private enum class SensorBand(
         val baseDetectionRangeUnits: Double,
@@ -549,14 +474,14 @@ internal object SensorDetection {
         HEAVYWEIGHT(24.0, 1.5, "heavyweight"),
     }
 
-    private fun UnitSnapshot.effectiveSensorBand(): SensorBand {
-        val classBand = when (unitClassLabel()) {
+    private fun OperationUnit.effectiveSensorBand(content: OperationContent): SensorBand {
+        val classBand = when (OperationUnitPresentation.unitClass(this, content)) {
             "FF", "F" -> SensorBand.LIGHTWEIGHT
             "DD", "CL" -> SensorBand.MIDWEIGHT
             "CA", "CVE", "CVL", "CV", "BC" -> SensorBand.HEAVYWEIGHT
             else -> null
         }
-        return classBand ?: when (mass()) {
+        return classBand ?: when (OperationUnitPresentation.mass(this, content)) {
             in 0..29 -> SensorBand.LIGHTWEIGHT
             in 30..59 -> SensorBand.MIDWEIGHT
             in 60..Int.MAX_VALUE -> SensorBand.HEAVYWEIGHT
@@ -566,30 +491,31 @@ internal object SensorDetection {
 
     private data class SensorRanges(val identification: Double, val detection: Double)
 
-    private fun UnitSnapshot.sensorRanges(
-        observer: UnitSnapshot,
-        sensorReportMode: SensorReportMode,
+    private fun OperationUnit.sensorRanges(
+        observer: OperationUnit,
+        content: OperationContent,
+        sensorReportMode: OperationSensorReportMode,
         ecmIntensity: Int,
-        observerProfile: SensorObserverProfile?,
+        observerProfile: OperationSensorObserverProfile?,
     ): SensorRanges? {
-        val base = effectiveSensorBand().baseDetectionRangeUnits
+        val base = effectiveSensorBand(content).baseDetectionRangeUnits
         val observerModifier = observerProfile?.unitClass
             ?.let { observerProfile.unitClassSensorBand().observerModifier }
-            ?: observer.effectiveSensorBand().observerModifier
+            ?: observer.effectiveSensorBand(content).observerModifier
         val activeSensors = observerProfile?.activeSensors ?: observer.activeSensors()
 
         val bandOffset = buildList {
             customProperties.warpBonus()?.let(::add)
-            if (sensorReportMode == SensorReportMode.NAVREP && customProperties.booleanProperty("activeWarp")) add(2)
+            if (sensorReportMode == OperationSensorReportMode.NAVREP && customProperties.booleanProperty("activeWarp")) add(2)
             if (customProperties.booleanProperty("transmitting") && !customProperties.booleanProperty("transmissionInScope")) {
                 add(1)
             }
             repeat(customProperties.intProperty("nebula") ?: 0) {
                 add(-1)
             }
-            if (sensorReportMode == SensorReportMode.NAVREP && customProperties.booleanProperty("inNebula")) add(-1)
-            if (sensorReportMode == SensorReportMode.SCIREP && customProperties.booleanProperty("silentRunning")) add(-1)
-            if (sensorReportMode == SensorReportMode.SCIREP && customProperties.booleanProperty("activeSensors")) add(1)
+            if (sensorReportMode == OperationSensorReportMode.NAVREP && customProperties.booleanProperty("inNebula")) add(-1)
+            if (sensorReportMode == OperationSensorReportMode.SCIREP && customProperties.booleanProperty("silentRunning")) add(-1)
+            if (sensorReportMode == OperationSensorReportMode.SCIREP && customProperties.booleanProperty("activeSensors")) add(1)
         }.sum()
 
         if (customProperties.booleanProperty("transmissionInScope")) {
@@ -597,11 +523,11 @@ internal object SensorDetection {
         }
 
         val observerSensorModifier = buildList {
-            if (sensorReportMode == SensorReportMode.SCIREP && activeSensors) add(1)
-            if (sensorReportMode == SensorReportMode.NAVREP && observer.customProperties.booleanProperty("inNebula")) add(-1)
+            if (sensorReportMode == OperationSensorReportMode.SCIREP && activeSensors) add(1)
+            if (sensorReportMode == OperationSensorReportMode.NAVREP && observer.customProperties.booleanProperty("inNebula")) add(-1)
             if (ecmIntensity > 0) add(-ecmBandPenalty(ecmIntensity, activeSensors))
         }.sum()
-        val advancedSensors = observerProfile?.advancedSensorsBonus ?: observer.advancedSensorsBonus()
+        val advancedSensors = observerProfile?.advancedSensorsBonus ?: observer.advancedSensorsBonus(content)
         val identification = (base * observerModifier) * 2.0.pow(bandOffset + observerSensorModifier) + advancedSensors
         return SensorRanges(
             identification = identification,
@@ -609,24 +535,24 @@ internal object SensorDetection {
         )
     }
 
-    private fun UnitSnapshot.activeSensors(): Boolean = customProperties.booleanProperty("activeSensors")
+    private fun OperationUnit.activeSensors(): Boolean = customProperties.booleanProperty("activeSensors")
 
     private fun ecmBandPenalty(intensity: Int, activeSensors: Boolean): Int =
         intensity.coerceIn(1, MAXIMUM_ECM_INTENSITY) + if (activeSensors) 0 else 1
 
-    private fun UnitSnapshot.transmissionInScope(): Boolean =
+    private fun OperationUnit.transmissionInScope(): Boolean =
         customProperties.booleanProperty("transmissionInScope") || customProperties.booleanProperty("transmittingInScope")
 
-    private fun UnitSnapshot.advancedSensorsBonus(): Double {
-        val definition = OlympiadDawnShip.definition(customProperties) ?: OlympiadDawnShip.definition(template.customProperties) ?: return 0.0
+    private fun OperationUnit.advancedSensorsBonus(content: OperationContent): Double {
+        val definition = OlympiadDawnShip.definitionFor(this, content) ?: return 0.0
         val damage = OlympiadDawnShip.instanceDamage(customProperties, definition)
         return if (definition.systems.any { it.name == "Advanced Sensors" && it.id !in damage.destroyedSystems }) 1.0 else 0.0
     }
 
-    private fun UnitSnapshot.visibilityNotes(sensorReportMode: SensorReportMode): List<String> =
+    private fun OperationUnit.visibilityNotes(content: OperationContent, sensorReportMode: OperationSensorReportMode): List<String> =
         buildList {
-            unitClassLabel()?.let { add("Class $it baseline.") }
-            if (sensorReportMode == SensorReportMode.SCIREP && customProperties.booleanProperty("activeSensors")) {
+            OperationUnitPresentation.unitClass(this@visibilityNotes, content)?.let { add("Class $it baseline.") }
+            if (sensorReportMode == OperationSensorReportMode.SCIREP && customProperties.booleanProperty("activeSensors")) {
                 add("Active sensors: +100% range, +1 signature.")
             }
             customProperties.warpBonus()?.let {
@@ -641,19 +567,19 @@ internal object SensorDetection {
             if (customProperties.booleanProperty("transmitting")) {
                 add("Transmitting: automatically detected if in cone and range.")
             }
-            if (sensorReportMode == SensorReportMode.SCIREP && customProperties.booleanProperty("silentRunning")) {
+            if (sensorReportMode == OperationSensorReportMode.SCIREP && customProperties.booleanProperty("silentRunning")) {
                 add("Silent running: -1 signature, drive rating halved.")
             }
             customProperties.intProperty("nebula")?.takeIf { it > 0 }?.let {
                 add("Nebula: -$it signature.")
             }
-            if (sensorReportMode == SensorReportMode.NAVREP && customProperties.booleanProperty("activeWarp")) {
+            if (sensorReportMode == OperationSensorReportMode.NAVREP && customProperties.booleanProperty("activeWarp")) {
                 add("Active warp: +2 detection bands.")
             }
             if (customProperties.booleanProperty("maximumWarp")) {
                 add("Maximum warp: automatically detected at any range.")
             }
-            if (sensorReportMode == SensorReportMode.NAVREP && customProperties.booleanProperty("inNebula")) {
+            if (sensorReportMode == OperationSensorReportMode.NAVREP && customProperties.booleanProperty("inNebula")) {
                 add("In nebula: -1 detection band.")
             }
         }
@@ -662,8 +588,9 @@ internal object SensorDetection {
         if (distanceUnits.isInfinite()) "∞" else ((distanceUnits * 10.0).roundToInt() / 10.0).toString().trimEnd('0').trimEnd('.')
 
     private fun buildPositionSummary(
-        observer: UnitSnapshot,
-        visibleChecks: List<SensorVisibilityCheck>,
+        observer: OperationUnit,
+        visibleChecks: List<OperationSensorVisibilityCheck>,
+        content: OperationContent,
         mapWidth: Int,
         mapHeight: Int,
         gridLayer: GridLayer?,
@@ -683,9 +610,9 @@ internal object SensorDetection {
                     if (index > 0) {
                         append('\n')
                     }
-                    append(check.unit.navrepReportLabel())
+                    append(OperationUnitPresentation.navrepReportLabel(check.unit, content))
                     append(" has position ")
-                    append(formatPosition(check.unit, mapWidth, mapHeight, gridLayer))
+                    append(formatPosition(check.unit.coordinate, mapWidth, mapHeight, gridLayer))
                     append(" bearing ")
                     append(formatBearing(check.unit.facingDegrees))
                     append('.')
@@ -694,14 +621,15 @@ internal object SensorDetection {
         }
 
     private fun buildHiddenLine(
-        observer: UnitSnapshot,
-        check: SensorVisibilityCheck,
+        observer: OperationUnit,
+        check: OperationSensorVisibilityCheck,
+        content: OperationContent,
         mapWidth: Int,
         mapHeight: Int,
         gridLayer: GridLayer?,
     ): String =
         buildString {
-            append(check.unit.navrepReportLabel())
+            append(OperationUnitPresentation.navrepReportLabel(check.unit, content))
             append(" contact ranges are ")
             append(formatDistance(check.detectionRangeUnits))
             append(" / ")
@@ -709,14 +637,6 @@ internal object SensorDetection {
             append(", actual range is ")
             append(formatDistance(check.distanceUnits))
         }
-
-    private fun formatPosition(
-        unit: UnitSnapshot,
-        mapWidth: Int,
-        mapHeight: Int,
-        gridLayer: GridLayer?,
-    ): String =
-        formatPosition(unit.mapCoordinate, mapWidth, mapHeight, gridLayer)
 
     private fun formatPosition(
         position: MapCoordinate,
@@ -739,7 +659,7 @@ internal object SensorDetection {
     private fun formatBearing(facingDegrees: Int?): String =
         facingDegrees?.toString() ?: "unknown"
 
-    private fun SensorObserverProfile.unitClassSensorBand(): SensorBand =
+    private fun OperationSensorObserverProfile.unitClassSensorBand(): SensorBand =
         when (unitClass) {
             "FF", "F" -> SensorBand.LIGHTWEIGHT
             "DD", "CL" -> SensorBand.MIDWEIGHT

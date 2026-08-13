@@ -7,7 +7,7 @@ import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import java.util.*
 
-class EcmRulesTest {
+class KorgeEcmAdapterParityTest {
     @Test
     fun `capability pools modules and halves for intensity`() {
         assertThat(EcmRules.capability(2, 1), closeTo(240.0, 0.0001))

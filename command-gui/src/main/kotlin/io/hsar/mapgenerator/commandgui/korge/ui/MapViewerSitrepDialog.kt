@@ -10,7 +10,12 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.KorgeUnitQueryAdapter
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.displayName
-import io.hsar.mapgenerator.commandgui.korge.interaction.unitClassLabel
+import io.hsar.mapgenerator.commandgui.korge.interaction.korge
+import io.hsar.mapgenerator.commandgui.korge.interaction.operation
+import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationUnit
+import io.hsar.mapgenerator.commandgui.operation.OperationContactReportMode
+import io.hsar.mapgenerator.commandgui.operation.OperationContactReportRequest
+import io.hsar.mapgenerator.commandgui.operation.OperationContactReportService
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.text.TextAlignment
@@ -630,239 +635,34 @@ internal class MapViewerSitrepDialog(
 
     private fun buildReport(notifyContactState: Boolean = true): SitrepVisibilityReport {
         val reportState = currentReportState()
-        val ecmIntensity = ecmIntensityProvider(observer)
-        val assessment = SensorDetection.visibilityReport(
-            observer = observer,
-            unitQueryService = unitQueryService,
-            gridLayer = gridLayer,
-            includedIds = null,
-            candidateFilter = reportMode.candidateFilter(observer.template.affiliation),
-            emptySummaryText = reportMode.emptySummaryText,
-            sensorReportMode = reportMode.sensorReportMode,
-            ecmIntensity = ecmIntensity,
+        val currentState = initialContactState.copy(
+            sensorContactIds = reportState.sensorContactIds.toSet(),
+            identifiedIds = reportState.identifiedIds.toSet(),
+            lostContacts = reportState.lostContacts.toList(),
         )
-        val destroyedContactIds = assessment.trackableChecks()
-            .filter { it.unit.destroyed }
-            .map { it.unit.id }
-            .toSet()
-        reportState.sensorContactIds += assessment.trackableChecks()
-            .filterNot { it.unit.destroyed }
-            .map { it.unit.id }
-        reportState.sensorContactIds.removeAll(destroyedContactIds)
-        reportState.identifiedIds.removeAll(destroyedContactIds)
-        reportState.identifiedIds.removeAll(
-            assessment.trackableChecks().filter { it.ecmContact != io.hsar.mapgenerator.commandgui.korge.interaction.EcmSensorContact.NONE }
-                .map { it.unit.id },
-        )
-        val selectedIds = reportState.sensorContactIds union reportState.identifiedIds
-        val identifiedIds = reportState.sensorContactIds intersect reportState.identifiedIds
-        val detectedOnlyIds = selectedIds - identifiedIds
-        reportState.sensorContactIds.addAll(detectedOnlyIds)
-        reportState.identifiedIds.removeAll(detectedOnlyIds)
-        val unidentifiedIds = reportState.sensorContactIds - identifiedIds
-        val report = SensorDetection.visibilityReport(
-            observer = observer,
-            unitQueryService = unitQueryService,
-            gridLayer = gridLayer,
-            includedIds = identifiedIds,
-            unidentifiedIds = unidentifiedIds,
-            candidateFilter = reportMode.candidateFilter(observer.template.affiliation),
-            emptySummaryText = reportMode.emptySummaryText,
-            sensorReportMode = reportMode.sensorReportMode,
-            ecmIntensity = ecmIntensity,
-        )
-        if (reportMode != ReportMode.SCIREP) {
-            val currentChecksById = assessment.trackableChecks().associateBy { it.unit.id }
-            val lostContacts = previousContactState.sensorContactIds
-                .filter { it !in currentChecksById || currentChecksById.getValue(it).unit.destroyed }
-                .mapNotNull { contactId ->
-                    previousContactState.lastSeenContacts[contactId]
-                        ?.let { lost ->
-                            val currentCheck = currentChecksById[contactId]
-                            lost.copy(
-                                wasFriendly = lost.wasFriendly || currentCheck?.unit?.template?.affiliation?.let {
-                                    it == observer.template.affiliation
-                                } == true,
-                                lostDueToEnemyAction = lost.wasIdentified &&
-                                        (lost.wasFriendly || currentCheck?.unit?.template?.affiliation?.let {
-                                            it == observer.template.affiliation
-                                        } == true) &&
-                                        currentCheck?.destroyedWithinIdentificationRange() == true,
-                            )
-                        }
-                }
-                .filter { it.wasIdentified && it.wasFriendly }
-            report.trackableChecks().forEach { check ->
-                ensureSierraContactNumber(check.unit.id)
-            }
-            val identificationText = SensorDetection.navrepIdentificationText(
-                observer = observer,
-                checks = report.visibleChecks,
-                contactNumbers = sierraContactNumbers,
-                mapWidth = unitQueryService.mapWidth,
-                mapHeight = unitQueryService.mapHeight,
+        val result = OperationContactReportService.generate(
+            OperationContactReportRequest(
+                observer = observer.toOperationUnit(),
+                queryService = unitQueryService.operation,
+                mode = OperationContactReportMode.valueOf(reportMode.name),
+                currentState = currentState.operation(),
+                previousState = previousContactState.operation(),
+                selectedContactIds = reportState.sensorContactIds.mapTo(hashSetOf()) { io.hsar.mapgenerator.commandgui.operation.OperationObjectId(it.value) },
+                selectedIdentifiedIds = reportState.identifiedIds.mapTo(hashSetOf()) { io.hsar.mapgenerator.commandgui.operation.OperationObjectId(it.value) },
+                ecmIntensity = ecmIntensityProvider(observer),
                 gridLayer = gridLayer,
-                previouslyDetectedIds = previousContactState.sensorContactIds,
-                previouslyIdentifiedIds = previousContactState.identifiedIds,
-            )
-            val observerPositionText = SensorDetection.navrepObserverPositionText(
-                observer,
-                unitQueryService.mapWidth,
-                unitQueryService.mapHeight,
-                gridLayer,
-            )
-            val conditionsText = report.displayText.substringBefore(observerPositionText).trim()
-            val lostContactText = lostContacts.joinToString("\n") { "${SensorDetection.lostContactText(it)}." }
-            val reportText = if (report.visibleChecks.isEmpty() && lostContacts.isEmpty()) {
-                report.displayText
-            } else {
-                listOf(conditionsText, observerPositionText).filter { it.isNotBlank() }.joinToString("\n")
-            }
-            return report.copy(
-                unidentifiedChecks = emptyList(),
-                displayText = listOf(reportText, identificationText, lostContactText)
-                    .filter { it.isNotBlank() }
-                    .joinToString("\n"),
-                copyText = listOf(reportText, identificationText, lostContactText)
-                    .filter { it.isNotBlank() }
-                    .joinToString("\n"),
-            )
-        }
-
-        val scirepReport = report.copy(
-            visibleChecks = report.visibleChecks.filter {
-                it.unit.template.affiliation != observer.template.affiliation
-            },
-            hiddenChecks = report.hiddenChecks.filter {
-                it.unit.template.affiliation != observer.template.affiliation
-            },
+            ),
         )
-
-        val currentChecksById = report.trackableChecks().associateBy { it.unit.id }
-        val activeTrackableChecks = currentChecksById.values.filterNot { it.unit.destroyed }
-        val physicallyDetectedIds = currentChecksById.values
-            .filterNot { it.unit.destroyed }
-            .mapTo(mutableSetOf()) { it.unit.id }
-        val matchedLostContactIds = mutableSetOf<MapPlacedObjectId>()
-        val lowConfidenceContacts = mutableMapOf<MapPlacedObjectId, SitrepLostContact>()
-        activeTrackableChecks
-            .filter { it.unit.id !in sierraContactNumbers }
-            .forEach { check ->
-                val matchingLost = (previousContactState.lostContacts + reportState.lostContacts)
-                    .asSequence()
-                    .filter { it.contactId !in matchedLostContactIds }
-                    .filter { unitQueryService.distanceBetween(observer.mapCoordinate, it.lastSeenPosition) <= LOW_CONFIDENCE_DISTANCE_UNITS }
-                    .minByOrNull { unitQueryService.distanceBetween(observer.mapCoordinate, it.lastSeenPosition) }
-                if (matchingLost != null) {
-                    sierraContactNumbers[check.unit.id] = matchingLost.sierraNumber
-                    matchedLostContactIds += matchingLost.contactId
-                    lowConfidenceContacts[check.unit.id] = matchingLost
-                }
-            }
-        (
-                activeTrackableChecks +
-                        scirepReport.visibleChecks +
-                        scirepReport.unidentifiedChecks
-                ).distinctBy { it.unit.id }.forEach { check ->
-            ensureSierraContactNumber(check.unit.id)
-        }
-        val newlyLost = previousContactState.sensorContactIds
-            .filter { it !in physicallyDetectedIds }
-            .mapNotNull { contactId ->
-                previousContactState.lastSeenContacts[contactId]
-                    ?.let { lost ->
-                        val currentCheck = currentChecksById[contactId]
-                        lost.copy(
-                            wasFriendly = lost.wasFriendly || currentCheck?.unit?.template?.affiliation?.let {
-                                it == observer.template.affiliation
-                            } == true,
-                            lostDueToEnemyAction = lost.wasIdentified &&
-                                    (lost.wasFriendly || currentCheck?.unit?.template?.affiliation?.let {
-                                        it == observer.template.affiliation
-                                    } == true) &&
-                                    currentCheck?.destroyedWithinIdentificationRange() == true,
-                            destroyedByFriendlyAction = lost.wasIdentified &&
-                                    !(lost.wasFriendly || currentCheck?.unit?.template?.affiliation?.let {
-                                        it == observer.template.affiliation
-                                    } == true) &&
-                                    currentCheck?.destroyedWithinIdentificationRange() == true,
-                        )
-                    }
-                    ?: previousContactState.lastSeenPositions[contactId]?.let { position ->
-                        previousContactState.sierraContactNumbers[contactId]?.let { number ->
-                            SitrepLostContact(
-                                contactId = contactId,
-                                sierraNumber = number,
-                                lastSeenPosition = position,
-                                lastSeenRangeUnits = 0.0,
-                                wasIdentified = contactId in previousContactState.identifiedIds,
-                            )
-                        }
-                    }
-            }
-        val historicalLost = (previousContactState.lostContacts + reportState.lostContacts + newlyLost)
-            .filterNot { it.contactId in matchedLostContactIds }
-            .distinctBy { it.contactId }
-        val currentLastSeen = activeTrackableChecks
-            .filter { it.unit.id in reportState.sensorContactIds }
-            .associate { check ->
-                check.unit.id to SitrepLostContact(
-                    contactId = check.unit.id,
-                    sierraNumber = sierraContactNumbers.getValue(check.unit.id),
-                    lastSeenPosition = check.unit.mapCoordinate,
-                    lastSeenRangeUnits = check.distanceUnits,
-                    wasIdentified = check.unit.id in identifiedIds,
-                    wasFriendly = observer.template.affiliation != null &&
-                            check.unit.template.affiliation == observer.template.affiliation,
-                    identifiedAffiliation = check.unit.lostContactAffiliationDescription(),
-                    unitTypeName = check.unit.template.name,
-                    unitClassCode = check.unit.unitClassLabel(),
-                    unitInstanceName = check.unit.displayName().takeIf { it != check.unit.template.name },
-                )
-            }
-        val calculatedContactState = SitrepContactState(
-                sensorContactIds = reportState.sensorContactIds.toSet(),
-                identifiedIds = reportState.identifiedIds.toSet(),
-                sierraContactNumbers = sierraContactNumbers.toMap(),
-                usedSierraContactNumbers = usedSierraContactNumbers.toSet(),
-                lastSeenPositions = currentLastSeen.mapValues { it.value.lastSeenPosition },
-                lastSeenContacts = currentLastSeen,
-                lostContacts = historicalLost,
-        )
-        lastCalculatedContactState = calculatedContactState
-        if (notifyContactState) onContactStateChanged(calculatedContactState)
-        val scirepChecks = (scirepReport.visibleChecks + scirepReport.unidentifiedChecks)
-            .sortedBy { sierraContactNumbers.getValue(it.unit.id) }
-        val scirepText = SensorDetection.scirepText(
-            checks = scirepChecks,
-            identifiedIds = scirepReport.visibleChecks.map { it.unit.id }.toSet(),
-            contactNumbers = sierraContactNumbers,
-            mapWidth = unitQueryService.mapWidth,
-            mapHeight = unitQueryService.mapHeight,
-            gridLayer = gridLayer,
-            emptySummaryText = reportMode.emptySummaryText,
-            observerAffiliation = observer.template.affiliation,
-            identificationAnnouncements = scirepReport.visibleChecks.filter { it.unit.id !in previousContactState.identifiedIds },
-            previouslyDetectedIds = previousContactState.sensorContactIds,
-            lostContacts = newlyLost.filter { it.contactId !in matchedLostContactIds && !(it.wasIdentified && it.wasFriendly) },
-            lowConfidenceContacts = lowConfidenceContacts,
-            sensorConditionsPoor = reportMode == ReportMode.SCIREP && observer.sensorOptionEnabled(IN_NEBULA_KEY),
-            electronicWarfare = ecmIntensity > 0,
-        )
-        return scirepReport.copy(displayText = scirepText, copyText = scirepText)
+        val calculated = result.contactState.korge()
+        sierraContactNumbers.clear()
+        sierraContactNumbers.putAll(calculated.sierraContactNumbers)
+        usedSierraContactNumbers.clear()
+        usedSierraContactNumbers.addAll(calculated.usedSierraContactNumbers)
+        nextSierraContactNumber = (usedSierraContactNumbers.maxOrNull() ?: 0) + 1
+        lastCalculatedContactState = calculated
+        if (notifyContactState && reportMode == ReportMode.SCIREP) onContactStateChanged(calculated)
+        return result.assessment.korge(unitQueryService)
     }
-
-    private fun io.hsar.mapgenerator.commandgui.korge.interaction.SensorVisibilityCheck.destroyedWithinIdentificationRange(): Boolean =
-        unit.destroyed && distanceUnits <= identificationRangeUnits
-
-    private fun UnitSnapshot.lostContactAffiliationDescription(): String =
-        when (template.affiliation) {
-            UnitAffiliation.Friend -> if (observer.template.affiliation == UnitAffiliation.Hostile) "enemy" else "allied"
-            UnitAffiliation.Hostile -> "enemy"
-            UnitAffiliation.Neutral -> "neutral"
-            UnitAffiliation.Unknown -> "unknown"
-            null -> "unaffiliated"
-        }
 
     private fun reportRowLabel(check: io.hsar.mapgenerator.commandgui.korge.interaction.SensorVisibilityCheck): String =
         SensorDetection.hiddenContactLabel(

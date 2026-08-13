@@ -1,4 +1,6 @@
-package io.hsar.mapgenerator.commandgui.korge.interaction
+package io.hsar.mapgenerator.commandgui.operation
+
+import io.hsar.mapgenerator.commandgui.MapCoordinate
 
 import kotlin.math.atan2
 import kotlin.math.max
@@ -6,9 +8,9 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-internal data class EcmActivation(
+internal data class OperationEcmActivation(
     val turnNumber: Int,
-    val emitterId: MapPlacedObjectId,
+    val emitterId: OperationObjectId,
     val moduleKeys: Set<String>,
     val relativeBearingDegrees: Double,
     val rangeU: Double,
@@ -16,7 +18,7 @@ internal data class EcmActivation(
     val intensity: Int,
 )
 
-internal object EcmRules {
+internal object OperationEcmRules {
     const val CAPABILITY_PER_MODULE = 120.0
     const val MINIMUM_RANGE_U = 1.0
     const val MINIMUM_WIDTH_DEGREES = 10.0
@@ -34,25 +36,25 @@ internal object EcmRules {
                 widthDegrees in MINIMUM_WIDTH_DEGREES..MAXIMUM_WIDTH_DEGREES &&
                 rangeU * widthDegrees <= capability(moduleCount, intensity) + EPSILON
 
-    fun automatic(moduleCount: Int, targetRangeU: Double): EcmShape? {
+    fun automatic(moduleCount: Int, targetRangeU: Double): OperationEcmShape? {
         val fittedRange = max(MINIMUM_RANGE_U, targetRangeU)
         val intensity = (MAXIMUM_INTENSITY downTo 1).firstOrNull {
             fittedRange * MINIMUM_WIDTH_DEGREES <= capability(moduleCount, it) + EPSILON
         } ?: return null
         val width = (capability(moduleCount, intensity) / fittedRange).coerceAtMost(MAXIMUM_WIDTH_DEGREES)
-        return EcmShape(fittedRange, width, intensity)
+        return OperationEcmShape(fittedRange, width, intensity)
     }
 
-    fun manual(moduleCount: Int, widthDegrees: Double = 60.0, intensity: Int = 1): EcmShape? =
+    fun manual(moduleCount: Int, widthDegrees: Double = 60.0, intensity: Int = 1): OperationEcmShape? =
         range(moduleCount, widthDegrees, intensity)
             .takeIf { it >= MINIMUM_RANGE_U }
-            ?.let { EcmShape(it, widthDegrees.coerceIn(MINIMUM_WIDTH_DEGREES, MAXIMUM_WIDTH_DEGREES), intensity) }
+            ?.let { OperationEcmShape(it, widthDegrees.coerceIn(MINIMUM_WIDTH_DEGREES, MAXIMUM_WIDTH_DEGREES), intensity) }
 
-    fun closestManualIntensity(moduleCount: Int, widthDegrees: Double, desiredRangeU: Double): EcmShape? =
+    fun closestManualIntensity(moduleCount: Int, widthDegrees: Double, desiredRangeU: Double): OperationEcmShape? =
         (1..MAXIMUM_INTENSITY).mapNotNull { intensity -> manual(moduleCount, widthDegrees, intensity) }
             .minByOrNull { kotlin.math.abs(it.rangeU - desiredRangeU) }
 
-    fun resizedManual(moduleCount: Int, desiredWidthDegrees: Double, intensity: Int): EcmShape? {
+    fun resizedManual(moduleCount: Int, desiredWidthDegrees: Double, intensity: Int): OperationEcmShape? {
         val usableCapability = capability(moduleCount, intensity)
         val maximumValidWidth = min(MAXIMUM_WIDTH_DEGREES, usableCapability / MINIMUM_RANGE_U)
         if (maximumValidWidth < MINIMUM_WIDTH_DEGREES) return null
@@ -60,23 +62,23 @@ internal object EcmRules {
         val maximumRange = usableCapability / MINIMUM_WIDTH_DEGREES
         val snappedRange = ((usableCapability / desiredWidth) / RANGE_SNAP_U).roundToInt() * RANGE_SNAP_U
         val fittedRange = snappedRange.coerceIn(MINIMUM_RANGE_U, maximumRange)
-        return EcmShape(fittedRange, usableCapability / fittedRange, intensity)
+        return OperationEcmShape(fittedRange, usableCapability / fittedRange, intensity)
     }
 
-    fun contains(activation: EcmActivation, emitter: UnitSnapshot, point: MapCoordinate, unitQueryService: KorgeUnitQueryAdapter): Boolean {
-        val distance = unitQueryService.distanceBetween(emitter.mapCoordinate, point)
+    fun contains(activation: OperationEcmActivation, emitter: OperationUnit, point: MapCoordinate, unitQueryService: OperationUnitQueryService): Boolean {
+        val distance = unitQueryService.distanceBetween(emitter.coordinate, point)
         if (distance > activation.rangeU + EPSILON) return false
         if (activation.widthDegrees >= MAXIMUM_WIDTH_DEGREES - EPSILON) return true
         val absoluteBearing = activation.relativeBearingDegrees.mod(360.0)
-        val pointBearing = bearing(emitter.mapCoordinate, point, unitQueryService)
+        val pointBearing = bearing(emitter.coordinate, point, unitQueryService)
         val delta = ((pointBearing - absoluteBearing + 540.0).mod(360.0)) - 180.0
         return kotlin.math.abs(delta) <= activation.widthDegrees * 0.5 + EPSILON
     }
 
-    fun absoluteBearing(emitter: UnitSnapshot, point: MapCoordinate, unitQueryService: KorgeUnitQueryAdapter): Double =
-        bearing(emitter.mapCoordinate, point, unitQueryService)
+    fun absoluteBearing(emitter: OperationUnit, point: MapCoordinate, unitQueryService: OperationUnitQueryService): Double =
+        bearing(emitter.coordinate, point, unitQueryService)
 
-    private fun bearing(origin: MapCoordinate, point: MapCoordinate, unitQueryService: KorgeUnitQueryAdapter): Double =
+    private fun bearing(origin: MapCoordinate, point: MapCoordinate, unitQueryService: OperationUnitQueryService): Double =
         Math.toDegrees(
             atan2(
                 (point.x - origin.x) * unitQueryService.mapWidth,
@@ -88,4 +90,4 @@ internal object EcmRules {
     private const val RANGE_SNAP_U = 0.25
 }
 
-internal data class EcmShape(val rangeU: Double, val widthDegrees: Double, val intensity: Int)
+internal data class OperationEcmShape(val rangeU: Double, val widthDegrees: Double, val intensity: Int)

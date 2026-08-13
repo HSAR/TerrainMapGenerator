@@ -1,28 +1,27 @@
-package io.hsar.mapgenerator.commandgui.korge.persistence
+package io.hsar.mapgenerator.commandgui.save
 
 import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapCoordinate
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
-import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepContactState
-import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepLostContact
-import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
+import io.hsar.mapgenerator.commandgui.MapCoordinate
+import io.hsar.mapgenerator.commandgui.operation.OperationLostContact
+import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
+import io.hsar.mapgenerator.commandgui.operation.OperationSitrepContactState
 import java.util.*
 
 internal data class SitrepContactKey(
     val turnNumber: Int,
-    val observerUnitId: MapPlacedObjectId,
+    val observerUnitId: OperationObjectId,
 )
 
 internal class SitrepContactPersistence private constructor(
     private val root: ObjectNode,
-    private val states: MutableMap<SitrepContactKey, SitrepContactState>,
+    private val states: MutableMap<SitrepContactKey, OperationSitrepContactState>,
 ) {
-    fun stateFor(key: SitrepContactKey): SitrepContactState =
-        states[key] ?: SitrepContactState()
+    fun stateFor(key: SitrepContactKey): OperationSitrepContactState =
+        states[key] ?: OperationSitrepContactState()
 
-    fun update(key: SitrepContactKey, state: SitrepContactState) {
+    fun update(key: SitrepContactKey, state: OperationSitrepContactState) {
         if (state.sensorContactIds.isEmpty() && state.lostContacts.isEmpty() &&
             state.usedSierraContactNumbers.isEmpty() && state.sierraContactNumbers.isEmpty()
         ) {
@@ -61,7 +60,7 @@ internal class SitrepContactPersistence private constructor(
         } else {
             val records = root.putArray(FIELD_NAME)
             states.entries
-                .sortedWith(compareBy<Map.Entry<SitrepContactKey, SitrepContactState>> { it.key.turnNumber }
+                .sortedWith(compareBy<Map.Entry<SitrepContactKey, OperationSitrepContactState>> { it.key.turnNumber }
                     .thenBy { it.key.observerUnitId.value.toString() })
                 .forEach { (key, state) ->
                     records.addObject().apply {
@@ -139,19 +138,19 @@ internal class SitrepContactPersistence private constructor(
         )
 
         private fun load(root: ObjectNode): SitrepContactPersistence {
-            val states = mutableMapOf<SitrepContactKey, SitrepContactState>()
+            val states = mutableMapOf<SitrepContactKey, OperationSitrepContactState>()
             (root.get(FIELD_NAME) as? ArrayNode)?.forEach { record ->
                 val turn = record.path("turn").intValue()
                 val observerId = record.path("observerUnitId").textValue()?.toMapObjectId() ?: return@forEach
-                val sensorContactIds = mutableSetOf<MapPlacedObjectId>()
-                val identifiedIds = mutableSetOf<MapPlacedObjectId>()
-                val sierraNumbers = mutableMapOf<MapPlacedObjectId, Int>()
+                val sensorContactIds = mutableSetOf<OperationObjectId>()
+                val identifiedIds = mutableSetOf<OperationObjectId>()
+                val sierraNumbers = mutableMapOf<OperationObjectId, Int>()
                 val usedSierraNumbers = mutableSetOf<Int>()
                 (record.get("usedSierraNumbers") as? ArrayNode)?.forEach { number ->
                     number.takeIf { it.isInt }?.intValue()?.let(usedSierraNumbers::add)
                 }
-                val lastSeenPositions = mutableMapOf<MapPlacedObjectId, MapCoordinate>()
-                val lastSeenContacts = mutableMapOf<MapPlacedObjectId, SitrepLostContact>()
+                val lastSeenPositions = mutableMapOf<OperationObjectId, MapCoordinate>()
+                val lastSeenContacts = mutableMapOf<OperationObjectId, OperationLostContact>()
                 (record.get("contacts") as? ArrayNode)?.forEach { contact ->
                     val unitId = contact.path("unitId").textValue()?.toMapObjectId() ?: return@forEach
                     if (!contact.has("active") || contact.path("active").booleanValue()) sensorContactIds += unitId
@@ -161,7 +160,7 @@ internal class SitrepContactPersistence private constructor(
                         val position = MapCoordinate(contact.path("x").doubleValue(), contact.path("y").doubleValue())
                         lastSeenPositions[unitId] = position
                         sierraNumbers[unitId]?.let { number ->
-                            lastSeenContacts[unitId] = SitrepLostContact(
+                            lastSeenContacts[unitId] = OperationLostContact(
                                 contactId = unitId,
                                 sierraNumber = number,
                                 lastSeenPosition = position,
@@ -176,12 +175,12 @@ internal class SitrepContactPersistence private constructor(
                         }
                     }
                 }
-                val lostContacts = mutableListOf<SitrepLostContact>()
+                val lostContacts = mutableListOf<OperationLostContact>()
                 (record.get("lostContacts") as? ArrayNode)?.forEach { lost ->
                     val contactId = lost.path("unitId").textValue()?.toMapObjectId() ?: return@forEach
                     val number = lost.path("sierraNumber").takeIf { it.isInt }?.intValue() ?: return@forEach
                     if (!lost.has("x") || !lost.has("y") || !lost.has("rangeUnits")) return@forEach
-                    lostContacts += SitrepLostContact(
+                    lostContacts += OperationLostContact(
                         contactId = contactId,
                         sierraNumber = number,
                         lastSeenPosition = MapCoordinate(lost.path("x").doubleValue(), lost.path("y").doubleValue()),
@@ -198,7 +197,7 @@ internal class SitrepContactPersistence private constructor(
                 }
                 usedSierraNumbers += sierraNumbers.values
                 usedSierraNumbers += lostContacts.map { it.sierraNumber }
-                states[SitrepContactKey(turn, observerId)] = SitrepContactState(
+                states[SitrepContactKey(turn, observerId)] = OperationSitrepContactState(
                     sensorContactIds = sensorContactIds,
                     identifiedIds = identifiedIds,
                     sierraContactNumbers = sierraNumbers,
@@ -211,8 +210,8 @@ internal class SitrepContactPersistence private constructor(
             return SitrepContactPersistence(root, states)
         }
 
-        private fun String.toMapObjectId(): MapPlacedObjectId? =
-            runCatching { MapPlacedObjectId(UUID.fromString(this)) }.getOrNull()
+        private fun String.toMapObjectId(): OperationObjectId? =
+            runCatching { OperationObjectId(UUID.fromString(this)) }.getOrNull()
     }
 
 }

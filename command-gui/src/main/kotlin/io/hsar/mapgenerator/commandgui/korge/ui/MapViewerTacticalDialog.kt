@@ -1,6 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
-import io.hsar.mapgenerator.commandgui.korge.interaction.EcmRules
+import io.hsar.mapgenerator.commandgui.operation.OperationEcmRules
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.interaction.TacticalFireResolution
 import io.hsar.mapgenerator.commandgui.korge.interaction.TacticalTarget
@@ -186,7 +186,7 @@ internal class MapViewerTacticalDialog(
                 )
                 val contributionText = report.weapons.firstOrNull { it.key == contribution.weaponKey }
                     ?.takeIf(TacticalWeaponStatus::ecm)
-                    ?.let { "    ${contribution.weaponName}: ${EcmRules.CAPABILITY_PER_MODULE.roundToInt()} U°" }
+                    ?.let { "    ${contribution.weaponName}: ${OperationEcmRules.CAPABILITY_PER_MODULE.roundToInt()} U°" }
                     ?: "    ${contribution.weaponName}: ${contribution.firepower}"
                 MapViewerTextViews.leftBox(detail, contributionText, width - ARC_ICON_WIDTH - TEXT_INSET, DETAIL_ROW_HEIGHT) {
                     x = TEXT_INSET

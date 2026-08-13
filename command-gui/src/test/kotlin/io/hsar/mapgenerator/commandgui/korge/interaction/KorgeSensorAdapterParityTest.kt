@@ -12,7 +12,7 @@ import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import java.util.*
 
-class SensorDetectionTest {
+class KorgeSensorAdapterParityTest {
     @Test
     fun `sitrep validation requires a recognised unit class from the unit or type`() {
         val missingUnitClass = unit(

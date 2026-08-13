@@ -4,7 +4,6 @@ import io.hsar.mapgenerator.commandgui.MapCoordinate
 import io.hsar.mapgenerator.commandgui.MapViewerTool
 import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
 import io.hsar.mapgenerator.commandgui.ViewerPoint
-import io.hsar.mapgenerator.commandgui.korge.interaction.EcmActivation
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
 import io.hsar.mapgenerator.commandgui.korge.persistence.LegacyOperationAdditionalData
 import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireKey
@@ -12,6 +11,7 @@ import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireUsage
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogBounds
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorBounds
+import io.hsar.mapgenerator.commandgui.operation.OperationEcmActivation
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorId
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorKind
@@ -39,9 +39,9 @@ import java.util.Collections.emptyList
 class OperationAdditionalDataTest {
     @Test
     fun `ECM activations round trip and clear before the next turn`() {
-        val unit = MapPlacedObjectId(UUID.fromString("00000000-0000-0000-0000-000000000004"))
+        val unit = OperationObjectId(UUID.fromString("00000000-0000-0000-0000-000000000004"))
         val data = LegacyOperationAdditionalData.fromJson(null)
-        val activation = EcmActivation(3, unit, setOf("ecm-1"), 30.0, 6.0, 20.0, 1)
+        val activation = OperationEcmActivation(3, unit, setOf("ecm-1"), 30.0, 6.0, 20.0, 1)
         data.ecm.add(activation)
 
         val restored = LegacyOperationAdditionalData.fromJson(data.toJsonOrNull())

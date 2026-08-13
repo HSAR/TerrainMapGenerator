@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnBeamRules
 import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip
 import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipDefinition
+import io.hsar.mapgenerator.commandgui.operation.OperationEcmRules
 import kotlin.math.atan2
 import kotlin.math.floor
 
@@ -150,7 +151,7 @@ internal object TacticalTargetingResolver {
             .toList()
         val readyEcm = intactWeapons.filter(TacticalWeaponStatus::ecm)
         val manualTarget = readyEcm.takeIf(List<TacticalWeaponStatus>::isNotEmpty)?.let { modules ->
-            val shape = EcmRules.manual(modules.size)!!
+            val shape = OperationEcmRules.manual(modules.size)!!
             TacticalTarget(
                 targetId = source.id,
                 targetName = "Manual Targeting",
@@ -196,7 +197,7 @@ internal object TacticalTargetingResolver {
             }
         val ecmModules = weapons.filter(TacticalWeaponStatus::ecm)
         val ecmContributions = ecmModules
-            .takeIf { EcmRules.automatic(it.size, range) != null }
+            .takeIf { OperationEcmRules.automatic(it.size, range) != null }
             ?.map { TacticalWeaponContribution(it.key, it.name, arc, 0) }
             .orEmpty()
         val contributions = weaponContributions + ecmContributions

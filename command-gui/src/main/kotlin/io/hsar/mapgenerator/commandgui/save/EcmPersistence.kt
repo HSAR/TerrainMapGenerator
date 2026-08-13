@@ -1,24 +1,23 @@
-package io.hsar.mapgenerator.commandgui.korge.persistence
+package io.hsar.mapgenerator.commandgui.save
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
-import io.hsar.mapgenerator.commandgui.korge.interaction.EcmActivation
-import io.hsar.mapgenerator.commandgui.korge.interaction.EcmRules
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
-import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
+import io.hsar.mapgenerator.commandgui.operation.OperationEcmActivation
+import io.hsar.mapgenerator.commandgui.operation.OperationEcmRules
+import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import java.util.*
 import java.util.Collections.emptySet
 
 internal class EcmPersistence private constructor(
     private val root: ObjectNode,
-    private val activations: MutableList<EcmActivation>,
+    private val activations: MutableList<OperationEcmActivation>,
 ) {
-    private var markedKeys = emptySet<Pair<Int, MapPlacedObjectId>>()
-    fun forTurn(turnNumber: Int): List<EcmActivation> = activations.filter { it.turnNumber == turnNumber }
+    private var markedKeys = emptySet<Pair<Int, OperationObjectId>>()
+    fun forTurn(turnNumber: Int): List<OperationEcmActivation> = activations.filter { it.turnNumber == turnNumber }
 
-    fun add(activation: EcmActivation) {
+    fun add(activation: OperationEcmActivation) {
         activations += activation
     }
 
@@ -26,7 +25,7 @@ internal class EcmPersistence private constructor(
         activations.removeAll { it.turnNumber < turnNumber }
     }
 
-    fun reconcileMarked(updated: List<EcmActivation>) {
+    fun reconcileMarked(updated: List<OperationEcmActivation>) {
         val updatedKeys = updated.mapTo(linkedSetOf()) { it.turnNumber to it.emitterId }
         activations.removeAll { (it.turnNumber to it.emitterId) in markedKeys || (it.turnNumber to it.emitterId) in updatedKeys }
         activations += updated
@@ -35,7 +34,7 @@ internal class EcmPersistence private constructor(
 
     fun toJson(): ByteArray {
         if (activations.isEmpty()) root.remove(FIELD_NAME) else root.putArray(FIELD_NAME).also { records ->
-            activations.sortedWith(compareBy<EcmActivation>(EcmActivation::turnNumber).thenBy { it.emitterId.value.toString() })
+            activations.sortedWith(compareBy<OperationEcmActivation>(OperationEcmActivation::turnNumber).thenBy { it.emitterId.value.toString() })
                 .forEach { activation ->
                     records.addObject().apply {
                         put("turn", activation.turnNumber)
@@ -57,13 +56,13 @@ internal class EcmPersistence private constructor(
         fun fromRoot(root: ObjectNode): EcmPersistence = EcmPersistence(
             root,
             (root.get(FIELD_NAME) as? ArrayNode)?.mapNotNull { record ->
-                val emitter = record.path("emitterId").textValue()?.let { runCatching { MapPlacedObjectId(UUID.fromString(it)) }.getOrNull() } ?: return@mapNotNull null
+                val emitter = record.path("emitterId").textValue()?.let { runCatching { OperationObjectId(UUID.fromString(it)) }.getOrNull() } ?: return@mapNotNull null
                 val keys = (record.get("moduleKeys") as? ArrayNode)?.mapNotNull(JsonNode::textValue)?.toSet().orEmpty()
-                EcmActivation(
+                OperationEcmActivation(
                     record.path("turn").intValue(), emitter, keys,
                     record.path("relativeBearingDegrees").doubleValue(), record.path("rangeU").doubleValue(),
                     record.path("widthDegrees").doubleValue(), record.path("intensity").intValue(),
-                ).takeIf { keys.isNotEmpty() && EcmRules.valid(keys.size, it.rangeU, it.widthDegrees, it.intensity) }
+                ).takeIf { keys.isNotEmpty() && OperationEcmRules.valid(keys.size, it.rangeU, it.widthDegrees, it.intensity) }
             }?.toMutableList() ?: mutableListOf(),
         )
 
