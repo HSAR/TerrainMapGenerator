@@ -1,6 +1,10 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
 import io.hsar.mapgenerator.commandgui.GridReferenceFormatter
+import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationUnit
+import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationUnitContent
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip
+import io.hsar.mapgenerator.commandgui.operation.OperationUnitPresentation
 import io.hsar.mapgenerator.commandgui.korge.interaction.SensorDetection.formatPosition
 import io.hsar.mapgenerator.grid.GridLayer
 import korlibs.io.util.buildList
@@ -98,74 +102,32 @@ internal data class ScirepContactSegment(
 )
 
 internal fun UnitSnapshot.isNavrepUnit(): Boolean =
-    unitClassLabel() in NAVREP_ELIGIBLE_CLASSES || (unitClassLabel().needsMassFallback() && mass()?.let { it >= 0 } == true)
+    neutralPresentation { unit, content -> OperationUnitPresentation.isNavrepUnit(unit, content) }
 
-internal fun UnitSnapshot.sitrepValidationError(): String? {
-    val unitClass = unitClassLabel()
-    if (unitClass.needsMassFallback() && mass()?.let { it >= 0 } != true) {
-        return if (unitClass == null) "This unit has no unitClass setting."
-        else "The unitClass value \"$unitClass\" is not recognised."
-    }
-    return null
-}
+internal fun UnitSnapshot.sitrepValidationError(): String? =
+    neutralPresentation { unit, content -> OperationUnitPresentation.sitrepValidationError(unit, content) }
 
 internal fun UnitSnapshot.displayName(): String =
-    name.ifBlank { template.name }
+    neutralPresentation { unit, content -> OperationUnitPresentation.displayName(unit, content) }
 
 internal fun UnitSnapshot.navrepMenuLabel(): String =
-    buildString {
-        append(displayName())
-        append(" [").append(hullCode()).append(']')
-    }
+    neutralPresentation { unit, content -> OperationUnitPresentation.navrepMenuLabel(unit, content) }
 
 internal fun UnitSnapshot.navrepReportLabel(): String =
-    buildString {
-        append(hullCode()).append(' ')
-        append(displayName())
-    }
+    neutralPresentation { unit, content -> OperationUnitPresentation.navrepReportLabel(unit, content) }
 
 internal fun UnitSnapshot.unitClassLabel(): String? =
-    (customProperties.stringProperty(UNIT_CLASS_KEY)
-        ?: template.customProperties.stringProperty(UNIT_CLASS_KEY))
-        ?.uppercase()
-
-private fun UnitSnapshot.hullCode(): String = unitClassLabel() ?: UNKNOWN_HULL_CODE
+    neutralPresentation { unit, content -> OperationUnitPresentation.unitClass(unit, content) }
 
 private fun UnitSnapshot.mass(): Int? =
-    (customProperties.stringProperty(OlympiadDawnShip.MASS_KEY)
-        ?: template.customProperties.stringProperty(OlympiadDawnShip.MASS_KEY))
-        ?.toIntOrNull()
+    neutralPresentation { unit, content -> OperationUnitPresentation.mass(unit, content) }
 
-private fun String?.needsMassFallback(): Boolean =
-    this == null || this == UNKNOWN_HULL_CODE || this == "AK" || this == "MV" || this !in SENSOR_UNIT_CLASS_NAMES
+private fun <T> UnitSnapshot.neutralPresentation(format: (io.hsar.mapgenerator.commandgui.operation.OperationUnit, io.hsar.mapgenerator.commandgui.operation.OperationContent) -> T): T =
+    listOf(this).toOperationUnitContent().let { content -> format(toOperationUnit(), content) }
 
-private const val UNIT_CLASS_KEY = "unitClass"
-private const val UNKNOWN_HULL_CODE = "UKN"
-internal val NAVREP_ELIGIBLE_CLASSES = setOf("FF", "F", "DD", "CL", "CA", "CVE", "CVL", "CV", "BC")
-internal val SENSOR_UNIT_CLASS_NAMES = mapOf(
-    "FF" to "frigate",
-    "F" to "fighter",
-    "DD" to "destroyer",
-    "CL" to "light cruiser",
-    "CA" to "heavy cruiser",
-    "CVE" to "escort carrier",
-    "CVL" to "light carrier",
-    "CV" to "carrier",
-    "BC" to "battlecruiser",
-    "AK" to "Cargo Ship",
-    "MV" to "Cargo Ship",
-)
-internal val SENSOR_UNIT_CLASS_BRACKETS = mapOf(
-    "F" to "lightweight",
-    "FF" to "lightweight",
-    "DD" to "midweight",
-    "CL" to "midweight",
-    "CA" to "heavyweight",
-    "CVE" to "heavyweight",
-    "CVL" to "heavyweight",
-    "CV" to "heavyweight",
-    "BC" to "heavyweight",
-)
+internal val NAVREP_ELIGIBLE_CLASSES = OperationUnitPresentation.navrepEligibleClasses
+internal val SENSOR_UNIT_CLASS_NAMES = OperationUnitPresentation.classNames
+internal val SENSOR_UNIT_CLASS_BRACKETS = OperationUnitPresentation.classBrackets
 private const val DETECTION_RANGE_BAND_MULTIPLIER = 2.0
 
 private fun Map<String, String>.warpBonus(): Int? {
@@ -198,11 +160,11 @@ internal object SensorDetection {
         sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
         ecmIntensity: Int = 0,
     ): List<SensorContact> =
-        visibleContacts(observer, UnitQueryService(candidates, mapWidth, mapHeight, mapUnitsPerPixel), gridLayer, candidateFilter, sensorReportMode, ecmIntensity)
+        visibleContacts(observer, KorgeUnitQueryAdapter(candidates, mapWidth, mapHeight, mapUnitsPerPixel), gridLayer, candidateFilter, sensorReportMode, ecmIntensity)
 
     fun visibleContacts(
         observer: UnitSnapshot,
-        unitQueryService: UnitQueryService,
+        unitQueryService: KorgeUnitQueryAdapter,
         gridLayer: GridLayer? = null,
         candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
         sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
@@ -221,7 +183,7 @@ internal object SensorDetection {
 
     fun visibilityChecks(
         observer: UnitSnapshot,
-        unitQueryService: UnitQueryService,
+        unitQueryService: KorgeUnitQueryAdapter,
         gridLayer: GridLayer? = null,
         candidateFilter: (UnitSnapshot) -> Boolean = { it.template.affiliation == observer.template.affiliation },
         sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
@@ -253,7 +215,7 @@ internal object SensorDetection {
         sensorReportMode: SensorReportMode = SensorReportMode.SCIREP,
         ecmIntensity: Int = 0,
     ): List<SensorVisibilityCheck> =
-        visibilityChecks(observer, UnitQueryService(candidates, mapWidth, mapHeight, mapUnitsPerPixel), gridLayer, candidateFilter, sensorReportMode, ecmIntensity)
+        visibilityChecks(observer, KorgeUnitQueryAdapter(candidates, mapWidth, mapHeight, mapUnitsPerPixel), gridLayer, candidateFilter, sensorReportMode, ecmIntensity)
 
     fun visibilityCheck(
         observer: UnitSnapshot,
@@ -316,7 +278,7 @@ internal object SensorDetection {
 
     fun visibilityReport(
         observer: UnitSnapshot,
-        unitQueryService: UnitQueryService,
+        unitQueryService: KorgeUnitQueryAdapter,
         gridLayer: GridLayer? = null,
         includedIds: Set<MapPlacedObjectId>? = null,
         unidentifiedIds: Set<MapPlacedObjectId> = emptySet(),
@@ -366,7 +328,7 @@ internal object SensorDetection {
     ): SitrepVisibilityReport =
         visibilityReport(
             observer,
-            UnitQueryService(candidates, mapWidth, mapHeight, mapUnitsPerPixel),
+            KorgeUnitQueryAdapter(candidates, mapWidth, mapHeight, mapUnitsPerPixel),
             gridLayer,
             includedIds,
             unidentifiedIds,

@@ -641,19 +641,19 @@ class OperationSaveRoundTripTest {
     @Test
     fun `edited imported ship template unitClass override round trips through the save file`() {
         val operationId = UUID.fromString("00000000-0000-0000-0000-0000000000d6")
-        val definition = io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip.parse(
+        val definition = io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip.parse(
             """{"hull":{"points":1,"rows":1},"armour":[],"systems":[],"mass":10,"class":"Armed Cargo Ship Freighter","name":"Cargo"}""",
         )
         val template = MapViewerUnitTemplate(
             id = UnitTemplateId(UUID.fromString("00000000-0000-0000-0000-000000000037")),
             name = "Cargo",
             bitmap = Bitmap32(4, 4) { _, _ -> RGBA(255, 0, 0, 255) },
-            customProperties = io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),
+            customProperties = io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),
         )
         val before = UnitTemplateSnapshot(template.id, template, 0)
         val after = before.copy(
             template = before.template.copy(
-                customProperties = io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip.importedTemplateProperties(
+                customProperties = io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip.importedTemplateProperties(
                     before.template.customProperties + ("unitClass" to "MV"),
                     definition,
                 ),

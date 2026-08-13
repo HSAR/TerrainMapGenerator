@@ -4,10 +4,10 @@ import io.hsar.mapgenerator.commandgui.GridReferenceFields
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnFighterLaunchStatus
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDamage
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnSquadronStatus
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnFighterLaunchStatus
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipDamage
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnSquadronStatus
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.save.OperationSaveJson
 import io.hsar.mapgenerator.image.Palette

@@ -1,9 +1,11 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnFighterLaunchStatus
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDamage
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDefinition
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnFighterLaunchStatus
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipDamage
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipDefinition
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipSystem
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnStatusPresentation
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
@@ -234,24 +236,17 @@ internal object OlympiadDawnShipStatusPanel {
     private fun <T> Set<T>.toggle(value: T): Set<T> =
         if (value in this) this - value else this + value
 
-    internal fun hullRowSizes(points: Int, rows: Int): List<Int> {
-        if (rows <= 0) return emptyList()
-        val pointsPerRow = points / rows
-        val remainder = points % rows
-        return List(rows) { row -> pointsPerRow + if (row < remainder) 1 else 0 }
-    }
+    internal fun hullRowSizes(points: Int, rows: Int): List<Int> = OlympiadDawnStatusPresentation.hullRowSizes(points, rows)
 
     internal fun fighterStatusText(
         fighterId: String,
         status: OlympiadDawnFighterLaunchStatus?,
-    ): String =
-        status?.let { if (it.destroyed) "DESTROYED" else "LAUNCHED" } ?: fighterId
+    ): String = OlympiadDawnStatusPresentation.fighterStatusText(fighterId, status)
 
     internal fun systemDisplayName(
-        system: io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipSystem,
+        system: OlympiadDawnShipSystem,
         fighterLaunchStatuses: Map<String, OlympiadDawnFighterLaunchStatus>,
-    ): String =
-        if (system.fighterSquadronIds.any { it in fighterLaunchStatuses }) "Hangar - Launched" else system.name
+    ): String = OlympiadDawnStatusPresentation.systemDisplayName(system, fighterLaunchStatuses)
 
     private const val HEADER_HEIGHT = 34.0
     private const val SYSTEM_HEIGHT = 30.0

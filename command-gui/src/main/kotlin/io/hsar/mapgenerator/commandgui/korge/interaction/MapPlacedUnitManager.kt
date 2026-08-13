@@ -1,5 +1,12 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnBeamRules
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipDamage
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipDefinition
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipWeapon
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnSquadronStatus
+
 import io.hsar.mapgenerator.commandgui.GridReferenceFields
 import io.hsar.mapgenerator.commandgui.GridReferenceFormatter
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
@@ -87,7 +94,7 @@ internal class MapPlacedUnitManager(
 ) {
     private val coordinateSpace = MapCoordinateSpace(geometry, mapWidth, mapHeight)
     private val units = mutableListOf<PlacedUnit>()
-    private var unitQueryService = UnitQueryService(emptyList(), mapWidth, mapHeight, mapUnitsPerPixel)
+    private var unitQueryService = KorgeUnitQueryAdapter(emptyList(), mapWidth, mapHeight, mapUnitsPerPixel)
     private val ecmLayer = unitLayer.container()
     private val activeEcmLayer = ecmLayer.container()
     private val previewEcmLayer = ecmLayer.container()
@@ -821,7 +828,7 @@ internal class MapPlacedUnitManager(
     }
 
     private fun notifyUnitStateChanged() {
-        unitQueryService = UnitQueryService(units.map { it.snapshot() }, mapWidth, mapHeight, mapUnitsPerPixel)
+        unitQueryService = KorgeUnitQueryAdapter(units.map { it.snapshot() }, mapWidth, mapHeight, mapUnitsPerPixel)
         refreshOpenShipStatusPanels()
         refreshTacticalDialogs()
         renderedEcmSignature = null
@@ -843,8 +850,8 @@ internal class MapPlacedUnitManager(
 
     private fun updateLinkedSquadronHealth(fighter: PlacedUnit, remaining: Int) {
         val status = OlympiadDawnShip.squadronStatus(fighter.snapshot(), units.map { it.snapshot() }) ?: return
-        val carrier = units.firstOrNull { it.id == status.carrierId } ?: return
-        OlympiadDawnShip.updatedSquadronProperties(carrier.snapshot(), status.squadronId, remaining)
+        val carrier = units.firstOrNull { it.id.value == status.carrierId.value } ?: return
+        OlympiadDawnShip.updatedSquadronProperties(carrier.snapshot(), units.map { it.snapshot() }, status.squadronId, remaining)
             ?.let { properties -> updateShipDamage(carrier, OlympiadDawnShip.shipDamage(carrier.snapshot().copy(customProperties = properties)) ?: return) }
     }
 
@@ -1023,7 +1030,7 @@ internal class MapPlacedUnitManager(
             restored: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog? = null,
         ) {
             val snapshot = unit.snapshot()
-            unitQueryService = UnitQueryService(units.map { it.snapshot() }, mapWidth, mapHeight, mapUnitsPerPixel)
+            unitQueryService = KorgeUnitQueryAdapter(units.map { it.snapshot() }, mapWidth, mapHeight, mapUnitsPerPixel)
             val turnNumber = sitrepTurnNumberProvider()
             MapViewerSitrepDialog(
                 root = root,

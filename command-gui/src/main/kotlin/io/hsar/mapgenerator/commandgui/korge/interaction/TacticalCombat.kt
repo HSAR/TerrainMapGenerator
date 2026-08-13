@@ -1,5 +1,9 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnBeamRules
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipDamage
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipDefinition
 import kotlin.random.Random
 
 internal data class TacticalDieResult(

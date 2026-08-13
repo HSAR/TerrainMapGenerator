@@ -33,7 +33,7 @@ class EcmRulesTest {
     @Test
     fun `sector containment remains on global bearing when emitter turns`() {
         val emitter = unit(MapCoordinate(0.5, 0.5), facing = 350)
-        val query = UnitQueryService(listOf(emitter), 100, 100, 1.0)
+        val query = KorgeUnitQueryAdapter(listOf(emitter), 100, 100, 1.0)
         val activation = EcmActivation(1, emitter.id, setOf("ecm"), 0.0, 10.0, 12.0, 1)
         val turnedEmitter = emitter.copy(facingDegrees = 90)
 

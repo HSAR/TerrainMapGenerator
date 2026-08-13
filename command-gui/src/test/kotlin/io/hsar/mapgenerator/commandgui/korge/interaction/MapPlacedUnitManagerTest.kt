@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.operation.*
+
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
 import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireKey
 import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireUsage

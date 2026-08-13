@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.operation.*
+
 import korlibs.image.bitmap.Bitmap32
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
@@ -108,7 +110,7 @@ class TacticalTargetingResolverTest {
 
         val report = TacticalTargetingResolver.resolve(
             source,
-            UnitQueryService(listOf(source, fighter), mapWidth = 1000, mapHeight = 1000, mapUnitsPerPixel = 1.0),
+            KorgeUnitQueryAdapter(listOf(source, fighter), mapWidth = 1000, mapHeight = 1000, mapUnitsPerPixel = 1.0),
             fireControlUsed = 1,
         )
 
@@ -198,7 +200,7 @@ class TacticalTargetingResolverTest {
     }
 
     private fun resolve(source: UnitSnapshot, candidates: List<UnitSnapshot>) =
-        TacticalTargetingResolver.resolve(source, UnitQueryService(candidates, mapWidth = 1000, mapHeight = 1000, mapUnitsPerPixel = 1.0))
+        TacticalTargetingResolver.resolve(source, KorgeUnitQueryAdapter(candidates, mapWidth = 1000, mapHeight = 1000, mapUnitsPerPixel = 1.0))
 
     private fun ship(
         id: Int,

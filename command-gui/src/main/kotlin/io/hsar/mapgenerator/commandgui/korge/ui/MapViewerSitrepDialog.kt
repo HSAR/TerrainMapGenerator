@@ -7,7 +7,7 @@ import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepContactState
 import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepLostContact
 import io.hsar.mapgenerator.commandgui.korge.interaction.SitrepVisibilityReport
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
-import io.hsar.mapgenerator.commandgui.korge.interaction.UnitQueryService
+import io.hsar.mapgenerator.commandgui.korge.interaction.KorgeUnitQueryAdapter
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitSnapshot
 import io.hsar.mapgenerator.commandgui.korge.interaction.displayName
 import io.hsar.mapgenerator.commandgui.korge.interaction.unitClassLabel
@@ -45,7 +45,7 @@ internal class MapViewerSitrepDialog(
     private val dialogKey: Any,
     private val unitName: String,
     private var observer: UnitSnapshot,
-    private var unitQueryService: UnitQueryService,
+    private var unitQueryService: KorgeUnitQueryAdapter,
     private val initialContactState: SitrepContactState = SitrepContactState(),
     private val previousContactState: SitrepContactState = SitrepContactState(),
     private val onContactStateChanged: (SitrepContactState) -> Unit = {},

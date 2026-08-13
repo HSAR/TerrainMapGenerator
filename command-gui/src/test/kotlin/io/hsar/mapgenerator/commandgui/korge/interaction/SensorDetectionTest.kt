@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip
+
 import io.hsar.mapgenerator.grid.EpsilonCoord
 import io.hsar.mapgenerator.grid.GridLayer
 import io.hsar.mapgenerator.grid.ReferenceSystem
@@ -270,7 +272,7 @@ class SensorDetectionTest {
 
         val check = SensorDetection.visibilityChecks(
             observer = observer,
-            unitQueryService = UnitQueryService(listOf(observer, target), mapWidth = 1_000, mapHeight = 1_000, mapUnitsPerPixel = 1.0),
+            unitQueryService = KorgeUnitQueryAdapter(listOf(observer, target), mapWidth = 1_000, mapHeight = 1_000, mapUnitsPerPixel = 1.0),
         ).single()
 
         assertThat(check.identificationRangeUnits, equalTo(36.0))

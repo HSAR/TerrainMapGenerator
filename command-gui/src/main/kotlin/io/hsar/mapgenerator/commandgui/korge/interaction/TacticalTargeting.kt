@@ -1,5 +1,8 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnBeamRules
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipDefinition
 import kotlin.math.atan2
 import kotlin.math.floor
 
@@ -59,7 +62,7 @@ internal object TacticalTargetingResolver {
 
     fun resolve(
         source: UnitSnapshot,
-        unitQueryService: UnitQueryService,
+        unitQueryService: KorgeUnitQueryAdapter,
         firedWeaponKeys: Set<String> = emptySet(),
         fireControlUsed: Int = 0,
     ): TacticalTargetingReport {
@@ -171,7 +174,7 @@ internal object TacticalTargetingResolver {
         firedWeaponKeys: Set<String> = emptySet(),
         fireControlUsed: Int = 0,
     ): TacticalTargetingReport =
-        resolve(source, UnitQueryService(candidates, mapWidth, mapHeight, mapUnitsPerPixel), firedWeaponKeys, fireControlUsed)
+        resolve(source, KorgeUnitQueryAdapter(candidates, mapWidth, mapHeight, mapUnitsPerPixel), firedWeaponKeys, fireControlUsed)
 
     private fun targetFor(
         source: UnitSnapshot,
@@ -179,7 +182,7 @@ internal object TacticalTargetingResolver {
         facing: Int,
         weapons: List<TacticalWeaponStatus>,
         remainingFireControl: Int,
-        unitQueryService: UnitQueryService,
+        unitQueryService: KorgeUnitQueryAdapter,
     ): TacticalTarget? {
         val range = unitQueryService.distanceBetween(source, target)
         val arc = targetArc(source, target, facing)

@@ -1,10 +1,10 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
-import io.hsar.mapgenerator.commandgui.korge.interaction.MapPlacedObjectId
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnFighterLaunchStatus
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipWeapon
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnSquadronStatus
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnFighterLaunchStatus
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipWeapon
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnSquadronStatus
+import io.hsar.mapgenerator.commandgui.operation.OperationObjectId
 import io.hsar.mapgenerator.commandgui.nextTestUuid
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
@@ -14,7 +14,7 @@ class OlympiadDawnShipStatusPanelTest {
     @Test
     fun `squadron panel includes its health and weapons when expanded`() {
         val status = OlympiadDawnSquadronStatus(
-            carrierId = MapPlacedObjectId(nextTestUuid()),
+            carrierId = OperationObjectId(nextTestUuid()),
             squadronId = "squadron-1",
             name = "Fighter",
             count = 6,

@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.interaction
 
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip
+
 import kotlin.math.hypot
 
 internal object MoveLimit {

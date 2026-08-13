@@ -1,6 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnSquadronStatus
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnSquadronStatus
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.view.Container
 import korlibs.korge.view.container

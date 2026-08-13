@@ -1,5 +1,6 @@
-package io.hsar.mapgenerator.commandgui.korge.interaction
+package io.hsar.mapgenerator.commandgui.operation
 
+import io.hsar.mapgenerator.commandgui.MapCoordinate
 import io.hsar.mapgenerator.commandgui.nextTestUuid
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
@@ -143,10 +144,11 @@ class OlympiadDawnShipTest {
         val definition = OlympiadDawnShip.parse(
             """{"hull":{"points":2,"rows":1},"armour":[[1,0]],"systems":[{"name":"drive","id":"drive"}],"class":"Scout","name":"Test"}""",
         )
-        val template = MapViewerUnitTemplate(
-            id = UnitTemplateId(nextTestUuid()),
+        val template = OperationUnitTemplate(
+            id = OperationUnitTemplateId(nextTestUuid()),
             name = "Test",
-            bitmap = korlibs.image.bitmap.Bitmap32(2, 2),
+            image = java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+            index = 0,
             customProperties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),
         )
 
@@ -199,70 +201,71 @@ class OlympiadDawnShipTest {
         val definition = OlympiadDawnShip.parse(
             """{"hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"hangar","id":"hangar-1"}],"class":"Carrier","name":"Carrier","fighters":[{"name":"fighters","type":"standard","id":"squadron-1","mods":[],"hangar":"hangar-1"}]}""",
         )
-        val carrierTemplate = MapViewerUnitTemplate(
-            id = UnitTemplateId(nextTestUuid()),
+        val carrierTemplate = OperationUnitTemplate(
+            id = OperationUnitTemplateId(nextTestUuid()),
             name = "Carrier",
-            bitmap = korlibs.image.bitmap.Bitmap32(2, 2),
+            image = java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+            index = 0,
             customProperties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),
         )
-        val carrierId = MapPlacedObjectId(nextTestUuid())
+        val carrierId = OperationObjectId(nextTestUuid())
         val carrierProperties = OlympiadDawnShip.instanceProperties(carrierTemplate)
         val squadronId = OlympiadDawnShip.definition(carrierProperties)!!.fighters.single().id
-        val carrier = UnitSnapshot(
+        val carrier = OperationUnit(
             id = carrierId,
             unitTemplateId = carrierTemplate.id,
-            template = carrierTemplate,
             instanceName = "Carrier",
             destroyed = false,
             facingDegrees = null,
-            mapCoordinate = MapCoordinate(0.0, 0.0),
+            coordinate = MapCoordinate(0.0, 0.0),
             normalizedWidth = 1.0,
             normalizedHeight = 1.0,
             customProperties = carrierProperties,
         )
-        val fighterTemplate = MapViewerUnitTemplate(
-            id = UnitTemplateId(nextTestUuid()),
+        val fighterTemplate = OperationUnitTemplate(
+            id = OperationUnitTemplateId(nextTestUuid()),
             name = "Fighter",
-            bitmap = korlibs.image.bitmap.Bitmap32(2, 2),
+            image = java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+            index = 1,
             customProperties = mapOf("unitClass" to "F"),
         )
-        val fighter = UnitSnapshot(
-            id = MapPlacedObjectId(nextTestUuid()),
+        val fighter = OperationUnit(
+            id = OperationObjectId(nextTestUuid()),
             unitTemplateId = fighterTemplate.id,
-            template = fighterTemplate,
             instanceName = "Fighter 1",
             destroyed = false,
             facingDegrees = null,
-            mapCoordinate = MapCoordinate(0.0, 0.0),
+            coordinate = MapCoordinate(0.0, 0.0),
             normalizedWidth = 1.0,
             normalizedHeight = 1.0,
             customProperties = mapOf(OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to squadronId),
         )
         val unrelated = fighter.copy(
-            id = MapPlacedObjectId(nextTestUuid()),
+            id = OperationObjectId(nextTestUuid()),
             customProperties = mapOf("unitClass" to "DD", OlympiadDawnShip.FIGHTER_UNIT_ID_KEY to squadronId),
         )
-        val statuses = OlympiadDawnShip.fighterLaunchStatuses(carrier, listOf(carrier, fighter, unrelated))
-        val duplicateCarrier = carrier.copy(id = MapPlacedObjectId(nextTestUuid()))
-        val squadronStatus = OlympiadDawnShip.squadronStatus(fighter, listOf(carrier, fighter))!!
+        val content = OperationContent(listOf(carrier, fighter, unrelated), listOf(carrierTemplate, fighterTemplate))
+        val statuses = OlympiadDawnShip.fighterLaunchStatuses(carrier, content)
+        val duplicateCarrier = carrier.copy(id = OperationObjectId(nextTestUuid()))
+        val squadronStatus = OlympiadDawnShip.squadronStatus(fighter, content.copy(objects = listOf(carrier, fighter)))!!
         val damagedCarrier = carrier.copy(
-            customProperties = OlympiadDawnShip.updatedSquadronProperties(carrier, squadronStatus.squadronId, 3)!!,
+            customProperties = OlympiadDawnShip.updatedSquadronProperties(carrier, content, squadronStatus.squadronId, 3)!!,
         )
 
         assertThat(statuses[squadronId]?.destroyed, equalTo(false))
-        assertThat(OlympiadDawnShip.fighterLaunchStatuses(carrier, listOf(carrier)), equalTo(emptyMap()))
+        assertThat(OlympiadDawnShip.fighterLaunchStatuses(carrier, content.copy(objects = listOf(carrier))), equalTo(emptyMap()))
         assertThat(squadronStatus.remaining, equalTo(6))
         assertThat(squadronStatus.weapons.single().name, equalTo("Light Multirole Beam"))
-        assertThat(OlympiadDawnShip.squadronStatus(fighter, listOf(damagedCarrier, fighter))?.remaining, equalTo(3))
-        assertThat(OlympiadDawnShip.hasUniqueFighterLink(fighter, listOf(carrier, fighter)), equalTo(true))
-        assertThat(OlympiadDawnShip.hasUniqueFighterLink(fighter, listOf(fighter)), equalTo(false))
-        assertThat(OlympiadDawnShip.hasUniqueFighterLink(fighter, listOf(carrier, duplicateCarrier, fighter)), equalTo(false))
+        assertThat(OlympiadDawnShip.squadronStatus(fighter, content.copy(objects = listOf(damagedCarrier, fighter)))?.remaining, equalTo(3))
+        assertThat(OlympiadDawnShip.hasUniqueFighterLink(fighter, content.copy(objects = listOf(carrier, fighter))), equalTo(true))
+        assertThat(OlympiadDawnShip.hasUniqueFighterLink(fighter, content.copy(objects = listOf(fighter))), equalTo(false))
+        assertThat(OlympiadDawnShip.hasUniqueFighterLink(fighter, content.copy(objects = listOf(carrier, duplicateCarrier, fighter))), equalTo(false))
         assertThat(
-            OlympiadDawnShip.validatedFighterProperties(fighter, listOf(carrier, duplicateCarrier, fighter)),
+            OlympiadDawnShip.validatedFighterProperties(fighter, content.copy(objects = listOf(carrier, duplicateCarrier, fighter))),
             equalTo(emptyMap()),
         )
         assertThat(
-            OlympiadDawnShip.fighterLaunchStatuses(carrier, listOf(carrier, fighter.copy(destroyed = true)))[squadronId]?.destroyed,
+            OlympiadDawnShip.fighterLaunchStatuses(carrier, content.copy(objects = listOf(carrier, fighter.copy(destroyed = true))))[squadronId]?.destroyed,
             equalTo(true),
         )
     }
@@ -272,10 +275,11 @@ class OlympiadDawnShipTest {
         val definition = OlympiadDawnShip.parse(
             """{"hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"hangar","id":"hangar-1"}],"class":"Carrier","name":"Carrier","fighters":[{"type":"standard","id":"squadron-1","hangar":"hangar-1"}]}""",
         )
-        val template = MapViewerUnitTemplate(
-            id = UnitTemplateId(nextTestUuid()),
+        val template = OperationUnitTemplate(
+            id = OperationUnitTemplateId(nextTestUuid()),
             name = "Carrier",
-            bitmap = korlibs.image.bitmap.Bitmap32(2, 2),
+            image = java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+            index = 0,
             customProperties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition),
         )
         val firstProperties = OlympiadDawnShip.instanceProperties(template)

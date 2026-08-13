@@ -63,7 +63,7 @@ internal object EcmRules {
         return EcmShape(fittedRange, usableCapability / fittedRange, intensity)
     }
 
-    fun contains(activation: EcmActivation, emitter: UnitSnapshot, point: MapCoordinate, unitQueryService: UnitQueryService): Boolean {
+    fun contains(activation: EcmActivation, emitter: UnitSnapshot, point: MapCoordinate, unitQueryService: KorgeUnitQueryAdapter): Boolean {
         val distance = unitQueryService.distanceBetween(emitter.mapCoordinate, point)
         if (distance > activation.rangeU + EPSILON) return false
         if (activation.widthDegrees >= MAXIMUM_WIDTH_DEGREES - EPSILON) return true
@@ -73,10 +73,10 @@ internal object EcmRules {
         return kotlin.math.abs(delta) <= activation.widthDegrees * 0.5 + EPSILON
     }
 
-    fun absoluteBearing(emitter: UnitSnapshot, point: MapCoordinate, unitQueryService: UnitQueryService): Double =
+    fun absoluteBearing(emitter: UnitSnapshot, point: MapCoordinate, unitQueryService: KorgeUnitQueryAdapter): Double =
         bearing(emitter.mapCoordinate, point, unitQueryService)
 
-    private fun bearing(origin: MapCoordinate, point: MapCoordinate, unitQueryService: UnitQueryService): Double =
+    private fun bearing(origin: MapCoordinate, point: MapCoordinate, unitQueryService: KorgeUnitQueryAdapter): Double =
         Math.toDegrees(
             atan2(
                 (point.x - origin.x) * unitQueryService.mapWidth,

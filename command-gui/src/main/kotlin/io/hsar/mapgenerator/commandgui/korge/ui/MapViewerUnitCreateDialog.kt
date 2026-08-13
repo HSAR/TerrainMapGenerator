@@ -5,9 +5,9 @@ import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
 import io.hsar.mapgenerator.commandgui.korge.interaction.MapViewerUnitTemplate
 import io.hsar.mapgenerator.commandgui.korge.interaction.MoveLimit
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShip
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDamage
-import io.hsar.mapgenerator.commandgui.korge.interaction.OlympiadDawnShipDefinition
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShip
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipDamage
+import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipDefinition
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitAffiliation
 import io.hsar.mapgenerator.commandgui.korge.interaction.UnitTemplateId
 import io.hsar.mapgenerator.commandgui.korge.launch.MapViewerLaunchUi
