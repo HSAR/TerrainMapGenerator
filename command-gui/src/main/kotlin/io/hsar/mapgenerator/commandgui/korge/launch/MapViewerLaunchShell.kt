@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogAction
+import io.hsar.mapgenerator.commandgui.MapViewerLaunchpadTokens
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogLayoutBuilder
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogMode
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerDialogPersistence
@@ -360,13 +361,13 @@ internal data class MapViewerLaunchShellLayout(
 
 internal object MapViewerLaunchShellLayoutBuilder {
     fun build(viewportWidth: Int): MapViewerLaunchShellLayout {
-        val headerWidth = 540.0
+        val headerWidth = MapViewerLaunchpadTokens.HEADER_WIDTH
         return MapViewerLaunchShellLayout(
             headerBounds = ScreenBounds(
                 left = (viewportWidth - headerWidth) * 0.5,
-                top = 20.0,
+                top = MapViewerLaunchpadTokens.HEADER_TOP,
                 width = headerWidth,
-                height = 78.0,
+                height = MapViewerLaunchpadTokens.HEADER_HEIGHT,
             ),
         )
     }

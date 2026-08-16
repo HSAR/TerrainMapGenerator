@@ -95,6 +95,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -132,6 +133,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerGridReference
 import io.hsar.mapgenerator.commandgui.MapViewerImageLoader
 import io.hsar.mapgenerator.commandgui.MapViewerMenuLayoutBuilder
 import io.hsar.mapgenerator.commandgui.MapViewerMenuTokens
+import io.hsar.mapgenerator.commandgui.MapViewerLaunchpadTokens
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
 import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
@@ -199,6 +201,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
 import java.awt.Frame
+import kotlin.random.Random
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.ZoneId
@@ -286,6 +289,7 @@ private fun ComposeMapViewer(
     val globalSettings = remember { MapViewerGlobalSettings() }
     val modalHost = remember { ComposeModalHostState() }
     val filePicker = remember(awtWindow) { ComposeFilePicker(awtWindow as? Frame) }
+    val launchBackgroundSeed = remember { Random.nextLong() }
 
     LaunchedEffect(launchState.activeMap?.settings?.operationName, launchState.screen) {
         onTitleChanged(
@@ -294,7 +298,10 @@ private fun ComposeMapViewer(
         )
     }
 
-    CompositionLocalProvider(LocalComposeFilePicker provides filePicker) {
+    CompositionLocalProvider(
+        LocalComposeFilePicker provides filePicker,
+        LocalComposeLaunchBackgroundSeed provides launchBackgroundSeed,
+    ) {
     Box(Modifier.fillMaxSize()) {
     launchState.activeMap?.let { map ->
         key(map) {
@@ -398,34 +405,66 @@ internal class ComposeLaunchState(initialScreen: ComposeLaunchScreen = ComposeLa
 }
 
 @Composable
-private fun ComposeMainLaunchpad(
+internal fun ComposeMainLaunchpad(
     onNewOperation: () -> Unit,
     onExistingOperations: () -> Unit,
     onExit: () -> Unit,
-) = CommandLaunchScreen(title = "Launchpad") {
-    CommandPanel(Modifier.width(460.dp)) {
-        Text(
-            "WELCOME, COMMANDER.",
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-            style = MaterialTheme.typography.headlineSmall,
-        )
-        CommandButton(
-            onClick = onNewOperation,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-        ) {
-            Text("NEW OPERATION")
-        }
-        CommandButton(
-            onClick = onExistingOperations,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-        ) {
-            Text("ONGOING OPERATIONS")
-        }
-        CommandButton(
-            onClick = onExit,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-        ) {
-            Text("EXIT")
+    backgroundEnabled: Boolean = true,
+) = CommandLaunchScreen(title = "Launchpad", backgroundEnabled = backgroundEnabled) {
+    Surface(
+        modifier = Modifier.width(MapViewerLaunchpadTokens.PANEL_WIDTH.dp)
+            .height(MapViewerLaunchpadTokens.PANEL_HEIGHT.dp)
+            .testTag("launchpad-panel"),
+        shape = RectangleShape,
+        color = CommandColours.Dark.copy(alpha = MapViewerLaunchpadTokens.PANEL_ALPHA / 255f),
+        border = BorderStroke(CommandDesignTokens.borderWidth, CommandColours.White),
+    ) {
+        Box {
+            Box(
+                modifier = Modifier.fillMaxWidth()
+                    .offset(y = MapViewerLaunchpadTokens.PANEL_TITLE_TOP.dp)
+                    .height(MapViewerLaunchpadTokens.PANEL_TITLE_HEIGHT.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "LAUNCHPAD",
+                    fontSize = MapViewerLaunchpadTokens.HEADER_FONT_SIZE.sp,
+                    lineHeight = MapViewerLaunchpadTokens.HEADER_FONT_SIZE.sp,
+                )
+            }
+            Box(
+                modifier = Modifier.fillMaxWidth()
+                    .offset(y = MapViewerLaunchpadTokens.WELCOME_TOP.dp)
+                    .height(MapViewerLaunchpadTokens.WELCOME_HEIGHT.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "Welcome, Commander.",
+                    fontSize = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+                    lineHeight = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+                )
+            }
+            listOf(
+                Triple("NEW OPERATION", onNewOperation, 0),
+                Triple("ONGOING OPERATIONS", onExistingOperations, 1),
+                Triple("EXIT", onExit, 2),
+            ).forEach { (label, action, index) ->
+                CommandButton(
+                    onClick = action,
+                    modifier = Modifier.offset(
+                        x = MapViewerLaunchpadTokens.BUTTON_LEFT.dp,
+                        y = (MapViewerLaunchpadTokens.FIRST_BUTTON_TOP + MapViewerLaunchpadTokens.BUTTON_STEP * index).dp,
+                    ).width(MapViewerLaunchpadTokens.BUTTON_WIDTH.dp)
+                        .height(MapViewerLaunchpadTokens.BUTTON_HEIGHT.dp)
+                        .testTag("launchpad-button-$index"),
+                ) {
+                    Text(
+                        label,
+                        fontSize = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+                        lineHeight = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+                    )
+                }
+            }
         }
     }
 }

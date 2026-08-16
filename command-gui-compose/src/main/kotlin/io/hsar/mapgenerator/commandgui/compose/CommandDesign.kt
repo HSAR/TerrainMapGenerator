@@ -4,7 +4,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -22,10 +21,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ProvideTextStyle
@@ -37,8 +37,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.hsar.mapgenerator.commandgui.MapViewerLaunchpadTokens
+import io.hsar.mapgenerator.commandgui.MapViewerTransientNoticeTokens
 
 @Composable
 internal fun CommandButton(
@@ -107,8 +112,11 @@ internal object CommandDesignTokens {
     val titleBarHeight = 42.dp
     val borderWidth = 2.dp
     val focusBorderWidth = 3.dp
-    val noticeInset = 16.dp
-    val noticeGap = 8.dp
+    val noticeInset = MapViewerTransientNoticeTokens.VIEWPORT_INSET.dp
+    val noticeGap = MapViewerTransientNoticeTokens.STACK_GAP.dp
+    val noticeHorizontalPadding = MapViewerTransientNoticeTokens.HORIZONTAL_PADDING.dp
+    val noticeVerticalPadding = MapViewerTransientNoticeTokens.VERTICAL_PADDING.dp
+    val noticeFontSize = MapViewerTransientNoticeTokens.FONT_SIZE.sp
     val menuWidth = 220.dp
     val menuRowInset = 8.dp
 }
@@ -182,41 +190,48 @@ internal fun CommandFloatingPanel(
 internal fun CommandLaunchScreen(
     title: String,
     onBack: (() -> Unit)? = null,
+    backgroundEnabled: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) = Box(
-    modifier = Modifier.fillMaxSize()
-        .background(CommandColours.Dark),
+    modifier = Modifier.fillMaxSize().semantics { contentDescription = title },
 ) {
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
-        ) {
-            onBack?.let { back ->
-                CommandButton(onClick = back) {
-                    Text("BACK")
-                }
-            }
-            Column {
-                Text(
-                    "OPERATIONAL COMMAND TOOL",
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(
-                    title.uppercase(),
-                    color = CommandColours.Backing,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
+    ComposeLaunchBackground(Modifier.fillMaxSize(), enabled = backgroundEnabled)
+    Surface(
+        modifier = Modifier.align(Alignment.TopCenter)
+            .testTag("command-launch-header")
+            .offset(y = MapViewerLaunchpadTokens.HEADER_TOP.dp)
+            .width(MapViewerLaunchpadTokens.HEADER_WIDTH.dp)
+            .height(MapViewerLaunchpadTokens.HEADER_HEIGHT.dp),
+        shape = RectangleShape,
+        color = CommandColours.Dark.copy(alpha = MapViewerLaunchpadTokens.PANEL_ALPHA / 255f),
+        border = BorderStroke(CommandDesignTokens.borderWidth, CommandColours.White),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                "OPERATIONAL COMMAND TOOL",
+                color = CommandColours.White,
+                fontSize = MapViewerLaunchpadTokens.HEADER_FONT_SIZE.sp,
+                lineHeight = MapViewerLaunchpadTokens.HEADER_FONT_SIZE.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            )
         }
-        HorizontalDivider(color = CommandColours.Light)
-        Box(
-            modifier = Modifier.fillMaxSize().padding(28.dp),
-            contentAlignment = Alignment.Center,
-            content = content,
-        )
     }
+    onBack?.let { back ->
+        CommandButton(
+            onClick = back,
+            modifier = Modifier.align(Alignment.TopStart).padding(20.dp).widthIn(min = 120.dp).height(42.dp),
+        ) { Text("BACK") }
+    }
+    val contentModifier = if (onBack == null) {
+        Modifier.fillMaxSize()
+    } else {
+        Modifier.fillMaxSize().padding(start = 28.dp, top = 116.dp, end = 28.dp, bottom = 28.dp)
+    }
+    Box(
+        modifier = contentModifier,
+        contentAlignment = Alignment.Center,
+        content = content,
+    )
 }
 
 internal fun Modifier.commandPanelWidth() = widthIn(max = 980.dp)

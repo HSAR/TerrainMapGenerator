@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.image.Palette
+import io.hsar.mapgenerator.commandgui.MapViewerTransientNoticeTokens
 import korlibs.image.color.RGBA
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
@@ -57,20 +58,20 @@ internal class MapViewerTransientNotice(
 
     private fun createNotice(message: String, nowMs: Long): NoticeView {
         val noticeBounds = MapViewerTextViews.bounds(message)
-        val panelWidth = noticeBounds.width + HORIZONTAL_PADDING * 2
-        val panelHeight = noticeBounds.height + VERTICAL_PADDING * 2
+        val panelWidth = noticeBounds.width + MapViewerTransientNoticeTokens.HORIZONTAL_PADDING * 2
+        val panelHeight = noticeBounds.height + MapViewerTransientNoticeTokens.VERTICAL_PADDING * 2
         val container = layer.container().also {
             it.alpha = 0.0
-            it.xy(LEFT_PADDING, viewportHeightProvider().toDouble())
+            it.xy(MapViewerTransientNoticeTokens.VIEWPORT_INSET, viewportHeightProvider().toDouble())
         }
         container.solidRect(
             width = panelWidth,
             height = panelHeight,
-            color = RGBA(0, 0, 0, 180),
+            color = RGBA(0, 0, 0, MapViewerTransientNoticeTokens.BACKGROUND_ALPHA),
         )
         MapViewerTextViews.label(container, message, color = Palette.Colours.WHITE) {
-            x = HORIZONTAL_PADDING
-            y = VERTICAL_PADDING
+            x = MapViewerTransientNoticeTokens.HORIZONTAL_PADDING
+            y = MapViewerTransientNoticeTokens.VERTICAL_PADDING
         }
         return NoticeView(
             id = nextId++,
@@ -96,30 +97,30 @@ internal class MapViewerTransientNotice(
         notice.isFading = true
         notice.fadeStartedAtMs = nowMs
         notice.fadeStartY = notice.container.y
-        notice.targetY = (notice.container.y - FADE_LIFT_PX).coerceAtLeast(0.0)
+        notice.targetY = (notice.container.y - MapViewerTransientNoticeTokens.FADE_LIFT).coerceAtLeast(0.0)
         notice.targetAlpha = 0.0
     }
 
     private fun layout(nowMs: Long) {
         val activeNotices = notices.filterNot { it.isFading }
-        var bottom = viewportHeightProvider().toDouble() - BOTTOM_PADDING
+        var bottom = viewportHeightProvider().toDouble() - MapViewerTransientNoticeTokens.VIEWPORT_INSET
         activeNotices
             .asReversed()
             .forEach { notice ->
                 notice.targetY = bottom - notice.panelHeight
                 notice.targetAlpha = 1.0
                 if (notice.isFresh) {
-                    notice.container.y = notice.targetY + ENTRY_OFFSET_PX
+                    notice.container.y = notice.targetY + MapViewerTransientNoticeTokens.ENTRY_OFFSET
                     notice.isFresh = false
                 }
-                bottom = notice.targetY - STACK_GAP
+                bottom = notice.targetY - MapViewerTransientNoticeTokens.STACK_GAP
             }
 
         notices
             .filter { it.isFading }
             .forEach { notice ->
                 val fadeStartY = notice.fadeStartY ?: notice.container.y
-                notice.targetY = (fadeStartY - FADE_LIFT_PX).coerceAtLeast(0.0)
+                notice.targetY = (fadeStartY - MapViewerTransientNoticeTokens.FADE_LIFT).coerceAtLeast(0.0)
                 notice.targetAlpha = 0.0
             }
     }
@@ -172,12 +173,5 @@ internal data class MapViewerTransientNoticeSnapshot(
 )
 
 private const val Z_INDEX = 50_500.0
-private const val LEFT_PADDING = 16.0
-private const val BOTTOM_PADDING = 16.0
-private const val HORIZONTAL_PADDING = 12.0
-private const val VERTICAL_PADDING = 8.0
-private const val STACK_GAP = 8.0
-private const val ENTRY_OFFSET_PX = 12.0
-private const val FADE_LIFT_PX = 12.0
 private const val POSITION_ANIMATION_MS = 160.0
 private const val FADE_ANIMATION_MS = 220.0

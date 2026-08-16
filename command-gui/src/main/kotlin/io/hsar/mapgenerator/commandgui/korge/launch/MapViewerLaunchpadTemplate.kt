@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.korge.ui.ScreenBounds
+import io.hsar.mapgenerator.commandgui.MapViewerLaunchpadTokens
 import korlibs.korge.view.Container
 import korlibs.korge.view.xy
 
@@ -18,7 +19,7 @@ internal object MapViewerLaunchpadTemplate {
             width = headerBounds.width,
             height = headerBounds.height,
             bold = true,
-            size = 34.0,
+            size = MapViewerLaunchpadTokens.HEADER_FONT_SIZE,
             color = java.awt.Color.WHITE,
         )
     }
@@ -34,10 +35,10 @@ internal object MapViewerLaunchpadTemplate {
             parent = header,
             text = title,
             width = bounds.width,
-            height = 56.0,
-            size = 34.0,
+            height = MapViewerLaunchpadTokens.PANEL_TITLE_HEIGHT,
+            size = MapViewerLaunchpadTokens.HEADER_FONT_SIZE,
             color = java.awt.Color.WHITE,
-        ).xy(0.0, 10.0)
+        ).xy(0.0, MapViewerLaunchpadTokens.PANEL_TITLE_TOP)
         onBack?.let {
             MapViewerLaunchUi.backButton(header) {
                 it()

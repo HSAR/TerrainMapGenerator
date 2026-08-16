@@ -1,7 +1,5 @@
 package io.hsar.mapgenerator.commandgui.compose
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -30,12 +29,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.delay
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import io.hsar.mapgenerator.commandgui.MapViewerTransientNoticeTokens
+import kotlin.math.roundToInt
 
 @Composable
 internal fun ComposeModalHost(state: ComposeModalHostState) {
@@ -82,13 +86,24 @@ internal fun ComposeTransientMessageHost(
         horizontalAlignment = Alignment.Start,
     ) {
         state.messages.forEach { message ->
+            val alpha = state.alpha(message, now)
             Surface(
-                modifier = Modifier.alpha(state.alpha(message, now)).clickable { state.dismiss(message.id, now) },
-                color = message.severity.backing(),
-                border = BorderStroke(CommandDesignTokens.borderWidth, CommandColours.White),
+                modifier = Modifier.testTag("transient-notice-${message.id}").alpha(alpha).offset {
+                    IntOffset(0, (-MapViewerTransientNoticeTokens.FADE_LIFT * (1f - alpha)).roundToInt())
+                },
+                color = Color.Black.copy(alpha = MapViewerTransientNoticeTokens.BACKGROUND_ALPHA / 255f),
                 shape = RectangleShape,
             ) {
-                Text(message.text, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = CommandColours.White)
+                Text(
+                    text = message.text,
+                    modifier = Modifier.padding(
+                        horizontal = CommandDesignTokens.noticeHorizontalPadding,
+                        vertical = CommandDesignTokens.noticeVerticalPadding,
+                    ),
+                    color = CommandColours.White,
+                    fontSize = CommandDesignTokens.noticeFontSize,
+                    lineHeight = CommandDesignTokens.noticeFontSize,
+                )
             }
         }
     }
@@ -125,11 +140,4 @@ internal fun AboutModalContent(
             DefaultCommandButton(onClick = dismiss, modifier = Modifier.weight(1f)) { Text("CLOSE") }
         }
     }
-}
-
-private fun ComposeMessageSeverity.backing(): Color = when (this) {
-    ComposeMessageSeverity.INFO -> CommandColours.Main
-    ComposeMessageSeverity.SUCCESS -> CommandColours.Green
-    ComposeMessageSeverity.WARNING -> CommandColours.Yellow
-    ComposeMessageSeverity.ERROR -> CommandColours.Red
 }

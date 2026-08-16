@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.MapViewerSavedOperation
+import io.hsar.mapgenerator.commandgui.MapViewerLaunchpadTokens
 import io.hsar.mapgenerator.commandgui.korge.adapter.toKorgeBitmap
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerScrollState
@@ -105,12 +106,12 @@ internal class MapViewerLaunchpadView(
 
     private fun renderHome(panel: Container) {
         val bounds = layout.homePanelBounds
-        MapViewerTextViews.box(panel, "Welcome, Commander.", bounds.width, 28.0)
-            .xy(0.0, 62.0)
+        MapViewerTextViews.box(panel, "Welcome, Commander.", bounds.width, MapViewerLaunchpadTokens.WELCOME_HEIGHT)
+            .xy(0.0, MapViewerLaunchpadTokens.WELCOME_TOP)
 
-        val buttonLeft = (bounds.width - BUTTON_WIDTH) * 0.5
+        val buttonLeft = MapViewerLaunchpadTokens.BUTTON_LEFT
         MapViewerLaunchUi.button(panel, BUTTON_WIDTH, BUTTON_HEIGHT, "New Operation", uppercase = true, onClick = onCreateNewOperation)
-            .xy(buttonLeft, 126.0)
+            .xy(buttonLeft, MapViewerLaunchpadTokens.FIRST_BUTTON_TOP)
         MapViewerLaunchUi.button(
             parent = panel,
             width = BUTTON_WIDTH,
@@ -124,9 +125,9 @@ internal class MapViewerLaunchpadView(
                 rerender()
                 onOngoingOperationsEntered()
             },
-        ).xy(buttonLeft, 188.0)
+        ).xy(buttonLeft, MapViewerLaunchpadTokens.FIRST_BUTTON_TOP + MapViewerLaunchpadTokens.BUTTON_STEP)
         MapViewerLaunchUi.button(panel, BUTTON_WIDTH, BUTTON_HEIGHT, "Exit", uppercase = true, onClick = onExitProgram)
-            .xy(buttonLeft, 250.0)
+            .xy(buttonLeft, MapViewerLaunchpadTokens.FIRST_BUTTON_TOP + MapViewerLaunchpadTokens.BUTTON_STEP * 2)
     }
 
     fun updateSavedOperations(summaries: List<MapViewerSavedOperation>) {
@@ -257,8 +258,8 @@ internal class MapViewerLaunchpadView(
 
     private companion object {
         const val Z_INDEX = 60_000.0
-        const val BUTTON_WIDTH = 300.0
-        const val BUTTON_HEIGHT = 44.0
+        const val BUTTON_WIDTH = MapViewerLaunchpadTokens.BUTTON_WIDTH
+        const val BUTTON_HEIGHT = MapViewerLaunchpadTokens.BUTTON_HEIGHT
         const val SAVE_ROW_HEIGHT = 108.0
         val TIMESTAMP_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
     }
@@ -287,8 +288,8 @@ internal data class MapViewerLaunchpadLayout(
 
 internal object MapViewerLaunchpadLayoutBuilder {
     fun build(viewportWidth: Int, viewportHeight: Int): MapViewerLaunchpadLayout {
-        val homePanelWidth = 420.0
-        val homePanelHeight = 320.0
+        val homePanelWidth = MapViewerLaunchpadTokens.PANEL_WIDTH
+        val homePanelHeight = MapViewerLaunchpadTokens.PANEL_HEIGHT
         val savePanelWidth = 760.0
         val savePanelHeight = (viewportHeight * 0.78).roundToInt().toDouble().coerceAtLeast(520.0)
         val saveListTop = 110.0

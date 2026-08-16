@@ -25,6 +25,8 @@ Required states:
 - Submenu corridor: 8 px; close delay 180 ms.
 - Floating title bar: 42 px.
 - Notice inset/gap: 16/8 px; maximum five; lifetime/fade 10,000/420 ms.
+- Notice surface: borderless black at alpha 180; 24 px regular Nord text with 12×8 px padding and 12 px fade lift.
+- Launch shell: centred 540×78 header at y=20; centred 420×320 home panel; three 300×44 buttons beginning at `(60,126)` with 62 px vertical steps.
 
 Exact geometry remains covered by neutral and Compose tests. Manual review is for rasterisation, font metrics, state colour, alignment and DPI artefacts.
 
