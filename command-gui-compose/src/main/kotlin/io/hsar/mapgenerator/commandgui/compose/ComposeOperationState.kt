@@ -39,7 +39,6 @@ import io.hsar.mapgenerator.commandgui.operation.delete
 import io.hsar.mapgenerator.commandgui.operation.editorState
 import io.hsar.mapgenerator.commandgui.operation.nextTurnName
 import java.util.*
-import java.util.Collections.emptyMap
 import java.util.Collections.emptySet
 
 enum class ComposeSaveStatus { CLEAN, DIRTY, SAVING, FAILED }
@@ -68,7 +67,6 @@ data class ComposeOperationState(
     val selectedObjectIds: Set<OperationObjectId> = document.uiState.selectedObjectIds,
     val workspace: OperationWorkspaceState = document.uiState.workspace.hydrate(document.content, document.renderData),
     val enabledLayerIds: Set<String> = document.uiState.enabledLayerIds.ifEmpty { document.settings.enabledLayerIds },
-    val validationErrors: Map<OperationEditorId, String> = emptyMap(),
     val historyPreviewCount: Int? = null,
     val previewContent: OperationContent? = null,
     val unitPlacement: ComposeUnitPlacement? = null,
@@ -266,7 +264,7 @@ data class ComposeOperationState(
     )
 
     fun updateDockSize(region: OperationDockRegion, size: Double) = updateWorkspace(
-        workspace.updateDock(region) { it.copy(size = size.coerceIn(240.0, 720.0)) },
+        workspace.updateDock(region) { it.copy(size = size.coerceIn(if (region == OperationDockRegion.BOTTOM) 180.0 else 240.0, if (region == OperationDockRegion.BOTTOM) 600.0 else 720.0)) },
     )
 
     fun activateDockTab(region: OperationDockRegion, id: OperationEditorId) = updateWorkspace(
@@ -282,6 +280,10 @@ data class ComposeOperationState(
 
     fun reorderDockTabs(region: OperationDockRegion, orderedIds: List<OperationEditorId>) =
         updateWorkspace(workspace.reorderDock(region, orderedIds))
+
+    fun cycleDockTabs(direction: Int) = workspace.activeDock()?.region?.let { region ->
+        updateWorkspace(workspace.cycleDock(region, direction))
+    } ?: this
 
     fun preview(content: OperationContent) =
         if (isReadOnly) this else copy(previewContent = content)
@@ -316,7 +318,7 @@ data class ComposeOperationState(
         val existing = (target as? OperationEditorTarget.UnitTemplate)?.templateId?.let(document.content::unitTemplate)
         if (draft.replacementImage != null && image == null) return this
         val resolvedImage = image ?: existing?.image ?: return this
-        if (!OperationUnitAuthoring.validateTemplateDraft(draft, existing != null).valid) return this
+        if (!validationFor(editor).valid) return this
         val updated = existing?.let { OperationUnitAuthoring.editTemplate(it, draft, image) }
             ?: OperationUnitAuthoring.createTemplate(document.content, draft, resolvedImage)
         val changes = existing?.let { OperationUnitAuthoring.editTemplateChange(it, updated) }
@@ -340,7 +342,7 @@ data class ComposeOperationState(
         val existing = (editor.target as? OperationEditorTarget.GraphicTemplate)?.templateId?.let(document.content::graphicTemplate)
         if (draft.replacementImage != null && image == null) return this
         val resolvedImage = image ?: existing?.image ?: return this
-        if (!OperationGraphicAuthoring.validateTemplateDraft(draft, existing != null).valid) return this
+        if (!validationFor(editor).valid) return this
         val updated = existing?.let { OperationGraphicAuthoring.editTemplate(it, draft, image) }
             ?: OperationGraphicAuthoring.createTemplate(document.content, draft, resolvedImage)
         val changes = existing?.let { OperationGraphicAuthoring.editTemplateChange(document.content, it, updated) }
@@ -363,7 +365,7 @@ data class ComposeOperationState(
         val objectId = (editor.target as? OperationEditorTarget.Object)?.objectId ?: return this
         val before = document.content.objectById(objectId) as? OperationGraphic ?: return this
         val draft = (editor.draft as? OperationEditorDraft.Graphic)?.value ?: return this
-        if (!OperationGraphicAuthoring.validateGraphicDraft(draft, document.content, document.renderData).valid) return this
+        if (!validationFor(editor).valid) return this
         val after = OperationGraphicAuthoring.editGraphic(before, draft, document.content, document.renderData)
         val changes = OperationGraphicAuthoring.editGraphicChange(before, after)
         if (changes.isEmpty) return closeEditor(id)
@@ -635,6 +637,34 @@ data class ComposeOperationState(
         }.map(OperationEditorState::id)
         return if (invalid.isEmpty()) this else copy(workspace = invalid.fold(workspace, OperationWorkspaceState::close))
     }
+}
+
+internal data class ComposeEditorValidation(val errors: Map<String, String>) {
+    val valid get() = errors.isEmpty()
+}
+
+internal fun ComposeOperationState.validationFor(editor: OperationEditorState): ComposeEditorValidation = when (val draft = editor.draft) {
+    is OperationEditorDraft.Unit -> ComposeEditorValidation(
+        OperationUnitAuthoring.validateUnitDraft(
+            draft.name, draft.positionX, draft.positionY, draft.facing, draft.properties, document.renderData,
+        ).errors,
+    )
+    is OperationEditorDraft.UnitTemplate -> ComposeEditorValidation(
+        OperationUnitAuthoring.validateTemplateDraft(
+            draft.value,
+            (editor.target as? OperationEditorTarget.UnitTemplate)?.templateId?.let(document.content::unitTemplate) != null,
+        ).errors,
+    )
+    is OperationEditorDraft.Graphic -> ComposeEditorValidation(
+        OperationGraphicAuthoring.validateGraphicDraft(draft.value, document.content, document.renderData).errors,
+    )
+    is OperationEditorDraft.GraphicTemplate -> ComposeEditorValidation(
+        OperationGraphicAuthoring.validateTemplateDraft(
+            draft.value,
+            (editor.target as? OperationEditorTarget.GraphicTemplate)?.templateId?.let(document.content::graphicTemplate) != null,
+        ).errors,
+    )
+    else -> ComposeEditorValidation(emptyMap())
 }
 
 private const val TURN_THUMBNAIL_ROLE = "turn-thumbnail"

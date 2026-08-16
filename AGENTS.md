@@ -14,6 +14,7 @@ This repo contains a Kotlin-based program built as a Gradle Kotlin DSL multi-pro
 - Run `.\gradlew.bat :module:test` in the most specific module possible, ideally specifying single test classes with `--tests`.
     - As far as you are aware, when changing code in an underlying layer check the tests of dependent modules in case signature changes cause breakage.
 - Run `.\gradlew.bat testAll` for the complete repository suite.
+- Kotlin compilation is intentionally configured with `kotlin.compiler.execution.strategy=in-process` in `gradle.properties`. Do not remove or override it with the separate Kotlin daemon: its liveness marker cannot be created reliably under the Windows user profile, which otherwise causes every compilation to fall back noisily. The Gradle daemon and incremental compilation remain enabled.
 - Gradle/Kotlin compilation can exceed the interactive command window. For builds or tests expected to run longer than 60 seconds, launch Gradle as a hidden background process with
   redirected logs, then poll it from separate short PowerShell commands instead of waiting in one foreground command:
   ```powershell

@@ -35,6 +35,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -55,6 +57,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
@@ -782,6 +786,8 @@ private fun ViewerWorkspace(
     var unitLibraryExpanded by remember { mutableStateOf(true) }
     var graphicLibraryExpanded by remember { mutableStateOf(false) }
     var transientNotice by remember { mutableStateOf<String?>(null) }
+    var draggedDockTab by remember { mutableStateOf<OperationEditorId?>(null) }
+    var dockDropTarget by remember { mutableStateOf<Pair<OperationDockRegion, Int>?>(null) }
     val autosaveScheduler = remember { ComposeAutosaveScheduler(debounceMillis = COMPOSE_AUTOSAVE_DEBOUNCE_MS) }
     val turnThumbnailRenderer = remember { MapThumbnailRenderer() }
     val scope = rememberCoroutineScope()
@@ -907,13 +913,22 @@ private fun ViewerWorkspace(
                     true
                 }
 
+                event.isCtrlPressed && event.key == Key.Tab && operationState.workspaceMode == WorkspaceMode.DOCKED -> {
+                    operationState = operationState.cycleDockTabs(if (event.isShiftPressed) -1 else 1)
+                    true
+                }
+
                 else -> false
             }
         },
     ) {
         Column {
             Row(Modifier.weight(1f)) {
-                Box(Modifier.weight(1f).fillMaxHeight()) {
+                if (operationState.workspaceMode == WorkspaceMode.DOCKED) {
+                    DockedWorkspace(state = operationState, region = OperationDockRegion.LEFT, draggedEditorId = draggedDockTab, dropTarget = dockDropTarget, onDragStarted = { draggedDockTab = it }, onDropTargetChanged = { dockDropTarget = it }, onDrop = { id -> dockDropTarget?.let { target -> operationState = operationState.dockEditor(id, target.first, target.second) }; draggedDockTab = null; dockDropTarget = null }, onStateChanged = { operationState = it })
+                }
+                Column(Modifier.weight(1f).fillMaxHeight()) {
+                Box(Modifier.weight(1f).fillMaxWidth()) {
                     MapCanvas(
                         renderData = operationState.document.renderData,
                         savedCamera = operationState.document.camera,
@@ -1092,11 +1107,12 @@ private fun ViewerWorkspace(
                         ) { Text(notice, Modifier.padding(12.dp), color = CommandColours.White) }
                     }
                 }
+                }
                 if (operationState.workspaceMode == WorkspaceMode.DOCKED) {
-                    DockedWorkspace(
-                        state = operationState,
-                        onStateChanged = { operationState = it },
-                    )
+                    DockedWorkspace(state = operationState, region = OperationDockRegion.BOTTOM, draggedEditorId = draggedDockTab, dropTarget = dockDropTarget, onDragStarted = { draggedDockTab = it }, onDropTargetChanged = { dockDropTarget = it }, onDrop = { id -> dockDropTarget?.let { target -> operationState = operationState.dockEditor(id, target.first, target.second) }; draggedDockTab = null; dockDropTarget = null }, onStateChanged = { operationState = it })
+                }
+                if (operationState.workspaceMode == WorkspaceMode.DOCKED) {
+                    DockedWorkspace(state = operationState, region = OperationDockRegion.RIGHT, draggedEditorId = draggedDockTab, dropTarget = dockDropTarget, onDragStarted = { draggedDockTab = it }, onDropTargetChanged = { dockDropTarget = it }, onDrop = { id -> dockDropTarget?.let { target -> operationState = operationState.dockEditor(id, target.first, target.second) }; draggedDockTab = null; dockDropTarget = null }, onStateChanged = { operationState = it })
                 }
             }
             OperationLedgerPanel(
@@ -1387,53 +1403,155 @@ private fun NotesPanel(
 }
 
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 private fun DockedWorkspace(
     state: ComposeOperationState,
+    region: OperationDockRegion,
+    draggedEditorId: OperationEditorId?,
+    dropTarget: Pair<OperationDockRegion, Int>?,
+    onDragStarted: (OperationEditorId?) -> Unit,
+    onDropTargetChanged: (Pair<OperationDockRegion, Int>) -> Unit,
+    onDrop: (OperationEditorId) -> Unit,
     onStateChanged: (ComposeOperationState) -> Unit,
 ) {
-    val dock = state.workspace.dockRegions.firstOrNull { it.region == OperationDockRegion.RIGHT }
-        ?: return
-    var previewWidth by remember(dock.size) { mutableStateOf(dock.size) }
+    val dock = state.workspace.dockRegions.firstOrNull { it.region == region } ?: return
+    var previewSize by remember(dock.size) { mutableStateOf(dock.size) }
     var resizeStart by remember { mutableStateOf(dock.size) }
     var resizeDistance by remember { mutableStateOf(0f) }
     val density = LocalDensity.current
-    Row(Modifier.requiredWidth(if (dock.collapsed) 48.dp else previewWidth.dp).fillMaxHeight()) {
-        Box(
-            Modifier.width(8.dp).fillMaxHeight().background(CommandColours.Dark).pointerInput(dock.region) {
-                detectDragGestures(
-                    onDragStart = { resizeStart = dock.size; resizeDistance = 0f },
-                    onDragEnd = { onStateChanged(state.updateDockSize(OperationDockRegion.RIGHT, previewWidth)) },
-                ) { change, amount ->
-                    change.consume()
-                    resizeDistance -= amount.x
-                    previewWidth = (resizeStart + with(density) { resizeDistance.toDp().value }).coerceIn(240.0, 720.0)
-                }
-            },
-        )
-        Column(Modifier.weight(1f).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceVariant)) {
-            CommandButton(
-                onClick = { onStateChanged(state.toggleDockCollapsed(OperationDockRegion.RIGHT)) },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (dock.collapsed) "OPEN" else "COLLAPSE") }
-            if (!dock.collapsed) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                    dock.editorIds.mapNotNull(state.workspace::editor).filter { it.availableFor(state) }.forEach { editor ->
-                        CommandButton(
-                            onClick = { onStateChanged(state.activateDockTab(OperationDockRegion.RIGHT, editor.id)) },
-                            active = editor.id == dock.activeEditorId,
-                        ) { Text(editor.title(state.visibleContent)) }
-                    }
-                }
-                dock.activeEditorId?.let(state.workspace::editor)?.takeIf { it.availableFor(state) }?.let { editor ->
-                    Column(Modifier.fillMaxSize().padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(editor.title(state.visibleContent), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                            CommandButton(onClick = { onStateChanged(state.closeEditor(editor.id)) }) { Text("×") }
-                        }
-                        EditorContent(editor, state, onStateChanged, Modifier.weight(1f).fillMaxWidth())
-                    }
-                }
+    val vertical = region != OperationDockRegion.BOTTOM
+    val extent = if (dock.collapsed) 48.dp else previewSize.dp
+    val resizeModifier = if (vertical) Modifier.width(8.dp).fillMaxHeight() else Modifier.height(8.dp).fillMaxWidth()
+    @Composable fun resizeHandle() = Box(
+        resizeModifier.background(CommandColours.Dark).pointerInput(region) {
+            detectDragGestures(
+                onDragStart = { resizeStart = dock.size; resizeDistance = 0f },
+                onDragEnd = { onStateChanged(state.updateDockSize(region, previewSize)) },
+            ) { change, amount ->
+                change.consume()
+                resizeDistance += if (region == OperationDockRegion.RIGHT) -amount.x else if (region == OperationDockRegion.LEFT) amount.x else -amount.y
+                val value = resizeStart + with(density) { resizeDistance.toDp().value }
+                previewSize = value.coerceIn(if (vertical) 240.0 else 180.0, if (vertical) 720.0 else 600.0)
             }
+        },
+    )
+    @Composable fun panel(modifier: Modifier) = DockedWorkspacePanel(
+        dock, state, draggedEditorId, dropTarget, onDragStarted, onDropTargetChanged, onDrop, onStateChanged,
+        modifier.onPointerEvent(PointerEventType.Enter) { if (draggedEditorId != null) onDropTargetChanged(region to dock.editorIds.size) },
+    )
+    if (vertical) {
+        Row(Modifier.requiredWidth(extent).fillMaxHeight()) {
+            if (region == OperationDockRegion.RIGHT) resizeHandle()
+            panel(Modifier.weight(1f).fillMaxHeight())
+            if (region == OperationDockRegion.LEFT) resizeHandle()
+        }
+    } else {
+        Column(Modifier.fillMaxWidth().height(extent)) {
+            resizeHandle()
+            panel(Modifier.weight(1f).fillMaxWidth())
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalComposeUiApi::class)
+private fun DockedWorkspacePanel(
+    dock: io.hsar.mapgenerator.commandgui.operation.OperationDockRegionState,
+    state: ComposeOperationState,
+    draggedEditorId: OperationEditorId?,
+    dropTarget: Pair<OperationDockRegion, Int>?,
+    onDragStarted: (OperationEditorId?) -> Unit,
+    onDropTargetChanged: (Pair<OperationDockRegion, Int>) -> Unit,
+    onDrop: (OperationEditorId) -> Unit,
+    onStateChanged: (ComposeOperationState) -> Unit,
+    modifier: Modifier,
+) = Column(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
+    CommandButton(
+        onClick = { onStateChanged(state.toggleDockCollapsed(dock.region)) },
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text(if (dock.collapsed) "OPEN ${dock.region.name}" else "COLLAPSE") }
+    if (!dock.collapsed) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            dock.editorIds.mapNotNull(state.workspace::editor).filter { it.availableFor(state) }.forEachIndexed { index, editor ->
+                DockTab(editor, dock, index, state, draggedEditorId, dropTarget, onDragStarted, onDropTargetChanged, onDrop, onStateChanged)
+            }
+        }
+        dock.activeEditorId?.let(state.workspace::editor)?.takeIf { it.availableFor(state) }?.let { editor ->
+            Column(Modifier.fillMaxSize().padding(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(editor.title(state.visibleContent), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                    CommandButton(onClick = { onStateChanged(state.closeEditor(editor.id)) }) { Text("×") }
+                }
+                EditorContent(editor, state, onStateChanged, Modifier.weight(1f).fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalComposeUiApi::class)
+private fun DockTab(
+    editor: OperationEditorState,
+    dock: io.hsar.mapgenerator.commandgui.operation.OperationDockRegionState,
+    index: Int,
+    state: ComposeOperationState,
+    draggedEditorId: OperationEditorId?,
+    dropTarget: Pair<OperationDockRegion, Int>?,
+    onDragStarted: (OperationEditorId?) -> Unit,
+    onDropTargetChanged: (Pair<OperationDockRegion, Int>) -> Unit,
+    onDrop: (OperationEditorId) -> Unit,
+    onStateChanged: (ComposeOperationState) -> Unit,
+) {
+    var menuOpen by remember(editor.id) { mutableStateOf(false) }
+    var dragged by remember(editor.id) { mutableStateOf(false) }
+    val focusRequester = remember(editor.id) { FocusRequester() }
+    LaunchedEffect(dock.activeEditorId) {
+        if (dock.activeEditorId == editor.id) focusRequester.requestFocus()
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        CommandButton(
+            onClick = { onStateChanged(state.activateDockTab(dock.region, editor.id)) },
+            active = editor.id == dock.activeEditorId,
+            modifier = Modifier
+                .focusRequester(focusRequester)
+                .then(if (dropTarget == Pair(dock.region, index)) Modifier.border(3.dp, CommandColours.Backing) else Modifier)
+                .onPointerEvent(PointerEventType.Enter) { if (draggedEditorId != null) onDropTargetChanged(dock.region to index) }
+                .pointerInput(editor.id) {
+                    detectDragGestures(
+                        onDragStart = { dragged = false; onDragStarted(editor.id) },
+                        onDragEnd = { if (dragged) onDrop(editor.id) else onDragStarted(null) },
+                    ) { change, amount ->
+                        if (amount.getDistance() > 0f) dragged = true
+                        change.consume()
+                    }
+                },
+        ) { Text(editor.title(state.visibleContent)) }
+        CommandButton(onClick = { menuOpen = true }, modifier = Modifier.width(42.dp)) { Text("⋮") }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            OperationDockRegion.entries.filterNot { it == dock.region }.forEach { destination ->
+                DropdownMenuItem(
+                    text = { Text("Move to ${destination.name.lowercase().replaceFirstChar(Char::uppercase)}") },
+                    onClick = { menuOpen = false; onStateChanged(state.dockEditor(editor.id, destination)) },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("Move earlier") },
+                enabled = index > 0,
+                onClick = {
+                    menuOpen = false
+                    val ids = dock.editorIds.toMutableList().also { java.util.Collections.swap(it, index, index - 1) }
+                    onStateChanged(state.reorderDockTabs(dock.region, ids))
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Move later") },
+                enabled = index < dock.editorIds.lastIndex,
+                onClick = {
+                    menuOpen = false
+                    val ids = dock.editorIds.toMutableList().also { java.util.Collections.swap(it, index, index + 1) }
+                    onStateChanged(state.reorderDockTabs(dock.region, ids))
+                },
+            )
         }
     }
 }
@@ -1750,9 +1868,7 @@ private fun UnitEditorContent(
 ) {
     val coordinate = OperationUnitAuthoring.parsePosition(state.document.renderData, draft.positionX, draft.positionY)
     val facingDegrees = draft.facing.trim().takeIf(String::isNotEmpty)?.toIntOrNull()?.mod(360)
-    val validation = OperationUnitAuthoring.validateUnitDraft(
-        draft.name, draft.positionX, draft.positionY, draft.facing, draft.properties, state.document.renderData,
-    )
+    val validation = state.workspace.editor(editorId)?.let(state::validationFor) ?: ComposeEditorValidation(emptyMap())
     val selectedTemplate = draft.unitTemplateId?.let(state.document.content::unitTemplate)
         ?: state.document.content.unitTemplate(unit.unitTemplateId)
     val valid = validation.valid && selectedTemplate != null
@@ -1842,7 +1958,7 @@ private fun UnitTemplateEditorContent(
     val decoded = remember(draft.replacementImage) {
         draft.replacementImage?.let { runCatching { MapViewerImageLoader.load(it.bytes(), it.originalFilename) }.getOrNull() }
     }
-    val validation = OperationUnitAuthoring.validateTemplateDraft(draft, existing != null)
+    val validation = state.validationFor(editor)
     fun update(value: OperationUnitTemplateDraft) = onStateChanged(
         state.updateEditorDraft(editor.id, OperationEditorDraft.UnitTemplate(value)),
     )
@@ -1891,7 +2007,7 @@ private fun GraphicEditorContent(
     onStateChanged: (ComposeOperationState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val validation = OperationGraphicAuthoring.validateGraphicDraft(draft, state.document.content, state.document.renderData)
+    val validation = state.workspace.editor(editorId)?.let(state::validationFor) ?: ComposeEditorValidation(emptyMap())
     val selectedTemplate = draft.graphicTemplateId?.let(state.document.content::graphicTemplate)
     fun update(value: io.hsar.mapgenerator.commandgui.operation.OperationGraphicDraft) =
         onStateChanged(state.updateEditorDraft(editorId, OperationEditorDraft.Graphic(value)))
@@ -1937,7 +2053,7 @@ private fun GraphicTemplateEditorContent(
     var imageError by remember(editor.id) { mutableStateOf<String?>(null) }
     val existing = (editor.target as? OperationEditorTarget.GraphicTemplate)?.templateId?.let(state.document.content::graphicTemplate)
     val decoded = remember(draft.replacementImage) { draft.replacementImage?.let { runCatching { MapViewerImageLoader.load(it.bytes(), it.originalFilename) }.getOrNull() } }
-    val validation = OperationGraphicAuthoring.validateTemplateDraft(draft, existing != null)
+    val validation = state.validationFor(editor)
     fun update(value: OperationGraphicTemplateDraft) = onStateChanged(state.updateEditorDraft(editor.id, OperationEditorDraft.GraphicTemplate(value)))
     fun browse() {
         FileDialog(null as Frame?, "Choose graphic image", FileDialog.LOAD).also { dialog ->

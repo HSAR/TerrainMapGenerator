@@ -194,6 +194,21 @@ class ComposeOperationStateTest {
     }
 
     @Test
+    fun `editor validation is derived from its restored typed draft`() {
+        // Arrange
+        val opened = ComposeOperationState(documentWith(unit)).openUnitEditor(objectId)
+        val editor = opened.openEditors.single { it.kind == OperationEditorKind.UNIT }
+        val invalid = opened.updateEditorDraft(editor.id, (editor.draft as OperationEditorDraft.Unit).copy(facing = "north"))
+
+        // Act
+        val validation = invalid.validationFor(invalid.workspace.editor(editor.id)!!)
+
+        // Assert
+        assertThat(validation.valid, equalTo(false))
+        assertThat(validation.errors.containsKey("facing"), equalTo(true))
+    }
+
+    @Test
     fun `pinning stores the legacy compatible top right map anchor`() {
         val viewport = MapViewport.centered(166.0, 166.0, 100, 100, 2.0)
         val editorId = OperationWorkspaceState.DEFAULT_NOTES_ID

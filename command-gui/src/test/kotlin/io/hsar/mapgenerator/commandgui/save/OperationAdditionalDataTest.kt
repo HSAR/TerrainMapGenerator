@@ -17,6 +17,8 @@ import io.hsar.mapgenerator.commandgui.operation.OperationEditorId
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorKind
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorState
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorTarget
+import io.hsar.mapgenerator.commandgui.operation.OperationDockRegion
+import io.hsar.mapgenerator.commandgui.operation.OperationDockRegionState
 import io.hsar.mapgenerator.commandgui.operation.OperationFloatingEditorState
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplateDraft
 import io.hsar.mapgenerator.commandgui.operation.OperationImageDraft
@@ -37,6 +39,32 @@ import java.util.*
 import java.util.Collections.emptyList
 
 class OperationAdditionalDataTest {
+    @Test
+    fun `workspace restores all dock regions and opaque editors exactly`() {
+        // Arrange
+        val notes = OperationWorkspaceState.default().editors.single()
+        val opaque = OperationEditorState(
+            OperationEditorId("legacy:panel"), OperationEditorKind("legacy-panel"), OperationEditorTarget.Opaque("legacy"),
+            OperationEditorDraft.Opaque("keep this draft"), OperationFloatingEditorState(OperationEditorBounds(1.0, 2.0, 300.0, 400.0)),
+        )
+        val workspace = OperationWorkspaceState(
+            editors = listOf(notes, opaque), activeEditorId = opaque.id,
+            dockRegions = listOf(
+                OperationDockRegionState(OperationDockRegion.LEFT, 280.0, listOf(opaque.id), opaque.id, collapsed = true),
+                OperationDockRegionState(OperationDockRegion.RIGHT, 360.0, listOf(notes.id), notes.id),
+                OperationDockRegionState(OperationDockRegion.BOTTOM, 240.0, emptyList(), null, collapsed = true),
+            ),
+        )
+        val data = OperationAdditionalData.fromJson(null)
+
+        // Act
+        data.updateOperationUiState(io.hsar.mapgenerator.commandgui.operation.OperationUiState(workspace = workspace))
+        val restored = OperationAdditionalData.fromJson(data.toJsonOrNull()).operationUiState().workspace
+
+        // Assert
+        assertThat(restored, equalTo(workspace))
+    }
+
     @Test
     fun `ECM activations round trip and clear before the next turn`() {
         val unit = OperationObjectId(UUID.fromString("00000000-0000-0000-0000-000000000004"))

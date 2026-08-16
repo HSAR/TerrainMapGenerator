@@ -15,7 +15,8 @@ The migration is intentionally incomplete. Keep these boundaries accurate while 
   marquee geometry in both viewers. KorGE adapts these rules through snapshot/projection wrappers; do not recreate transform math below `korge` or in Compose.
 - `ComposeOperationState` is the authoritative Compose session state. It owns the document/head replay, camera, tool, selection, historical preview, transform preview, save
   revisions and the neutral `OperationWorkspaceState`. Composables may own only active drag/resize deltas; persistent editor identity, typed drafts, dock placement and floating
-  state belong in `commandgui.operation`.
+  state belong in `commandgui.operation`. Editor validation is recomputed from each typed draft on restoration and must use the same editor-scoped validator for presentation and
+  Save gating; validation messages are not persisted.
 - `MapViewerSaveRepository.loadOperation/createOperation/saveOperation` is the authoritative operation archive entry point for both launchpads. `OperationSaveLoader` reads an
   archive
   once into `OperationDocument` data, and the ledger codec reads/writes `OperationTimelineEntry`, `OperationChangeSet` and `OperationContent` directly. Save codecs must not import
@@ -40,8 +41,10 @@ Treat the following as implemented and protected behavior, not future work:
   cancellation and one-entry commit. Measure is transient, grid-aware and remains available during historical replay.
 - The live ledger supports current/history selection, read-only preview, undo/redo, branch truncation and selection pruning. Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+S, Delete and Escape
   are wired.
-- The notes browser, note/unit/graphic-template editors and ordinary unit/graphic editors share typed editor instances in a resizable right dock or floating windows. Notes are
-  timeline-backed and support multiline drafts, ordering, map-picked object references, missing-reference preservation and object-context links. The Compose unit and
+- The typed workspace renders persisted left, right and bottom docks around the map, with per-region resize/collapse state, interactive tab reorder/cross-region movement,
+  keyboard tab cycling and focused tab activation. Dock moves retain typed drafts and floating state; the workspace archive round-trips every region, tab order, active tab and
+  opaque restored editor. Floating windows retain drag/resize/minimize/pin/Z-order/map-anchor behavior. Notes, unit, graphic, template and operational editors share those
+  typed editor instances. Notes are timeline-backed and support multiline drafts, ordering, map-picked object references, missing-reference preservation and object-context links. The Compose unit and
   graphic palettes create, edit and safely delete templates, and their click-then-map placement modes use immutable previews before recording one object entry. Graphic dimensions
   are template-owned and propagate to every live instance; archive and KorGE boundaries mirror them through the established normalized-size property keys. Unit edits cover
   template, grid-aware position, name, facing, destroyed state, affiliation and custom properties; graphic edits cover template, display label, grid-aware position and instance
@@ -55,9 +58,8 @@ Treat the following as implemented and protected behavior, not future work:
 Do not overstate these partial implementations:
 
 - `enabledLayerIds` is state/persistence only; Compose has no real layer controller and Canvas still paints the supplied base map and grid directly.
-- The workspace implementation is deliberately a prototype: only the right dock is rendered, tabs cannot yet be interactively reordered or moved between regions, and only notes
-  plus the ordinary unit/graphic and template editors have functional Compose bodies. The neutral model already retains generic regions, tab order and opaque restored editor
-  records for later ports.
+- The typed workspace shell is complete, but unrecognised/opaque restored editor records remain intentionally preserved without a Compose body. Do not replace their
+  unsupported-editor presentation with an invented legacy workflow; port a recognised legacy editor only in a separately approved slice.
 - Unit/graphic-template creation/edit/delete, unit/graphic placement, ordinary `Edit Unit`/`Edit Graphic`, and delete context-menu actions are functional. SITREP and the other
   legacy commands are still absent.
 - The old `loadMap()`, `MapViewerSavedMap`, `MapViewerLedgerReplay`, replay Canvas and projection-only tests have been removed. Do not add a second map/replay loader; derive views
@@ -139,9 +141,11 @@ results from the same operation fixture.
 
 ### Phase 4 — Finish the Compose workspace and desktop product
 
-1. Expand the typed workspace beyond its current right-dock prototype: add left/bottom regions, tab reordering and cross-region moves, stable keyboard/focus activation,
-   editor-specific
-   validation state and the remaining editor bodies. Preserve the implemented floating drag/resize/minimize/pin/Z-order/map-anchor behavior.
+Completed (Slice 1): the typed workspace now renders left/right/bottom docks; supports resize/collapse, pointer tab reordering and cross-region drops, accessible tab move
+menus, Ctrl+Tab/Ctrl+Shift+Tab cycling and focused activation; and preserves drafts/floating state through moves. `OperationWorkspaceState` owns deterministic dock lookup and
+cycling. Typed validators are editor-scoped and recomputed from restored drafts, while unknown opaque editor records remain preserved but unsupported. Neutral, persistence and
+Compose state coverage protects dock movement/cycling, exact three-region restoration and restored-draft validation.
+
 2. Finish native desktop behavior: menus and shortcuts, focus traversal, context menus, confirmations, snackbars/errors, native AWT file dialogs, app icons/licenses/resources and
    robust loading/progress/cancellation states. Keep one Compose rendering surface and use Material/Compose multiline text controls.
 3. Make save/exit orchestration independently testable by injecting the saver as well as the existing autosave clock. Cover failed autosave, retry, mutation during save, forced

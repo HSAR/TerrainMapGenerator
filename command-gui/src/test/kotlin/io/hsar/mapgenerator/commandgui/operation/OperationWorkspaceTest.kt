@@ -85,4 +85,23 @@ class OperationWorkspaceTest {
         assertThat(right.editorIds, equalTo(listOf(OperationWorkspaceState.DEFAULT_NOTES_ID, unitId)))
         assertThat(moved.editors.map { it.id }.toSet(), equalTo(setOf(OperationWorkspaceState.DEFAULT_NOTES_ID, unitId)))
     }
+
+    @Test
+    fun `cycling and cross region docking retain the active draft`() {
+        // Arrange
+        val unitId = OperationEditorId("unit:${unit.id.value}")
+        val opened = OperationWorkspaceState.default().open(unit.editorState()).updateEditor(unitId) { editor ->
+            editor.copy(draft = (editor.draft as OperationEditorDraft.Unit).copy(name = "Unsaved"))
+        }
+
+        // Act
+        val moved = opened.dock(unitId, OperationDockRegion.LEFT, 0)
+        val cycled = moved.cycleDock(OperationDockRegion.RIGHT, 1)
+
+        // Assert
+        assertThat(moved.dockContaining(unitId)?.region, equalTo(OperationDockRegion.LEFT))
+        assertThat((moved.editor(unitId)?.draft as OperationEditorDraft.Unit).name, equalTo("Unsaved"))
+        assertThat(cycled.activeEditorId, equalTo(OperationWorkspaceState.DEFAULT_NOTES_ID))
+        assertThat(cycled.activeDock()?.region, equalTo(OperationDockRegion.RIGHT))
+    }
 }

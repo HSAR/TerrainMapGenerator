@@ -104,6 +104,10 @@ data class OperationWorkspaceState(
 ) {
     fun editor(id: OperationEditorId) = editors.firstOrNull { it.id == id }
 
+    fun dockContaining(id: OperationEditorId) = dockRegions.firstOrNull { id in it.editorIds }
+
+    fun activeDock() = activeEditorId?.let(::dockContaining)
+
     fun open(editor: OperationEditorState, region: OperationDockRegion = OperationDockRegion.RIGHT): OperationWorkspaceState {
         val existing = editors.firstOrNull { it.id == editor.id || it.kind == editor.kind && it.target == editor.target }
         if (existing != null) return activate(existing.id)
@@ -163,6 +167,15 @@ data class OperationWorkspaceState(
         dock.copy(editorIds = requested + dock.editorIds.filterNot(requested::contains))
     }
 
+    fun cycleDock(region: OperationDockRegion, direction: Int): OperationWorkspaceState {
+        val dock = dockRegions.firstOrNull { it.region == region } ?: return this
+        val ids = dock.editorIds.filter { editor(it) != null }
+        if (ids.isEmpty()) return this
+        val current = dock.activeEditorId?.let(ids::indexOf)?.takeIf { it >= 0 } ?: 0
+        val next = ids[(current + direction.sign()).floorMod(ids.size)]
+        return activate(next)
+    }
+
     fun withMode(value: MapViewerWorkspaceMode) = copy(mode = value)
 
     companion object {
@@ -179,6 +192,14 @@ data class OperationWorkspaceState(
         )
     }
 }
+
+private fun Int.sign() = when {
+    this < 0 -> -1
+    this > 0 -> 1
+    else -> 0
+}
+
+private fun Int.floorMod(modulus: Int) = ((this % modulus) + modulus) % modulus
 
 fun OperationNote.editorState(
     bounds: OperationEditorBounds = OperationEditorBounds(128.0, 96.0, 560.0, 640.0),
