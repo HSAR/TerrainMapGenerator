@@ -153,6 +153,7 @@ private fun OperationWorkspaceState.compatibilityDrafts(): Map<String, String> =
         is OperationEditorDraft.UnitTemplate -> null
         is OperationEditorDraft.Graphic -> null
         is OperationEditorDraft.GraphicTemplate -> null
+        is OperationEditorDraft.Operational -> null
     }
 }.toMap()
 
@@ -460,6 +461,18 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
                 ),
             ) else OperationEditorDraft.Opaque(draftNode.path("value").textValue().orEmpty())
 
+            OperationEditorKind.OLYMPIAD_DAWN_STATUS,
+            OperationEditorKind.SENSOR_REPORT,
+            OperationEditorKind.TACTICAL,
+            OperationEditorKind.GUNREP,
+                -> OperationEditorDraft.Operational(
+                    mode = draftNode.path("mode").textValue().orEmpty(),
+                    reportText = draftNode.path("reportText").textValue().orEmpty(),
+                    selectedTargetId = draftNode.path("selectedTargetId").textValue()
+                        ?.let { runCatching { OperationObjectId(UUID.fromString(it)) }.getOrNull() },
+                    selectedWeaponKeys = draftNode.path("selectedWeaponKeys").mapNotNull(JsonNode::textValue).toSet(),
+                )
+
             else -> OperationEditorDraft.Opaque(draftNode.path("value").textValue().orEmpty())
         }
         val floatingNode = node.path("floating")
@@ -583,6 +596,12 @@ internal class OperationAdditionalData private constructor(internal val root: Ob
                         put("originalFilename", image.originalFilename); put("mediaType", image.mediaType); put("base64Bytes", image.base64Bytes)
                     } }
                     set<com.fasterxml.jackson.databind.node.ArrayNode>("properties", writeProperties(draft.value.properties))
+                }
+
+                is OperationEditorDraft.Operational -> {
+                    put("mode", draft.mode); put("reportText", draft.reportText)
+                    draft.selectedTargetId?.let { put("selectedTargetId", it.value.toString()) }
+                    putArray("selectedWeaponKeys").also { keys -> draft.selectedWeaponKeys.sorted().forEach(keys::add) }
                 }
 
                 is OperationEditorDraft.Opaque -> put("value", draft.value)

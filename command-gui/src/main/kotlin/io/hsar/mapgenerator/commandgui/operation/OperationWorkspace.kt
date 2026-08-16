@@ -16,6 +16,10 @@ value class OperationEditorKind(val value: String) {
         val UNIT_TEMPLATE = OperationEditorKind("unit-template")
         val GRAPHIC = OperationEditorKind("graphic")
         val GRAPHIC_TEMPLATE = OperationEditorKind("graphic-template")
+        val OLYMPIAD_DAWN_STATUS = OperationEditorKind("olympiad-dawn-status")
+        val SENSOR_REPORT = OperationEditorKind("sensor-report")
+        val TACTICAL = OperationEditorKind("tactical")
+        val GUNREP = OperationEditorKind("gunrep")
     }
 }
 
@@ -48,6 +52,13 @@ sealed interface OperationEditorDraft {
     data class UnitTemplate(val value: OperationUnitTemplateDraft = OperationUnitTemplateDraft()) : OperationEditorDraft
     data class Graphic(val value: OperationGraphicDraft = OperationGraphicDraft()) : OperationEditorDraft
     data class GraphicTemplate(val value: OperationGraphicTemplateDraft = OperationGraphicTemplateDraft()) : OperationEditorDraft
+
+    data class Operational(
+        val mode: String,
+        val reportText: String = "",
+        val selectedTargetId: OperationObjectId? = null,
+        val selectedWeaponKeys: Set<String> = emptySet(),
+    ) : OperationEditorDraft
 
     data class Opaque(val value: String = "") : OperationEditorDraft
 }

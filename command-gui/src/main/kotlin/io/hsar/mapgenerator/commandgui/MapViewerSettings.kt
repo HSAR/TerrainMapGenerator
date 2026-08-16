@@ -10,7 +10,6 @@ data class MapViewerSettings(
     val availableLayers: List<MapViewerLayer> = MapLayer.values().toList(),
     val enabledLayerIds: Set<String> = availableLayers.map { it.id }.toSet(),
     val staticLayerImages: Map<String, BufferedImage> = emptyMap(),
-    val featureFlags: Set<MapViewerFeatureFlag> = emptySet(),
     val mapId: String? = null,
     val referenceSystem: ReferenceSystem = ReferenceSystem.MGRS,
     val gridStartX: Coord? = null,

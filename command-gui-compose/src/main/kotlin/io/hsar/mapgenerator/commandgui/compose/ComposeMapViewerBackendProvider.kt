@@ -1,5 +1,7 @@
 package io.hsar.mapgenerator.commandgui.compose
 
+import io.hsar.mapgenerator.commandgui.operation.*
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -78,6 +81,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -925,7 +930,7 @@ private fun ViewerWorkspace(
                                     mapObject.id,
                                     mapObject.displayName(operationState.visibleContent),
                                     position,
-                                    mapObject.contextMenuItems(),
+                                    mapObject.contextMenuItems(operationState.olympiadDawnEnabled),
                                     operationState.visibleContent.notes.filter { mapObject.id in it.referencedObjectIds },
                                 )
                             },
@@ -949,6 +954,17 @@ private fun ViewerWorkspace(
                         onNoteReferencePicked = { operationState = operationState.addPickedNoteReference(it) },
                         onNoteReferenceCancelled = { operationState = operationState.cancelNoteReferencePick() },
                         cancellationEpoch = toolGestureCancellationEpoch,
+                            ecmFields = operationState.ecmFields(),
+                            unitsPerPixel = operationState.document.settings.unitsPerPixel,
+                        tacticalOverlayLines = operationState.workspace.editors.takeIf { operationState.olympiadDawnEnabled }.orEmpty().mapNotNull { editor ->
+                                val draft = editor.draft as? OperationEditorDraft.Operational ?: return@mapNotNull null
+                                if (editor.kind != OperationEditorKind.TACTICAL) return@mapNotNull null
+                                val sourceId = (editor.target as? OperationEditorTarget.Object)?.objectId ?: return@mapNotNull null
+                                val targetId = draft.selectedTargetId ?: return@mapNotNull null
+                                val source = operationState.visibleContent.objectById(sourceId) as? OperationUnit ?: return@mapNotNull null
+                                val target = operationState.visibleContent.objectById(targetId) as? OperationUnit ?: return@mapNotNull null
+                                source.coordinate to target.coordinate
+                            },
                             unitIconSizePx = unitIconSizePx,
                             onUnitIconSizeChanged = { size -> unitIconSizePx = onUnitIconSizeChanged(size) },
                             modifier = Modifier.fillMaxSize(),
@@ -1034,6 +1050,12 @@ private fun ViewerWorkspace(
                             onActionSelected = { action ->
                                 when (action.action) {
                                     MapViewerContextMenuCommand.EDIT_UNIT -> operationState = operationState.openUnitEditor(menu.objectId)
+                                    MapViewerContextMenuCommand.SITREP,
+                                    MapViewerContextMenuCommand.SCIREP,
+                                        -> operationState = operationState.openSensorReport(menu.objectId, OperationWorkflowReportMode.SCIREP)
+                                    MapViewerContextMenuCommand.NAVREP -> operationState = operationState.openSensorReport(menu.objectId, OperationWorkflowReportMode.NAVREP)
+                                    MapViewerContextMenuCommand.TACTICAL -> operationState = operationState.openTactical(menu.objectId)
+                                    MapViewerContextMenuCommand.OLYMPIAD_DAWN_STATUS -> operationState = operationState.openOlympiadDawnStatus(menu.objectId)
                                     MapViewerContextMenuCommand.EDIT_GRAPHIC -> operationState = operationState.openGraphicEditor(menu.objectId)
                                     MapViewerContextMenuCommand.EDIT_DRAWING_NAME -> {
                                         val drawing = operationState.document.content.objectById(menu.objectId) as? OperationDrawingObject
@@ -1395,14 +1417,14 @@ private fun DockedWorkspace(
             ) { Text(if (dock.collapsed) "OPEN" else "COLLAPSE") }
             if (!dock.collapsed) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                    dock.editorIds.mapNotNull(state.workspace::editor).forEach { editor ->
+                    dock.editorIds.mapNotNull(state.workspace::editor).filter { it.availableFor(state) }.forEach { editor ->
                         CommandButton(
                             onClick = { onStateChanged(state.activateDockTab(OperationDockRegion.RIGHT, editor.id)) },
                             active = editor.id == dock.activeEditorId,
                         ) { Text(editor.title(state.visibleContent)) }
                     }
                 }
-                dock.activeEditorId?.let(state.workspace::editor)?.let { editor ->
+                dock.activeEditorId?.let(state.workspace::editor)?.takeIf { it.availableFor(state) }?.let { editor ->
                     Column(Modifier.fillMaxSize().padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(editor.title(state.visibleContent), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
@@ -1420,7 +1442,7 @@ private fun DockedWorkspace(
 private fun FloatingWorkspace(
     state: ComposeOperationState,
     onStateChanged: (ComposeOperationState) -> Unit,
-) = state.workspace.editors.forEach { editor ->
+) = state.workspace.editors.filter { it.availableFor(state) }.forEach { editor ->
     key(editor.id.value) {
         FloatingEditorWindow(editor, state, onStateChanged)
     }
@@ -1565,7 +1587,89 @@ private fun EditorContent(
         } else GraphicTemplateEditorContent(editor, draft.value, state, onStateChanged, modifier)
     }
 
+    is OperationEditorDraft.Operational -> OperationalEditorContent(editor, draft, state, onStateChanged, modifier)
+
     is OperationEditorDraft.Opaque -> Box(modifier, contentAlignment = Alignment.Center) { Text("This restored editor is not supported yet.") }
+}
+
+private fun OperationEditorState.availableFor(state: ComposeOperationState) =
+    draft !is OperationEditorDraft.Operational || state.olympiadDawnEnabled
+
+@Composable
+private fun OperationalEditorContent(
+    editor: OperationEditorState,
+    draft: OperationEditorDraft.Operational,
+    state: ComposeOperationState,
+    onStateChanged: (ComposeOperationState) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val unit = (editor.target as? OperationEditorTarget.Object)?.objectId?.let(state.visibleContent::objectById) as? OperationUnit
+    when {
+        !state.olympiadDawnEnabled -> Box(modifier, contentAlignment = Alignment.Center) { Text("Olympiad Dawn workflows are disabled for this operation.") }
+        unit == null -> Box(modifier, contentAlignment = Alignment.Center) { Text("This unit is unavailable.") }
+        editor.kind == OperationEditorKind.OLYMPIAD_DAWN_STATUS -> OlympiadDawnStatusContent(unit, state, onStateChanged, modifier)
+        editor.kind == OperationEditorKind.TACTICAL -> TacticalEditorContent(editor.id, unit, draft, state, onStateChanged, modifier)
+        else -> ReportEditorContent(draft.reportText, modifier)
+    }
+}
+
+@Composable
+private fun ReportEditorContent(text: String, modifier: Modifier) {
+    val clipboard = LocalClipboardManager.current
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SelectionContainer { Text(text.ifBlank { "No report entries." }, Modifier.weight(1f).verticalScroll(rememberScrollState())) }
+        CommandButton({ clipboard.setText(AnnotatedString(text)) }, enabled = text.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("COPY REPORT") }
+    }
+}
+
+@Composable
+private fun OlympiadDawnStatusContent(unit: OperationUnit, state: ComposeOperationState, onStateChanged: (ComposeOperationState) -> Unit, modifier: Modifier) {
+    Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OperationWorkflowFacade.statusRows(unit, state.visibleContent).forEachIndexed { index, row ->
+            Text(row, style = if (index == 0) MaterialTheme.typography.titleLarge else MaterialTheme.typography.bodyMedium,
+                color = if (row in setOf("SYSTEMS", "WEAPONS") || row.startsWith("CLASS ")) CommandColours.Backing else Color.Unspecified)
+        }
+        Text("DAMAGE", color = CommandColours.Backing)
+        OperationWorkflowFacade.damageOptions(unit, state.visibleContent).forEach { option ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(option.damaged, { onStateChanged(state.toggleOperationalDamage(unit.id, option.token)) }, enabled = !state.isReadOnly)
+                Text(option.label)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TacticalEditorContent(
+    editorId: OperationEditorId,
+    unit: OperationUnit,
+    draft: OperationEditorDraft.Operational,
+    state: ComposeOperationState,
+    onStateChanged: (ComposeOperationState) -> Unit,
+    modifier: Modifier,
+) {
+    val report = state.tacticalReport(unit.id)
+    fun update(value: OperationEditorDraft.Operational) = onStateChanged(state.updateEditorDraft(editorId, value))
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("FIRE CONTROL ${report?.weaponsUsed ?: 0}/${report?.fireControlCapacity ?: 0}", color = CommandColours.Backing)
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            report?.targets?.forEach { target ->
+                CommandButton({ update(draft.copy(selectedTargetId = target.id, selectedWeaponKeys = emptySet())) }, active = draft.selectedTargetId == target.id, modifier = Modifier.fillMaxWidth()) {
+                    Text("${target.name} — ${"%.1f".format(target.rangeUnits)}U — FP ${target.firepower}")
+                }
+                if (draft.selectedTargetId == target.id) target.contributions.forEach { contribution ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(contribution.weaponKey in draft.selectedWeaponKeys, { checked ->
+                            update(draft.copy(selectedWeaponKeys = if (checked) draft.selectedWeaponKeys + contribution.weaponKey else draft.selectedWeaponKeys - contribution.weaponKey))
+                        }, enabled = !state.isReadOnly)
+                        Text("${contribution.weaponName} [${contribution.arc}] — ${contribution.firepower}")
+                    }
+                }
+            }
+            if (report?.targets.isNullOrEmpty()) Text("No valid tactical targets.")
+        }
+        CommandButton({ onStateChanged(state.fireTactical(editorId)) }, enabled = !state.isReadOnly && draft.selectedTargetId != null && draft.selectedWeaponKeys.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("FIRE") }
+    }
 }
 
 @Composable
@@ -1925,6 +2029,10 @@ private fun OperationEditorState.title(content: OperationContent): String = when
         is OperationEditorTarget.GraphicTemplate -> content.graphicTemplate(value.templateId)?.name ?: "Edit Graphic Type"
         else -> "Create Graphic Type"
     }
+    OperationEditorKind.OLYMPIAD_DAWN_STATUS -> "Olympiad Dawn Status"
+    OperationEditorKind.SENSOR_REPORT -> (draft as? OperationEditorDraft.Operational)?.mode?.uppercase() ?: "Sensor Report"
+    OperationEditorKind.TACTICAL -> "TACTICAL"
+    OperationEditorKind.GUNREP -> "GUNREP"
     else -> kind.value
 }
 
@@ -2063,12 +2171,16 @@ private fun OperationObject.objectTypeLabel() = when (this) {
     is OperationDrawingObject -> "Drawing"
 }
 
-private fun OperationObject.contextMenuItems(): List<MapViewerContextMenuItem> = when (this) {
+private fun OperationObject.contextMenuItems(olympiadDawnEnabled: Boolean): List<MapViewerContextMenuItem> = when (this) {
     is OperationUnit -> listOf(
         MapViewerContextMenuItem(MapViewerContextMenuCommand.EDIT_UNIT, "Edit Unit"),
         MapViewerContextMenuItem(MapViewerContextMenuCommand.DELETE_UNIT, "Delete Unit"),
-        MapViewerContextMenuItem(MapViewerContextMenuCommand.SITREP, "SITREP"),
-    )
+    ) + if (olympiadDawnEnabled) listOf(
+        MapViewerContextMenuItem(MapViewerContextMenuCommand.SCIREP, "SCIREP"),
+        MapViewerContextMenuItem(MapViewerContextMenuCommand.NAVREP, "NAVREP"),
+        MapViewerContextMenuItem(MapViewerContextMenuCommand.TACTICAL, "TACTICAL"),
+        MapViewerContextMenuItem(MapViewerContextMenuCommand.OLYMPIAD_DAWN_STATUS, "STATUS"),
+    ) else emptyList()
 
     is OperationGraphic -> listOf(
         MapViewerContextMenuItem(MapViewerContextMenuCommand.EDIT_GRAPHIC, "Edit Graphic"),
@@ -2308,6 +2420,9 @@ private fun MapCanvas(
     onNoteReferencePicked: (OperationObjectId) -> Unit,
     onNoteReferenceCancelled: () -> Unit,
     cancellationEpoch: Int,
+    ecmFields: List<OperationWorkflowEcmField>,
+    unitsPerPixel: Double,
+    tacticalOverlayLines: List<Pair<MapCoordinate, MapCoordinate>>,
     unitIconSizePx: Double,
     onUnitIconSizeChanged: (Double) -> Unit,
     modifier: Modifier = Modifier,
@@ -2664,6 +2779,23 @@ private fun MapCanvas(
                         dstOffset = IntOffset(tile.left, tile.top),
                         dstSize = IntSize(tile.width, tile.height),
                     )
+                }
+                tacticalOverlayLines.forEach { (source, target) ->
+                    drawLine(
+                        CommandColours.Backing,
+                        Offset((source.x * mapWidth).toFloat(), (source.y * mapHeight).toFloat()),
+                        Offset((target.x * mapWidth).toFloat(), (target.y * mapHeight).toFloat()),
+                        strokeWidth = ComposeDrawingPresentation.worldStrokeWidth(zoom.toDouble()) * 2f,
+                    )
+                }
+                ecmFields.forEach { field ->
+                    val emitter = content.objectById(field.emitterId) as? OperationUnit ?: return@forEach
+                    val centre = Offset((emitter.coordinate.x * mapWidth).toFloat(), (emitter.coordinate.y * mapHeight).toFloat())
+                    val radius = (field.rangeUnits / unitsPerPixel).toFloat()
+                    drawCircle(CommandColours.Backing.copy(alpha = 0.18f), radius, centre)
+                    drawCircle(CommandColours.Backing.copy(alpha = 0.8f), radius, centre, style = androidx.compose.ui.graphics.drawscope.Stroke(ComposeDrawingPresentation.worldStrokeWidth(zoom.toDouble())))
+                    val radians = Math.toRadians(field.bearingDegrees)
+                    drawLine(CommandColours.Backing, centre, centre + Offset((kotlin.math.sin(radians) * radius).toFloat(), (-kotlin.math.cos(radians) * radius).toFloat()), ComposeDrawingPresentation.worldStrokeWidth(zoom.toDouble()))
                 }
                 content.objects.filterIsInstance<OperationDrawingObject>().forEach { value ->
                     drawOperationDrawing(value.drawing, mapWidth, mapHeight, ComposeDrawingPresentation.worldStrokeWidth(zoom.toDouble()))

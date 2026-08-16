@@ -12,6 +12,11 @@ import io.hsar.mapgenerator.commandgui.GridReferenceFormatter
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.korge.adapter.toOperationUnit
+import io.hsar.mapgenerator.commandgui.operation.OperationTacticalEngagementService
+import io.hsar.mapgenerator.commandgui.operation.OperationTacticalFirePreparationResult
+import io.hsar.mapgenerator.commandgui.operation.OperationTacticalFireUsage
+import io.hsar.mapgenerator.commandgui.operation.OperationTacticalTargetingReport
 import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireKey
 import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireUsage
 import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalTurnMarker
@@ -71,6 +76,7 @@ internal class MapPlacedUnitManager(
     initialUnitIconSizePx: Double = UnitIconDisplaySize.DEFAULT_PX,
     initialFireArcDisplayMode: FireArcDisplayMode = FireArcDisplayMode.AllUnits,
     private val canInteractWithUnits: () -> Boolean = { true },
+    private val enabledFeatureFlagsProvider: () -> Set<MapViewerFeatureFlag> = { MapViewerFeatureFlags.enabled },
     private val isHigherPriorityDragInProgress: () -> Boolean = { false },
     private val noteReferenceMenuActionsProvider: (MapPlacedObjectSnapshot) -> List<MapPlacedObjectMenuAction> = { emptyList() },
     private val onMovePreviewChanged: (MapObjectMovePreview?) -> Unit = {},
@@ -131,6 +137,15 @@ internal class MapPlacedUnitManager(
     }
 
     fun refreshEcmFields() {
+        if (!olympiadDawnTacticalEnabled()) {
+            activeEcmLayer.removeChildren()
+            previewEcmLayer.removeChildren()
+            ecmPreview = null
+            ecmDragHandle = null
+            renderedEcmSignature = null
+            renderedEcmPreviewSignature = null
+            return
+        }
         val activations = ecmActivationsProvider(tacticalTurnNumberProvider())
         val activeSignature = (activations.map { activation ->
             activation to units.firstOrNull { it.id == activation.emitterId }
@@ -494,14 +509,17 @@ internal class MapPlacedUnitManager(
             ?: false
 
     fun restoreTacticalDialog(dialog: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog): Boolean =
-        dialog.targetId
+        olympiadDawnTacticalEnabled() && dialog.targetId
             ?.let { value -> runCatching { MapPlacedObjectId(java.util.UUID.fromString(value)) }.getOrNull() }
             ?.let { id -> units.firstOrNull { it.id == id } }
             ?.let { unit -> unit.openTacticalDialog(unit, dialog); true }
             ?: false
 
     fun consumeTacticalSolution(unitId: MapPlacedObjectId, targetId: MapPlacedObjectId): Boolean =
-        units.firstOrNull { it.id == unitId }?.fireTacticalSolution(unitId, targetId) != null
+        olympiadDawnTacticalEnabled() && units.firstOrNull { it.id == unitId }?.fireTacticalSolution(unitId, targetId) != null
+
+    private fun olympiadDawnTacticalEnabled(): Boolean =
+        MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL in enabledFeatureFlagsProvider()
 
     fun cancelTransientState(targetId: MapPlacedObjectId? = null) {
         if (targetId == null || dragState?.unit?.id == targetId) {
@@ -1063,6 +1081,7 @@ internal class MapPlacedUnitManager(
             unit: PlacedUnit,
             restored: io.hsar.mapgenerator.commandgui.korge.ui.MapViewerPersistedDialog? = null,
         ) {
+            if (!olympiadDawnTacticalEnabled()) return
             val key = TacticalDialogKey(unit.id)
             if (dialogManager.hasTarget(key)) return
             val dialog = MapViewerTacticalDialog(
@@ -1108,9 +1127,7 @@ internal class MapPlacedUnitManager(
                 },
                 canFire = { target, weaponKeys -> canFireTacticalSelection(target, weaponKeys) },
                 onFire = { targetId, weaponKeys -> fireTacticalSolution(unit.id, targetId, weaponKeys) },
-                onFireResolved = { resolution ->
-                    MapViewerGunrepDialog(root, dialogManager, "gunrep-${java.util.UUID.randomUUID()}", resolution).open()
-                },
+                onFireResolved = { resolution -> resolution.openGunrep() },
             )
             tacticalDialogs[unit.id] = dialog
             if (dialog.open()) {
@@ -1126,6 +1143,7 @@ internal class MapPlacedUnitManager(
             targetId: MapPlacedObjectId,
             selectedWeaponKeys: Set<String>? = null,
         ): TacticalFireResolution? {
+            if (!olympiadDawnTacticalEnabled()) return null
             val unit = units.firstOrNull { it.id == unitId } ?: return null
             val usageKey = TacticalFireKey(tacticalTurnNumberProvider(), unitId)
             val usage = tacticalUsage(unit)
@@ -1140,35 +1158,18 @@ internal class MapPlacedUnitManager(
                 if (target.manualEcm) EcmRules.manual(modules.size) else EcmRules.automatic(modules.size, target.rangeU)
             }
             if (selectedEcm.isNotEmpty() && ecmShape == null) return null
-            val consumesFireControl = report.weapons.any {
-                it.key in weaponKeys && it.requiresFireControl && !(resolutionTargetIsFighter(targetId) && it.beamClass == 1)
-            }
-            if (consumesFireControl && usage.fireControlUsed >= report.fireControlCapacity) return null
             val resolutionTarget = units.firstOrNull { it.id == targetId } ?: return null
             val definition = unit.shipDefinition()
-            val consumables = definition?.let { sourceDefinition ->
-                contributions.mapNotNull { contribution ->
-                    sourceDefinition.weapons.firstOrNull { weapon ->
-                        OlympiadDawnShip.weaponKey(sourceDefinition, sourceDefinition.weapons.indexOf(weapon)) == contribution.weaponKey
-                    }
-                }
-            }.orEmpty()
-            val updatedProperties = unit.customProperties.toMutableMap()
-            if (consumables.isNotEmpty()) {
-                consumables.forEach { weapon ->
-                    val magazine = weapon.magazineId?.let { id -> definition?.systems?.firstOrNull { it.id == id } }
-                    val capacityId = magazine?.id ?: weapon.takeIf { it.submunition }
-                        ?.let { definition?.let { sourceDefinition -> OlympiadDawnShip.weaponKey(sourceDefinition, sourceDefinition.weapons.indexOf(it)) } }
-                    val capacity = magazine?.capacity ?: weapon.takeIf { it.submunition }?.let { 1 } ?: return@forEach
-                    val remaining = OlympiadDawnShip.capacityRemaining(updatedProperties, capacityId!!, capacity)
-                    if (remaining <= 0) return null
-                    updatedProperties[OlympiadDawnShip.magazinePropertyKey(capacityId)] = (remaining - 1).toString()
-                }
-            }
-            val updatedUsage = usage.copy(
-                firedWeapons = usage.firedWeapons + weaponKeys,
-                fireControlUsed = usage.fireControlUsed + if (consumesFireControl) 1 else 0,
-            )
+            val preparation = OperationTacticalEngagementService.prepareFire(
+                attacker = unit.snapshot().toOperationUnit(),
+                definition = definition,
+                report = OperationTacticalTargetingReport(report.weapons, emptyList(), report.fireControlCapacity, report.fireControlUsed),
+                contributions = contributions,
+                currentUsage = OperationTacticalFireUsage(usage.firedWeapons, usage.fireControlUsed),
+                targetIsFighter = resolutionTargetIsFighter(targetId),
+            ) as? OperationTacticalFirePreparationResult.Prepared ?: return null
+            val updatedProperties = preparation.attacker.customProperties
+            val updatedUsage = TacticalFireUsage(preparation.usage.firedWeapons, preparation.usage.fireControlUsed)
             val activation = ecmShape?.let { shape ->
                 val bearing = selectedPreview?.relativeBearingDegrees
                     ?: if (target.manualEcm) 0.0 else EcmRules.absoluteBearing(unit.snapshot(), resolutionTarget.snapshot().mapCoordinate, unitQueryService)
@@ -1294,6 +1295,7 @@ internal class MapPlacedUnitManager(
         }
 
         private fun openIntercept(pending: PendingIntercept) {
+            if (!olympiadDawnTacticalEnabled()) return
             val defender = units.firstOrNull { it.id == pending.defenderId } ?: return
             MapViewerTacticalDialog(
                 root = root,
@@ -1320,6 +1322,7 @@ internal class MapPlacedUnitManager(
                 persistenceTargetId = defender.id.value.toString(),
                 onFire = { _, selected -> resolvePendingIntercept(pending, selected) },
                 onFireResolved = { resolution ->
+                    if (!olympiadDawnTacticalEnabled()) return@MapViewerTacticalDialog
                     MapViewerGunrepDialog(
                         root,
                         dialogManager,
@@ -1335,6 +1338,7 @@ internal class MapPlacedUnitManager(
         }
 
         private fun resolvePendingIntercept(pending: PendingIntercept, selected: Set<String>): TacticalFireResolution? {
+            if (!olympiadDawnTacticalEnabled()) return null
             if (pending.defensiveFireResolved) return null
             pending.defensiveFireResolved = true
             val defender = units.firstOrNull { it.id == pending.defenderId } ?: return null
@@ -1369,6 +1373,7 @@ internal class MapPlacedUnitManager(
         }
 
         private fun resolveIncomingAttack(pending: PendingIntercept): TacticalFireResolution? {
+            if (!olympiadDawnTacticalEnabled()) return null
             if (pending.incomingResolved) return null
             pending.incomingResolved = true
             val defender = units.firstOrNull { it.id == pending.defenderId } ?: return null
@@ -1385,6 +1390,7 @@ internal class MapPlacedUnitManager(
         }
 
         private fun TacticalFireResolution.openGunrep() {
+            if (!olympiadDawnTacticalEnabled()) return
             MapViewerGunrepDialog(root, dialogManager, "gunrep-" + java.util.UUID.randomUUID(), this).open()
         }
 
@@ -1475,7 +1481,7 @@ internal class MapPlacedUnitManager(
             }
             val width = iconView.bitmap.width.toDouble()
             val height = iconView.bitmap.height.toDouble()
-            val fireArcsEnabled = MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL in MapViewerFeatureFlags.enabled &&
+            val fireArcsEnabled = olympiadDawnTacticalEnabled() &&
                     (id in tacticalDialogs || shouldDrawFireArcs(this))
             val definition = if (fireArcsEnabled) {
                 OlympiadDawnShip.definition(customProperties) ?: OlympiadDawnShip.definition(template.customProperties)
@@ -1538,6 +1544,7 @@ internal class MapPlacedUnitManager(
     }
 
     private fun updateEcmPreview(unit: PlacedUnit, target: TacticalTarget?, selectedWeaponKeys: Set<String>) {
+        if (!olympiadDawnTacticalEnabled()) return
         val moduleKeys = selectedWeaponKeys.filterTo(linkedSetOf()) { it.startsWith("ecm-") }
         if (target == null || moduleKeys.isEmpty()) {
             if (ecmPreview?.emitterId == unit.id) ecmPreview = null
@@ -1564,6 +1571,7 @@ internal class MapPlacedUnitManager(
     }
 
     private fun canFireTacticalSelection(target: TacticalTarget, selectedWeaponKeys: Set<String>): Boolean {
+        if (!olympiadDawnTacticalEnabled()) return false
         if (selectedWeaponKeys.isEmpty()) return false
         val moduleCount = selectedWeaponKeys.count { it.startsWith("ecm-") }
         if (target.manualEcm) return moduleCount > 0 && ecmPreview?.let { EcmRules.valid(moduleCount, it.shape.rangeU, it.shape.widthDegrees, it.shape.intensity) } == true

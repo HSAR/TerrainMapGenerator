@@ -2,9 +2,13 @@ package io.hsar.mapgenerator.commandgui
 
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 
 class MapViewerSettingsTest {
+
+    @AfterEach
+    fun clearFeatureFlags() = MapViewerFeatureFlags.initialize(emptySet())
 
     @Test
     fun `default settings enable all layers`() {
@@ -31,12 +35,10 @@ class MapViewerSettingsTest {
     }
 
     @Test
-    fun `custom settings can enable feature flags`() {
-        val settings = MapViewerSettings(
-            featureFlags = setOf(MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL),
-        )
+    fun `feature flags are held at runtime`() {
+        MapViewerFeatureFlags.initialize(setOf(MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL))
 
-        assertThat(settings.featureFlags, equalTo(setOf(MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL)))
+        assertThat(MapViewerFeatureFlags.enabled, equalTo(setOf(MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL)))
     }
 
     @Test

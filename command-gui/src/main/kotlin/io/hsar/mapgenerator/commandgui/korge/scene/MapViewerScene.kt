@@ -1,6 +1,5 @@
 package io.hsar.mapgenerator.commandgui.korge.scene
 
-import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlags
 import io.hsar.mapgenerator.commandgui.MapViewerDrawingColour
 import io.hsar.mapgenerator.commandgui.MapViewerDrawingMode
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
@@ -162,7 +161,6 @@ internal class MapViewerScene(
 
     @OptIn(KorgeExperimental::class)
     fun showWindow() {
-        MapViewerFeatureFlags.initialize(initialSettings.featureFlags)
         thread(name = "command-gui-korge", isDaemon = false) {
             val screenSize = Toolkit.getDefaultToolkit().screenSize
             val fontPreloadStartedAt = System.nanoTime()

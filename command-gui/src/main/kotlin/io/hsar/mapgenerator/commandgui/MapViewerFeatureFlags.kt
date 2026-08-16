@@ -1,7 +1,7 @@
 package io.hsar.mapgenerator.commandgui
 
-/** Launch-time feature flags shared by all viewer screens and dialogs. */
-internal object MapViewerFeatureFlags {
+/** Runtime feature flags shared by all viewer screens and dialogs in the current process. */
+object MapViewerFeatureFlags {
     @Volatile
     private var current: Set<MapViewerFeatureFlag> = emptySet()
 

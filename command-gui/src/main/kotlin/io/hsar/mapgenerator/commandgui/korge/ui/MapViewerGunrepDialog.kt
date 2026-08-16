@@ -1,6 +1,8 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.commandgui.korge.interaction.TacticalFireResolution
+import io.hsar.mapgenerator.commandgui.korge.interaction.operation
+import io.hsar.mapgenerator.commandgui.operation.OperationGunrepPresentationService
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.view.Container
 import korlibs.korge.view.container
@@ -14,6 +16,7 @@ internal class MapViewerGunrepDialog(
     private val resolution: TacticalFireResolution,
     private val onDismiss: () -> Unit = {},
 ) {
+    private val presentation = OperationGunrepPresentationService.present(resolution.operation())
     private var window: MapViewerDialogWindow? = null
 
     fun open(): Boolean {
@@ -21,15 +24,15 @@ internal class MapViewerGunrepDialog(
         val stage = root.stage ?: return false
         window = MapViewerDialogWindow(
             root = root,
-            title = "GUNREP — ${resolution.targetName}",
+            title = presentation.title,
             preferredWidth = 520.0,
             preferredHeight = 400.0,
             contentHeight = { contentHeight() },
             actions = listOf(MapViewerDialogAction("Dismiss") { close() }),
             onClose = ::close,
             renderContent = { parent, width, _ ->
-                MapViewerTextViews.leftBox(parent, "Attacker: ${resolution.attackerName}", width, 34.0)
-                MapViewerTextViews.leftBox(parent, "Weapons: ${weaponSummary()}", width, 34.0) { y = 40.0 }
+                MapViewerTextViews.leftBox(parent, presentation.attackerLabel, width, 34.0)
+                MapViewerTextViews.leftBox(parent, presentation.weaponsLabel, width, 34.0) { y = 40.0 }
                 MapViewerTextViews.leftBox(parent, "Rolls:", width, 34.0) { y = 80.0 }
                 resolution.dieResults.forEachIndexed { index, result ->
                     val row = index / ROLLS_PER_ROW
@@ -44,25 +47,11 @@ internal class MapViewerGunrepDialog(
                     )
                 }
                 val summaryTop = 120.0 + rollRows() * DIE_HEIGHT + 8.0
-                MapViewerTextViews.leftBox(parent, "Damage: ${resolution.damage}", width, 34.0) { y = summaryTop }
-                resolution.ecmActivations.firstOrNull()?.let { activation ->
-                    MapViewerTextViews.leftBox(
-                        parent,
-                        "ECM: ${format(activation.rangeU)}U × ${format(activation.widthDegrees)}° | Level ${activation.intensity} | ${activation.moduleKeys.size} module(s)",
-                        width,
-                        34.0,
-                    ) { y = summaryTop + 40.0 }
-                }
-                resolution.effectiveEcmLevel.takeIf { it > 0 && resolution.ecmActivations.isEmpty() }?.let { level ->
-                    MapViewerTextViews.leftBox(parent, "Affected by ECM level $level", width, 34.0) { y = summaryTop + 40.0 }
-                }
+                MapViewerTextViews.leftBox(parent, presentation.damageLabel, width, 34.0) { y = summaryTop }
+                presentation.ecmLabel?.let { MapViewerTextViews.leftBox(parent, it, width, 34.0) { y = summaryTop + 40.0 } }
                 val outcomeOffset = if (resolution.ecmActivations.isNotEmpty() || resolution.effectiveEcmLevel > 0) 40.0 else 0.0
-                resolution.fightersDestroyed.takeIf { it > 0 }?.let { fighters ->
-                    MapViewerTextViews.leftBox(parent, "Fighters destroyed: $fighters", width, 34.0) { y = summaryTop + 40.0 + outcomeOffset }
-                }
-                resolution.targetDestroyed.takeIf { it }?.let {
-                    MapViewerTextViews.leftBox(parent, "Target destroyed", width, 34.0) { y = summaryTop + 80.0 + outcomeOffset }
-                }
+                presentation.fightersDestroyedLabel?.let { MapViewerTextViews.leftBox(parent, it, width, 34.0) { y = summaryTop + 40.0 + outcomeOffset } }
+                presentation.targetDestroyedLabel?.let { MapViewerTextViews.leftBox(parent, it, width, 34.0) { y = summaryTop + 80.0 + outcomeOffset } }
             },
             persistence = MapViewerDialogPersistence(type = "gunrep"),
             mode = MapViewerDialogMode.FLOATING,
@@ -86,19 +75,10 @@ internal class MapViewerGunrepDialog(
         onDismiss()
     }
 
-    private fun weaponSummary(): String = resolution.weaponNames
-        .distinct()
-        .joinToString { name ->
-            val count = resolution.weaponNames.count { it == name }
-            if (count == 1) name else "$name x$count"
-        }
-
     private fun rollRows(): Int = ceil(resolution.dieResults.size / ROLLS_PER_ROW.toDouble()).toInt().coerceAtLeast(1)
 
     private fun contentHeight(): Double = 120.0 + rollRows() * DIE_HEIGHT + 128.0 +
             if (resolution.ecmActivations.isNotEmpty() || resolution.effectiveEcmLevel > 0) 40.0 else 0.0
-
-    private fun format(value: Double): String = "%.1f".format(value).trimEnd('0').trimEnd('.')
 
     private companion object {
         const val ROLLS_PER_ROW = 8

@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.interaction
 import io.hsar.mapgenerator.commandgui.operation.*
 
 import io.hsar.mapgenerator.commandgui.ViewerGeometry
+import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireKey
 import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalFireUsage
 import io.hsar.mapgenerator.commandgui.korge.persistence.TacticalTurnMarker
@@ -43,6 +44,7 @@ class MapPlacedUnitManagerTest {
             contextMenuManager = ContextMenuManager(root),
             deferredActionRunner = ContextMenuDeferredActionRunner(root),
             dialogManager = MapViewerDialogManager(),
+            enabledFeatureFlagsProvider = { setOf(MapViewerFeatureFlag.OLYMPIAD_DAWN_EXPERIMENTAL) },
             tacticalFireUsageProvider = { usage[it] ?: TacticalFireUsage() },
             onTacticalFireUsageChanged = { key, value -> usage[key] = value },
             ecmActivationsProvider = { turn -> activations.filter { it.turnNumber == turn } },
@@ -76,6 +78,55 @@ class MapPlacedUnitManagerTest {
             TacticalTurnMarker.usage(manager.snapshot(sourceId)!!.customProperties, 1),
             equalTo(TacticalFireUsage(setOf("ecm-ecm-1"), 0)),
         )
+    }
+
+    @Test
+    fun `disabled Olympiad Dawn flag prevents programmatic tactical execution without persistence changes`() {
+        val activations = mutableListOf<EcmActivation>()
+        val usage = mutableMapOf<TacticalFireKey, TacticalFireUsage>()
+        val root = Container()
+        val manager = MapPlacedUnitManager(
+            root = root,
+            unitLayer = root.container(),
+            geometry = CENTERED_GEOMETRY,
+            mapUnitsPerPixel = 1.0,
+            mapWidth = 1000,
+            mapHeight = 1000,
+            viewportProvider = { CameraViewport.centeredOnMap(CENTERED_GEOMETRY, 1000, 1000, 1000, 1000, 1.0) },
+            contextMenuManager = ContextMenuManager(root),
+            deferredActionRunner = ContextMenuDeferredActionRunner(root),
+            dialogManager = MapViewerDialogManager(),
+            enabledFeatureFlagsProvider = { emptySet() },
+            tacticalFireUsageProvider = { usage[it] ?: TacticalFireUsage() },
+            onTacticalFireUsageChanged = { key, value -> usage[key] = value },
+            onEcmActivation = activations::add,
+        )
+        val definition = OlympiadDawnShip.parse(
+            """{"name":"Ship","class":"Frigate","hull":{"points":1,"rows":1},"armour":[],"systems":[{"name":"ecm","id":"ecm-1"}]}""",
+        )
+        val sourceTemplate = MapViewerUnitTemplate(UnitTemplateId(UUID(0, 170)), "Source", Bitmap32(4, 4), affiliation = UnitAffiliation.Friend,
+            customProperties = OlympiadDawnShip.importedTemplateProperties(emptyMap(), definition))
+        val targetTemplate = sourceTemplate.copy(id = UnitTemplateId(UUID(0, 171)), name = "Target", affiliation = UnitAffiliation.Hostile)
+        val sourceId = MapPlacedObjectId(UUID(0, 172))
+        val targetId = MapPlacedObjectId(UUID(0, 173))
+        manager.upsert(manager.buildSnapshot(sourceId, sourceTemplate.id, sourceTemplate, "Source", MapCoordinate(0.5, 0.5), facingDegrees = 0))
+        manager.upsert(manager.buildSnapshot(targetId, targetTemplate.id, targetTemplate, "Target", MapCoordinate(0.5, 0.498), facingDegrees = 0))
+        val before = manager.snapshot(sourceId)
+
+        assertThat(manager.consumeTacticalSolution(sourceId, targetId), equalTo(false))
+        assertThat(
+            manager.restoreTacticalDialog(
+                io.hsar.mapgenerator.commandgui.save.MapViewerPersistedDialog(
+                    type = "tactical",
+                    targetId = sourceId.value.toString(),
+                    bounds = io.hsar.mapgenerator.commandgui.save.MapViewerDialogBounds(0.0, 0.0, 400.0, 400.0),
+                ),
+            ),
+            equalTo(false),
+        )
+        assertThat(manager.snapshot(sourceId), equalTo(before))
+        assertThat(usage, equalTo(emptyMap()))
+        assertThat(activations, equalTo(emptyList()))
     }
 
     @Test

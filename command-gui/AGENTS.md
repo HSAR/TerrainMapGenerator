@@ -45,7 +45,7 @@ Treat the following as implemented and protected behavior, not future work:
   graphic palettes create, edit and safely delete templates, and their click-then-map placement modes use immutable previews before recording one object entry. Graphic dimensions
   are template-owned and propagate to every live instance; archive and KorGE boundaries mirror them through the established normalized-size property keys. Unit edits cover
   template, grid-aware position, name, facing, destroyed state, affiliation and custom properties; graphic edits cover template, display label, grid-aware position and instance
-  properties. Campaign-specific Olympiad Dawn panels remain deferred to Phase 3.
+  properties. Campaign-specific Olympiad Dawn status, report and tactical panels are implemented as flag-gated typed Compose editors.
 - Revisioned two-second autosave, manual save, save-gated return/close, in-flight mutation handling and Retry/Cancel Exit are implemented. New operations save without requiring a
   first edit.
 - Additive UI schema version 6 stores typed note, unit and graphic drafts (including bounded embedded template images) while continuing to write version-2
@@ -126,8 +126,12 @@ and renderer-specific status panels retain only layout and input adaptation. Per
 Completed: sensor visibility, contact/Sierra lifecycle, ECM geometry and SITREP/SCIREP/NAVREP generation now live in `commandgui.operation`. The neutral report service returns
 immutable assessments and normalized per-turn contact state; low-confidence tracks use candidate-to-last-seen distance, and hidden or destroyed contacts cannot remain active or
 identified. Additive SITREP/ECM persistence uses neutral IDs and types, while KorGE retains runtime projection, dialog controls, overlays, clipboard and pointer handling.
-3. Extract fire arcs, tactical targeting, ammunition/fire-control usage, combat resolution and damage application.
-4. Build Compose SITREP/SCIREP, GUNREP, tactical and Olympiad Dawn editors/reports on those neutral services, including map overlays and persisted per-turn state.
+Completed: fire arcs, tactical targeting, ammunition/fire-control state, combat resolution, damage rules, tactical persistence codecs and GUNREP presentation now live in
+`commandgui.operation`. KorGE delegates through runtime projection adapters and retains dialogs, overlays and ledger orchestration. Every tactical entry point, including restored
+dialogs and programmatic firing/interception paths, is guarded by `OLYMPIAD_DAWN_EXPERIMENTAL`; disabling it preserves existing tactical payloads without executing or mutating them.
+Completed: Compose now provides flag-gated SCIREP/NAVREP, GUNREP, tactical and Olympiad Dawn status/damage editors on the neutral services. Contact, ECM and tactical state
+round-trips through the existing additive payloads, unit changes remain timeline-backed, and the single Compose map surface renders tactical targeting and ECM overlays. When
+`OLYMPIAD_DAWN_EXPERIMENTAL` is disabled, operational menu actions, editors, overlays, rolls and persistence mutations remain unavailable while saved payloads are preserved.
 
 Phase 3 gate: existing sensor, tactical and Olympiad Dawn test cases run outside `korge` against neutral models, and the corresponding Compose workflows produce equivalent
 persisted

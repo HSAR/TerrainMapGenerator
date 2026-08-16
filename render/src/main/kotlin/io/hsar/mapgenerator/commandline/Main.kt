@@ -66,6 +66,7 @@ object LaunchGuiCommand : Command("show-gui") {
             renderMap = ::renderViewerImage,
             initialSettings = viewerSettings(staticLayers),
             initialSetupInputs = initialSetupInputs(mapPath, staticImagePaths),
+            featureFlags = featureFlags.toSet(),
             backend = MapViewerBackend.fromCliName(viewer),
         ).showWindow()
     }
@@ -74,7 +75,6 @@ object LaunchGuiCommand : Command("show-gui") {
         availableLayers = buildViewerLayers(staticLayers),
         enabledLayerIds = defaultEnabledLayerIds(selectedLayers, staticLayers),
         staticLayerImages = staticLayers.associate { it.layer.id to it.image },
-        featureFlags = featureFlags.toSet(),
         seed = seed,
         unitsPerPixel = metresPerPixel,
         metresPerContour = metresPerContour,

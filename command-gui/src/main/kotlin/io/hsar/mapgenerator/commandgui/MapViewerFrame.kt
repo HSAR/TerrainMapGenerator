@@ -37,10 +37,12 @@ class MapViewerFrame(
     private val renderMap: (MapViewerSettings) -> MapViewerRenderData,
     private val initialSettings: MapViewerSettings = MapViewerSettings(),
     private val initialSetupInputs: MapViewerSetupInputs = MapViewerSetupInputs(),
+    private val featureFlags: Set<MapViewerFeatureFlag> = emptySet(),
     private val backend: MapViewerBackend = MapViewerBackend.KORGE,
 ) {
 
-    fun showWindow() =
+    fun showWindow() {
+        MapViewerFeatureFlags.initialize(featureFlags)
         when (backend) {
             MapViewerBackend.KORGE ->
                 MapViewerScene(renderMap, initialSettings, initialSetupInputs).showWindow()
@@ -53,5 +55,6 @@ class MapViewerFrame(
                         "Compose viewer is not available. Ensure command-gui-compose is on the runtime classpath.",
                     )
         }
+    }
 
 }
