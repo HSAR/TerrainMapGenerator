@@ -19,6 +19,10 @@ interface OperationSelectionProjection {
 
 fun OperationObject.supportsResizeHandles() = this is OperationGraphic || this is OperationDrawingObject
 
+fun List<OperationObject>.showsSelectionBrackets() = size > 1 || singleOrNull()?.supportsResizeHandles() == true
+
+fun List<OperationObject>.supportsSelectionResize() = any(OperationObject::supportsResizeHandles)
+
 fun OperationContent.selectionFrame(
     ids: Set<OperationObjectId>,
     projection: OperationSelectionProjection,

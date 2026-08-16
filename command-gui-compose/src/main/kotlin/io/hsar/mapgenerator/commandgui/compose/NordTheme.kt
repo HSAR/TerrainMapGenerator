@@ -2,10 +2,12 @@ package io.hsar.mapgenerator.commandgui.compose
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -69,8 +71,9 @@ internal fun NordTheme(fontAvailable: Boolean = true, content: @Composable () ->
             large = RoundedCornerShape(0.dp),
             extraLarge = RoundedCornerShape(0.dp),
         ),
-        content = content,
-    )
+    ) {
+        CompositionLocalProvider(LocalContentColor provides CommandColours.White, content = content)
+    }
 }
 
 internal object CommandColours {

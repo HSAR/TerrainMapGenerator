@@ -35,4 +35,9 @@ class CommandDesignTest {
         assertThat(COMMAND_BUTTON_MIN_HEIGHT, equalTo(40.dp))
         assertThat(COMMAND_BUTTON_HORIZONTAL_PADDING, equalTo(12.dp))
     }
+
+    @Test
+    fun `focused buttons use a white rather than blue frame`() {
+        assertThat(COMMAND_BUTTON_FOCUS_COLOUR, equalTo(CommandColours.White))
+    }
 }

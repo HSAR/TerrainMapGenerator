@@ -68,7 +68,7 @@ internal fun CommandButton(
     val border = when {
         !enabled -> CommandColours.Light
         destructive -> CommandColours.Red
-        focused -> CommandColours.Blue
+        focused -> COMMAND_BUTTON_FOCUS_COLOUR
         hovered -> CommandColours.Backing
         else -> CommandColours.White
     }
@@ -81,7 +81,10 @@ internal fun CommandButton(
         enabled = enabled,
         interactionSource = interactions,
         shape = RectangleShape,
-        border = BorderStroke(if (focused) CommandDesignTokens.focusBorderWidth else CommandDesignTokens.borderWidth, border),
+        border = BorderStroke(
+            if (focused) CommandDesignTokens.focusBorderWidth else CommandDesignTokens.borderWidth,
+            border,
+        ),
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = backing,
             contentColor = CommandColours.White,
@@ -100,6 +103,7 @@ internal val COMMAND_BUTTON_FONT_SIZE = 22.sp
 internal val COMMAND_BUTTON_MIN_WIDTH = 120.dp
 internal val COMMAND_BUTTON_MIN_HEIGHT = 40.dp
 internal val COMMAND_BUTTON_HORIZONTAL_PADDING = 12.dp
+internal val COMMAND_BUTTON_FOCUS_COLOUR = CommandColours.White
 
 internal object CommandDesignTokens {
     val buttonFontSize = COMMAND_BUTTON_FONT_SIZE

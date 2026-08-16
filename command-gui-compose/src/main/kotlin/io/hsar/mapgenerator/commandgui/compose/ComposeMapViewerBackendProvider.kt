@@ -290,6 +290,11 @@ private fun ComposeMapViewer(
     val modalHost = remember { ComposeModalHostState() }
     val filePicker = remember(awtWindow) { ComposeFilePicker(awtWindow as? Frame) }
     val launchBackgroundSeed = remember { Random.nextLong() }
+    val launchBackgroundScope = rememberCoroutineScope()
+    val launchBackgroundState = remember(launchBackgroundSeed, launchBackgroundScope) {
+        ComposeLaunchBackgroundState(launchBackgroundSeed, launchBackgroundScope)
+    }
+    var launchBackgroundExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(launchState.activeMap?.settings?.operationName, launchState.screen) {
         onTitleChanged(
@@ -300,7 +305,7 @@ private fun ComposeMapViewer(
 
     CompositionLocalProvider(
         LocalComposeFilePicker provides filePicker,
-        LocalComposeLaunchBackgroundSeed provides launchBackgroundSeed,
+        LocalComposeLaunchBackgroundState provides launchBackgroundState,
     ) {
     Box(Modifier.fillMaxSize()) {
     launchState.activeMap?.let { map ->
@@ -349,6 +354,14 @@ private fun ComposeMapViewer(
         }
     }
     if (launchState.activeMap == null && launchState.screen == ComposeLaunchScreen.MAIN) {
+        ComposeLaunchBackgroundPanel(
+            state = launchBackgroundState,
+            expanded = launchBackgroundExpanded,
+            onToggle = { launchBackgroundExpanded = !launchBackgroundExpanded },
+            onRegenerate = { launchBackgroundState.regenerate(Random.nextLong()) },
+            onClose = { launchBackgroundExpanded = false },
+            modifier = Modifier.align(Alignment.TopStart).padding(20.dp),
+        )
         VersionAboutButton(
             version = buildInfo.version,
             onClick = {
@@ -2971,7 +2984,20 @@ private fun MapCanvas(
         10.0 / (currentViewport.zoom * minOf(mapWidth, mapHeight)),
     )
 
-    fun selectionFrame() = interactionContent.selectionFrame(selectedObjectIds, selectionProjection)
+    fun selectedObjects() = interactionContent.objects.filter { it.id in selectedObjectIds }
+
+    fun selectionGroupFrame() = selectedObjects()
+        .takeIf { selected -> selected.size > 1 }
+        ?.let { interactionContent.selectionFrame(selectedObjectIds, selectionProjection) }
+
+    fun selectionBracketFrame() = selectedObjects().let { selected ->
+        selected.takeIf { it.showsSelectionBrackets() }
+            ?.let { interactionContent.selectionFrame(selectedObjectIds, selectionProjection) }
+    }
+
+    fun selectionResizeFrame() = selectedObjects()
+        .takeIf { it.supportsSelectionResize() }
+        ?.let { interactionContent.selectionFrame(selectedObjectIds, selectionProjection) }
 
     fun containsNonMovableDestroyed(ids: Set<OperationObjectId>) =
         !OperationDestroyedUnitDisplayPolicy.movable(interactionContent.objects, ids, destroyedUnitDisplayMode)
@@ -3105,9 +3131,10 @@ private fun MapCanvas(
                     return@onPointerEvent
                 }
                 val point = ViewerPoint(change.position.x.toDouble(), change.position.y.toDouble())
-                val frame = selectionFrame()
-                val rotateHit = frame?.rotationHandle()?.let { hypot(it.x - point.x, it.y - point.y) <= 12.0 } == true
-                val resizeHit = frame?.cornerBrackets()?.firstOrNull { it.contains(point) }
+                val bracketFrame = selectionBracketFrame()
+                val resizeFrame = selectionResizeFrame()
+                val rotateHit = bracketFrame?.rotationHandle()?.let { hypot(it.x - point.x, it.y - point.y) <= 12.0 } == true
+                val resizeHit = resizeFrame?.cornerBrackets()?.firstOrNull { it.contains(point) }
                 when {
                     rotateHit && selectedObjectIds.isNotEmpty() && !containsNonMovableDestroyed(selectedObjectIds) -> {
                         val bounds = content.selectionBounds(selectedObjectIds, aspectRatio) ?: return@onPointerEvent
@@ -3122,7 +3149,9 @@ private fun MapCanvas(
                             selectedIds = selectedObjectIds,
                             grabbedCorner = resizeHit.corner,
                             aspectRatio = aspectRatio,
-                            originalFixedCorner = frame.corner(resizeHit.corner.opposite()).let(selectionProjection::toMap),
+                            originalFixedCorner = resizeFrame
+                                .corner(resizeHit.corner.opposite())
+                                .let(selectionProjection::toMap),
                         )
                     }
 
@@ -3369,9 +3398,24 @@ private fun MapCanvas(
                     drawText(textMeasurer, label, Offset(centre.x - measured.size.width / 2f, centre.y - height.toFloat() / 2f - measured.size.height - 4f), style)
                 }
             }
-            interactionContent.objects.filter { it.id in selectedObjectIds }.map { it.selectionScreenBounds(selectionProjection) }.forEach { bounds ->
+            val selected = selectedObjects()
+            val selectionFallbackColour = renderData.gridLayer?.colour?.toComposeColour() ?: CommandColours.Main
+            val groupSelectionColour = selected.singleOrNull()
+                ?.composeSelectionColour(interactionContent, selectionFallbackColour)
+                ?: selected.composeSelectionColour(interactionContent, selectionFallbackColour)
+            selectionGroupFrame()?.let { frame ->
+                val path = frame.path()
+                drawPath(path, groupSelectionColour.copy(alpha = 28f / 255f))
+                drawPath(
+                    path,
+                    groupSelectionColour.copy(alpha = 150f / 255f),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(2f),
+                )
+            }
+            selected.forEach { selectedObject ->
+                val bounds = selectedObject.selectionScreenBounds(selectionProjection)
                 drawRect(
-                    Color.White.copy(alpha = 0.82f),
+                    selectedObject.composeSelectionColour(interactionContent, selectionFallbackColour).copy(alpha = 210f / 255f),
                     Offset(bounds.left.toFloat(), bounds.top.toFloat()),
                     androidx.compose.ui.geometry.Size((bounds.right - bounds.left).toFloat(), (bounds.bottom - bounds.top).toFloat()),
                     style = androidx.compose.ui.graphics.drawscope.Stroke(2f)
@@ -3399,16 +3443,16 @@ private fun MapCanvas(
                     )
                 }
             }
-            selectionFrame()?.let { frame ->
+            selectionBracketFrame()?.let { frame ->
                 frame.cornerBrackets().forEach { bracket ->
                     drawPath(Path().apply {
                         moveTo(bracket.points.first().x.toFloat(), bracket.points.first().y.toFloat()); bracket.points.drop(1)
                         .forEach { lineTo(it.x.toFloat(), it.y.toFloat()) }; close()
-                    }, Color.White)
+                    }, groupSelectionColour.copy(alpha = 230f / 255f))
                 }
                 frame.rotationHandle().let { handle ->
-                    drawCircle(Color.White, 7f, Offset(handle.x.toFloat(), handle.y.toFloat()))
-                    drawCircle(Color(0xFF120909), 3.5f, Offset(handle.x.toFloat(), handle.y.toFloat()))
+                    drawCircle(groupSelectionColour.copy(alpha = 230f / 255f), 7f, Offset(handle.x.toFloat(), handle.y.toFloat()))
+                    drawCircle(groupSelectionColour.copy(alpha = 0.9f), 3.5f, Offset(handle.x.toFloat(), handle.y.toFloat()))
                 }
             }
             marquee?.let { selection ->
@@ -3546,6 +3590,37 @@ private fun OperationUnitAffiliation?.facingIndicatorColor() = when (this) {
     OperationUnitAffiliation.NEUTRAL -> Color(0xFF3D7652)
     OperationUnitAffiliation.UNKNOWN -> Color(0xFF806E29)
     null -> Color(0xFF403A3A)
+}
+
+internal fun OperationObject.composeSelectionColour(
+    content: OperationContent,
+    fallback: Color = CommandColours.Main,
+) = when (this) {
+    is OperationUnit -> (affiliation ?: content.unitTemplate(unitTemplateId)?.affiliation).facingIndicatorColor()
+    is OperationDrawingObject -> drawing.colour.toComposeColour()
+    is OperationGraphic -> fallback
+}
+
+internal fun List<OperationObject>.composeSelectionColour(
+    content: OperationContent,
+    fallback: Color = CommandColours.Main,
+) = mapNotNull { selected ->
+    (selected as? OperationUnit)?.let { unit ->
+        unit.affiliation ?: content.unitTemplate(unit.unitTemplateId)?.affiliation
+    }
+}.let { affiliations ->
+    affiliations.firstOrNull()
+        ?.takeIf { first -> affiliations.all { it == first } }
+        ?.facingIndicatorColor()
+        ?: fallback
+}
+
+private fun io.hsar.mapgenerator.commandgui.MapSelectionFrame.path() = Path().apply {
+    moveTo(topLeft.x.toFloat(), topLeft.y.toFloat())
+    lineTo(topRight.x.toFloat(), topRight.y.toFloat())
+    lineTo(bottomRight.x.toFloat(), bottomRight.y.toFloat())
+    lineTo(bottomLeft.x.toFloat(), bottomLeft.y.toFloat())
+    close()
 }
 
 private fun java.awt.Color.toComposeColour() =
