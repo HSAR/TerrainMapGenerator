@@ -5,6 +5,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerLedgerEntryKind
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerTool
+import io.hsar.mapgenerator.commandgui.MapViewerPanel
 import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
 import io.hsar.mapgenerator.commandgui.MapViewport
 import io.hsar.mapgenerator.commandgui.ViewerPoint
@@ -109,7 +110,7 @@ class ComposeOperationStateTest {
     fun `keeps several independently identified editors open`() {
         val state = ComposeOperationState(documentWith(unit)).openUnitEditor(objectId).openUnitEditor(objectId)
 
-        assertThat(state.openEditors.map { it.id.value }, equalTo(listOf("operation-notes", "unit:${objectId.value}")))
+        assertThat(state.openEditors.map { it.id.value }, equalTo(listOf("unit:${objectId.value}")))
     }
 
     @Test
@@ -117,7 +118,7 @@ class ComposeOperationStateTest {
         val editorId = OperationEditorId("unit:${objectId.value}")
         val state = ComposeOperationState(documentWith(unit)).openUnitEditor(objectId).closeEditor(editorId)
 
-        assertThat(state.openEditors.map { it.id.value }, equalTo(listOf("operation-notes")))
+        assertThat(state.openEditors, equalTo(emptyList()))
     }
 
     @Test
@@ -187,8 +188,7 @@ class ComposeOperationStateTest {
         assertThat(state.activeTool, equalTo(MapViewerTool.MEASURE))
         assertThat(state.workspaceMode, equalTo(MapViewerWorkspaceMode.FLOATING))
         assertThat(state.enabledLayerIds, equalTo(setOf("GRID")))
-        assertThat(state.openEditors.single().id, equalTo(OperationWorkspaceState.DEFAULT_NOTES_ID))
-        assertThat((state.openEditors.single().draft as OperationEditorDraft.Notes).body, equalTo(""))
+        assertThat(state.openEditors, equalTo(emptyList()))
         assertThat(state.saveStatus, equalTo(ComposeSaveStatus.CLEAN))
         assertThat(state.hasUnsavedChanges, equalTo(false))
     }
@@ -212,7 +212,7 @@ class ComposeOperationStateTest {
     fun `pinning stores the legacy compatible top right map anchor`() {
         val viewport = MapViewport.centered(166.0, 166.0, 100, 100, 2.0)
         val editorId = OperationWorkspaceState.DEFAULT_NOTES_ID
-        val state = ComposeOperationState(documentWith(unit)).updateViewport(viewport)
+        val state = ComposeOperationState(documentWith(unit)).openNotes().updateViewport(viewport)
 
         val pinned = state.pinEditor(editorId, ViewerPoint(60.0, 20.0))
 
@@ -480,6 +480,19 @@ class ComposeOperationStateTest {
             .openLedgerTarget(OperationLedgerTarget.Object(objectId))
 
         assertThat(state.openEditors.count { it.kind == OperationEditorKind.UNIT }, equalTo(1))
+    }
+
+    @Test
+    fun `menu panels toggle closed even when another editor is active`() {
+        val opened = ComposeOperationState(documentWith(unit))
+            .togglePanel(MapViewerPanel.GAME)
+            .togglePanel(MapViewerPanel.NOTES)
+
+        val closedGame = opened.togglePanel(MapViewerPanel.GAME)
+
+        assertThat(closedGame.workspace.editor(io.hsar.mapgenerator.commandgui.operation.OperationWorkspaceState.GAME_ID), equalTo(null))
+        assertThat(closedGame.workspace.editor(io.hsar.mapgenerator.commandgui.operation.OperationWorkspaceState.DEFAULT_NOTES_ID) != null, equalTo(true))
+        assertThat(closedGame.workspace.dockContaining(io.hsar.mapgenerator.commandgui.operation.OperationWorkspaceState.DEFAULT_NOTES_ID)?.region, equalTo(io.hsar.mapgenerator.commandgui.operation.OperationDockRegion.LEFT))
     }
 
     private fun graphicTemplate() = OperationGraphicTemplate(

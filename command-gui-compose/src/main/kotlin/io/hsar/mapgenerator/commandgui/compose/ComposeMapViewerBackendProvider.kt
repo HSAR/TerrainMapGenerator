@@ -8,12 +8,14 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,9 +28,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
@@ -44,6 +48,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,17 +58,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.painter.BitmapPainter
@@ -73,7 +82,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isAltPressed
@@ -90,12 +99,12 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
@@ -106,8 +115,14 @@ import io.hsar.mapgenerator.commandgui.MapSelectionBox
 import io.hsar.mapgenerator.commandgui.MapSelectionScreenBounds
 import io.hsar.mapgenerator.commandgui.MapViewerBackend
 import io.hsar.mapgenerator.commandgui.MapViewerBackendProvider
-import io.hsar.mapgenerator.commandgui.MapViewerContextMenuCommand
-import io.hsar.mapgenerator.commandgui.MapViewerContextMenuItem
+import io.hsar.mapgenerator.commandgui.MapViewerCommand
+import io.hsar.mapgenerator.commandgui.MapViewerCommandContext
+import io.hsar.mapgenerator.commandgui.MapViewerCommandItem
+import io.hsar.mapgenerator.commandgui.MapViewerCommandResolver
+import io.hsar.mapgenerator.commandgui.MapViewerChromeLayoutBuilder
+import io.hsar.mapgenerator.commandgui.MapViewerDisplaySettings
+import io.hsar.mapgenerator.commandgui.MapViewerObjectCommand
+import io.hsar.mapgenerator.commandgui.MapViewerPanel
 import io.hsar.mapgenerator.commandgui.MapViewerDrawingColour
 import io.hsar.mapgenerator.commandgui.MapViewerDrawingMode
 import io.hsar.mapgenerator.commandgui.MapViewerGlobalSettings
@@ -115,6 +130,8 @@ import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayLayoutBuilder
 import io.hsar.mapgenerator.commandgui.MapViewerGridOverlayRequest
 import io.hsar.mapgenerator.commandgui.MapViewerGridReference
 import io.hsar.mapgenerator.commandgui.MapViewerImageLoader
+import io.hsar.mapgenerator.commandgui.MapViewerMenuLayoutBuilder
+import io.hsar.mapgenerator.commandgui.MapViewerMenuTokens
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
 import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
@@ -129,6 +146,7 @@ import io.hsar.mapgenerator.commandgui.ViewerPoint
 import io.hsar.mapgenerator.commandgui.operation.OperationContent
 import io.hsar.mapgenerator.commandgui.operation.OperationDockRegion
 import io.hsar.mapgenerator.commandgui.operation.OperationDocument
+import io.hsar.mapgenerator.commandgui.operation.OperationDestroyedUnitDisplayMode
 import io.hsar.mapgenerator.commandgui.operation.OperationDrawingObject
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorBounds
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorDraft
@@ -137,6 +155,7 @@ import io.hsar.mapgenerator.commandgui.operation.OperationEditorKind
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorState
 import io.hsar.mapgenerator.commandgui.operation.OperationEditorTarget
 import io.hsar.mapgenerator.commandgui.operation.OperationFreeformDrawing
+import io.hsar.mapgenerator.commandgui.operation.OperationFireArcDisplayMode
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphic
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphicAuthoring
 import io.hsar.mapgenerator.commandgui.operation.OperationGraphicTemplate
@@ -179,7 +198,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
-import java.awt.FileDialog
 import java.awt.Frame
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -201,8 +219,11 @@ class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
         renderMap: (MapViewerSettings) -> MapViewerRenderData,
         initialSettings: MapViewerSettings,
         initialSetupInputs: MapViewerSetupInputs,
-    ) = application {
-        var workspaceModeRequestHandler by remember { mutableStateOf<(WorkspaceMode) -> Unit>({}) }
+    ) {
+        val fontDiagnostic = inspectComposeFonts()
+        val buildInfo = ComposeBuildInfo.load()
+        val presentationResources = ComposePresentationResources.load()
+        application {
         var windowTitle by remember { mutableStateOf(MapViewerSettings().windowTitle()) }
         var closeRequestHandler by remember { mutableStateOf<() -> Unit>({ exitApplication() }) }
         val windowState = rememberWindowState(placement = COMPOSE_INITIAL_WINDOW_PLACEMENT)
@@ -218,28 +239,15 @@ class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
             onCloseRequest = { closeRequestHandler() },
             icon = BitmapPainter(applicationIcon),
         ) {
-            MenuBar {
-                Menu("Workspace") {
-                    Item(
-                        text = "Docked",
-                        onClick = { workspaceModeRequestHandler(WorkspaceMode.DOCKED) },
-                        shortcut = null,
-                    )
-                    Item(
-                        text = "Floating",
-                        onClick = { workspaceModeRequestHandler(WorkspaceMode.FLOATING) },
-                        shortcut = null,
-                    )
-                }
-            }
-
-            NordTheme {
+            NordTheme(fontAvailable = fontDiagnostic.available) {
                 ComposeMapViewer(
                     renderMap = renderMap,
                     initialSettings = initialSettings,
                     initialSetupInputs = initialSetupInputs,
                     awtWindow = window,
-                    onWorkspaceModeRequestHandlerChanged = { workspaceModeRequestHandler = it },
+                    buildInfo = buildInfo,
+                    presentationResources = presentationResources,
+                    fontDiagnostic = fontDiagnostic,
                     onTitleChanged = { windowTitle = it },
                     onExit = ::exitApplication,
                     onCloseRequestHandlerChanged = { closeRequestHandler = it },
@@ -247,6 +255,7 @@ class ComposeMapViewerBackendProvider : MapViewerBackendProvider {
             }
         }
     }
+}
 }
 
 internal typealias WorkspaceMode = MapViewerWorkspaceMode
@@ -257,7 +266,9 @@ private fun ComposeMapViewer(
     initialSettings: MapViewerSettings,
     initialSetupInputs: MapViewerSetupInputs,
     awtWindow: java.awt.Window,
-    onWorkspaceModeRequestHandlerChanged: ((WorkspaceMode) -> Unit) -> Unit,
+    buildInfo: ComposeBuildInfo,
+    presentationResources: ComposePresentationResources,
+    fontDiagnostic: ComposeFontDiagnostic,
     onTitleChanged: (String) -> Unit,
     onExit: () -> Unit,
     onCloseRequestHandlerChanged: (() -> Unit) -> Unit,
@@ -273,6 +284,8 @@ private fun ComposeMapViewer(
     }
     val repository = remember { MapViewerSaveRepository() }
     val globalSettings = remember { MapViewerGlobalSettings() }
+    val modalHost = remember { ComposeModalHostState() }
+    val filePicker = remember(awtWindow) { ComposeFilePicker(awtWindow as? Frame) }
 
     LaunchedEffect(launchState.activeMap?.settings?.operationName, launchState.screen) {
         onTitleChanged(
@@ -281,23 +294,27 @@ private fun ComposeMapViewer(
         )
     }
 
+    CompositionLocalProvider(LocalComposeFilePicker provides filePicker) {
+    Box(Modifier.fillMaxSize()) {
     launchState.activeMap?.let { map ->
         key(map) {
             ViewerWorkspace(
                 initialMap = map,
                 repository = repository,
-                initialUnitIconSizePx = globalSettings.unitIconSizePx(),
+                initialDisplaySettings = globalSettings.displaySettings(),
                 onUnitIconSizeChanged = globalSettings::updateUnitIconSizePx,
-                onWorkspaceModeRequestHandlerChanged = onWorkspaceModeRequestHandlerChanged,
+                onDestroyedUnitDisplayModeChanged = globalSettings::updateDestroyedUnitDisplayMode,
+                onFireArcDisplayModeChanged = globalSettings::updateFireArcDisplayMode,
                 onReturnToLaunchpad = launchState::returnToLaunchpad,
                 onExitProgram = onExit,
                 onCloseRequestHandlerChanged = onCloseRequestHandlerChanged,
+                modalHost = modalHost,
+                filePicker = filePicker,
             )
         }
     } ?: run {
         LaunchedEffect(launchState.screen) {
             onCloseRequestHandlerChanged(onExit)
-            onWorkspaceModeRequestHandlerChanged {}
         }
         when (launchState.screen) {
         ComposeLaunchScreen.MAIN -> ComposeMainLaunchpad(
@@ -311,7 +328,6 @@ private fun ComposeMapViewer(
             initialSettings = initialSettings,
             initialMap = suppliedMap,
             initialMapPath = initialSetupInputs.mapImagePath,
-            awtWindow = awtWindow,
             onBack = launchState::returnToLaunchpad,
             onLaunch = { settings, renderData ->
                 launchState.openOperation(repository.createOperation(settings, renderData ?: error("Operation map was not rendered")))
@@ -320,11 +336,24 @@ private fun ComposeMapViewer(
 
         ComposeLaunchScreen.EXISTING_OPERATIONS -> ComposeExistingOperationsScreen(
             repository = repository,
-            awtWindow = awtWindow,
             onBack = launchState::returnToLaunchpad,
             onMapLoaded = launchState::openOperation,
         )
         }
+    }
+    if (launchState.activeMap == null && launchState.screen == ComposeLaunchScreen.MAIN) {
+        VersionAboutButton(
+            version = buildInfo.version,
+            onClick = {
+                modalHost.show(ComposeModalRequest("about") { dismiss ->
+                    AboutModalContent(buildInfo, presentationResources, fontDiagnostic.label, dismiss)
+                })
+            },
+            modifier = Modifier.align(Alignment.BottomStart).padding(16.dp).height(32.dp),
+        )
+    }
+    ComposeModalHost(modalHost)
+    }
     }
 }
 
@@ -407,10 +436,10 @@ private fun ComposeNewOperationScreen(
     initialSettings: MapViewerSettings,
     initialMap: java.awt.image.BufferedImage?,
     initialMapPath: String?,
-    awtWindow: java.awt.Window,
     onBack: () -> Unit,
     onLaunch: (MapViewerSettings, MapViewerRenderData?) -> Unit,
 ) {
+    val filePicker = LocalComposeFilePicker.current
     var operationName by remember { mutableStateOf(initialSettings.operationName.orEmpty()) }
     var mapImage by remember { mutableStateOf(initialMap) }
     var mapName by remember { mutableStateOf(initialMapPath?.let(::File)?.name ?: if (initialMap == null) "" else "Provided map") }
@@ -425,26 +454,24 @@ private fun ComposeNewOperationScreen(
     val scope = rememberCoroutineScope()
 
     fun chooseMap() {
-        FileDialog(awtWindow as? Frame, "Choose map image", FileDialog.LOAD).also { dialog ->
-            dialog.file = "*.png;*.jpg;*.jpeg"
-            dialog.isVisible = true
-            val fileName = dialog.file ?: return
-            val file = File(dialog.directory, fileName)
-            loadingMap = true
-            scope.launch {
-                runCatching {
-                    withContext(Dispatchers.IO) {
-                        ImageIO.read(file) ?: error("The selected file is not a supported image.")
-                    }
-                }.onSuccess {
-                    mapImage = it
-                    mapName = file.name
+        loadingMap = true
+        scope.launch {
+            when (val selected = filePicker.chooseAndDecode(
+                title = "Choose map image",
+                pattern = "*.png;*.jpg;*.jpeg",
+                unsupportedMessage = "The selected file is not a supported image.",
+                decode = ImageIO::read,
+            )) {
+                ComposeFileSelection.Cancelled -> Unit
+                is ComposeFileSelection.Selected -> {
+                    mapImage = selected.value
+                    mapName = selected.file.name
                     errorMessage = null
-                }.onFailure {
-                    errorMessage = "Could not open ${file.name}: ${it.message ?: it::class.simpleName}"
                 }
-                loadingMap = false
+                is ComposeFileSelection.Unreadable -> errorMessage = "Could not open ${selected.file.name}: ${selected.message}"
+                is ComposeFileSelection.Unsupported -> errorMessage = selected.message
             }
+            loadingMap = false
         }
     }
 
@@ -607,10 +634,10 @@ private fun ComposeNewOperationScreen(
 @Composable
 private fun ComposeExistingOperationsScreen(
     repository: MapViewerSaveRepository,
-    awtWindow: java.awt.Window,
     onBack: () -> Unit,
     onMapLoaded: (OperationDocument) -> Unit,
 ) {
+    val filePicker = LocalComposeFilePicker.current
     var saves by remember { mutableStateOf<List<MapViewerSavedOperation>>(emptyList()) }
     var refreshing by remember { mutableStateOf(true) }
     var loadingPath by remember { mutableStateOf<String?>(null) }
@@ -644,12 +671,19 @@ private fun ComposeExistingOperationsScreen(
     }
 
     fun browse() {
-        FileDialog(awtWindow as? Frame, "Open operation save", FileDialog.LOAD).also { dialog ->
-            dialog.directory = repository.savesDirectory.toString()
-            dialog.file = "*.zip"
-            dialog.isVisible = true
-            val fileName = dialog.file ?: return
-            load(File(dialog.directory, fileName).toPath())
+        if (loadingPath != null) return
+        scope.launch {
+            when (val selected = filePicker.chooseAndDecode(
+                title = "Open operation save",
+                pattern = "*.zip",
+                unsupportedMessage = "The selected file is not a supported operation archive.",
+                decode = { file -> repository.loadOperation(file.toPath()) },
+            )) {
+                ComposeFileSelection.Cancelled -> Unit
+                is ComposeFileSelection.Selected -> onMapLoaded(selected.value)
+                is ComposeFileSelection.Unreadable -> errorMessage = "Could not load ${selected.file.name}: ${selected.message}"
+                is ComposeFileSelection.Unsupported -> errorMessage = selected.message
+            }
         }
     }
 
@@ -761,36 +795,66 @@ private val SAVE_DATE_FORMAT = DateTimeFormatter.ofPattern("d MMM uuuu, HH:mm")
 private const val COMPOSE_OPERATION_MAP_ID = "compose-operation-map"
 private const val COMPOSE_AUTOSAVE_DEBOUNCE_MS = 2_000L
 
+private data class ComposeViewerEditorActions(
+    val displaySettings: MapViewerDisplaySettings,
+    val onCommand: (MapViewerCommand) -> Unit,
+    val onSave: () -> Unit,
+    val onEditDrawingName: (OperationObjectId) -> Unit,
+    val onDestroyedUnitDisplayModeChanged: (OperationDestroyedUnitDisplayMode) -> Unit,
+    val onUnitIconSizeChanged: (Double) -> Unit,
+    val onFireArcDisplayModeChanged: (OperationFireArcDisplayMode) -> Unit,
+)
+
+private val LocalViewerEditorActions = staticCompositionLocalOf<ComposeViewerEditorActions> {
+    error("Viewer editor actions are unavailable")
+}
+
+private val LocalEditableTextFocusChanged = staticCompositionLocalOf<(Boolean) -> Unit> { {} }
+
+private fun Modifier.trackEditableTextFocus() = composed {
+    val onChanged = LocalEditableTextFocusChanged.current
+    onFocusChanged { onChanged(it.isFocused) }
+}
+
 @Composable
 private fun ViewerWorkspace(
     initialMap: ComposeActiveMap,
     repository: MapViewerSaveRepository,
-    initialUnitIconSizePx: Double,
+    initialDisplaySettings: MapViewerDisplaySettings,
     onUnitIconSizeChanged: (Double) -> Double,
-    onWorkspaceModeRequestHandlerChanged: ((WorkspaceMode) -> Unit) -> Unit,
+    onDestroyedUnitDisplayModeChanged: (OperationDestroyedUnitDisplayMode) -> OperationDestroyedUnitDisplayMode,
+    onFireArcDisplayModeChanged: (OperationFireArcDisplayMode) -> OperationFireArcDisplayMode,
     onReturnToLaunchpad: () -> Unit,
     onExitProgram: () -> Unit,
     onCloseRequestHandlerChanged: (() -> Unit) -> Unit,
+    modalHost: ComposeModalHostState,
+    filePicker: ComposeFilePicker,
 ) {
     var operationState by remember(initialMap.document) {
         mutableStateOf(ComposeOperationState(initialMap.document))
     }
-    var unitIconSizePx by remember { mutableStateOf(UnitIconDisplaySize.coerce(initialUnitIconSizePx)) }
+    var displaySettings by remember { mutableStateOf(initialDisplaySettings) }
+    val unitIconSizePx = displaySettings.unitIconSizePx
     var escapeMenuOpen by remember { mutableStateOf(false) }
     var contextMenu by remember { mutableStateOf<ComposeMapContextMenu?>(null) }
+    var restoreMapFocusAfterMenu by remember { mutableStateOf(false) }
     var drawingMode by remember { mutableStateOf(MapViewerDrawingMode.FREEFORM) }
     var drawingColour by remember { mutableStateOf(MapViewerDrawingColour.RED) }
     var drawingNameEdit by remember { mutableStateOf<ComposeDrawingNameEdit?>(null) }
     var toolGestureCancellationEpoch by remember { mutableStateOf(0) }
     var pendingExit by remember { mutableStateOf<ComposePendingExit?>(null) }
-    var unitLibraryExpanded by remember { mutableStateOf(true) }
-    var graphicLibraryExpanded by remember { mutableStateOf(false) }
-    var transientNotice by remember { mutableStateOf<String?>(null) }
+    val transientMessages = remember { ComposeTransientMessageHostState() }
     var draggedDockTab by remember { mutableStateOf<OperationEditorId?>(null) }
     var dockDropTarget by remember { mutableStateOf<Pair<OperationDockRegion, Int>?>(null) }
+    var dispatchedKeysDown by remember { mutableStateOf(emptySet<Key>()) }
+    var editableTextFocused by remember { mutableStateOf(false) }
     val autosaveScheduler = remember { ComposeAutosaveScheduler(debounceMillis = COMPOSE_AUTOSAVE_DEBOUNCE_MS) }
-    val turnThumbnailRenderer = remember { MapThumbnailRenderer() }
     val scope = rememberCoroutineScope()
+    val mapFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(initialMap.document.operationId) {
+        if (operationState.workspace.activeEditorId == null) mapFocusRequester.requestFocus()
+    }
 
     fun autosaveObservation() = ComposeAutosaveObservation(
         revision = operationState.revision,
@@ -812,9 +876,11 @@ private fun ViewerWorkspace(
                 }
             }.onSuccess { saved ->
                 operationState = operationState.saveSucceeded(saved, targetRevision)
+                transientMessages.show("Saved", ComposeMessageSeverity.SUCCESS)
                 if (operationState.revision == targetRevision) onSuccess?.invoke()
             }.onFailure { failure ->
                 operationState = operationState.saveFailed(failure.message ?: failure::class.simpleName ?: "Unknown save failure")
+                transientMessages.show("Save failed", ComposeMessageSeverity.ERROR)
             }
         }
     }
@@ -854,19 +920,118 @@ private fun ViewerWorkspace(
         }
     }
 
-    val currentWorkspaceModeRequester by rememberUpdatedState<(WorkspaceMode) -> Unit> { mode ->
-        operationState = operationState.updateWorkspaceMode(mode)
-    }
-    DisposableEffect(Unit) {
-        onWorkspaceModeRequestHandlerChanged { currentWorkspaceModeRequester(it) }
-        onDispose { onWorkspaceModeRequestHandlerChanged {} }
+    LaunchedEffect(displaySettings.destroyedUnitDisplayMode, operationState.visibleContent.objects) {
+        if (displaySettings.destroyedUnitDisplayMode == OperationDestroyedUnitDisplayMode.Hide) {
+            val hiddenIds = operationState.visibleContent.objects.filterIsInstance<OperationUnit>()
+                .filterNot { OperationDestroyedUnitDisplayPolicy.visible(it, displaySettings.destroyedUnitDisplayMode) }
+                .mapTo(hashSetOf(), OperationUnit::id)
+            if (hiddenIds.isNotEmpty()) {
+                operationState = operationState.selectBox(operationState.selectedObjectIds - hiddenIds, false)
+                operationState.workspace.editors.filter { (it.target as? OperationEditorTarget.Object)?.objectId in hiddenIds }
+                    .forEach { operationState = operationState.closeEditor(it.id) }
+                contextMenu = contextMenu?.takeUnless { it.objectId in hiddenIds }
+            }
+        }
     }
 
+    fun dispatch(command: MapViewerCommand) {
+        val restoreMapAfterDispatch = contextMenu != null && when (command) {
+            is MapViewerCommand.OpenNote -> false
+            is MapViewerCommand.ObjectAction -> command.action in setOf(
+                MapViewerObjectCommand.DELETE_UNIT,
+                MapViewerObjectCommand.DELETE_GRAPHIC,
+                MapViewerObjectCommand.DELETE_DRAWING,
+            )
+            else -> true
+        }
+        when (command) {
+            is MapViewerCommand.TogglePanel -> operationState = operationState.togglePanel(command.panel)
+            MapViewerCommand.Save -> saveNow()
+            MapViewerCommand.Undo -> operationState = operationState.undo()
+            MapViewerCommand.Redo -> operationState = operationState.redo()
+            MapViewerCommand.ReturnToLaunchpad -> { escapeMenuOpen = false; requestExit(ComposePendingExit.LAUNCHPAD) }
+            MapViewerCommand.Exit -> { escapeMenuOpen = false; requestExit(ComposePendingExit.DESKTOP) }
+            MapViewerCommand.CloseEscapeMenu -> escapeMenuOpen = false
+            is MapViewerCommand.SetWorkspaceMode -> operationState = operationState.updateWorkspaceMode(command.mode)
+            is MapViewerCommand.SetDestroyedUnitDisplayMode -> displaySettings = displaySettings.copy(destroyedUnitDisplayMode = onDestroyedUnitDisplayModeChanged(command.mode))
+            is MapViewerCommand.SetUnitIconSize -> displaySettings = displaySettings.copy(unitIconSizePx = onUnitIconSizeChanged(command.sizePx))
+            is MapViewerCommand.SetFireArcDisplayMode -> displaySettings = displaySettings.copy(fireArcDisplayMode = onFireArcDisplayModeChanged(command.mode))
+            is MapViewerCommand.DeleteObjects -> operationState = operationState.selectBox(command.objectIds, false).deleteSelection()
+            is MapViewerCommand.OpenNote -> operationState = operationState.openNoteEditor(command.noteId)
+            is MapViewerCommand.ObjectAction -> when (command.action) {
+                MapViewerObjectCommand.EDIT_UNIT -> operationState = operationState.openUnitEditor(command.objectId)
+                MapViewerObjectCommand.DELETE_UNIT,
+                MapViewerObjectCommand.DELETE_GRAPHIC,
+                MapViewerObjectCommand.DELETE_DRAWING,
+                    -> operationState = operationState.selectObject(command.objectId).deleteSelection()
+                MapViewerObjectCommand.SCIREP -> operationState = operationState.openSensorReport(command.objectId, OperationWorkflowReportMode.SCIREP)
+                MapViewerObjectCommand.NAVREP -> operationState = operationState.openSensorReport(command.objectId, OperationWorkflowReportMode.NAVREP)
+                MapViewerObjectCommand.TACTICAL -> operationState = operationState.openTactical(command.objectId)
+                MapViewerObjectCommand.STATUS -> operationState = operationState.openOlympiadDawnStatus(command.objectId)
+                MapViewerObjectCommand.EDIT_GRAPHIC -> operationState = operationState.openGraphicEditor(command.objectId)
+                MapViewerObjectCommand.EDIT_DRAWING_NAME -> {
+                    val drawing = operationState.visibleContent.objectById(command.objectId) as? OperationDrawingObject
+                    if (drawing != null && !operationState.isReadOnly) drawingNameEdit = ComposeDrawingNameEdit(drawing.id, drawing.optionalDisplayName.orEmpty())
+                }
+            }
+        }
+        restoreMapFocusAfterMenu = restoreMapAfterDispatch
+        contextMenu = null
+    }
+
+    fun dismissContextMenuAndRestoreMapFocus() {
+        restoreMapFocusAfterMenu = contextMenu != null
+        contextMenu = null
+    }
+
+    LaunchedEffect(contextMenu, restoreMapFocusAfterMenu) {
+        if (contextMenu == null && restoreMapFocusAfterMenu) {
+            mapFocusRequester.requestFocus()
+            restoreMapFocusAfterMenu = false
+        }
+    }
+
+    val editorActions = ComposeViewerEditorActions(
+        displaySettings = displaySettings,
+        onCommand = ::dispatch,
+        onSave = { dispatch(MapViewerCommand.Save) },
+        onEditDrawingName = { id ->
+            (operationState.visibleContent.objectById(id) as? OperationDrawingObject)?.let { drawing ->
+                drawingNameEdit = ComposeDrawingNameEdit(drawing.id, drawing.optionalDisplayName.orEmpty())
+            }
+        },
+        onDestroyedUnitDisplayModeChanged = { mode ->
+            dispatch(MapViewerCommand.SetDestroyedUnitDisplayMode(mode))
+        },
+        onUnitIconSizeChanged = { size ->
+            dispatch(MapViewerCommand.SetUnitIconSize(size))
+        },
+        onFireArcDisplayModeChanged = { mode ->
+            dispatch(MapViewerCommand.SetFireArcDisplayMode(mode))
+        },
+    )
+
+    CompositionLocalProvider(
+        LocalViewerEditorActions provides editorActions,
+        LocalEditableTextFocusChanged provides { editableTextFocused = it },
+    ) {
     Box(Modifier.fillMaxSize()) {
         Surface(
-            Modifier.fillMaxSize().onPreviewKeyEvent { event ->
-            if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
-            when {
+            Modifier.fillMaxSize().focusRequester(mapFocusRequester).focusable().onKeyEvent { event ->
+            if (filePicker.open || modalHost.isShowing) return@onKeyEvent true
+            if (event.type == KeyEventType.KeyUp) {
+                dispatchedKeysDown = dispatchedKeysDown - event.key
+                return@onKeyEvent false
+            }
+            if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+            if (event.key in dispatchedKeysDown) return@onKeyEvent true
+            dispatchedKeysDown = dispatchedKeysDown + event.key
+            val handled = when {
+                event.key == Key.Escape && contextMenu != null -> {
+                    dismissContextMenuAndRestoreMapFocus()
+                    true
+                }
+
                 event.key == Key.Escape && operationState.previewContent != null -> {
                     operationState = operationState.cancelPreview().cancelPlacements()
                     toolGestureCancellationEpoch++
@@ -889,27 +1054,29 @@ private fun ViewerWorkspace(
                 }
 
                 event.key == Key.Delete && !operationState.isReadOnly -> {
-                    operationState = operationState.deleteSelection()
+                    dispatch(MapViewerCommand.DeleteObjects(operationState.selectedObjectIds))
                     true
                 }
 
                 event.isCtrlPressed && event.key == Key.S -> {
-                    saveNow()
+                    dispatch(MapViewerCommand.Save)
                     true
                 }
 
+                editableTextFocused && (event.key == Key.Delete || event.isCtrlPressed && event.key in setOf(Key.A, Key.C, Key.X, Key.V, Key.Z, Key.Y)) -> false
+
                 event.isCtrlPressed && event.key == Key.Z && event.isShiftPressed -> {
-                    operationState = operationState.redo()
+                    dispatch(MapViewerCommand.Redo)
                     true
                 }
 
                 event.isCtrlPressed && event.key == Key.Z -> {
-                    operationState = operationState.undo()
+                    dispatch(MapViewerCommand.Undo)
                     true
                 }
 
                 event.isCtrlPressed && event.key == Key.Y -> {
-                    operationState = operationState.redo()
+                    dispatch(MapViewerCommand.Redo)
                     true
                 }
 
@@ -920,6 +1087,8 @@ private fun ViewerWorkspace(
 
                 else -> false
             }
+            if (!handled) dispatchedKeysDown = dispatchedKeysDown - event.key
+            handled
         },
     ) {
         Column {
@@ -928,7 +1097,8 @@ private fun ViewerWorkspace(
                     DockedWorkspace(state = operationState, region = OperationDockRegion.LEFT, draggedEditorId = draggedDockTab, dropTarget = dockDropTarget, onDragStarted = { draggedDockTab = it }, onDropTargetChanged = { dockDropTarget = it }, onDrop = { id -> dockDropTarget?.let { target -> operationState = operationState.dockEditor(id, target.first, target.second) }; draggedDockTab = null; dockDropTarget = null }, onStateChanged = { operationState = it })
                 }
                 Column(Modifier.weight(1f).fillMaxHeight()) {
-                Box(Modifier.weight(1f).fillMaxWidth()) {
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                    val chromeLayout = MapViewerChromeLayoutBuilder.build(maxWidth.value.toDouble())
                     MapCanvas(
                         renderData = operationState.document.renderData,
                         savedCamera = operationState.document.camera,
@@ -940,16 +1110,28 @@ private fun ViewerWorkspace(
                             selectedObjectIds = operationState.selectedObjectIds,
                             onObjectsSelected = { ids, additive -> operationState = operationState.selectBox(ids, additive) },
                             onContextMenuRequested = { mapObject, position ->
-                                operationState = operationState.selectObject(mapObject.id)
+                                if (mapObject.id !in operationState.selectedObjectIds) operationState = operationState.selectObject(mapObject.id)
+                                val selectedIds = if (mapObject.id in operationState.selectedObjectIds) operationState.selectedObjectIds else setOf(mapObject.id)
                                 contextMenu = ComposeMapContextMenu(
                                     mapObject.id,
                                     mapObject.displayName(operationState.visibleContent),
                                     position,
-                                    mapObject.contextMenuItems(operationState.olympiadDawnEnabled),
-                                    operationState.visibleContent.notes.filter { mapObject.id in it.referencedObjectIds },
+                                    MapViewerCommandResolver.contextMenu(
+                                        mapObject.id,
+                                        MapViewerCommandContext(
+                                            operationState.visibleContent,
+                                            selectedIds,
+                                            operationState.isReadOnly,
+                                            operationState.olympiadDawnEnabled,
+                                            operationState.activeTool,
+                                            operationState.unitPlacement != null || operationState.graphicPlacement != null || operationState.noteReferencePick != null,
+                                            operationState.workspace,
+                                            operationState.savingRevision == null,
+                                        ),
+                                    ),
                                 )
                             },
-                            onContextMenuDismissed = { contextMenu = null },
+                            onContextMenuDismissed = ::dismissContextMenuAndRestoreMapFocus,
                         onPreviewChanged = { operationState = operationState.preview(it) },
                         onPreviewCommitted = { _ -> operationState = operationState.commitPreview() },
                         drawingMode = drawingMode,
@@ -981,7 +1163,9 @@ private fun ViewerWorkspace(
                                 source.coordinate to target.coordinate
                             },
                             unitIconSizePx = unitIconSizePx,
-                            onUnitIconSizeChanged = { size -> unitIconSizePx = onUnitIconSizeChanged(size) },
+                            destroyedUnitDisplayMode = displaySettings.destroyedUnitDisplayMode,
+                            fireArcDisplayMode = displaySettings.fireArcDisplayMode.takeIf { operationState.olympiadDawnEnabled } ?: OperationFireArcDisplayMode.None,
+                            onUnitIconSizeChanged = editorActions.onUnitIconSizeChanged,
                             modifier = Modifier.fillMaxSize(),
                         )
 
@@ -996,55 +1180,21 @@ private fun ViewerWorkspace(
                         },
                         onDrawingModeSelected = { drawingMode = it },
                         onDrawingColourSelected = { drawingColour = it },
-                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp),
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = chromeLayout.toolRail.top.dp),
                     )
-                    Column(
-                        Modifier.align(Alignment.CenterStart).padding(start = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        UnitTypesPalette(
-                            templates = operationState.visibleContent.unitTemplates,
-                            expanded = unitLibraryExpanded,
-                            editable = !operationState.isReadOnly,
-                            activePlacement = operationState.unitPlacement?.templateId,
-                            onToggle = {
-                                unitLibraryExpanded = !unitLibraryExpanded
-                                if (unitLibraryExpanded) graphicLibraryExpanded = false
-                            },
-                            onCreate = { operationState = operationState.openNewUnitTemplateEditor() },
-                            onEdit = { operationState = operationState.openUnitTemplateEditor(it) },
-                            onPlace = { operationState = operationState.armUnitPlacement(it) },
-                            onDelete = { id ->
-                                if (!OperationUnitAuthoring.canDeleteTemplate(operationState.document.content, id)) {
-                                    transientNotice = "Delete or retarget placed units before deleting this unit type."
-                                } else operationState = operationState.deleteUnitTemplate(id)
-                            },
-                        )
-                        GraphicTypesPalette(
-                            templates = operationState.visibleContent.graphicTemplates,
-                            expanded = graphicLibraryExpanded,
-                            editable = !operationState.isReadOnly,
-                            activePlacement = operationState.graphicPlacement?.templateId,
-                            onToggle = {
-                                graphicLibraryExpanded = !graphicLibraryExpanded
-                                if (graphicLibraryExpanded) unitLibraryExpanded = false
-                            },
-                            onCreate = { operationState = operationState.openNewGraphicTemplateEditor() },
-                            onEdit = { operationState = operationState.openGraphicTemplateEditor(it) },
-                            onPlace = { operationState = operationState.armGraphicPlacement(it) },
-                            onDelete = { id ->
-                                if (!OperationGraphicAuthoring.canDeleteTemplate(operationState.document.content, id)) {
-                                    transientNotice = "Delete or retarget placed graphics before deleting this graphic type."
-                                } else operationState = operationState.deleteGraphicTemplate(id)
-                            },
-                        )
-                    }
                     Row(
                         modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        CommandButton(onClick = { escapeMenuOpen = true }) { Text("MENU") }
-                        CommandButton(onClick = { operationState = operationState.openNotes() }) { Text("NOTES") }
+                        ViewerChromeButton("GAME") { dispatch(MapViewerCommand.TogglePanel(MapViewerPanel.GAME)) }
+                        ViewerChromeButton("NOTES") { dispatch(MapViewerCommand.TogglePanel(MapViewerPanel.NOTES)) }
+                    }
+                    Row(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        ViewerChromeButton("GRAPHICS") { dispatch(MapViewerCommand.TogglePanel(MapViewerPanel.GRAPHICS)) }
+                        ViewerChromeButton("UNITS") { dispatch(MapViewerCommand.TogglePanel(MapViewerPanel.UNITS)) }
                     }
                     if (operationState.noteReferencePick != null) {
                         Surface(
@@ -1062,33 +1212,8 @@ private fun ViewerWorkspace(
                     contextMenu?.let { menu ->
                         ComposeMapContextMenu(
                             menu = menu,
-                            onActionSelected = { action ->
-                                when (action.action) {
-                                    MapViewerContextMenuCommand.EDIT_UNIT -> operationState = operationState.openUnitEditor(menu.objectId)
-                                    MapViewerContextMenuCommand.SITREP,
-                                    MapViewerContextMenuCommand.SCIREP,
-                                        -> operationState = operationState.openSensorReport(menu.objectId, OperationWorkflowReportMode.SCIREP)
-                                    MapViewerContextMenuCommand.NAVREP -> operationState = operationState.openSensorReport(menu.objectId, OperationWorkflowReportMode.NAVREP)
-                                    MapViewerContextMenuCommand.TACTICAL -> operationState = operationState.openTactical(menu.objectId)
-                                    MapViewerContextMenuCommand.OLYMPIAD_DAWN_STATUS -> operationState = operationState.openOlympiadDawnStatus(menu.objectId)
-                                    MapViewerContextMenuCommand.EDIT_GRAPHIC -> operationState = operationState.openGraphicEditor(menu.objectId)
-                                    MapViewerContextMenuCommand.EDIT_DRAWING_NAME -> {
-                                        val drawing = operationState.document.content.objectById(menu.objectId) as? OperationDrawingObject
-                                        if (drawing != null && !operationState.isReadOnly) {
-                                            drawingNameEdit = ComposeDrawingNameEdit(drawing.id, drawing.optionalDisplayName.orEmpty())
-                                        }
-                                    }
-                                    else -> if (action.action.name.startsWith("DELETE")) {
-                                        operationState = operationState.selectObject(menu.objectId).deleteSelection()
-                                    }
-                                }
-                                contextMenu = null
-                            },
-                            onNoteSelected = { noteId ->
-                                operationState = operationState.openNoteEditor(noteId)
-                                contextMenu = null
-                            },
-                            onDismiss = { contextMenu = null },
+                            onActionSelected = { item -> item.command?.let(::dispatch) },
+                            onDismiss = ::dismissContextMenuAndRestoreMapFocus,
                         )
                     }
 
@@ -1098,14 +1223,10 @@ private fun ViewerWorkspace(
                             onStateChanged = { operationState = it },
                         )
                     }
-                    transientNotice?.let { notice ->
-                        Surface(
-                            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).clickable { transientNotice = null },
-                            color = CommandColours.Backing,
-                            border = BorderStroke(1.dp, CommandColours.White),
-                            shape = RectangleShape,
-                        ) { Text(notice, Modifier.padding(12.dp), color = CommandColours.White) }
-                    }
+                    ComposeTransientMessageHost(
+                        state = transientMessages,
+                        modifier = Modifier.align(Alignment.BottomStart),
+                    )
                 }
                 }
                 if (operationState.workspaceMode == WorkspaceMode.DOCKED) {
@@ -1115,93 +1236,70 @@ private fun ViewerWorkspace(
                     DockedWorkspace(state = operationState, region = OperationDockRegion.RIGHT, draggedEditorId = draggedDockTab, dropTarget = dockDropTarget, onDragStarted = { draggedDockTab = it }, onDropTargetChanged = { dockDropTarget = it }, onDrop = { id -> dockDropTarget?.let { target -> operationState = operationState.dockEditor(id, target.first, target.second) }; draggedDockTab = null; dockDropTarget = null }, onStateChanged = { operationState = it })
                 }
             }
-            OperationLedgerPanel(
-                state = operationState,
-                onUndo = {
-                    toolGestureCancellationEpoch++
-                    contextMenu = null
-                    operationState = operationState.undo()
-                },
-                onRedo = {
-                    toolGestureCancellationEpoch++
-                    contextMenu = null
-                    operationState = operationState.redo()
-                },
-                onPreviewIndex = {
-                    toolGestureCancellationEpoch++
-                    contextMenu = null
-                    operationState = operationState.previewHistory(it)
-                },
-                onTurnSelected = {
-                    toolGestureCancellationEpoch++
-                    contextMenu = null
-                    operationState = operationState.revertToTurn(it)
-                },
-                onCurrent = {
-                    toolGestureCancellationEpoch++
-                    contextMenu = null
-                    operationState = operationState.returnToCurrent()
-                },
-                onAddTurn = { name ->
-                    val document = operationState.document
-                    val thumbnail = turnThumbnailRenderer.renderTurnThumbnail(
-                        document.renderData.baseImage,
-                        document.renderData.gridLayer,
-                        document.content,
-                    )
-                    toolGestureCancellationEpoch++
-                    contextMenu = null
-                    operationState = operationState.addTurn(name, thumbnail)
-                },
-                onOpenTarget = { target ->
-                    val drawing = (target as? OperationLedgerTarget.Object)?.id
-                        ?.let(operationState.document.content::objectById) as? OperationDrawingObject
-                    if (drawing != null) {
-                        drawingNameEdit = ComposeDrawingNameEdit(drawing.id, drawing.optionalDisplayName.orEmpty())
-                    } else {
-                        operationState = operationState.openLedgerTarget(target)
-                    }
-                },
-                onSave = { saveNow() },
-            )
         }
     }
-    if (escapeMenuOpen) {
-        EscapeMenuDialog(
-            onDismiss = { escapeMenuOpen = false },
-            onReturnToLaunchpad = {
-                escapeMenuOpen = false
-                requestExit(ComposePendingExit.LAUNCHPAD)
-            },
-            onExitProgram = { requestExit(ComposePendingExit.DESKTOP) },
-        )
+    LaunchedEffect(escapeMenuOpen) {
+        if (escapeMenuOpen) modalHost.show(ComposeModalRequest(
+            key = "escape-menu",
+            onCancelled = { escapeMenuOpen = false },
+        ) { dismiss ->
+            EscapeMenuDialog(
+                onDismiss = { dispatch(MapViewerCommand.CloseEscapeMenu); dismiss() },
+                onReturnToLaunchpad = { dispatch(MapViewerCommand.ReturnToLaunchpad); dismiss() },
+                onExitProgram = { dispatch(MapViewerCommand.Exit); dismiss() },
+            )
+        })
     }
-    if (pendingExit != null && operationState.saveStatus == ComposeSaveStatus.FAILED) {
-        SaveFailureDialog(
-            message = operationState.saveFailure.orEmpty(),
-            onRetry = {
-                val target = pendingExit ?: return@SaveFailureDialog
-                saveNow {
-                    pendingExit = null
-                    if (target == ComposePendingExit.LAUNCHPAD) onReturnToLaunchpad() else onExitProgram()
-                }
-            },
-            onCancel = { pendingExit = null },
-        )
+    LaunchedEffect(pendingExit, operationState.saveStatus, operationState.saveFailure) {
+        if (pendingExit != null && operationState.saveStatus == ComposeSaveStatus.FAILED) {
+            modalHost.show(ComposeModalRequest(
+                key = "save-failure",
+                priority = ComposeModalPriority.LOSS_PREVENTION,
+                onCancelled = { pendingExit = null },
+            ) { dismiss ->
+                SaveFailureDialog(
+                    message = operationState.saveFailure.orEmpty(),
+                    onRetry = retry@{
+                        val target = pendingExit ?: return@retry
+                        dismiss()
+                        saveNow {
+                            pendingExit = null
+                            if (target == ComposePendingExit.LAUNCHPAD) onReturnToLaunchpad() else onExitProgram()
+                        }
+                    },
+                    onCancel = { pendingExit = null; dismiss() },
+                )
+            })
+        }
     }
-    drawingNameEdit?.let { edit ->
-        DrawingNameDialog(
-            value = edit.value,
-            onValueChanged = { drawingNameEdit = edit.copy(value = it) },
-            onSave = {
-                operationState = operationState.renameDrawing(edit.objectId, edit.value)
-                drawingNameEdit = null
-            },
-            onCancel = { drawingNameEdit = null },
-        )
+    LaunchedEffect(drawingNameEdit?.objectId) {
+        drawingNameEdit?.let { initial ->
+            modalHost.show(ComposeModalRequest(
+                key = "drawing-name:${initial.objectId.value}",
+                onCancelled = { drawingNameEdit = null },
+            ) { dismiss ->
+                DrawingNameDialog(
+                    value = drawingNameEdit?.value.orEmpty(),
+                    onValueChanged = { drawingNameEdit = drawingNameEdit?.copy(value = it) },
+                    onSave = {
+                        drawingNameEdit?.let { edit -> operationState = operationState.renameDrawing(edit.objectId, edit.value) }
+                        drawingNameEdit = null
+                        dismiss()
+                    },
+                    onCancel = { drawingNameEdit = null; dismiss() },
+                )
+            })
+        }
+    }
     }
     }
 }
+
+@Composable
+internal fun ViewerChromeButton(label: String, onClick: () -> Unit) = CommandButton(
+    onClick = onClick,
+    modifier = Modifier.size(120.dp, 40.dp),
+) { Text(label) }
 
 @Composable
 private fun ToolRail(
@@ -1253,15 +1351,18 @@ private fun UnitTypesPalette(
     onEdit: (OperationUnitTemplateId) -> Unit,
     onPlace: (OperationUnitTemplateId) -> Unit,
     onDelete: (OperationUnitTemplateId) -> Unit,
+    showToggle: Boolean = true,
+    collapsedAffiliationGroups: Set<String> = emptySet(),
+    onCollapsedAffiliationGroupsChanged: (Set<String>) -> Unit = {},
     modifier: Modifier = Modifier,
 ) = Surface(
-    modifier = modifier.width(if (expanded) 320.dp else 92.dp),
+    modifier = if (showToggle) modifier.width(if (expanded) 320.dp else 92.dp) else modifier.fillMaxWidth(),
     color = CommandColours.Dark.copy(alpha = 0.96f),
     border = BorderStroke(1.dp, CommandColours.White.copy(alpha = 0.7f)),
     shape = RectangleShape,
 ) {
     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        CommandButton(onClick = onToggle, modifier = Modifier.fillMaxWidth()) { Text(if (expanded) "UNIT TYPES ◀" else "UNITS ▶") }
+        if (showToggle) CommandButton(onClick = onToggle, modifier = Modifier.fillMaxWidth()) { Text(if (expanded) "UNIT TYPES ◀" else "UNITS ▶") }
         if (expanded) {
             CommandButton(onClick = onCreate, enabled = editable, modifier = Modifier.fillMaxWidth()) { Text("CREATE UNIT TYPE") }
             if (templates.isEmpty()) Text("No unit types", color = CommandColours.White.copy(alpha = 0.7f))
@@ -1269,10 +1370,14 @@ private fun UnitTypesPalette(
                 (OperationUnitAffiliation.entries.map { it as OperationUnitAffiliation? } + null).forEach { affiliation ->
                     val group = templates.filter { it.affiliation == affiliation }
                     if (group.isNotEmpty()) {
+                        val groupKey = affiliation?.name ?: "UNAFFILIATED"
                         item(key = "affiliation:${affiliation?.name ?: "none"}") {
-                            Text(affiliation?.name ?: "UNAFFILIATED", color = affiliation.composeColour(), fontWeight = FontWeight.Bold)
+                            CommandButton(
+                                onClick = { onCollapsedAffiliationGroupsChanged(if (groupKey in collapsedAffiliationGroups) collapsedAffiliationGroups - groupKey else collapsedAffiliationGroups + groupKey) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("${if (groupKey in collapsedAffiliationGroups) "▶" else "▼"} $groupKey", color = affiliation.composeColour(), fontWeight = FontWeight.Bold) }
                         }
-                        items(group, key = { it.id.value }) { template ->
+                        if (groupKey !in collapsedAffiliationGroups) items(group, key = { it.id.value }) { template ->
                             Surface(
                                 color = if (activePlacement == template.id) CommandColours.Backing else CommandColours.Dark,
                                 border = BorderStroke(1.dp, template.affiliation.composeColour()),
@@ -1291,7 +1396,7 @@ private fun UnitTypesPalette(
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         CommandButton(onClick = { onPlace(template.id) }, enabled = editable, active = activePlacement == template.id, modifier = Modifier.weight(1f).height(32.dp)) { Text("PLACE") }
                                         CommandButton(onClick = { onEdit(template.id) }, enabled = editable, modifier = Modifier.weight(1f).height(32.dp)) { Text("EDIT") }
-                                        CommandButton(onClick = { onDelete(template.id) }, enabled = editable, modifier = Modifier.weight(1f).height(32.dp)) { Text("DELETE") }
+                                        CommandButton(onClick = { onDelete(template.id) }, enabled = editable, destructive = true, modifier = Modifier.weight(1f).height(32.dp)) { Text("DELETE") }
                                     }
                                 }
                             }
@@ -1314,15 +1419,16 @@ private fun GraphicTypesPalette(
     onEdit: (OperationGraphicTemplateId) -> Unit,
     onPlace: (OperationGraphicTemplateId) -> Unit,
     onDelete: (OperationGraphicTemplateId) -> Unit,
+    showToggle: Boolean = true,
     modifier: Modifier = Modifier,
 ) = Surface(
-    modifier = modifier.width(if (expanded) 320.dp else 92.dp),
+    modifier = if (showToggle) modifier.width(if (expanded) 320.dp else 92.dp) else modifier.fillMaxWidth(),
     color = CommandColours.Dark.copy(alpha = 0.96f),
     border = BorderStroke(1.dp, CommandColours.White.copy(alpha = 0.7f)),
     shape = RectangleShape,
 ) {
     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        CommandButton(onClick = onToggle, modifier = Modifier.fillMaxWidth()) { Text(if (expanded) "GRAPHICS ◀" else "GRAPHICS ▶") }
+        if (showToggle) CommandButton(onClick = onToggle, modifier = Modifier.fillMaxWidth()) { Text(if (expanded) "GRAPHICS ◀" else "GRAPHICS ▶") }
         if (expanded) {
             CommandButton(onClick = onCreate, enabled = editable, modifier = Modifier.fillMaxWidth()) { Text("CREATE GRAPHIC TYPE") }
             if (templates.isEmpty()) Text("No graphic types", color = CommandColours.White.copy(alpha = 0.7f))
@@ -1341,7 +1447,7 @@ private fun GraphicTypesPalette(
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 CommandButton({ onPlace(template.id) }, enabled = editable, active = activePlacement == template.id, modifier = Modifier.weight(1f).height(32.dp)) { Text("PLACE") }
                                 CommandButton({ onEdit(template.id) }, enabled = editable, modifier = Modifier.weight(1f).height(32.dp)) { Text("EDIT") }
-                                CommandButton({ onDelete(template.id) }, enabled = editable, modifier = Modifier.weight(1f).height(32.dp)) { Text("DELETE") }
+                                CommandButton({ onDelete(template.id) }, enabled = editable, destructive = true, modifier = Modifier.weight(1f).height(32.dp)) { Text("DELETE") }
                             }
                         }
                     }
@@ -1394,7 +1500,7 @@ private fun NotesPanel(
                             if (index < ids.lastIndex) java.util.Collections.swap(ids, index, index + 1)
                             onStateChanged(state.reorderNotes(ids))
                         }, enabled = !state.isReadOnly && index < state.visibleContent.notes.lastIndex, modifier = Modifier.height(32.dp)) { Text("↓") }
-                        CommandButton({ onStateChanged(state.deleteNote(note.id)) }, enabled = !state.isReadOnly, modifier = Modifier.height(32.dp)) { Text("DELETE") }
+                        CommandButton({ onStateChanged(state.deleteNote(note.id)) }, enabled = !state.isReadOnly, destructive = true, modifier = Modifier.height(32.dp)) { Text("DELETE") }
                     }
                 }
             }
@@ -1505,8 +1611,8 @@ private fun DockTab(
     var menuOpen by remember(editor.id) { mutableStateOf(false) }
     var dragged by remember(editor.id) { mutableStateOf(false) }
     val focusRequester = remember(editor.id) { FocusRequester() }
-    LaunchedEffect(dock.activeEditorId) {
-        if (dock.activeEditorId == editor.id) focusRequester.requestFocus()
+    LaunchedEffect(state.workspace.activeEditorId) {
+        if (dock.activeEditorId == editor.id && state.workspace.activeEditorId == editor.id) focusRequester.requestFocus()
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         CommandButton(
@@ -1573,6 +1679,10 @@ private fun FloatingEditorWindow(
     state: ComposeOperationState,
     onStateChanged: (ComposeOperationState) -> Unit,
 ) {
+    val focusRequester = remember(editor.id) { FocusRequester() }
+    LaunchedEffect(state.workspace.activeEditorId) {
+        if (state.workspace.activeEditorId == editor.id) focusRequester.requestFocus()
+    }
     val density = LocalDensity.current
     val densityScale = density.density.toDouble()
     val viewport = state.viewport
@@ -1600,6 +1710,8 @@ private fun FloatingEditorWindow(
         Modifier.offset { IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt()) }
             .width(bounds.width.dp)
             .height(if (editor.floating.minimized) 42.dp else bounds.height.dp)
+            .focusRequester(focusRequester)
+            .focusable()
             .onPointerEvent(PointerEventType.Press) { onStateChanged(state.activateEditor(editor.id)) },
     ) {
         CommandFloatingPanel(
@@ -1664,7 +1776,39 @@ private fun EditorContent(
     onStateChanged: (ComposeOperationState) -> Unit,
     modifier: Modifier = Modifier,
 ) = when (val draft = editor.draft) {
+    is OperationEditorDraft.Game -> GameEditorContent(editor.id, draft, state, onStateChanged, modifier)
+
     is OperationEditorDraft.Notes -> NotesPanel(state, onStateChanged, modifier)
+
+    is OperationEditorDraft.UnitTypes -> UnitTypesPalette(
+        templates = state.visibleContent.unitTemplates,
+        expanded = true,
+        editable = !state.isReadOnly,
+        activePlacement = state.unitPlacement?.templateId,
+        onToggle = {},
+        onCreate = { onStateChanged(state.openNewUnitTemplateEditor()) },
+        onEdit = { onStateChanged(state.openUnitTemplateEditor(it)) },
+        onPlace = { onStateChanged(state.armUnitPlacement(it)) },
+        onDelete = { id -> if (OperationUnitAuthoring.canDeleteTemplate(state.document.content, id)) onStateChanged(state.deleteUnitTemplate(id)) },
+        showToggle = false,
+        collapsedAffiliationGroups = draft.collapsedAffiliationGroups,
+        onCollapsedAffiliationGroupsChanged = { onStateChanged(state.updateEditorDraft(editor.id, draft.copy(collapsedAffiliationGroups = it))) },
+        modifier = modifier,
+    )
+
+    OperationEditorDraft.GraphicTypes -> GraphicTypesPalette(
+        templates = state.visibleContent.graphicTemplates,
+        expanded = true,
+        editable = !state.isReadOnly,
+        activePlacement = state.graphicPlacement?.templateId,
+        onToggle = {},
+        onCreate = { onStateChanged(state.openNewGraphicTemplateEditor()) },
+        onEdit = { onStateChanged(state.openGraphicTemplateEditor(it)) },
+        onPlace = { onStateChanged(state.armGraphicPlacement(it)) },
+        onDelete = { id -> if (OperationGraphicAuthoring.canDeleteTemplate(state.document.content, id)) onStateChanged(state.deleteGraphicTemplate(id)) },
+        showToggle = false,
+        modifier = modifier,
+    )
 
     is OperationEditorDraft.Note -> {
         val target = editor.target as? OperationEditorTarget.Note
@@ -1708,6 +1852,88 @@ private fun EditorContent(
     is OperationEditorDraft.Operational -> OperationalEditorContent(editor, draft, state, onStateChanged, modifier)
 
     is OperationEditorDraft.Opaque -> Box(modifier, contentAlignment = Alignment.Center) { Text("This restored editor is not supported yet.") }
+}
+
+@Composable
+private fun GameEditorContent(
+    editorId: OperationEditorId,
+    draft: OperationEditorDraft.Game,
+    state: ComposeOperationState,
+    onStateChanged: (ComposeOperationState) -> Unit,
+    modifier: Modifier,
+) {
+    val actions = LocalViewerEditorActions.current
+    val thumbnailRenderer = remember { MapThumbnailRenderer() }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            io.hsar.mapgenerator.commandgui.operation.OperationGameTab.entries.forEach { tab ->
+                CommandButton(
+                    onClick = { onStateChanged(state.updateEditorDraft(editorId, draft.copy(activeTab = tab))) },
+                    active = draft.activeTab == tab,
+                    modifier = Modifier.weight(1f),
+                ) { Text(tab.name) }
+            }
+        }
+        when (draft.activeTab) {
+            io.hsar.mapgenerator.commandgui.operation.OperationGameTab.TURNS -> OperationLedgerPanel(
+                state = state,
+                onUndo = { actions.onCommand(MapViewerCommand.Undo) },
+                onRedo = { actions.onCommand(MapViewerCommand.Redo) },
+                onTurnSelected = { onStateChanged(state.revertToTurn(it)) },
+                onCurrent = { onStateChanged(state.returnToCurrent()) },
+                onAddTurn = { name ->
+                    val document = state.document
+                    onStateChanged(state.addTurn(name, thumbnailRenderer.renderTurnThumbnail(document.renderData.baseImage, document.renderData.gridLayer, document.content)))
+                },
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+            io.hsar.mapgenerator.commandgui.operation.OperationGameTab.SETTINGS -> GameSettingsContent(state, actions, Modifier.weight(1f).fillMaxWidth())
+        }
+    }
+}
+
+@Composable
+private fun GameSettingsContent(
+    state: ComposeOperationState,
+    actions: ComposeViewerEditorActions,
+    modifier: Modifier,
+) = Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Text("SAVE", fontWeight = FontWeight.Bold)
+    CommandButton(actions.onSave, enabled = state.savingRevision == null, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            when (state.saveStatus) {
+                ComposeSaveStatus.CLEAN -> "SAVED"
+                ComposeSaveStatus.DIRTY -> "SAVE"
+                ComposeSaveStatus.SAVING -> "SAVING…"
+                ComposeSaveStatus.FAILED -> "SAVE FAILED"
+            },
+        )
+    }
+    Text("WORKSPACE MODE", fontWeight = FontWeight.Bold)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WorkspaceMode.entries.forEach { mode ->
+            CommandButton({ actions.onCommand(MapViewerCommand.SetWorkspaceMode(mode)) }, active = state.workspaceMode == mode, modifier = Modifier.weight(1f)) { Text(mode.name) }
+        }
+    }
+    Text("DESTROYED UNITS", fontWeight = FontWeight.Bold)
+    OperationDestroyedUnitDisplayMode.entries.forEach { mode ->
+        CommandButton({ actions.onDestroyedUnitDisplayModeChanged(mode) }, active = actions.displaySettings.destroyedUnitDisplayMode == mode, modifier = Modifier.fillMaxWidth()) { Text(mode.label.uppercase()) }
+    }
+    Text("UNIT ICON SIZE", fontWeight = FontWeight.Bold)
+    var iconSizeText by remember(actions.displaySettings.unitIconSizePx) { mutableStateOf(UnitIconDisplaySize.format(actions.displaySettings.unitIconSizePx)) }
+    OutlinedTextField(
+        value = iconSizeText,
+        onValueChange = { value -> iconSizeText = value; UnitIconDisplaySize.parse(value)?.let(actions.onUnitIconSizeChanged) },
+        suffix = { Text("px") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().trackEditableTextFocus(),
+    )
+    if (state.olympiadDawnEnabled) {
+        Text("FIRE ARCS", fontWeight = FontWeight.Bold)
+        OperationFireArcDisplayMode.entries.forEach { mode ->
+            CommandButton({ actions.onFireArcDisplayModeChanged(mode) }, active = actions.displaySettings.fireArcDisplayMode == mode, modifier = Modifier.fillMaxWidth()) { Text(mode.label.uppercase()) }
+        }
+    }
 }
 
 private fun OperationEditorState.availableFor(state: ComposeOperationState) =
@@ -1804,7 +2030,7 @@ private fun NoteEditorContent(
         OutlinedTextField(
             draft.title,
             { update(draft.copy(title = it)) },
-            Modifier.fillMaxWidth(),
+            Modifier.fillMaxWidth().trackEditableTextFocus(),
             enabled = !state.isReadOnly,
             singleLine = true,
             label = { Text("Title") },
@@ -1812,7 +2038,7 @@ private fun NoteEditorContent(
         OutlinedTextField(
             draft.body,
             { update(draft.copy(body = it)) },
-            Modifier.fillMaxWidth().weight(1f),
+            Modifier.fillMaxWidth().weight(1f).trackEditableTextFocus(),
             enabled = !state.isReadOnly,
             minLines = 8,
             label = { Text("Body") },
@@ -1850,7 +2076,7 @@ private fun NoteEditorContent(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CommandButton({ onStateChanged(state.saveNoteEditor(editorId)) }, enabled = !state.isReadOnly, modifier = Modifier.weight(1f)) { Text("SAVE") }
             if (state.document.content.notes.any { it.id == draft.id }) {
-                CommandButton({ onStateChanged(state.deleteNote(draft.id)) }, enabled = !state.isReadOnly, modifier = Modifier.weight(1f)) { Text("DELETE") }
+                CommandButton({ onStateChanged(state.deleteNote(draft.id)) }, enabled = !state.isReadOnly, destructive = true, modifier = Modifier.weight(1f)) { Text("DELETE") }
             }
             CommandButton({ onStateChanged(state.closeEditor(editorId)) }, modifier = Modifier.weight(1f)) { Text("CANCEL") }
         }
@@ -1876,7 +2102,7 @@ private fun UnitEditorContent(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(state.visibleContent.unitTemplate(unit.unitTemplateId)?.name ?: "Unit", color = CommandColours.Backing)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(draft.name, { update(draft.copy(name = it)) }, Modifier.fillMaxWidth(), enabled = !state.isReadOnly, singleLine = true, label = { Text("Name") })
+            OutlinedTextField(draft.name, { update(draft.copy(name = it)) }, Modifier.fillMaxWidth().trackEditableTextFocus(), enabled = !state.isReadOnly, singleLine = true, label = { Text("Name") })
             Text("Unit type", color = CommandColours.Backing)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 state.document.content.unitTemplates.forEach { template ->
@@ -1887,7 +2113,7 @@ private fun UnitEditorContent(
                 OutlinedTextField(
                     draft.positionX,
                     { update(draft.copy(positionX = it)) },
-                    Modifier.weight(1f),
+                    Modifier.weight(1f).trackEditableTextFocus(),
                     enabled = !state.isReadOnly,
                     singleLine = true,
                     isError = "position" in validation.errors,
@@ -1895,7 +2121,7 @@ private fun UnitEditorContent(
                 OutlinedTextField(
                     draft.positionY,
                     { update(draft.copy(positionY = it)) },
-                    Modifier.weight(1f),
+                    Modifier.weight(1f).trackEditableTextFocus(),
                     enabled = !state.isReadOnly,
                     singleLine = true,
                     isError = "position" in validation.errors,
@@ -1904,7 +2130,7 @@ private fun UnitEditorContent(
             OutlinedTextField(
                 draft.facing,
                 { update(draft.copy(facing = it)) },
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth().trackEditableTextFocus(),
                 enabled = !state.isReadOnly,
                 singleLine = true,
                 isError = draft.facing.isNotBlank() && facingDegrees == null,
@@ -1953,6 +2179,8 @@ private fun UnitTemplateEditorContent(
     onStateChanged: (ComposeOperationState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val filePicker = LocalComposeFilePicker.current
+    val scope = rememberCoroutineScope()
     var imageError by remember(editor.id) { mutableStateOf<String?>(null) }
     val existing = (editor.target as? OperationEditorTarget.UnitTemplate)?.templateId?.let(state.document.content::unitTemplate)
     val decoded = remember(draft.replacementImage) {
@@ -1963,19 +2191,21 @@ private fun UnitTemplateEditorContent(
         state.updateEditorDraft(editor.id, OperationEditorDraft.UnitTemplate(value)),
     )
     fun browse() {
-        FileDialog(null as Frame?, "Choose unit image", FileDialog.LOAD).also { dialog ->
-            dialog.file = "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg"
-            dialog.isVisible = true
-            val name = dialog.file ?: return
-            val file = File(dialog.directory, name)
-            runCatching {
-                val imageDraft = OperationImageDraft.fromBytes(file.name, file.readBytes())
-                require(MapViewerImageLoader.load(imageDraft.bytes(), imageDraft.originalFilename) != null) { "Unsupported image" }
-                imageDraft
-            }.onSuccess {
-                imageError = null
-                update(draft.copy(replacementImage = it))
-            }.onFailure { imageError = it.message ?: "Could not load the selected image" }
+        scope.launch {
+            when (val selected = filePicker.chooseAndDecode(
+                title = "Choose unit image",
+                pattern = "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg",
+                unsupportedMessage = "Unsupported image",
+                decode = { file ->
+                    val imageDraft = OperationImageDraft.fromBytes(file.name, file.readBytes())
+                    imageDraft.takeIf { MapViewerImageLoader.load(it.bytes(), it.originalFilename) != null }
+                },
+            )) {
+                ComposeFileSelection.Cancelled -> Unit
+                is ComposeFileSelection.Selected -> { imageError = null; update(draft.copy(replacementImage = selected.value)) }
+                is ComposeFileSelection.Unreadable -> imageError = selected.message.ifBlank { "Could not load the selected image" }
+                is ComposeFileSelection.Unsupported -> imageError = selected.message
+            }
         }
     }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1986,7 +2216,7 @@ private fun UnitTemplateEditorContent(
                 Text(if (preview == null) "CHOOSE IMAGE" else "REPLACE IMAGE")
             }
             (imageError ?: validation.errors["image"])?.let { Text(it, color = Color(0xFFDF4A4A)) }
-            OutlinedTextField(draft.name, { update(draft.copy(name = it)) }, Modifier.fillMaxWidth(), enabled = !state.isReadOnly, isError = "name" in validation.errors, singleLine = true, label = { Text("Name") })
+            OutlinedTextField(draft.name, { update(draft.copy(name = it)) }, Modifier.fillMaxWidth().trackEditableTextFocus(), enabled = !state.isReadOnly, isError = "name" in validation.errors, singleLine = true, label = { Text("Name") })
             Text("Affiliation", color = CommandColours.Backing)
             AffiliationButtons(draft.affiliation, !state.isReadOnly) { update(draft.copy(affiliation = it)) }
             PropertyRows(draft.properties, !state.isReadOnly, validation.errors) { update(draft.copy(properties = it)) }
@@ -2016,7 +2246,7 @@ private fun GraphicEditorContent(
             selectedTemplate?.let { template ->
                 androidx.compose.foundation.Image(template.image.toComposeImageBitmap(), null, Modifier.fillMaxWidth().height(120.dp), contentScale = ContentScale.Fit)
             }
-            OutlinedTextField(draft.displayName, { update(draft.copy(displayName = it)) }, Modifier.fillMaxWidth(), enabled = !state.isReadOnly, singleLine = true, label = { Text("Display label (optional)") })
+            OutlinedTextField(draft.displayName, { update(draft.copy(displayName = it)) }, Modifier.fillMaxWidth().trackEditableTextFocus(), enabled = !state.isReadOnly, singleLine = true, label = { Text("Display label (optional)") })
             Text("Graphic type", color = CommandColours.Backing)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 state.document.content.graphicTemplates.sortedBy(OperationGraphicTemplate::index).forEach { template ->
@@ -2025,8 +2255,8 @@ private fun GraphicEditorContent(
             }
             validation.errors["template"]?.let { Text(it, color = Color(0xFFDF4A4A)) }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(draft.positionX, { update(draft.copy(positionX = it)) }, Modifier.weight(1f), enabled = !state.isReadOnly, singleLine = true, isError = "position" in validation.errors, label = { Text(if (state.document.renderData.gridLayer == null) "Map X" else "Easting") })
-                OutlinedTextField(draft.positionY, { update(draft.copy(positionY = it)) }, Modifier.weight(1f), enabled = !state.isReadOnly, singleLine = true, isError = "position" in validation.errors, label = { Text(if (state.document.renderData.gridLayer == null) "Map Y" else "Northing") })
+                OutlinedTextField(draft.positionX, { update(draft.copy(positionX = it)) }, Modifier.weight(1f).trackEditableTextFocus(), enabled = !state.isReadOnly, singleLine = true, isError = "position" in validation.errors, label = { Text(if (state.document.renderData.gridLayer == null) "Map X" else "Easting") })
+                OutlinedTextField(draft.positionY, { update(draft.copy(positionY = it)) }, Modifier.weight(1f).trackEditableTextFocus(), enabled = !state.isReadOnly, singleLine = true, isError = "position" in validation.errors, label = { Text(if (state.document.renderData.gridLayer == null) "Map Y" else "Northing") })
             }
             validation.errors["position"]?.let { Text(it, color = Color(0xFFDF4A4A)) }
             if (selectedTemplate?.customProperties?.isNotEmpty() == true) {
@@ -2050,22 +2280,27 @@ private fun GraphicTemplateEditorContent(
     onStateChanged: (ComposeOperationState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val filePicker = LocalComposeFilePicker.current
+    val scope = rememberCoroutineScope()
     var imageError by remember(editor.id) { mutableStateOf<String?>(null) }
     val existing = (editor.target as? OperationEditorTarget.GraphicTemplate)?.templateId?.let(state.document.content::graphicTemplate)
     val decoded = remember(draft.replacementImage) { draft.replacementImage?.let { runCatching { MapViewerImageLoader.load(it.bytes(), it.originalFilename) }.getOrNull() } }
     val validation = state.validationFor(editor)
     fun update(value: OperationGraphicTemplateDraft) = onStateChanged(state.updateEditorDraft(editor.id, OperationEditorDraft.GraphicTemplate(value)))
     fun browse() {
-        FileDialog(null as Frame?, "Choose graphic image", FileDialog.LOAD).also { dialog ->
-            dialog.file = "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg"
-            dialog.isVisible = true
-            val name = dialog.file ?: return
-            val file = File(dialog.directory, name)
-            runCatching {
-                val imageDraft = OperationImageDraft.fromBytes(file.name, file.readBytes())
-                val image = requireNotNull(MapViewerImageLoader.load(imageDraft.bytes(), imageDraft.originalFilename)) { "Unsupported image" }
-                imageDraft to image
-            }.onSuccess { (imageDraft, image) ->
+        scope.launch {
+            when (val selected = filePicker.chooseAndDecode(
+                title = "Choose graphic image",
+                pattern = "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg",
+                unsupportedMessage = "Unsupported image",
+                decode = { file ->
+                    val imageDraft = OperationImageDraft.fromBytes(file.name, file.readBytes())
+                    MapViewerImageLoader.load(imageDraft.bytes(), imageDraft.originalFilename)?.let { image -> imageDraft to image }
+                },
+            )) {
+                ComposeFileSelection.Cancelled -> Unit
+                is ComposeFileSelection.Selected -> {
+                val (imageDraft, image) = selected.value
                 imageError = null
                 val height = draft.heightPercent.takeIf(String::isNotBlank)
                     ?: OperationGraphicAuthoring.defaultHeightPercent(
@@ -2073,11 +2308,14 @@ private fun GraphicTemplateEditorContent(
                         draft.widthPercent.toDoubleOrNull() ?: io.hsar.mapgenerator.commandgui.operation.DEFAULT_GRAPHIC_WIDTH_PERCENT,
                     ).toString()
                 update(draft.copy(
-                    name = draft.name.ifBlank { file.nameWithoutExtension },
+                    name = draft.name.ifBlank { selected.file.nameWithoutExtension },
                     replacementImage = imageDraft,
                     heightPercent = height,
                 ))
-            }.onFailure { imageError = it.message ?: "Could not load the selected image" }
+                }
+                is ComposeFileSelection.Unreadable -> imageError = selected.message.ifBlank { "Could not load the selected image" }
+                is ComposeFileSelection.Unsupported -> imageError = selected.message
+            }
         }
     }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -2086,10 +2324,10 @@ private fun GraphicTemplateEditorContent(
             preview?.let { androidx.compose.foundation.Image(it.toComposeImageBitmap(), null, Modifier.fillMaxWidth().height(130.dp), contentScale = ContentScale.Fit) }
             CommandButton(::browse, enabled = !state.isReadOnly, modifier = Modifier.fillMaxWidth()) { Text(if (preview == null) "CHOOSE IMAGE" else "REPLACE IMAGE") }
             (imageError ?: validation.errors["image"])?.let { Text(it, color = Color(0xFFDF4A4A)) }
-            OutlinedTextField(draft.name, { update(draft.copy(name = it)) }, Modifier.fillMaxWidth(), enabled = !state.isReadOnly, isError = "name" in validation.errors, singleLine = true, label = { Text("Name") })
+            OutlinedTextField(draft.name, { update(draft.copy(name = it)) }, Modifier.fillMaxWidth().trackEditableTextFocus(), enabled = !state.isReadOnly, isError = "name" in validation.errors, singleLine = true, label = { Text("Name") })
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(draft.widthPercent, { update(draft.copy(widthPercent = it)) }, Modifier.weight(1f), enabled = !state.isReadOnly, isError = "width" in validation.errors, singleLine = true, label = { Text("Map width %") })
-                OutlinedTextField(draft.heightPercent, { update(draft.copy(heightPercent = it)) }, Modifier.weight(1f), enabled = !state.isReadOnly, isError = "height" in validation.errors, singleLine = true, label = { Text("Map height %") })
+                OutlinedTextField(draft.widthPercent, { update(draft.copy(widthPercent = it)) }, Modifier.weight(1f).trackEditableTextFocus(), enabled = !state.isReadOnly, isError = "width" in validation.errors, singleLine = true, label = { Text("Map width %") })
+                OutlinedTextField(draft.heightPercent, { update(draft.copy(heightPercent = it)) }, Modifier.weight(1f).trackEditableTextFocus(), enabled = !state.isReadOnly, isError = "height" in validation.errors, singleLine = true, label = { Text("Map height %") })
             }
             PropertyRows(draft.properties, !state.isReadOnly, validation.errors) { update(draft.copy(properties = it)) }
         }
@@ -2121,8 +2359,8 @@ private fun PropertyRows(
     Text("Custom properties", color = CommandColours.Backing)
     properties.forEachIndexed { index, property ->
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(property.key, { key -> onChanged(properties.mapIndexed { row, value -> if (row == index) value.copy(key = key) else value }) }, Modifier.weight(1f), enabled = enabled, singleLine = true, isError = "property:$index" in errors, supportingText = errors["property:$index"]?.let { message -> { Text(message) } }, label = { Text("Key") })
-            OutlinedTextField(property.value, { value -> onChanged(properties.mapIndexed { row, current -> if (row == index) current.copy(value = value) else current }) }, Modifier.weight(1f), enabled = enabled, singleLine = true, label = { Text("Value") })
+            OutlinedTextField(property.key, { key -> onChanged(properties.mapIndexed { row, value -> if (row == index) value.copy(key = key) else value }) }, Modifier.weight(1f).trackEditableTextFocus(), enabled = enabled, singleLine = true, isError = "property:$index" in errors, supportingText = errors["property:$index"]?.let { message -> { Text(message) } }, label = { Text("Key") })
+            OutlinedTextField(property.value, { value -> onChanged(properties.mapIndexed { row, current -> if (row == index) current.copy(value = value) else current }) }, Modifier.weight(1f).trackEditableTextFocus(), enabled = enabled, singleLine = true, label = { Text("Value") })
             CommandButton(onClick = { onChanged(properties.filterIndexed { row, _ -> row != index }) }, enabled = enabled) { Text("×") }
         }
     }
@@ -2130,7 +2368,10 @@ private fun PropertyRows(
 }
 
 private fun OperationEditorState.title(content: OperationContent): String = when (kind) {
+    OperationEditorKind.GAME -> "Game"
     OperationEditorKind.OPERATION_NOTES -> "Notes"
+    OperationEditorKind.UNIT_TYPES -> "Units"
+    OperationEditorKind.GRAPHIC_TYPES -> "Graphics"
     OperationEditorKind.NOTE -> when (val value = target) {
         is OperationEditorTarget.Note -> content.notes.firstOrNull { it.id == value.noteId }?.title ?: "Edit Note"
         else -> "New Note"
@@ -2178,8 +2419,7 @@ private fun EscapeMenuDialog(
     onDismiss: () -> Unit,
     onReturnToLaunchpad: () -> Unit,
     onExitProgram: () -> Unit,
-) = androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-    CommandPanel(Modifier.width(420.dp)) {
+) = CommandPanel(Modifier.width(420.dp)) {
         Text("MENU", style = MaterialTheme.typography.headlineMedium)
         Text("Return to the launchpad after saving.")
         CommandButton(onClick = onReturnToLaunchpad, modifier = Modifier.fillMaxWidth()) {
@@ -2188,25 +2428,22 @@ private fun EscapeMenuDialog(
         CommandButton(onClick = onExitProgram, modifier = Modifier.fillMaxWidth()) {
             Text("EXIT")
         }
-        CommandButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+        DefaultCommandButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
             Text("CLOSE")
         }
     }
-}
 
 @Composable
 private fun SaveFailureDialog(
     message: String,
     onRetry: () -> Unit,
     onCancel: () -> Unit,
-) = androidx.compose.ui.window.Dialog(onDismissRequest = onCancel) {
-    CommandPanel(Modifier.width(460.dp)) {
+) = CommandPanel(Modifier.width(460.dp)) {
         Text("SAVE FAILED", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.error)
         Text(message.ifBlank { "The operation could not be saved." })
         Text("The viewer will remain open so no changes are discarded.")
-        CommandButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("RETRY") }
+        DefaultCommandButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("RETRY") }
         CommandButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("CANCEL EXIT") }
-    }
 }
 
 @Composable
@@ -2215,21 +2452,19 @@ private fun DrawingNameDialog(
     onValueChanged: (String) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
-) = androidx.compose.ui.window.Dialog(onDismissRequest = onCancel) {
-    CommandPanel(Modifier.width(420.dp)) {
+) = CommandPanel(Modifier.width(420.dp)) {
         Text("EDIT DRAWING NAME", style = MaterialTheme.typography.headlineSmall)
         OutlinedTextField(
             value = value,
             onValueChange = onValueChanged,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().trackEditableTextFocus(),
             singleLine = true,
             label = { Text("Display name (optional)") },
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CommandButton(onClick = onSave, modifier = Modifier.weight(1f)) { Text("SAVE") }
+            DefaultCommandButton(onClick = onSave, modifier = Modifier.weight(1f)) { Text("SAVE") }
             CommandButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("CANCEL") }
         }
-    }
 }
 
 private enum class ComposePendingExit { LAUNCHPAD, DESKTOP }
@@ -2238,38 +2473,138 @@ private data class ComposeMapContextMenu(
     val objectId: OperationObjectId,
     val objectName: String,
     val position: IntOffset,
-    val actions: List<MapViewerContextMenuItem>,
-    val referencedNotes: List<OperationNote> = emptyList(),
+    val actions: List<MapViewerCommandItem>,
 )
 
 private data class ComposeDrawingNameEdit(val objectId: OperationObjectId, val value: String)
 
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 private fun ComposeMapContextMenu(
     menu: ComposeMapContextMenu,
-    onActionSelected: (MapViewerContextMenuItem) -> Unit,
-    onNoteSelected: (OperationNoteId) -> Unit,
+    onActionSelected: (MapViewerCommandItem) -> Unit,
     onDismiss: () -> Unit,
-) = CommandPanel(
-    modifier = Modifier.offset { menu.position }.width(220.dp),
 ) {
-    Text(menu.objectName, style = MaterialTheme.typography.titleMedium)
-    menu.actions.forEach { action ->
-        CommandButton(onClick = { onActionSelected(action) }, modifier = Modifier.fillMaxWidth()) {
-            Text(action.label.uppercase())
+    var focusedIndex by remember(menu) { mutableStateOf(0) }
+    var submenuIndex by remember(menu) { mutableStateOf<Int?>(null) }
+    var submenuFocusedIndex by remember(menu) { mutableStateOf(-1) }
+    var submenuCloseRequested by remember(menu) { mutableStateOf(false) }
+    val focusRequester = remember(menu) { FocusRequester() }
+    LaunchedEffect(menu) { focusRequester.requestFocus() }
+    LaunchedEffect(submenuCloseRequested) {
+        if (submenuCloseRequested) {
+            kotlinx.coroutines.delay(MapViewerMenuTokens.CLOSE_DELAY_MILLIS)
+            if (submenuCloseRequested) submenuIndex = null
         }
     }
-    if (menu.referencedNotes.isNotEmpty()) {
-        HorizontalDivider()
-        Text("REFERENCED NOTES", color = CommandColours.Backing)
-        menu.referencedNotes.forEach { note ->
-            CommandButton(onClick = { onNoteSelected(note.id) }, modifier = Modifier.fillMaxWidth()) {
-                Text(note.title.ifBlank { "Untitled Note" }.uppercase())
+
+    fun activate(item: MapViewerCommandItem) = when {
+        !item.enabled -> Unit
+        item.children.isNotEmpty() -> submenuIndex = menu.actions.indexOf(item)
+        item.command != null -> onActionSelected(item)
+        else -> Unit
+    }
+
+    BoxWithConstraints(
+        Modifier.fillMaxSize()
+            .focusRequester(focusRequester)
+            .focusable()
+            .onKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                when (event.key) {
+                    Key.DirectionDown -> { submenuIndex?.let { parent -> submenuFocusedIndex = (submenuFocusedIndex + 1).coerceAtMost(menu.actions[parent].children.lastIndex) } ?: run { focusedIndex = (focusedIndex + 1).coerceAtMost(menu.actions.lastIndex) }; true }
+                    Key.DirectionUp -> { if (submenuIndex != null) submenuFocusedIndex = (submenuFocusedIndex - 1).coerceAtLeast(0) else focusedIndex = (focusedIndex - 1).coerceAtLeast(0); true }
+                    Key.MoveHome -> { if (submenuIndex != null) submenuFocusedIndex = 0 else focusedIndex = 0; true }
+                    Key.MoveEnd -> { submenuIndex?.let { submenuFocusedIndex = menu.actions[it].children.lastIndex } ?: run { focusedIndex = menu.actions.lastIndex.coerceAtLeast(0) }; true }
+                    Key.DirectionRight -> { if (menu.actions.getOrNull(focusedIndex)?.children?.isNotEmpty() == true) { submenuIndex = focusedIndex; submenuFocusedIndex = 0 }; true }
+                    Key.DirectionLeft -> { submenuIndex = null; submenuFocusedIndex = -1; true }
+                    Key.Enter, Key.Spacebar -> { submenuIndex?.let { menu.actions[it].children.getOrNull(submenuFocusedIndex) }?.let(::activate) ?: menu.actions.getOrNull(focusedIndex)?.let(::activate); true }
+                    Key.Escape -> { if (submenuIndex != null) { submenuIndex = null; submenuFocusedIndex = -1 } else onDismiss(); true }
+                    else -> false
+                }
+            },
+    ) {
+        val density = LocalDensity.current
+        val viewportWidth = maxWidth.value.toDouble()
+        val viewportHeight = maxHeight.value.toDouble()
+        val menuWidth = CommandDesignTokens.menuWidth.value.toDouble()
+        val rootHeight = ((menu.actions.size + 1) * MapViewerMenuTokens.ROW_HEIGHT) + MapViewerMenuTokens.PADDING * 2
+        val rootBounds = MapViewerMenuLayoutBuilder.root(menu.position.x / density.density.toDouble(), menu.position.y / density.density.toDouble(), menuWidth, rootHeight, viewportWidth, viewportHeight)
+        Box(Modifier.fillMaxSize().clickable(onClick = onDismiss))
+        ComposeCommandMenuPanel(
+            title = menu.objectName,
+            items = menu.actions,
+            focusedIndex = focusedIndex,
+            onHovered = { index ->
+                focusedIndex = index
+                if (menu.actions[index].children.isNotEmpty()) { submenuCloseRequested = false; submenuIndex = index }
+                else if (submenuIndex != null) submenuCloseRequested = true
+            },
+            onSelected = ::activate,
+            modifier = Modifier.offset { IntOffset((rootBounds.left * density.density).roundToInt(), (rootBounds.top * density.density).roundToInt()) },
+        )
+        submenuIndex?.let { index ->
+            val children = menu.actions.getOrNull(index)?.children.orEmpty()
+            if (children.isNotEmpty()) {
+                val childHeight = children.size * MapViewerMenuTokens.ROW_HEIGHT + MapViewerMenuTokens.PADDING * 2
+                val childBounds = MapViewerMenuLayoutBuilder.child(rootBounds, index + 1, menuWidth, childHeight, viewportWidth, viewportHeight)
+                val corridorLeft = if (childBounds.left >= rootBounds.right) rootBounds.right else childBounds.right
+                Box(
+                    Modifier.offset { IntOffset((corridorLeft * density.density).roundToInt(), (childBounds.top * density.density).roundToInt()) }
+                        .width(MapViewerMenuTokens.SUBMENU_CORRIDOR.dp)
+                        .height(44.dp)
+                        .onPointerEvent(PointerEventType.Enter) { submenuCloseRequested = false }
+                        .clickable(onClick = {}),
+                )
+                ComposeCommandMenuPanel(
+                title = null,
+                items = children,
+                focusedIndex = submenuFocusedIndex,
+                onHovered = { childIndex -> submenuCloseRequested = false; submenuFocusedIndex = childIndex },
+                onSelected = ::activate,
+                modifier = Modifier.offset { IntOffset((childBounds.left * density.density).roundToInt(), (childBounds.top * density.density).roundToInt()) }
+                    .onPointerEvent(PointerEventType.Enter) { submenuCloseRequested = false },
+            )
             }
         }
-    }
-    CommandButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-        Text("CLOSE")
+}
+}
+
+@Composable
+@OptIn(ExperimentalComposeUiApi::class)
+private fun ComposeCommandMenuPanel(
+    title: String?,
+    items: List<MapViewerCommandItem>,
+    focusedIndex: Int,
+    onHovered: (Int) -> Unit,
+    onSelected: (MapViewerCommandItem) -> Unit,
+    modifier: Modifier,
+) = Surface(modifier.widthIn(min = MapViewerMenuTokens.MIN_WIDTH.dp).width(CommandDesignTokens.menuWidth).clickable(onClick = {}), color = CommandColours.Dark, border = BorderStroke(MapViewerMenuTokens.BORDER_WIDTH.dp, CommandColours.White), shape = RectangleShape) {
+    Column(Modifier.padding(4.dp)) {
+        title?.let { Text(it, Modifier.height(MapViewerMenuTokens.ROW_HEIGHT.dp).padding(horizontal = CommandDesignTokens.menuRowInset), style = MaterialTheme.typography.titleMedium, color = CommandColours.White) }
+        items.forEachIndexed { index, item ->
+            Row(
+                Modifier.fillMaxWidth().height(MapViewerMenuTokens.ROW_HEIGHT.dp)
+                    .background(if (focusedIndex == index) CommandColours.Backing else Color.Transparent)
+                    .onPointerEvent(PointerEventType.Enter) { onHovered(index) }
+                    .clickable { if (item.enabled) onSelected(item) }
+                    .padding(horizontal = CommandDesignTokens.menuRowInset),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        item.label.uppercase(),
+                        color = when {
+                        !item.enabled -> CommandColours.White.copy(alpha = 0.38f)
+                        item.destructive -> CommandColours.Red
+                        else -> CommandColours.White
+                        },
+                    )
+                    item.disabledReason?.let { Text(it, color = CommandColours.White.copy(alpha = 0.38f), fontSize = 9.sp, maxLines = 1) }
+                }
+                if (item.children.isNotEmpty()) Text("▶", color = CommandColours.White)
+            }
+        }
     }
 }
 
@@ -2287,72 +2622,35 @@ private fun OperationObject.objectTypeLabel() = when (this) {
     is OperationDrawingObject -> "Drawing"
 }
 
-private fun OperationObject.contextMenuItems(olympiadDawnEnabled: Boolean): List<MapViewerContextMenuItem> = when (this) {
-    is OperationUnit -> listOf(
-        MapViewerContextMenuItem(MapViewerContextMenuCommand.EDIT_UNIT, "Edit Unit"),
-        MapViewerContextMenuItem(MapViewerContextMenuCommand.DELETE_UNIT, "Delete Unit"),
-    ) + if (olympiadDawnEnabled) listOf(
-        MapViewerContextMenuItem(MapViewerContextMenuCommand.SCIREP, "SCIREP"),
-        MapViewerContextMenuItem(MapViewerContextMenuCommand.NAVREP, "NAVREP"),
-        MapViewerContextMenuItem(MapViewerContextMenuCommand.TACTICAL, "TACTICAL"),
-        MapViewerContextMenuItem(MapViewerContextMenuCommand.OLYMPIAD_DAWN_STATUS, "STATUS"),
-    ) else emptyList()
-
-    is OperationGraphic -> listOf(
-        MapViewerContextMenuItem(MapViewerContextMenuCommand.EDIT_GRAPHIC, "Edit Graphic"),
-        MapViewerContextMenuItem(MapViewerContextMenuCommand.DELETE_GRAPHIC, "Delete Graphic"),
-    )
-
-    is OperationDrawingObject -> listOf(
-        MapViewerContextMenuItem(MapViewerContextMenuCommand.EDIT_DRAWING_NAME, "Edit Name"),
-        MapViewerContextMenuItem(MapViewerContextMenuCommand.DELETE_DRAWING, "Delete Drawing"),
-    )
-}
-
 @Composable
-private fun OperationLedgerPanel(
+internal fun OperationLedgerPanel(
     state: ComposeOperationState,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
-    onPreviewIndex: (Int) -> Unit,
     onTurnSelected: (Int) -> Unit,
     onCurrent: () -> Unit,
     onAddTurn: (String) -> Unit,
-    onOpenTarget: (OperationLedgerTarget) -> Unit,
-    onSave: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val timeline = state.document.timeline
     val groups = timeline.turnGroups()
-    val currentSelectedIndex = state.historyPreviewCount?.minus(1)
     var turnName by remember(state.document.operationId) { mutableStateOf(timeline.nextTurnName()) }
-    var collapsedGroups by remember(state.document.operationId) { mutableStateOf(emptySet<String>()) }
     LaunchedEffect(timeline.entries.size) {
         if (turnName.isBlank()) turnName = timeline.nextTurnName()
     }
     Column(
-        Modifier.fillMaxWidth().height(300.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant),
+        modifier.fillMaxWidth().background(CommandColours.Dark),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            CommandButton(onUndo, enabled = timeline.canUndo && !state.isReadOnly, modifier = Modifier.weight(1f)) { Text("UNDO") }
+            CommandButton(onRedo, enabled = timeline.canRedo && !state.isReadOnly, modifier = Modifier.weight(1f)) { Text("REDO") }
+        }
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("LEDGER", style = MaterialTheme.typography.titleMedium)
-            CommandButton(onClick = onUndo, enabled = state.document.timeline.canUndo && !state.isReadOnly) { Text("UNDO") }
-            CommandButton(onClick = onRedo, enabled = state.document.timeline.canRedo && !state.isReadOnly) { Text("REDO") }
-            CommandButton(
-                onClick = onCurrent,
-                active = !state.isReadOnly && timeline.appliedCount == timeline.entries.size,
-            ) { Text("CURRENT") }
-            CommandButton(onClick = onSave, enabled = state.savingRevision == null) { Text("SAVE") }
-            OutlinedTextField(
-                value = turnName,
-                onValueChange = { turnName = it },
-                modifier = Modifier.width(180.dp).height(48.dp),
-                singleLine = true,
-                label = { Text("TURN NAME") },
-            )
             CommandButton(
                 onClick = {
                     onAddTurn(turnName)
@@ -2360,75 +2658,48 @@ private fun OperationLedgerPanel(
                 },
                 enabled = !state.isReadOnly,
             ) { Text("ADD TURN") }
-            Spacer(Modifier.weight(1f))
-            Text(
-                when (state.saveStatus) {
-                    ComposeSaveStatus.CLEAN -> "SAVED"
-                    ComposeSaveStatus.DIRTY -> "UNSAVED CHANGES"
-                    ComposeSaveStatus.SAVING -> "SAVING…"
-                    ComposeSaveStatus.FAILED -> "SAVE FAILED"
-                },
-                color = if (state.saveStatus == ComposeSaveStatus.FAILED) MaterialTheme.colorScheme.error else CommandColours.Backing,
-            )
+            Box(
+                Modifier.weight(1f).height(40.dp)
+                    .background(CommandColours.Dark)
+                    .border(2.dp, CommandColours.White),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                BasicTextField(
+                    value = turnName,
+                    onValueChange = { turnName = it },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp).trackEditableTextFocus(),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.labelLarge.copy(color = CommandColours.White),
+                    cursorBrush = SolidColor(CommandColours.White),
+                )
+            }
         }
-        HorizontalDivider()
-        LazyColumn(Modifier.fillMaxSize()) {
-            if (groups.isEmpty()) {
-                item { Text("No persisted ledger entries", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (groups.isEmpty()) item {
+                Text("NO TURNS", Modifier.fillMaxWidth().padding(12.dp), color = CommandColours.Light)
             }
             items(groups, key = { group -> group.marker?.entryIndex?.let { "turn:$it" } ?: "unmarked" }) { group ->
-                val groupKey = group.marker?.entryIndex?.let { "turn:$it" } ?: "unmarked"
-                val collapsed = groupKey in collapsedGroups
-                OperationTurnHeader(
+                OperationTurnButton(
                     state = state,
                     group = group,
-                    collapsed = collapsed,
-                    onToggle = {
-                        collapsedGroups = if (collapsed) collapsedGroups - groupKey else collapsedGroups + groupKey
-                    },
                     onSelect = group.marker?.let { marker -> { onTurnSelected(marker.entryIndex) } },
                 )
-                if (!collapsed) group.actions.forEach { action ->
-                    val selectedEntry = action.entryIndex == currentSelectedIndex
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().clickable(enabled = !action.isFuture) { onPreviewIndex(action.entryIndex) },
-                        color = if (selectedEntry) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(start = 46.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Text("${action.entryIndex + 1}", style = MaterialTheme.typography.labelMedium)
-                            Text(action.entry.kind.name.lowercase().replace('_', ' '), modifier = Modifier.width(110.dp))
-                            Text(
-                                action.entry.description,
-                                modifier = Modifier.weight(1f),
-                                color = if (action.isFuture) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .55f)
-                                else MaterialTheme.colorScheme.onSurface,
-                            )
-                            action.targets.forEach { target ->
-                                CommandButton(
-                                    onClick = { onOpenTarget(target) },
-                                    enabled = !action.isFuture && state.isLedgerTargetAvailable(target),
-                                    modifier = Modifier.height(30.dp),
-                                ) { Text("OPEN ${ledgerTargetLabel(state, target)}") }
-                            }
-                        }
-                    }
-                }
-                HorizontalDivider()
             }
         }
+        CurrentTurnButton(
+            active = state.historyPreviewCount == null && timeline.appliedCount == timeline.entries.size,
+            onClick = onCurrent,
+        )
     }
 }
 
 @Composable
-private fun OperationTurnHeader(
+private fun OperationTurnButton(
     state: ComposeOperationState,
     group: OperationTurnGroup,
-    collapsed: Boolean,
-    onToggle: () -> Unit,
     onSelect: (() -> Unit)?,
 ) {
     val marker = group.marker
@@ -2437,55 +2708,61 @@ private fun OperationTurnHeader(
         ?.image
     val active = marker?.appliedCount == state.document.timeline.appliedCount &&
         (state.historyPreviewCount == null || state.historyPreviewCount == marker.appliedCount)
-    Row(
-        modifier = Modifier.fillMaxWidth()
-            .background(if (active) MaterialTheme.colorScheme.secondaryContainer else CommandColours.Backing.copy(alpha = .18f))
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    Surface(
+        modifier = Modifier.fillMaxWidth().height(56.dp).clickable(enabled = onSelect != null) { onSelect?.invoke() },
+        color = if (active) CommandColours.Dark else CommandColours.Main,
+        border = BorderStroke(2.dp, CommandColours.White),
+        shape = RectangleShape,
     ) {
-        CommandButton(onClick = onToggle, modifier = Modifier.size(30.dp)) { Text(if (collapsed) "+" else "−") }
-        if (thumbnail != null) {
-            Image(
-                bitmap = remember(thumbnail) { thumbnail.toImageBitmap() },
-                contentDescription = "${group.name} thumbnail",
-                modifier = Modifier.width(96.dp).height(54.dp),
-                contentScale = ContentScale.Crop,
-            )
-        } else {
-            Box(
-                Modifier.width(96.dp).height(54.dp).background(MaterialTheme.colorScheme.surface).border(1.dp, CommandColours.Backing),
-                contentAlignment = Alignment.Center,
-            ) { Text("NO IMAGE", style = MaterialTheme.typography.labelSmall) }
-        }
-        Column(
-            Modifier.weight(1f).clickable(enabled = onSelect != null) { onSelect?.invoke() },
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+        Row(
+            modifier = Modifier.fillMaxSize().padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(group.name, style = MaterialTheme.typography.titleSmall)
+            if (thumbnail != null) {
+                Image(
+                    bitmap = remember(thumbnail) { thumbnail.toImageBitmap() },
+                    contentDescription = "${group.name} thumbnail",
+                    modifier = Modifier.width(80.dp).fillMaxHeight(),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Box(
+                    Modifier.width(80.dp).fillMaxHeight().background(CommandColours.Dark).border(1.dp, CommandColours.Backing),
+                    contentAlignment = Alignment.Center,
+                ) { Text("NO IMAGE", style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+            }
             Text(
-                marker?.let { "ENTRY ${it.appliedCount}${if (it.isFuture) " · FUTURE" else ""}" } ?: "BEFORE FIRST TURN",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                group.name,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                marker?.appliedCount?.let(::operationTurnIndexLabel) ?: "----",
+                modifier = Modifier.width(48.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (active) CommandColours.White else CommandColours.Light,
+                maxLines = 1,
             )
         }
-        Text("${group.actions.size} ACTION${if (group.actions.size == 1) "" else "S"}", style = MaterialTheme.typography.labelMedium)
     }
 }
 
-private fun ledgerTargetLabel(state: ComposeOperationState, target: OperationLedgerTarget): String = when (target) {
-    is OperationLedgerTarget.Object -> state.document.content.objectById(target.id)?.let { value ->
-        when (value) {
-            is OperationUnit -> "UNIT"
-            is OperationGraphic -> "GRAPHIC"
-            is OperationDrawingObject -> "DRAWING"
-        }
-    } ?: "MISSING"
-    is OperationLedgerTarget.UnitTemplate -> "UNIT TYPE"
-    is OperationLedgerTarget.GraphicTemplate -> "GRAPHIC TYPE"
-    is OperationLedgerTarget.Note -> "NOTE"
-    OperationLedgerTarget.Notes -> "NOTES"
+@Composable
+private fun CurrentTurnButton(active: Boolean, onClick: () -> Unit) = CommandButton(
+    onClick = onClick,
+    active = active,
+    modifier = Modifier.fillMaxWidth().height(52.dp),
+) {
+    Box(Modifier.fillMaxWidth()) {
+        Text("CURRENT", modifier = Modifier.align(Alignment.Center))
+        Text("Current", modifier = Modifier.align(Alignment.CenterEnd), color = CommandColours.Light, fontSize = 12.sp)
+    }
 }
+
+internal fun operationTurnIndexLabel(appliedCount: Int): String = "%04X".format(appliedCount)
 
 private const val PROTOTYPE_STATE_ROW_LIMIT = 12
 
@@ -2540,6 +2817,8 @@ private fun MapCanvas(
     unitsPerPixel: Double,
     tacticalOverlayLines: List<Pair<MapCoordinate, MapCoordinate>>,
     unitIconSizePx: Double,
+    destroyedUnitDisplayMode: OperationDestroyedUnitDisplayMode,
+    fireArcDisplayMode: OperationFireArcDisplayMode,
     onUnitIconSizeChanged: (Double) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2644,12 +2923,19 @@ private fun MapCanvas(
         }
     }
 
-    fun objectAtScreen(point: Offset): OperationObject? = content.objectAtScreen(
+    val interactionContent = if (destroyedUnitDisplayMode == OperationDestroyedUnitDisplayMode.Hide)
+        content.copy(objects = content.objects.filter { it !is OperationUnit || OperationDestroyedUnitDisplayPolicy.visible(it, destroyedUnitDisplayMode) })
+    else content
+
+    fun objectAtScreen(point: Offset): OperationObject? = interactionContent.objectAtScreen(
         ViewerPoint(point.x.toDouble(), point.y.toDouble()), selectionProjection,
         10.0 / (currentViewport.zoom * minOf(mapWidth, mapHeight)),
     )
 
-    fun selectionFrame() = content.selectionFrame(selectedObjectIds, selectionProjection)
+    fun selectionFrame() = interactionContent.selectionFrame(selectedObjectIds, selectionProjection)
+
+    fun containsNonMovableDestroyed(ids: Set<OperationObjectId>) =
+        !OperationDestroyedUnitDisplayPolicy.movable(interactionContent.objects, ids, destroyedUnitDisplayMode)
 
     if (debugMapObjects) {
         LaunchedEffect(content, currentViewport) {
@@ -2784,14 +3070,14 @@ private fun MapCanvas(
                 val rotateHit = frame?.rotationHandle()?.let { hypot(it.x - point.x, it.y - point.y) <= 12.0 } == true
                 val resizeHit = frame?.cornerBrackets()?.firstOrNull { it.contains(point) }
                 when {
-                    rotateHit && selectedObjectIds.isNotEmpty() -> {
+                    rotateHit && selectedObjectIds.isNotEmpty() && !containsNonMovableDestroyed(selectedObjectIds) -> {
                         val bounds = content.selectionBounds(selectedObjectIds, aspectRatio) ?: return@onPointerEvent
                         transformGesture = OperationTransformGesture.Rotate(
                             content, selectedObjectIds, bounds.centre, screenToMap(change.position), aspectRatio,
                         )
                     }
 
-                    resizeHit != null && selectedObjectIds.isNotEmpty() -> {
+                    resizeHit != null && selectedObjectIds.isNotEmpty() && !containsNonMovableDestroyed(selectedObjectIds) -> {
                         transformGesture = OperationTransformGesture.Resize(
                             original = content,
                             selectedIds = selectedObjectIds,
@@ -2808,7 +3094,7 @@ private fun MapCanvas(
                             else -> setOf(selected.id)
                         }
                         if (selected.id !in selectedObjectIds) onObjectsSelected(setOf(selected.id), event.keyboardModifiers.isShiftPressed)
-                        transformGesture = OperationTransformGesture.Move(
+                        if (!containsNonMovableDestroyed(ids)) transformGesture = OperationTransformGesture.Move(
                             content, ids, screenToMap(change.position), viewerBackgroundBounds(mapWidth, mapHeight), aspectRatio,
                         )
                     } ?: run {
@@ -2876,7 +3162,7 @@ private fun MapCanvas(
                     )
                     if (box.isDrag) {
                         onObjectsSelected(
-                            content.objects.filter { box.overlaps(it.selectionScreenBounds(selectionProjection)) }.mapTo(linkedSetOf(), OperationObject::id),
+                            interactionContent.objects.filter { box.overlaps(it.selectionScreenBounds(selectionProjection)) }.mapTo(linkedSetOf(), OperationObject::id),
                             current.additive
                         )
                     } else if (!current.additive) onObjectsSelected(emptySet(), false)
@@ -2946,7 +3232,46 @@ private fun MapCanvas(
             gridOverlay?.arrows?.forEach { arrow ->
                 drawLine(arrow.colour.toComposeColour(), Offset(arrow.start.x.toFloat(), arrow.start.y.toFloat()), Offset(arrow.end.x.toFloat(), arrow.end.y.toFloat()), 2f)
             }
-            content.objects.filterIsInstance<OperationUnit>().forEach { value ->
+            val selectedUnits = interactionContent.objects.filterIsInstance<OperationUnit>().filter { it.id in selectedObjectIds }
+            val selectedAffiliations = selectedUnits.map { it.affiliation ?: interactionContent.unitTemplate(it.unitTemplateId)?.affiliation }.distinct()
+            interactionContent.objects.filterIsInstance<OperationUnit>()
+                .filter { unit -> OperationFireArcSelectionService.shouldDraw(
+                    fireArcDisplayMode,
+                    selectedUnits.mapTo(hashSetOf(), OperationUnit::id),
+                    selectedAffiliations,
+                    unit.id,
+                    unit.affiliation ?: interactionContent.unitTemplate(unit.unitTemplateId)?.affiliation,
+                ) }
+                .forEach { unit ->
+                    val facing = unit.facingDegrees ?: return@forEach
+                    val centre = Offset(
+                        currentViewport.screenX(mapOffsetX + unit.coordinate.x * mapWidth).toFloat(),
+                        currentViewport.screenY(mapOffsetY + unit.coordinate.y * mapHeight).toFloat(),
+                    )
+                    val colour = (unit.affiliation ?: interactionContent.unitTemplate(unit.unitTemplateId)?.affiliation).facingIndicatorColor()
+                    OperationFireArcOverlayBuilder.build(facing, OperationFireArcOverlayService.weaponsFor(unit, interactionContent)).forEach { primitive ->
+                        val radius = (primitive.radiusUnits / unitsPerPixel * currentViewport.zoom).toFloat()
+                        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(primitive.strokeWidthPx.toFloat())
+                        val primitiveColour = colour.copy(alpha = if (primitive.outerBoundary) 0.9f else 0.45f)
+                        when (primitive) {
+                            is OperationFireArcPrimitive.Circle -> drawCircle(primitiveColour, radius, centre, style = stroke)
+                            is OperationFireArcPrimitive.SectorArc -> drawArc(
+                                primitiveColour,
+                                startAngle = (primitive.startDegrees - 90.0).toFloat(),
+                                sweepAngle = (primitive.endDegrees - primitive.startDegrees).toFloat(),
+                                useCenter = false,
+                                topLeft = centre - Offset(radius, radius),
+                                size = androidx.compose.ui.geometry.Size(radius * 2f, radius * 2f),
+                                style = stroke,
+                            )
+                            is OperationFireArcPrimitive.Radial -> {
+                                val radians = Math.toRadians(primitive.degrees)
+                                drawLine(primitiveColour, centre, centre + Offset((sin(radians) * radius).toFloat(), (-cos(radians) * radius).toFloat()), primitive.strokeWidthPx.toFloat())
+                            }
+                        }
+                    }
+                }
+            interactionContent.objects.filterIsInstance<OperationUnit>().forEach { value ->
                 val icon = unitIcons[value.unitTemplateId]
                 val centre = Offset(
                     currentViewport.screenX(mapOffsetX + value.coordinate.x * mapWidth).toFloat(),
@@ -2954,13 +3279,15 @@ private fun MapCanvas(
                 )
                 val width = unitIconSizePx.roundToInt().coerceAtLeast(1)
                 val height = icon?.let { (width.toDouble() * it.height / it.width).roundToInt() } ?: width
+                val destroyedAlpha = OperationDestroyedUnitDisplayPolicy.iconAlpha(value, destroyedUnitDisplayMode).toFloat()
                 icon?.let {
                     drawImage(
                         image = it,
                         dstOffset = IntOffset((centre.x - width / 2f).roundToInt(), (centre.y - height / 2f).roundToInt()),
                         dstSize = IntSize(width, height),
+                        alpha = destroyedAlpha,
                     )
-                } ?: drawCircle(Color(0xFF67D5E8), width / 2f, centre)
+                } ?: drawCircle(Color(0xFF67D5E8).copy(alpha = destroyedAlpha), width / 2f, centre)
                 value.facingDegrees?.let { degrees ->
                     drawUnitFacingIndicator(
                         centre = centre,
@@ -2972,8 +3299,9 @@ private fun MapCanvas(
                 }
                 if (value.destroyed) {
                     val radius = maxOf(width, height) / 2f
-                    drawLine(Color.Black, centre - Offset(radius, radius), centre + Offset(radius, radius), 2f)
-                    drawLine(Color.Black, centre + Offset(radius, -radius), centre + Offset(-radius, radius), 2f)
+                    val crossColour = if (destroyedUnitDisplayMode == OperationDestroyedUnitDisplayMode.Partial) Color(0xFFDF4A4A).copy(alpha = 0.5f) else Color.Black
+                    drawLine(crossColour, centre - Offset(radius, radius), centre + Offset(radius, radius), 2f)
+                    drawLine(crossColour, centre + Offset(radius, -radius), centre + Offset(-radius, radius), 2f)
                 }
             }
             content.objects.filterIsInstance<OperationDrawingObject>().forEach { value ->
@@ -3002,7 +3330,7 @@ private fun MapCanvas(
                     drawText(textMeasurer, label, Offset(centre.x - measured.size.width / 2f, centre.y - height.toFloat() / 2f - measured.size.height - 4f), style)
                 }
             }
-            content.objects.filter { it.id in selectedObjectIds }.map { it.selectionScreenBounds(selectionProjection) }.forEach { bounds ->
+            interactionContent.objects.filter { it.id in selectedObjectIds }.map { it.selectionScreenBounds(selectionProjection) }.forEach { bounds ->
                 drawRect(
                     Color.White.copy(alpha = 0.82f),
                     Offset(bounds.left.toFloat(), bounds.top.toFloat()),

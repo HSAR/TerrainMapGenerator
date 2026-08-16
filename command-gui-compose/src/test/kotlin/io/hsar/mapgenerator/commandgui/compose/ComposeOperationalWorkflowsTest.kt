@@ -35,7 +35,7 @@ class ComposeOperationalWorkflowsTest {
         val opened = state.openOlympiadDawnStatus(unitId).openTactical(unitId)
 
         assertThat(opened.workspace.editors.map { it.kind }, equalTo(listOf(
-            OperationEditorKind.OPERATION_NOTES, OperationEditorKind.OLYMPIAD_DAWN_STATUS, OperationEditorKind.TACTICAL,
+            OperationEditorKind.OLYMPIAD_DAWN_STATUS, OperationEditorKind.TACTICAL,
         )))
     }
 

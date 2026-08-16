@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.compose
 
 import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
+import io.hsar.mapgenerator.commandgui.MapViewerPanel
 import io.hsar.mapgenerator.commandgui.MapViewerTool
 import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
 import io.hsar.mapgenerator.commandgui.MapViewport
@@ -108,7 +109,19 @@ data class ComposeOperationState(
             enabledLayerIds = value,
         )
 
-    fun openNotes() = updateWorkspace(workspace.open(OperationWorkspaceState.default().editors.single()))
+    fun openNotes() = updateWorkspace(workspace.open(OperationWorkspaceState.notesEditor(), OperationDockRegion.LEFT))
+
+    fun togglePanel(panel: MapViewerPanel): ComposeOperationState {
+        val editor = when (panel) {
+            MapViewerPanel.GAME -> OperationWorkspaceState.gameEditor()
+            MapViewerPanel.NOTES -> OperationWorkspaceState.notesEditor()
+            MapViewerPanel.GRAPHICS -> OperationWorkspaceState.graphicTypesEditor()
+            MapViewerPanel.UNITS -> OperationWorkspaceState.unitTypesEditor()
+        }
+        workspace.editor(editor.id)?.let { return closeEditor(it.id) }
+        val region = if (panel == MapViewerPanel.GAME || panel == MapViewerPanel.NOTES) OperationDockRegion.LEFT else OperationDockRegion.RIGHT
+        return updateWorkspace(workspace.open(editor, region))
+    }
 
     fun openNewNoteEditor(): ComposeOperationState {
         if (isReadOnly) return this
@@ -128,7 +141,7 @@ data class ComposeOperationState(
     }
 
     fun openUnitEditor(id: OperationObjectId): ComposeOperationState {
-        val unit = document.content.objectById(id) as? OperationUnit ?: return this
+        val unit = visibleContent.objectById(id) as? OperationUnit ?: return this
         val cascade = workspace.editors.count { it.kind == OperationEditorKind.UNIT } * 32.0
         return updateWorkspace(workspace.open(unit.editorState(OperationEditorBounds(96.0 + cascade, 96.0 + cascade, 520.0, 560.0), document.renderData)))
     }
@@ -152,7 +165,7 @@ data class ComposeOperationState(
     }
 
     fun openGraphicEditor(id: OperationObjectId): ComposeOperationState {
-        val graphic = document.content.objectById(id) as? OperationGraphic ?: return this
+        val graphic = visibleContent.objectById(id) as? OperationGraphic ?: return this
         val cascade = workspace.editors.count { it.kind == OperationEditorKind.GRAPHIC } * 32.0
         return updateWorkspace(workspace.open(graphic.editorState(document.renderData, OperationEditorBounds(112.0 + cascade, 112.0 + cascade, 520.0, 560.0))))
     }

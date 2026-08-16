@@ -65,8 +65,8 @@ class OperationWorkspaceTest {
 
         // Assert
         assertThat(closed.editor(editorId), equalTo(null))
-        assertThat(closed.editors.map { it.id }, equalTo(listOf(OperationWorkspaceState.DEFAULT_NOTES_ID)))
-        assertThat(closed.dockRegions.single().editorIds, equalTo(listOf(OperationWorkspaceState.DEFAULT_NOTES_ID)))
+        assertThat(closed.editors, equalTo(emptyList()))
+        assertThat(closed.dockRegions.flatMap { it.editorIds }, equalTo(emptyList()))
     }
 
     @Test
@@ -76,7 +76,8 @@ class OperationWorkspaceTest {
         val opened = OperationWorkspaceState.default().open(unit.editorState())
 
         // Act
-        val moved = opened.dock(unitId, OperationDockRegion.BOTTOM, 0)
+        val withNotes = opened.open(OperationWorkspaceState.notesEditor()).dock(OperationWorkspaceState.DEFAULT_NOTES_ID, OperationDockRegion.RIGHT)
+        val moved = withNotes.dock(unitId, OperationDockRegion.BOTTOM, 0)
             .dock(unitId, OperationDockRegion.RIGHT, 0)
             .reorderDock(OperationDockRegion.RIGHT, listOf(OperationWorkspaceState.DEFAULT_NOTES_ID, unitId))
 
@@ -90,7 +91,7 @@ class OperationWorkspaceTest {
     fun `cycling and cross region docking retain the active draft`() {
         // Arrange
         val unitId = OperationEditorId("unit:${unit.id.value}")
-        val opened = OperationWorkspaceState.default().open(unit.editorState()).updateEditor(unitId) { editor ->
+        val opened = OperationWorkspaceState.default().open(OperationWorkspaceState.notesEditor()).open(unit.editorState()).updateEditor(unitId) { editor ->
             editor.copy(draft = (editor.draft as OperationEditorDraft.Unit).copy(name = "Unsaved"))
         }
 
@@ -103,5 +104,20 @@ class OperationWorkspaceTest {
         assertThat((moved.editor(unitId)?.draft as OperationEditorDraft.Unit).name, equalTo("Unsaved"))
         assertThat(cycled.activeEditorId, equalTo(OperationWorkspaceState.DEFAULT_NOTES_ID))
         assertThat(cycled.activeDock()?.region, equalTo(OperationDockRegion.RIGHT))
+    }
+
+    @Test
+    fun `new workspace is empty and menu editors have stable identities`() {
+        val workspace = OperationWorkspaceState.default()
+        val editors = listOf(
+            OperationWorkspaceState.gameEditor(),
+            OperationWorkspaceState.notesEditor(),
+            OperationWorkspaceState.graphicTypesEditor(),
+            OperationWorkspaceState.unitTypesEditor(),
+        )
+
+        assertThat(workspace.editors, equalTo(emptyList()))
+        assertThat(editors.map { it.id.value }, equalTo(listOf("game", "operation-notes", "graphic-types", "unit-types")))
+        assertThat(editors.map { it.target }, equalTo(listOf(OperationEditorTarget.Game, OperationEditorTarget.OperationNotes, OperationEditorTarget.GraphicTypes, OperationEditorTarget.UnitTypes)))
     }
 }

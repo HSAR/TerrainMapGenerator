@@ -42,7 +42,7 @@ class OperationAdditionalDataTest {
     @Test
     fun `workspace restores all dock regions and opaque editors exactly`() {
         // Arrange
-        val notes = OperationWorkspaceState.default().editors.single()
+        val notes = OperationWorkspaceState.notesEditor()
         val opaque = OperationEditorState(
             OperationEditorId("legacy:panel"), OperationEditorKind("legacy-panel"), OperationEditorTarget.Opaque("legacy"),
             OperationEditorDraft.Opaque("keep this draft"), OperationFloatingEditorState(OperationEditorBounds(1.0, 2.0, 300.0, 400.0)),
@@ -63,6 +63,30 @@ class OperationAdditionalDataTest {
 
         // Assert
         assertThat(restored, equalTo(workspace))
+    }
+
+    @Test
+    fun `schema seven round trips all four typed menu editor drafts and placement`() {
+        val game = OperationWorkspaceState.gameEditor().copy(
+            draft = OperationEditorDraft.Game(io.hsar.mapgenerator.commandgui.operation.OperationGameTab.SETTINGS),
+            floating = OperationFloatingEditorState(OperationEditorBounds(1.0, 2.0, 401.0, 402.0), minimized = true),
+        )
+        val notes = OperationWorkspaceState.notesEditor()
+        val graphics = OperationWorkspaceState.graphicTypesEditor()
+        val units = OperationWorkspaceState.unitTypesEditor().copy(draft = OperationEditorDraft.UnitTypes(setOf("FRIEND")))
+        val workspace = OperationWorkspaceState.default()
+            .open(game, OperationDockRegion.LEFT)
+            .open(notes, OperationDockRegion.LEFT)
+            .open(graphics, OperationDockRegion.RIGHT)
+            .open(units, OperationDockRegion.RIGHT)
+            .copy(mode = MapViewerWorkspaceMode.FLOATING)
+        val data = OperationAdditionalData.fromJson(null)
+
+        data.updateOperationUiState(io.hsar.mapgenerator.commandgui.operation.OperationUiState(workspace = workspace))
+        val restored = OperationAdditionalData.fromJson(data.toJsonOrNull()).operationUiState().workspace
+
+        assertThat(restored, equalTo(workspace))
+        assertThat(OperationSaveJson.objectMapper.readTree(data.toJsonOrNull()).path("uiState").path("schemaVersion").intValue(), equalTo(7))
     }
 
     @Test
@@ -139,6 +163,33 @@ class OperationAdditionalDataTest {
     }
 
     @Test
+    fun `four legacy menu dialogs migrate to functional typed editors`() {
+        val mapper = OperationSaveJson.objectMapper
+        val bounds = MapViewerDialogBounds(11.0, 22.0, 333.0, 444.0)
+        val data = OperationAdditionalData.fromJson(null)
+        data.updateUiState(UiSessionState(dialogs = listOf(
+            MapViewerPersistedDialog("ledger", bounds = bounds, minimized = true),
+            MapViewerPersistedDialog("notes", bounds = bounds, pinned = true, pinAnchor = ViewerPoint(2.0, 3.0)),
+            MapViewerPersistedDialog("graphics", bounds = bounds),
+            MapViewerPersistedDialog("unit-types", bounds = bounds, draft = mapper.readTree("""{"collapsedSections":["FRIEND","HOSTILE"],"unknown":"keep"}""")),
+        )))
+
+        val workspace = data.operationUiState().workspace
+
+        assertThat(workspace.editors.map { it.id }, equalTo(listOf(
+            OperationWorkspaceState.GAME_ID,
+            OperationWorkspaceState.DEFAULT_NOTES_ID,
+            OperationWorkspaceState.GRAPHIC_TYPES_ID,
+            OperationWorkspaceState.UNIT_TYPES_ID,
+        )))
+        assertThat((workspace.editor(OperationWorkspaceState.UNIT_TYPES_ID)!!.draft as OperationEditorDraft.UnitTypes).collapsedAffiliationGroups, equalTo(setOf("FRIEND", "HOSTILE")))
+        assertThat(workspace.editor(OperationWorkspaceState.GAME_ID)!!.floating.minimized, equalTo(true))
+        assertThat(workspace.editor(OperationWorkspaceState.DEFAULT_NOTES_ID)!!.floating.mapAnchor, equalTo(ViewerPoint(2.0, 3.0)))
+        data.updateOperationUiState(data.operationUiState())
+        assertThat(String(data.toJsonOrNull()!!).contains("\"unknown\" : \"keep\""), equalTo(true))
+    }
+
+    @Test
     fun `dialog window state round trips additively and missing state defaults safely`() {
         val dialog = MapViewerPersistedDialog(
             type = "note",
@@ -199,7 +250,7 @@ class OperationAdditionalDataTest {
 
         // Assert
         assertThat(restored, equalTo(state))
-        assertThat(OperationSaveJson.objectMapper.readTree(json).path("uiState").path("schemaVersion").intValue(), equalTo(6))
+        assertThat(OperationSaveJson.objectMapper.readTree(json).path("uiState").path("schemaVersion").intValue(), equalTo(7))
         assertThat(restored.dialogs.single(), equalTo(dialog))
         assertThat(String(json).contains("\"custom\" : \"keep\""), equalTo(true))
     }
@@ -216,14 +267,14 @@ class OperationAdditionalDataTest {
     }
 
     @Test
-    fun `operation without workspace metadata starts with notes in the right dock`() {
+    fun `operation without workspace metadata starts with an empty docked workspace`() {
         // Arrange / Act
         val state = OperationAdditionalData.fromJson(null).operationUiState()
 
         // Assert
         assertThat(state.workspace.mode, equalTo(MapViewerWorkspaceMode.DOCKED))
-        assertThat(state.workspace.editors.single().id, equalTo(OperationWorkspaceState.DEFAULT_NOTES_ID))
-        assertThat(state.workspace.dockRegions.single().region.name, equalTo("RIGHT"))
+        assertThat(state.workspace.editors, equalTo(emptyList()))
+        assertThat(state.workspace.dockRegions.flatMap { it.editorIds }, equalTo(emptyList()))
     }
 
     @Test
@@ -294,7 +345,7 @@ class OperationAdditionalDataTest {
         val restored = OperationAdditionalData.fromJson(bytes).operationUiState().workspace.editor(editor.id)!!
 
         assertThat(restored, equalTo(editor))
-        assertThat(OperationSaveJson.objectMapper.readTree(bytes).path("uiState").path("schemaVersion").intValue(), equalTo(6))
+        assertThat(OperationSaveJson.objectMapper.readTree(bytes).path("uiState").path("schemaVersion").intValue(), equalTo(7))
         assertThat(OperationSaveJson.objectMapper.readTree(bytes).path("custom").textValue(), equalTo("keep"))
     }
 
@@ -331,7 +382,7 @@ class OperationAdditionalDataTest {
         val restored = OperationAdditionalData.fromJson(bytes).operationUiState().workspace.editor(editor.id)
 
         assertThat(restored, equalTo(editor))
-        assertThat(OperationSaveJson.objectMapper.readTree(bytes).path("uiState").path("schemaVersion").intValue(), equalTo(6))
+        assertThat(OperationSaveJson.objectMapper.readTree(bytes).path("uiState").path("schemaVersion").intValue(), equalTo(7))
         assertThat(OperationAdditionalData.fromJson(bytes).uiState().dialogs.none { it.type == "note" && it.targetId == noteId.value.toString() }, equalTo(true))
     }
 

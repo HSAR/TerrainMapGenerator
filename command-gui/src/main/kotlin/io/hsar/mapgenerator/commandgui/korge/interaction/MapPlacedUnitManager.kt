@@ -6,6 +6,9 @@ import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipDamage
 import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipDefinition
 import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnShipWeapon
 import io.hsar.mapgenerator.commandgui.operation.OlympiadDawnSquadronStatus
+import io.hsar.mapgenerator.commandgui.operation.OperationFireArcOverlayBuilder
+import io.hsar.mapgenerator.commandgui.operation.OperationFireArcPrimitive
+import io.hsar.mapgenerator.commandgui.operation.OperationFireArcWeaponDefinition
 
 import io.hsar.mapgenerator.commandgui.GridReferenceFields
 import io.hsar.mapgenerator.commandgui.GridReferenceFormatter
@@ -1923,73 +1926,18 @@ internal class MapPlacedUnitManager(
             drawHighlightedFireArcSegment(parent, center, facingDegrees, originMapCoordinate, target, localPixelsPerUnit, color)
         }
 
-        data class ArcRange(val arcIndex: Int, val band: Int)
-
-        val beamWeapons = weapons.mapNotNull { weapon ->
-            val beamClass = weapon.beamClass ?: weapon.magazineId?.let { 2 } ?: weapon.salvoRack.takeIf { it }?.let { 2 } ?: weapon.pointDefense.takeIf { it }?.let { 1 }
-            ?: weapon.submunition.takeIf { it }?.let { 1 } ?: return@mapNotNull null
-            val arcIndices = weapon.arcs.mapNotNull { BEAM_ARC_ORDER.indexOf(it).takeIf { index -> index >= 0 } }.distinct()
-            arcIndices.takeIf { it.isNotEmpty() }?.let { beamClass to it }
-        }
-        val coverage = mutableMapOf<ArcRange, Int>()
-        beamWeapons.forEach { (beamClass, arcIndices) ->
-            arcIndices.forEach { arcIndex ->
-                (1..beamClass).forEach { band ->
-                    val key = ArcRange(arcIndex, band)
-                    coverage[key] = (coverage[key] ?: 0) + 1
-                }
-            }
-        }
-
-        val maximumBand = beamWeapons.maxOfOrNull { it.first } ?: return
-        (1..maximumBand).forEach { band ->
-            val counts = BEAM_ARC_ORDER.indices.map { arcIndex -> coverage[ArcRange(arcIndex, band)] ?: 0 }
-            val outerCounts = BEAM_ARC_ORDER.indices.map { arcIndex ->
-                beamWeapons.count { (beamClass, arcIndices) -> beamClass == band && arcIndex in arcIndices }
-            }
-            val commonCount = counts.minOrNull() ?: 0
-            val radius = band * OlympiadDawnBeamRules.RANGE_BAND_SIZE_U * localPixelsPerUnit
-            val widthForCount = { count: Int, isOuter: Boolean ->
-                if (count > 1) {
-                    (if (isOuter) BEAM_BORDER_WIDTH else BEAM_RANGE_BAND_WIDTH) * 2.0
-                } else {
-                    if (isOuter) BEAM_BORDER_WIDTH else BEAM_RANGE_BAND_WIDTH
-                }
-            }
-
-            val uniformBoundary = outerCounts.distinct().size <= 1
-            if (commonCount > 0 && uniformBoundary) {
-                drawCircle(
-                    parent,
-                    center,
-                    radius,
-                    if (outerCounts.firstOrNull()?.let { it > 0 } == true) borderColor else rangeBandColor,
-                    widthForCount(commonCount, outerCounts.firstOrNull()?.let { it > 0 } == true),
-                )
-            }
-            counts.forEachIndexed { arcIndex, count ->
-                if (count == 0 || (count <= commonCount && uniformBoundary)) return@forEachIndexed
-                val startDegrees = facingDegrees + arcIndex * BEAM_ARC_WIDTH_DEGREES - BEAM_ARC_WIDTH_DEGREES * 0.5
-                drawSectorArc(
-                    parent,
-                    center,
-                    radius,
-                    startDegrees,
-                    startDegrees + BEAM_ARC_WIDTH_DEGREES,
-                    if (outerCounts[arcIndex] > 0) borderColor else rangeBandColor,
-                    widthForCount(count, outerCounts[arcIndex] > 0),
-                )
-            }
-        }
-
-        beamWeapons.forEach { (beamClass, arcIndices) ->
-            if (arcIndices.size < BEAM_ARC_ORDER.size) {
-                val firstArc = arcIndices.first()
-                val startDegrees = facingDegrees + firstArc * BEAM_ARC_WIDTH_DEGREES - BEAM_ARC_WIDTH_DEGREES * 0.5
-                val endDegrees = startDegrees + arcIndices.size * BEAM_ARC_WIDTH_DEGREES
-                val maximumRadius = beamClass * OlympiadDawnBeamRules.RANGE_BAND_SIZE_U * localPixelsPerUnit
-                drawSectorRadius(parent, center, maximumRadius, startDegrees, borderColor, BEAM_BORDER_WIDTH)
-                drawSectorRadius(parent, center, maximumRadius, endDegrees, borderColor, BEAM_BORDER_WIDTH)
+        OperationFireArcOverlayBuilder.build(
+            facingDegrees,
+            weapons.map { weapon -> OperationFireArcWeaponDefinition(
+                weapon.arcs, weapon.beamClass, weapon.magazineId != null, weapon.pointDefense, weapon.submunition, weapon.salvoRack,
+            ) },
+        ).forEach { primitive ->
+            val radius = primitive.radiusUnits * localPixelsPerUnit
+            val primitiveColor = if (primitive.outerBoundary) borderColor else rangeBandColor
+            when (primitive) {
+                is OperationFireArcPrimitive.Circle -> drawCircle(parent, center, radius, primitiveColor, primitive.strokeWidthPx)
+                is OperationFireArcPrimitive.SectorArc -> drawSectorArc(parent, center, radius, primitive.startDegrees, primitive.endDegrees, primitiveColor, primitive.strokeWidthPx)
+                is OperationFireArcPrimitive.Radial -> drawSectorRadius(parent, center, radius, primitive.degrees, primitiveColor, primitive.strokeWidthPx)
             }
         }
     }

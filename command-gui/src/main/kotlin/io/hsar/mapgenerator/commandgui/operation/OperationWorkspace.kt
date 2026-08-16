@@ -11,6 +11,9 @@ value class OperationEditorId(val value: String)
 value class OperationEditorKind(val value: String) {
     companion object {
         val OPERATION_NOTES = OperationEditorKind("operation-notes")
+        val GAME = OperationEditorKind("game")
+        val UNIT_TYPES = OperationEditorKind("unit-types")
+        val GRAPHIC_TYPES = OperationEditorKind("graphic-types")
         val NOTE = OperationEditorKind("note")
         val UNIT = OperationEditorKind("unit")
         val UNIT_TEMPLATE = OperationEditorKind("unit-template")
@@ -24,7 +27,10 @@ value class OperationEditorKind(val value: String) {
 }
 
 sealed interface OperationEditorTarget {
+    data object Game : OperationEditorTarget
     data object OperationNotes : OperationEditorTarget
+    data object UnitTypes : OperationEditorTarget
+    data object GraphicTypes : OperationEditorTarget
     data class NewNote(val noteId: OperationNoteId) : OperationEditorTarget
     data class Note(val noteId: OperationNoteId) : OperationEditorTarget
     data class Object(val objectId: OperationObjectId) : OperationEditorTarget
@@ -36,7 +42,10 @@ sealed interface OperationEditorTarget {
 }
 
 sealed interface OperationEditorDraft {
+    data class Game(val activeTab: OperationGameTab = OperationGameTab.TURNS) : OperationEditorDraft
     data class Notes(val body: String = "") : OperationEditorDraft
+    data class UnitTypes(val collapsedAffiliationGroups: Set<String> = emptySet()) : OperationEditorDraft
+    data object GraphicTypes : OperationEditorDraft
     data class Note(val value: OperationNoteDraft = OperationNoteDraft()) : OperationEditorDraft
     data class Unit(
         val name: String,
@@ -62,6 +71,8 @@ sealed interface OperationEditorDraft {
 
     data class Opaque(val value: String = "") : OperationEditorDraft
 }
+
+enum class OperationGameTab { TURNS, SETTINGS }
 
 data class OperationEditorBounds(
     val left: Double,
@@ -179,16 +190,43 @@ data class OperationWorkspaceState(
     fun withMode(value: MapViewerWorkspaceMode) = copy(mode = value)
 
     companion object {
+        val GAME_ID = OperationEditorId("game")
         val DEFAULT_NOTES_ID = OperationEditorId("operation-notes")
+        val UNIT_TYPES_ID = OperationEditorId("unit-types")
+        val GRAPHIC_TYPES_ID = OperationEditorId("graphic-types")
 
-        fun default() = OperationWorkspaceState().open(
-            OperationEditorState(
-                id = DEFAULT_NOTES_ID,
-                kind = OperationEditorKind.OPERATION_NOTES,
-                target = OperationEditorTarget.OperationNotes,
-                draft = OperationEditorDraft.Notes(),
-                floating = OperationFloatingEditorState(OperationEditorBounds(32.0, 32.0, 340.0, 360.0)),
-            ),
+        fun default() = OperationWorkspaceState()
+
+        fun gameEditor() = OperationEditorState(
+            id = GAME_ID,
+            kind = OperationEditorKind.GAME,
+            target = OperationEditorTarget.Game,
+            draft = OperationEditorDraft.Game(),
+            floating = OperationFloatingEditorState(OperationEditorBounds(16.0, 68.0, 384.0, 640.0)),
+        )
+
+        fun notesEditor() = OperationEditorState(
+            id = DEFAULT_NOTES_ID,
+            kind = OperationEditorKind.OPERATION_NOTES,
+            target = OperationEditorTarget.OperationNotes,
+            draft = OperationEditorDraft.Notes(),
+            floating = OperationFloatingEditorState(OperationEditorBounds(148.0, 68.0, 384.0, 560.0)),
+        )
+
+        fun unitTypesEditor() = OperationEditorState(
+            id = UNIT_TYPES_ID,
+            kind = OperationEditorKind.UNIT_TYPES,
+            target = OperationEditorTarget.UnitTypes,
+            draft = OperationEditorDraft.UnitTypes(),
+            floating = OperationFloatingEditorState(OperationEditorBounds(624.0, 68.0, 320.0, 640.0)),
+        )
+
+        fun graphicTypesEditor() = OperationEditorState(
+            id = GRAPHIC_TYPES_ID,
+            kind = OperationEditorKind.GRAPHIC_TYPES,
+            target = OperationEditorTarget.GraphicTypes,
+            draft = OperationEditorDraft.GraphicTypes,
+            floating = OperationFloatingEditorState(OperationEditorBounds(492.0, 68.0, 320.0, 560.0)),
         )
     }
 }

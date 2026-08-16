@@ -1,225 +1,136 @@
-# Command GUI Notes
+# Command GUI Agent Notes
 
-## Migration Contract and Current Architecture
+## Current status
 
-The migration is intentionally incomplete. Keep these boundaries accurate while it proceeds:
+The latest completed migration work is **Phase 4, Slice 3 (focus, dialogs, feedback and look-and-feel parity)**. Treat Phase 4 Slice 4 and later as planned work even where scaffolding exists.
 
-- There are two selectable viewers. KorGE under `command-gui/.../korge/` is still the default compatibility backend. `command-gui-compose` is the modern Compose Desktop viewer,
-  loaded through the `MapViewerBackendProvider` service. `MapViewerFrame` and `--viewer=korge|compose` remain the public compatibility seam.
-- `command-gui` is a mixed facade/core/legacy module, not yet the final module split. Engine-neutral code belongs in the top-level `commandgui` or `commandgui.operation` packages;
-  KorGE views, events and bitmap types stay below `korge`. Compose and Skia types stay in `command-gui-compose`.
-- `operation/OperationCore.kt` is the source of truth for Compose operation content: templates, units, graphics, drawings, notes, change sets, timeline and document metadata.
-  `operation/OperationTimelineAuthoring.kt` is the authoritative constructor and presentation model for timeline entries, turn markers/groups, canonical descriptions and affected
-  editor targets. Compose and archive adapters must use it rather than assigning entry kinds or descriptions independently.
-  `operation/OperationTransforms.kt`, `OperationTransformGestures.kt` and `OperationSelectionGeometry.kt` are authoritative for transforms, hit testing, selection frames and
-  marquee geometry in both viewers. KorGE adapts these rules through snapshot/projection wrappers; do not recreate transform math below `korge` or in Compose.
-- `ComposeOperationState` is the authoritative Compose session state. It owns the document/head replay, camera, tool, selection, historical preview, transform preview, save
-  revisions and the neutral `OperationWorkspaceState`. Composables may own only active drag/resize deltas; persistent editor identity, typed drafts, dock placement and floating
-  state belong in `commandgui.operation`. Editor validation is recomputed from each typed draft on restoration and must use the same editor-scoped validator for presentation and
-  Save gating; validation messages are not persisted.
-- `MapViewerSaveRepository.loadOperation/createOperation/saveOperation` is the authoritative operation archive entry point for both launchpads. `OperationSaveLoader` reads an
-  archive
-  once into `OperationDocument` data, and the ledger codec reads/writes `OperationTimelineEntry`, `OperationChangeSet` and `OperationContent` directly. Save codecs must not import
-  `korge` or `korlibs`; camera, bitmap and action-history conversion belongs in `korge.adapter` or the KorGE viewer boundary.
-- KorGE now accepts a loaded `OperationDocument` and converts its neutral timeline once on viewer entry. Its own `LedgerEntry`, snapshot, template, note and drawing controllers
-  remain
-  temporary runtime models; convert them to a neutral timeline only when saving, and never reintroduce prefix replay or KorGE source-of-truth models into archive code.
-- `OperationTimelineEntry.componentChangeSets` retains the sequential neutral members of a persisted batch. Keep this when adapting or editing timelines: an aggregate before/after
-  change cannot represent batches whose actions cancel, while each top-level archive record must remain exactly one timeline entry.
-- Preserve KorGE behavior while it is the default, but do not build new product UI in KorGE merely for symmetry. Extract reusable rules first, then give each renderer a thin
-  drawing/input adapter. Do not change the default or remove the selector before the parity gates below are met.
+Use a strangler migration: locate tested KorGE behaviour, move reusable rules to neutral types, add renderer-independent fixtures, connect Compose through thin adapters, and remove compatibility code only after every consumer has crossed the boundary. KorGE is the compatibility backend, not the destination for new product UI.
 
-## Current Compose Capability
+## Architecture and ownership
 
-Treat the following as implemented and protected behavior, not future work:
+- `MapViewerFrame` is the public viewer facade. KorGE remains the default compatibility backend; Compose Desktop loads from `command-gui-compose` through `MapViewerBackendProvider`. Keep `--viewer=korge|compose` through the Phase 5 fallback release.
+- Engine-neutral state and rules belong in `commandgui` or `commandgui.operation`; KorGE/korlibs types stay below `korge`; Compose/Skia types stay in `command-gui-compose`. Save codecs import neither renderer.
+- `OperationCore.kt` owns operation content. `OperationTimelineAuthoring.kt` owns timeline construction, turn grouping, descriptions and affected targets. A persisted batch remains one top-level entry, but do not collapse its sequential `componentChangeSets`.
+- Neutral transforms, selection geometry, tool gestures, grid layout/references, measurements, command resolution, viewer-chrome geometry, menu geometry and fire-arc primitives are authoritative. Renderer code converts coordinates, measures text, paints and adapts input.
+- `ComposeOperationState` owns document/head replay, camera, tool, selection, previews, save revisions, workflows and `OperationWorkspaceState`. Composables retain only ephemeral pointer, focus or popup state. Editor identity, drafts, bounds, dock/floating placement and validation inputs remain neutral and persistable.
+- `MapViewerSaveRepository.loadOperation/createOperation/saveOperation` is the archive boundary. Preserve unknown `additionalData.json` fields additively. Disabling `OLYMPIAD_DAWN_EXPERIMENTAL` hides entry points without deleting saved payloads.
+- `enabledLayerIds` remains persistence-only until a separately approved layer slice. Compose paints the supplied base map and grid directly.
 
-- The styled main/new/existing-operation launchpad opens both new and saved operations into the same `OperationDocument`/`ComposeOperationState` path.
-- The map uses a tiled Compose Canvas with cursor-anchored zoom, right-drag panning, saved camera restoration, the shared fading/sticky grid layout and zoom-independent unit icons.
-- Units, graphics and all persisted drawing shapes render from neutral content. Selection supports click/Shift-click, marquee, group frames, move, resize, rotation, deletion and
-  immutable previews committed as one timeline entry.
-- Draw creates Freeform, Line, Rectangle and Oval objects through the neutral reducers in `MapViewerToolGestures.kt`, including colour/mode controls, Shift constraints, preview,
-  cancellation and one-entry commit. Measure is transient, grid-aware and remains available during historical replay.
-- The live ledger supports current/history selection, read-only preview, undo/redo, branch truncation and selection pruning. Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+S, Delete and Escape
-  are wired.
-- The typed workspace renders persisted left, right and bottom docks around the map, with per-region resize/collapse state, interactive tab reorder/cross-region movement,
-  keyboard tab cycling and focused tab activation. Dock moves retain typed drafts and floating state; the workspace archive round-trips every region, tab order, active tab and
-  opaque restored editor. Floating windows retain drag/resize/minimize/pin/Z-order/map-anchor behavior. Notes, unit, graphic, template and operational editors share those
-  typed editor instances. Notes are timeline-backed and support multiline drafts, ordering, map-picked object references, missing-reference preservation and object-context links. The Compose unit and
-  graphic palettes create, edit and safely delete templates, and their click-then-map placement modes use immutable previews before recording one object entry. Graphic dimensions
-  are template-owned and propagate to every live instance; archive and KorGE boundaries mirror them through the established normalized-size property keys. Unit edits cover
-  template, grid-aware position, name, facing, destroyed state, affiliation and custom properties; graphic edits cover template, display label, grid-aware position and instance
-  properties. Campaign-specific Olympiad Dawn status, report and tactical panels are implemented as flag-gated typed Compose editors.
-- Revisioned two-second autosave, manual save, save-gated return/close, in-flight mutation handling and Retry/Cancel Exit are implemented. New operations save without requiring a
-  first edit.
-- Additive UI schema version 6 stores typed note, unit and graphic drafts (including bounded embedded template images) while continuing to write version-2
-  IDs/drafts/dock panels and KorGE `notes`, `note` and `unit-edit` dialog records. Version-1 through version-5 and recognized legacy dialogs migrate into functional typed editors; unknown
-  additional-data and unsupported legacy dialog/draft fields remain preserved.
+## Protected behaviour through Phase 4 Slice 3
 
-Do not overstate these partial implementations:
+### Map, authoring and operational rules
 
-- `enabledLayerIds` is state/persistence only; Compose has no real layer controller and Canvas still paints the supplied base map and grid directly.
-- The typed workspace shell is complete, but unrecognised/opaque restored editor records remain intentionally preserved without a Compose body. Do not replace their
-  unsupported-editor presentation with an invented legacy workflow; port a recognised legacy editor only in a separately approved slice.
-- Unit/graphic-template creation/edit/delete, unit/graphic placement, ordinary `Edit Unit`/`Edit Graphic`, and delete context-menu actions are functional. SITREP and the other
-  legacy commands are still absent.
-- The old `loadMap()`, `MapViewerSavedMap`, `MapViewerLedgerReplay`, replay Canvas and projection-only tests have been removed. Do not add a second map/replay loader; derive views
-  from `OperationDocument.content` or its timeline.
-- Layer management remains deliberately deferred. `enabledLayerIds` is persisted state only; do not treat it as authoritative rendering until a separately approved layer slice.
+- Both launch paths enter the same Compose operation state. The tiled map restores camera state and supports cursor-anchored zoom, right-drag pan, shared grid layout, zoom-independent unit icons and neutral selection/transform gestures.
+- Units, graphics and all persisted drawings support click/Shift/marquee selection, group frames, move/resize/rotate/delete and immutable one-entry commits. Draw and transient Measure share neutral constraints, clamping and grid-aware results.
+- The Game Turns editor is a compact KorGE-style navigator: equal Undo/Redo controls, an Add Turn/name row, a scrolling list of fixed-height turn buttons with thumbnail/name/four-digit hexadecimal index, and a fixed Current button at the bottom. Turn selection preserves revert/branch-truncation semantics; do not reintroduce expanded action-detail rows into this narrow panel. Save and save status remain available on the Game Settings tab.
+- Compose can create/edit/delete unit and graphic types, place instances, edit ordinary instance fields, maintain timeline-backed notes/references and use flag-gated Olympiad Dawn status, report and tactical workflows. Graphic dimensions remain template-owned.
+- Sensor, ECM, targeting, ammunition, damage and fire-arc rules remain neutral. SCIREP and NAVREP are distinct context commands. Persisted Olympiad Dawn fighter IDs remain random four-character `[A-NP-Z0-9_]` tokens.
 
-## Migration Plan
+### Workspace and persistence
 
-Use a strangler migration, not a second big-bang rewrite. For each workflow: locate the KorGE rule and tests, express the rule against neutral types, add neutral parity tests,
-connect Compose to the rule, and leave only rendering/input adaptation in each backend. Remove a legacy model only after all its consumers have crossed the boundary.
+- New operations start with an empty workspace. Stable menu-editor IDs are `game`, `operation-notes`, `graphic-types` and `unit-types`; summon Game/Notes to the left and Graphics/Units to the right.
+- `OperationWorkspaceState` restores left/right/bottom docks, size/collapse, tab order/active tab, cross-region movement, keyboard cycling and floating bounds/minimize/pin/Z-order/map anchor. Typed drafts survive moves; opaque records remain losslessly unsupported.
+- UI schema 7 round-trips the four menu panels, Game tab, Units collapsed affiliations, ordinary/operational editor drafts, bounds, docking and floating state. Legacy KorGE `ledger`, `notes`, `graphics` and `unit-types` records restore as functional editors and continue to be emitted. Preserve unknown draft fields and unrelated additional data.
+- Global display preferences remain in existing `settings.json` without a format bump. `MapViewerDisplaySettings` is the aggregate boundary for destroyed-unit mode, icon size and public fire-arc mode.
 
-### Phase 1 — Stabilise the neutral editing foundation
+### Viewer chrome contract
 
-Completed: transform gestures and selection geometry now use neutral operation content and projection APIs in both viewers. The old KorGE resize/pivot implementations and unused
-Compose replay renderer have been deleted; parity coverage includes every persisted drawing kind, mixed selections, graphics, modifiers, snapping, cancellation and handles.
+- Viewer screens have no Compose/AWT desktop `MenuBar`, permanent bottom ledger, always-visible palette or `MENU` button. Launch screens have no menu surface.
+- Four floating buttons are exactly 120×40 logical pixels: Game `(16,16)`, Notes 12 px to its right, Units 16 px from the right, and Graphics 12 px left of Units. `MapViewerChromeLayoutBuilder` is authoritative.
+- Keep Select/Draw/Measure centred at the top. If its bounds intersect either button group, move it to y=68 (16 px padding + 40 px row + 12 px gap).
+- Clicking a closed menu editor opens and activates it in its legacy-side dock; clicking any already-open instance closes it even when inactive. Restored editors open where persisted. Placement initiated from Units or Graphics does not close its editor.
+- Game contains Turns and Settings. Workspace Mode updates the persisted workspace immediately; Destroyed Units, Unit Icon Size and flag-gated Fire Arcs write through `MapViewerGlobalSettings`. Notes reuses the notes browser; Units and Graphics host their full authoring/placement bodies.
+- Escape contains Return to Launchpad, Exit and Close only. Save remains in Game and Ctrl+S. All exit requests continue through save gating.
 
-Completed: string editor IDs and viewer-local drafts/windows have been replaced by `OperationWorkspaceState`. Notes and unit editors restore functionally in docked/floating modes;
-schema-v3 persistence remains bidirectionally compatible with the KorGE unit-dialog record.
+### Commands, shortcuts and context menus
 
-Completed: operation persistence is document-native. Archive loading is single-pass and incremental, applied timeline entries are encoded directly, redo branches are intentionally
-discarded on restart, thumbnails and image loading consume neutral models, and KorGE conversion is confined to viewer/adaptor boundaries. The obsolete save projection and duplicate
-KorGE catalogue are deleted. Legacy tactical additional-data helpers remain under `korge.persistence`, layered over the neutral additive UI document.
+- `MapViewerCommand`, `MapViewerCommandItem`, `MapViewerCommandContext` and `MapViewerCommandResolver` are the neutral command boundary. Presentation carries label, enabled state, disabled reason, destructive classification and children; it never stores renderer callbacks.
+- Floating buttons, Game controls, Escape actions, context rows and global shortcuts dispatch typed commands against current Compose state. Do not reintroduce flat `MapViewerContextMenuCommand`, string-prefix deletion detection or captured document snapshots. KorGE may retain its callback compatibility adapter until removal.
+- Global shortcuts run in bubble phase. Focused text controls own Ctrl+A/C/X/V/Z/Y and Delete; Ctrl+S remains a document command. Outside text editing, Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Delete and dock Ctrl+Tab keep document/workspace meanings. Activate on key-down, suppress non-repeatable repeats, and dispatch one event once.
+- Escape unwinds one state only: context-menu chain; highest active preview/gesture/placement/reference workflow; open Escape menu; otherwise open Escape menu.
+- Secondary-click cancellation of drawing, placement and reference workflows takes priority over menu opening. Empty-map secondary click dismisses the menu and preserves selection.
+- Right-clicking an unselected object selects it. Right-clicking a selected member of a multi-selection preserves the group and exposes only immediate Delete Selected. Single-object rows are:
+  - Unit: Edit Unit, Delete Unit, separate SCIREP and NAVREP, feature-gated Tactical and Status, then referenced Notes submenu.
+  - Graphic: Edit Graphic, Delete Graphic, then referenced Notes submenu.
+  - Drawing: Edit Name, Delete Drawing, then referenced Notes submenu.
+- History preview permits safe inspection editors but disables content mutation, state-changing reports, firing and deletion with an explicit reason. Object and group deletion remain immediate; dependent template deletion remains blocked.
 
-Completed: `MapViewerGridOverlayLayoutBuilder`, `GridReferenceFormatter` and `measureMapDrag` are authoritative for both viewers and thumbnails. The shared screen-space contract
-owns
-line placement, fades, sticky labels, major/fine switching, live references and measurements; KorGE and Compose retain only text measurement, coordinate conversion and drawing.
+### Custom menu-chain implementation
 
-Authoritative layer controls and regeneration are a future feature, not current migration work. Do not start them incidentally while completing ordinary authoring, persistence,
-grid parity or operational-rule extraction.
+- Context menus live in one Compose host at viewer-root coordinates and consume pointer input across the active chain; never create an AWT popup over the map.
+- `MapViewerMenuTokens` is authoritative: 44 px rows, 4 px padding, 180 px minimum width, 2 px border, 8 px submenu corridor and 180 ms close delay. Keep EF Nord and shared command colours for normal, hover/focus, disabled, destructive/warning, separator and arrow states.
+- `MapViewerMenuLayoutBuilder` clamps roots to the viewer, aligns children to source rows, prefers right, flips left and vertically clamps tall menus. Recompute from current viewer dimensions after resize, DPI or dock changes.
+- Pointer movement into the safe corridor must retain the submenu during the close delay. Keyboard operation covers Up/Down/Home/End, Right/Left, Enter/Space and Escape. Dismiss the full chain on outside action and restore focus to the invoking control or map.
+- Disabled reasons must be presented through semantics/text, not colour alone. Do not permit pointer events to pass through the active menu chain to selection or map gestures.
 
-Phase 1 is complete: neutral transform fixtures cover every shape/group/modifier combination; restored editors are functional; both viewers consume the same grid layout and
-reference/measurement services; no Compose production code references KorGE types, and save codecs remain operation-native.
+### Display settings and overlays
 
-### Phase 2 — Complete ordinary operation authoring
+- Full destroyed mode retains normal rendering, hit testing, menus and transforms.
+- Partial renders icon and destruction cross at 50%, permits selection/context menus, and blocks transforms. A group containing any non-movable destroyed unit cannot begin a group transform.
+- Hide omits destroyed units from rendering/hit testing, prunes their selection, and closes invalid object menus/editors without changing document content.
+- `OperationFireArcOverlayBuilder` returns renderer-independent circle, sector-arc and radial primitives from shared weapons, facing and range bands. Compose and KorGE consume the same primitives. Compose uses constant screen-space strokes.
+- Fire-arc filtering remains All Units, Friendlies of Selected, Hostiles of Selected, Selected Only or None. Hide both the setting and overlays when the feature flag is disabled.
 
-Completed: Compose has an operation-native unit-type palette, typed template creation/editing, guarded deletion, click-then-map placement, and ordinary unit editing for template,
-grid-aware position, name, facing, destroyed state, affiliation and custom properties. `OperationUnitAuthoring` owns validation, stable instance naming, placement sizing and
-change construction; do not recreate these rules in Compose. Drag placement, bulk catalogue import, template reordering and campaign-specific unit panels remain intentionally
-deferred.
-Completed: Compose has an operation-native graphic palette, typed template import/create/editing, guarded deletion, click-then-map placement, and ordinary graphic editing for type,
-display label, grid-aware position and custom properties. `OperationGraphicAuthoring` owns validation, aspect-derived default sizing, placement, retargeting and shared-size
-propagation. Typed dimensions round-trip through legacy `normalizedWidth`/`normalizedHeight` template properties at archive and KorGE boundaries. Drag placement, bulk import and
-template reordering remain deferred.
-Completed: Compose notes use neutral timeline-backed create/edit/delete/reorder actions. New and edited note drafts remain workspace-only until Save; references can target every
-map object kind through a cancellable map-pick mode, retain order and missing IDs, and round-trip through legacy KorGE note dialogs. Pre-schema-6 scratchpad text is intentionally
-discarded rather than converted into a ledger entry.
-Completed: Draw creation now uses `MapViewerDrawingGesture` in both viewers, including padded-background start/clamping, physical Shift constraints, freeform spacing and no-op
-suppression. Compose owns Draw/Measure pointer streams through a cancellable captured session, renders constant-screen-width drawing strokes and EF Nord drawing labels, and exposes
-legacy-compatible optional name editing through the shared `displayName` custom property. Measurements remain transient, map-clamped, grid-aware and available during history.
+### Focus, modal and feedback contract
 
-Completed: Compose now presents the ledger as expandable turn groups with neutral canonical action descriptions, generated turn thumbnails, affected-editor links and explicit
-future/current states. New operations begin with `Operation Start`; adding a turn creates one marker entry. Selecting a turn moves the applied head and remains read-only until
-Current reapplies the retained branch, while selecting an individual action remains a non-mutating history preview. Applied saves omit redo-only thumbnail assets.
+- When an operation opens with a persisted active editor, focus that editor; otherwise focus the map. Activating a dock tab or floating editor moves focus to it. Dismissing a menu or modal restores focus to its invoking control, falling back to the map when the invoker is no longer available.
+- Editable text retains clipboard, selection, undo/redo, multiline and IME ownership. Do not remount a typed editor draft merely to change validation or focus state, and do not let viewer shortcuts observe text-owned events.
+- All Compose modal presentation goes through one typed `ComposeModalHostState`. Requests have stable keys, duplicate queued requests collapse, loss-prevention requests may pre-empt an ordinary user modal, and otherwise the queue is FIFO. Each modal defines an explicit default and cancel action; cancellation must complete its owning workflow exactly once.
+- Slice 3 adds no confirmation to object, group, note, drawing, unit-type or graphic-type deletion. Those actions remain immediate unless a later independently approved confirmation contract says otherwise.
+- Transient feedback uses `ComposeTransientMessageHostState`: at most five lower-left notices, ten-second display, 420 ms fade, and no map-input interception outside the painted notice bounds. Save success/failure and other non-blocking feedback belong here rather than in ad hoc overlays.
+- `ComposeFilePicker` is the sole Compose file-selection boundary. Keep its AWT `FileDialog` parented to the Compose window, suspend conflicting viewer shortcuts while it is open, and decode/read selected content off the UI thread. Treat cancel, unreadable and unsupported selections as distinct typed results. Slice 3 intentionally imposes no file-size limit; loading limits belong to Slice 5.
 
-Phase 2 is complete: a user can create and maintain templates, units, graphics, drawings, notes and turns entirely in Compose. All Compose authoring records through the neutral
-timeline-entry factory, so batches, descriptions and affected targets retain their meaning across archive and KorGE boundaries. Representative Compose→KorGE→Compose fixtures
-must continue retaining content, IDs, images, applied head, turn thumbnails and descriptions.
+### Presentation resources and parity evidence
 
-### Phase 3 — Extract and port operational rules
+- `CommandDesignTokens` and neutral menu/chrome tokens are authoritative for button sizes, padding, gaps, borders, row geometry, colours and interaction states. New editor/menu presentation must use those tokens rather than introducing visually equivalent local constants.
+- Bundle both TV Nord EF font resources and inspect them at startup. If either cannot load, log the diagnostic once and use a readable sans-serif fallback; the application must remain usable. Keep the font attribution and the authorization assumption visible in third-party notices.
+- The launchpad exposes a compact bottom-left version button. It opens About through the shared modal host and shows build version, runtime/font diagnostics, project licence and third-party notices, with copyable diagnostics.
+- Required build metadata, project licence, third-party notices and 64/128/256/512 application icons are packaging-tested. Missing required resources fail tests; optional presentation failures degrade with an explicit diagnostic.
+- Slice 3 parity evidence is manual and measurement-led rather than checked-in golden PNGs. Follow `command-gui/docs/phase4-slice3-parity.md`; keep temporary captures under ignored `build/reports/parity`, verify the stated window/DPI matrix, and distinguish deliberate Compose differences from known KorGE defects.
 
-Move rules out of `korge/interaction` before building their Compose UI. Use neutral `OperationUnit`/content queries rather than adapting new code to `UnitSnapshot`.
+## Completed migration summary
 
-Completed: `OperationUnitQueryService`, the Olympiad Dawn definition/damage/fighter domain, unit metadata labels and status presentation now live in
-`commandgui.operation`. KorGE projects its runtime units/templates into neutral content at its boundary; its query compatibility view delegates to the neutral spatial service,
-and renderer-specific status panels retain only layout and input adaptation. Persisted property keys, damage/definition JSON and random four-character fighter IDs are unchanged.
-Completed: sensor visibility, contact/Sierra lifecycle, ECM geometry and SITREP/SCIREP/NAVREP generation now live in `commandgui.operation`. The neutral report service returns
-immutable assessments and normalized per-turn contact state; low-confidence tracks use candidate-to-last-seen distance, and hidden or destroyed contacts cannot remain active or
-identified. Additive SITREP/ECM persistence uses neutral IDs and types, while KorGE retains runtime projection, dialog controls, overlays, clipboard and pointer handling.
-Completed: fire arcs, tactical targeting, ammunition/fire-control state, combat resolution, damage rules, tactical persistence codecs and GUNREP presentation now live in
-`commandgui.operation`. KorGE delegates through runtime projection adapters and retains dialogs, overlays and ledger orchestration. Every tactical entry point, including restored
-dialogs and programmatic firing/interception paths, is guarded by `OLYMPIAD_DAWN_EXPERIMENTAL`; disabling it preserves existing tactical payloads without executing or mutating them.
-Completed: Compose now provides flag-gated SCIREP/NAVREP, GUNREP, tactical and Olympiad Dawn status/damage editors on the neutral services. Contact, ECM and tactical state
-round-trips through the existing additive payloads, unit changes remain timeline-backed, and the single Compose map surface renders tactical targeting and ECM overlays. When
-`OLYMPIAD_DAWN_EXPERIMENTAL` is disabled, operational menu actions, editors, overlays, rolls and persistence mutations remain unavailable while saved payloads are preserved.
+- **Phases 1–3:** neutral document editing, transforms/selection, authoring, persistence, sensors/reports/ECM and Olympiad Dawn tactical rules moved behind renderer-independent APIs; Compose gained equivalent authoring and workflow bodies.
+- **Phase 4 Slice 1:** typed dock/floating workspace shell, restoration, validation and navigation completed.
+- **Phase 4 Slice 2:** viewer floating menus, typed menu editors, schema-7 migration, unified command/context dispatch, bubble-phase shortcuts, Escape precedence, custom menu-chain geometry/timing, global destroyed-unit modes and shared fire-arc primitives completed.
+- **Phase 4 Slice 3:** shared design tokens and scale fixtures, deterministic editor/map focus, typed priority/FIFO modal and transient-message hosts, parented asynchronous file selection, launchpad About/diagnostics/licences, font fallback diagnostics and manual parity evidence completed.
 
-Phase 3 gate: existing sensor, tactical and Olympiad Dawn test cases run outside `korge` against neutral models, and the corresponding Compose workflows produce equivalent
-persisted
-results from the same operation fixture.
+## Remaining migration plan
 
-### Phase 4 — Finish the Compose workspace and desktop product
+### Phase 4 Slice 4 — Save and exit orchestration
 
-Completed (Slice 1): the typed workspace now renders left/right/bottom docks; supports resize/collapse, pointer tab reordering and cross-region drops, accessible tab move
-menus, Ctrl+Tab/Ctrl+Shift+Tab cycling and focused activation; and preserves drafts/floating state through moves. `OperationWorkspaceState` owns deterministic dock lookup and
-cycling. Typed validators are editor-scoped and recomputed from restored drafts, while unknown opaque editor records remain preserved but unsupported. Neutral, persistence and
-Compose state coverage protects dock movement/cycling, exact three-region restoration and restored-draft validation.
+This is the immediate next slice. Preserve Slice 3 interaction and presentation behaviour while making every save/exit path lossless under concurrency and failure.
 
-2. Finish native desktop behavior: menus and shortcuts, focus traversal, context menus, confirmations, snackbars/errors, native AWT file dialogs, app icons/licenses/resources and
-   robust loading/progress/cancellation states. Keep one Compose rendering surface and use Material/Compose multiline text controls.
-3. Make save/exit orchestration independently testable by injecting the saver as well as the existing autosave clock. Cover failed autosave, retry, mutation during save, forced
-   exit save and cancelled exit without requiring a live window.
-4. Harden rendering with visible-tile/object culling, cache lifetime checks, large-map limits, DPI/window resizing and hardware/software Skia verification. Use EF Nord consistently
-   without replacing accessible control semantics.
+- Extract a testable save coordinator with injected saver, debounce clock and completion dispatcher. At most one save is in flight; mutations during save stay dirty; stale completion cannot mark a newer revision saved; requests coalesce; autosave recovers after failure.
+- Route window close, Escape Exit and Return to Launchpad through one request path. Clean exits proceed; dirty exits save; in-flight exits wait; failures offer Retry and Cancel Exit without losing the operation.
 
-Phase 4 gate: workspace state restores exactly, multiline/focus/clipboard/IME behavior has Compose UI coverage, native close cannot lose changes, and the portable Windows image
-passes an extract-and-run smoke test.
+### Phase 4 Slice 5 — Loading, packaging and desktop polish
+
+- Give create/open/render/decode/archive operations explicit idle/running/succeeded/failed/cancelled state. Run expensive work off the UI thread, make cancellation cooperative and ignore stale completions.
+- Define image/archive limits before allocation and present actionable failures. Build a portable Windows distribution with icons, fonts and licences, then smoke-test create/save/close/reopen from paths containing spaces and non-ASCII characters.
+
+### Phase 4 Slice 6 — Rendering hardening
+
+- Add conservative visible-tile/object culling, bounded caches and obsolete-work cancellation without changing layer order or hit testing.
+- Verify supported map dimensions, minimum/default/maximum zoom, cursor anchoring, dock/window resize and DPI/monitor transitions on hardware and software Skia paths.
+
+Phase 4 is complete only when workspace restoration is exact; menus, focus, multiline editing, clipboard and IME have Compose UI coverage; every close path is lossless under failure/concurrency; loading cancels safely; and the portable Windows image passes its smoke matrix.
 
 ### Phase 5 — Prove parity and change the default
 
-Build explicit evidence rather than relying on visual inspection:
+- Protect schemas 1–7, unknown fields, undone heads, generated assets and Compose→KorGE→Compose round trips.
+- Add renderer snapshots across zoom/DPI and Compose UI journeys for every launch path, tool, editor/report, menu/shortcut/context action, workspace restore and failed-save exit.
+- Run `:command-gui:test`, `:command-gui-compose:test`, dependent `:render:test`, `testAll`, portable ZIP smoke tests and Windows hardware/software/DPI checks.
+- Then make Compose default for one release while retaining explicit `--viewer=korge` fallback and conversion compatibility.
 
-- Version-1/version-2 and unknown-field persistence fixtures, undone-head saves, generated assets and Compose→KorGE→Compose round trips.
-- Tolerant renderer snapshots at minimum/default/maximum zoom plus pure assertions for layer order, hit targets, sticky grid labels, pan/zoom anchoring and large-map tiling.
-- Compose UI tests for launchpad, new/open, tools, every editor/report, multiline input, workspace switching and save-failure exit gating.
-- `testAll`, dependent `:render:test`, portable ZIP smoke tests and Windows hardware/software-rendering checks.
+### Phase 6 — Remove KorGE
 
-Only after these gates pass: make Compose the default for one release while retaining explicit `--viewer=korge` fallback and conversion compatibility.
+After the fallback release, move final shared rules out of `korge`, delete KorGE views/models/dependencies and `LegacyOperationAdapter`, remove the backend selector/service seam, simplify `MapViewerFrame`, and split modules only where the resulting dependency graph warrants it. Do not mix cleanup with feature porting.
 
-### Phase 6 — Remove KorGE in a dedicated release slice
+## Compatibility details that must survive
 
-After the fallback release, move any final shared rules out of `korge`, delete the KorGE scene/views/models/dependencies and `LegacyOperationAdapter`, remove the backend selector
-and
-service seam, simplify `MapViewerFrame`, and split/rename modules only where the resulting dependency graph warrants it. Do not mix this cleanup with feature porting.
-
-- `command-gui/src/main/kotlin/io/hsar/mapgenerator/commandgui/MapViewerFrame.kt` is the public viewer entry point for generated map images and should not depend on `render/`.
-- `MapViewerFrame` is also the backend compatibility facade. The Compose implementation is loaded from `command-gui-compose` through
-  `MapViewerBackendProvider`; keep Compose/Skia types out of the facade and shared save models.
-- `command-gui-compose` owns the modern Compose Desktop window, Material controls and tiled Canvas renderer. It must remain a single Compose
-  rendering surface; AWT interop is reserved for native operating-system dialogs.
-- `command-gui/src/main/kotlin/io/hsar/mapgenerator/commandgui/korge/scene/MapViewerScene.kt` owns KorGE window setup, camera world wiring and scene-level composition.
-- KorGE is the compatibility backend while workflows move to Compose. New reusable behavior belongs in engine-neutral packages rather than
-  under `korge/`.
-- Grid layout, grid-reference formatting and measurement calculations are neutral top-level services. Keep KorGE grid code limited to projecting shared screen-space primitives into
-  its world-attached line layer and screen-attached label/arrow layer; do not recreate layout rules below `korge`.
-    - Keep the JVM-specific KorGE 5.4 dependency for the compatibility backend until that backend is removed; do not upgrade it as part of Compose work.
-    - When working in KorGE, consult the entrypoint docs first: https://docs.korge.org/entrypoint/
-    - All `command-gui` bitmaps handed to KorGE views should be premultiplied before upload; call `premultipliedIfRequired()` after loading, trimming or composing bitmap content.
-    - The map viewer uses scroll-wheel zoom; keep the active seed stable across rerenders so graph and contour layers stay consistent for a single session.
-    - CLI layer selection is opt-in via repeated `--layer` flags; keep the GUI's initial layer state and any render calls aligned with the chosen CLI layers so disabled layers are
-      neither shown nor generated.
-    - Terrain-based layers should be sampled from stable world-space coordinates derived from `metresPerPixel`, not raw pixel indices, so zoomed rerenders keep the same scale and
-      only gain resolution.
-    - Static image layers are loaded from repeated `--image` flags and normalized to the largest image size before being exposed to the viewer, so layer toggles and zooming stay
-      aligned.
-- Dialog performance: keep wheel scrolling as a transform-only update. Do not call the dialog's full `render()` for each scroll event; that removes and rebuilds the entire content
-  tree, including text inputs and custom panels. Retain the clipped content container and update only its Y offset, rebuilding the scrollbar thumb separately. Use a full render
-  only when content, dimensions, or dialog state actually changes.
-- Save files may carry an `additionalData.json` payload; preserve it on a best-efforts basis and write it back additively when present, without making it required for normal
-  save/load flows.
-- Launchpad menu centring, the persistent launch shell, and launch-background regeneration must use `korge/launch/MapViewerViewport.kt`'s `MapViewerViewportResolver`. Its
-  `actualVirtualWidth`/`actualVirtualHeight` values are authoritative, with the KorGE window dimensions used only as the startup fallback when either actual value is zero. A fixed
-  raster canvas sized to an earlier background creates first-regeneration grid judder and a right-edge black band; each generation must retain its own clipped canvas and the
-  outgoing/current canvases must be laid out independently during the transition. Repeated regeneration must advance `korge/launch/LaunchBackgroundGenerationSegments.kt` before
-  cancelling the old job, so stale queued tile publications cannot update the current canvas.
-
-## SITREP Contacts
-
-- Sensor contact state is persisted additively in `additionalData.json` under `sitrepContacts`. Each record is keyed by numeric turn and observer unit ID, and records are
-  serialized sorted by turn and then observer ID. Existing unrelated additional-data fields must be preserved.
-- A unit becomes an active contact when it is within the outer sensor detection range. Its Sierra number is assigned at that point and remains attached to the contact while it
-  remains detected. Losing detection removes the active contact and allows a later detection to receive a new number.
-- Identification is separate from detection. A contact inside the identification range is identified and can appear with its hull class; a detected contact outside that inner range
-  remains an unknown contact. An identified contact stays identified while it remains detected, and is cleared when it becomes hidden.
-- Persisted contact records include the active unit ID, Sierra number, and identification state. Loading restores those values before sensor checks are refreshed; refresh then
-  removes contacts that are no longer physically detected.
-- SCIREP compares the current turn's identified contact IDs with the previous turn's record for the same observer. A contact newly identified on the current turn gets an additional
-  Sierra identification sentence; reopening the report on that turn does not change its persisted state.
-- The supported class-code display names are FF frigate, F fighter, DD destroyer, CL light cruiser, CA heavy cruiser, CVE escort aircraft carrier, CVL light aircraft carrier, and
-  BC battlecruiser. The naval names follow the hull-classification reference at https://en.wikipedia.org/wiki/Hull_classification_symbol where the project codes are represented
-  there.
-- SCIREP contact segments must be sorted by ascending Sierra number and combined by contact ID before rendering, so each contact has one sentence even when multiple clauses apply.
-  When an active contact disappears, retain its last-seen position, range, Sierra number, and identification metadata in the turn record and emit `Contact Sierra N lost.` on that
-  turn. A newly detected contact within 3U of a retained lost position inherits that Sierra number as a low-confidence track and reports the last-known position; known
-  identification is expressed as `was identified as` in that sentence.
+- Keep the JVM-specific KorGE 5.4 dependency until removal. Premultiply every bitmap after load, trim or composition before uploading it to KorGE.
+- Keep a session's render seed stable. Terrain layers sample stable world coordinates derived from `metresPerPixel`; repeated layer/image inputs remain aligned.
+- KorGE dialog scrolling is transform-only: move clipped content and thumb, rebuilding only when content/dimensions/state changes.
+- KorGE launch layout uses `MapViewerViewportResolver.actualVirtualWidth/actualVirtualHeight`, with window dimensions only as zero-value startup fallback. Each generation owns its clipped canvas; advance generation before cancelling old work.
+- Sensor contacts remain additive `sitrepContacts` records keyed by turn and observer. Detection/loss/re-identification, Sierra numbering, retained last-seen data, 3U low-confidence inheritance, wording and supported class labels must preserve existing neutral tests.

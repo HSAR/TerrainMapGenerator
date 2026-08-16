@@ -549,14 +549,4 @@ internal enum class LedgerPanelTab(val label: String) {
     Settings("Settings"),
 }
 
-internal enum class DestroyedUnitsDisplay(val label: String) {
-    Full("Full"),
-    Partial("Partial"),
-    Hide("Hide");
-
-    companion object {
-        fun fromSettingsValue(value: String?): DestroyedUnitsDisplay =
-            entries.firstOrNull { it.label.equals(value, ignoreCase = true) || it.name.equals(value, ignoreCase = true) }
-                ?: Full
-    }
-}
+internal typealias DestroyedUnitsDisplay = io.hsar.mapgenerator.commandgui.operation.OperationDestroyedUnitDisplayMode

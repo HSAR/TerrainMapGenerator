@@ -1,0 +1,14 @@
+Operational Command Tool uses the following third-party components and assets.
+
+TV Nord EF Condensed Regular and Bold
+Copyright Elsner+Flake. Used under an application-embedding licence supplied by
+the distributor. TV Nord is a trademark of Elsner+Flake.
+
+JetBrains Compose Multiplatform, Kotlin, Skiko and Skia
+Copyright their respective authors. Distributed under their applicable open
+source licences. Dependency licence texts remain available from the upstream
+projects and the packaged dependency metadata.
+
+Jackson, Log4j, Apache Commons and other JVM dependencies
+Copyright their respective authors. Distributed under their applicable open
+source licences. See the dependency metadata included with each packaged JAR.

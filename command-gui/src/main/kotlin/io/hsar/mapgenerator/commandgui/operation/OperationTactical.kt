@@ -209,12 +209,12 @@ internal object OperationTacticalCombatService {
     } ?: 0).coerceAtMost(2)
 }
 
-internal enum class OperationFireArcDisplayMode(val label: String) {
+enum class OperationFireArcDisplayMode(val label: String) {
     AllUnits("All Units"), FriendliesOfSelected("Friendlies of Selected"), HostilesOfSelected("Hostiles of Selected"), SelectedOnly("Selected Only"), None("None");
     companion object { fun fromSettingsValue(value: String?) = entries.firstOrNull { it.label.equals(value, true) || it.name.equals(value, true) } ?: AllUnits }
 }
 
-internal object OperationFireArcSelectionService {
+object OperationFireArcSelectionService {
     fun <T> shouldDraw(mode: OperationFireArcDisplayMode, selectedUnitIds: Set<T>, selectedAffiliations: List<OperationUnitAffiliation?>, targetId: T, targetAffiliation: OperationUnitAffiliation?): Boolean = when (mode) {
         OperationFireArcDisplayMode.AllUnits -> true
         OperationFireArcDisplayMode.None -> false

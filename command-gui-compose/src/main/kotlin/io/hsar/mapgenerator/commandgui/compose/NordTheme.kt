@@ -14,17 +14,36 @@ import io.hsar.mapgenerator.command_gui_compose.generated.resources.Res
 import io.hsar.mapgenerator.command_gui_compose.generated.resources.tv_nord_ef_bold_con
 import io.hsar.mapgenerator.command_gui_compose.generated.resources.tv_nord_ef_regular_con
 import org.jetbrains.compose.resources.Font
+import kotlinx.coroutines.runBlocking
+import org.apache.logging.log4j.LogManager
 
 @Composable
-internal fun NordFontFamily() =
-    FontFamily(
+internal fun NordFontFamily(available: Boolean = true) =
+    if (available) FontFamily(
         Font(Res.font.tv_nord_ef_regular_con, FontWeight.Normal),
         Font(Res.font.tv_nord_ef_bold_con, FontWeight.Bold),
-    )
+    ) else FontFamily.SansSerif
+
+internal data class ComposeFontDiagnostic(val available: Boolean) {
+    val label get() = if (available) "TV Nord EF Condensed (packaged)" else "Sans-serif fallback (TV Nord unavailable)"
+}
+
+internal fun inspectComposeFonts() = runCatching {
+    runBlocking {
+        require(Res.readBytes("font/tv_nord_ef_regular_con.ttf").isNotEmpty())
+        require(Res.readBytes("font/tv_nord_ef_bold_con.ttf").isNotEmpty())
+    }
+}.fold(
+    onSuccess = { ComposeFontDiagnostic(true) },
+    onFailure = {
+        LogManager.getLogger("ComposeFontDiagnostic").warn("TV Nord command GUI fonts could not be loaded; using the sans-serif fallback.", it)
+        ComposeFontDiagnostic(false)
+    },
+)
 
 @Composable
-internal fun NordTheme(content: @Composable () -> Unit) {
-    val family = NordFontFamily()
+internal fun NordTheme(fontAvailable: Boolean = true, content: @Composable () -> Unit) {
+    val family = NordFontFamily(fontAvailable)
     val typography = Typography().withFontFamily(family)
     MaterialTheme(
         colorScheme = darkColorScheme(
