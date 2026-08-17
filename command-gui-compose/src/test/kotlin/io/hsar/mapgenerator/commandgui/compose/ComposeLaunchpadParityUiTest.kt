@@ -20,6 +20,12 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import io.hsar.mapgenerator.commandgui.MapViewerLaunchBackgroundSpec
+import io.hsar.mapgenerator.commandgui.MapViewerSavedOperation
+import java.nio.file.Path
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.UUID
 import org.junit.jupiter.api.Test
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
@@ -98,6 +104,87 @@ class ComposeLaunchpadParityUiTest {
                 .assertWidthIsEqualTo(300.dp)
                 .assertHeightIsEqualTo(44.dp)
         }
+    }
+
+    @Test
+    @OptIn(ExperimentalTestApi::class)
+    fun `ongoing operations uses legacy shell controls and save row chrome`() = runComposeUiTest {
+        var loadedPath: Path? = null
+        val operation = MapViewerSavedOperation(
+            path = Path.of("operation-echo.zip"),
+            operationId = UUID.fromString("12345678-1234-1234-1234-123456789abc"),
+            operationName = "Operation Echo",
+            updatedAt = Instant.parse("2026-08-17T12:30:00Z"),
+            createdAt = Instant.parse("2026-08-16T12:30:00Z"),
+            thumbnailAssetId = null,
+            thumbnail = null,
+        )
+        setContent {
+            NordTheme {
+                Box(Modifier.size(1600.dp, 900.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                    ComposeOngoingOperationsPanel(
+                        panelHeight = 702.0,
+                        operations = listOf(operation),
+                        loading = false,
+                        loadingPath = null,
+                        errorMessage = null,
+                        onBack = {},
+                        onBrowse = {},
+                        onLoad = { loadedPath = it },
+                    )
+                }
+            }
+        }
+
+        onNodeWithTag("ongoing-operations-panel")
+            .assertWidthIsEqualTo(760.dp)
+            .assertHeightIsEqualTo(702.dp)
+        onNodeWithTag("ongoing-operations-back")
+            .assertWidthIsEqualTo(120.dp)
+            .assertHeightIsEqualTo(42.dp)
+        onNodeWithTag("ongoing-operations-browse")
+            .assertWidthIsEqualTo(280.dp)
+            .assertHeightIsEqualTo(44.dp)
+        onNodeWithTag("ongoing-operation-row-0")
+            .assertWidthIsEqualTo(658.dp)
+            .assertHeightIsEqualTo(96.dp)
+        onNodeWithText("ONGOING OPERATIONS").fetchSemanticsNode()
+        onNodeWithText("BROWSE FOR SAVE FILE").fetchSemanticsNode()
+        onNodeWithText("Operation Echo").fetchSemanticsNode()
+        onNodeWithText(
+            DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
+                .format(operation.updatedAt.atZone(ZoneId.systemDefault())),
+        ).fetchSemanticsNode()
+        listOf("SAVED OPERATIONS", "REFRESH", "operation-echo.zip", "Open").forEach { absentText ->
+            assertThat(onAllNodesWithText(absentText).fetchSemanticsNodes().isEmpty(), equalTo(true))
+        }
+        onNodeWithTag("ongoing-operation-row-0").performClick()
+        assertThat(loadedPath, equalTo(operation.path))
+    }
+
+    @Test
+    @OptIn(ExperimentalTestApi::class)
+    fun `ongoing operations retains the legacy loading and empty copy`() = runComposeUiTest {
+        var loading by mutableStateOf(true)
+        setContent {
+            NordTheme {
+                ComposeOngoingOperationsPanel(
+                    panelHeight = 520.0,
+                    operations = emptyList(),
+                    loading = loading,
+                    loadingPath = null,
+                    errorMessage = null,
+                    onBack = {},
+                    onBrowse = {},
+                    onLoad = {},
+                )
+            }
+        }
+
+        onNodeWithText("Loading saved operations...").fetchSemanticsNode()
+        loading = false
+        waitForIdle()
+        onNodeWithText("No valid saves found in the default save directory.").fetchSemanticsNode()
     }
 
     @Test

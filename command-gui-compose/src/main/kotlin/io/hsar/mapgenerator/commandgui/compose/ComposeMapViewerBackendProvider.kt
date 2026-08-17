@@ -5,6 +5,8 @@ import io.hsar.mapgenerator.commandgui.operation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollbarStyle
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,12 +33,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -96,6 +99,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -122,6 +127,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerCommandItem
 import io.hsar.mapgenerator.commandgui.MapViewerCommandResolver
 import io.hsar.mapgenerator.commandgui.MapViewerChromeLayoutBuilder
 import io.hsar.mapgenerator.commandgui.MapViewerDisplaySettings
+import io.hsar.mapgenerator.commandgui.MapViewerDialogChromeTokens
 import io.hsar.mapgenerator.commandgui.MapViewerObjectCommand
 import io.hsar.mapgenerator.commandgui.MapViewerPanel
 import io.hsar.mapgenerator.commandgui.MapViewerDrawingColour
@@ -134,6 +140,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerImageLoader
 import io.hsar.mapgenerator.commandgui.MapViewerMenuLayoutBuilder
 import io.hsar.mapgenerator.commandgui.MapViewerMenuTokens
 import io.hsar.mapgenerator.commandgui.MapViewerLaunchpadTokens
+import io.hsar.mapgenerator.commandgui.MapViewerOngoingOperationsTokens
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
 import io.hsar.mapgenerator.commandgui.MapViewerSaveCompletion
@@ -361,7 +368,7 @@ private fun ComposeMapViewer(
         )
         }
     }
-    if (launchState.activeMap == null && launchState.screen == ComposeLaunchScreen.MAIN) {
+    if (launchState.showsPersistentLaunchChrome) {
         ComposeLaunchBackgroundPanel(
             state = launchBackgroundState,
             expanded = launchBackgroundExpanded,
@@ -406,6 +413,9 @@ internal class ComposeLaunchState(initialScreen: ComposeLaunchScreen = ComposeLa
 
     var activeMap by mutableStateOf<ComposeActiveMap?>(null)
         private set
+
+    val showsPersistentLaunchChrome: Boolean
+        get() = activeMap == null
 
     fun showNewOperation() {
         screen = ComposeLaunchScreen.NEW_OPERATION
@@ -576,12 +586,18 @@ private fun ComposeNewOperationScreen(
         }
     }
 
-    CommandLaunchScreen(title = "New Operation", onBack = onBack) {
+    CommandLaunchScreen(title = "New Operation") {
         CommandPanel(Modifier.fillMaxSize().commandPanelWidth()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                CommandButton(
+                    onClick = onBack,
+                    modifier = Modifier.width(MapViewerOngoingOperationsTokens.BACK_WIDTH.dp)
+                        .height(MapViewerOngoingOperationsTokens.BACK_HEIGHT.dp),
+                ) { Text("BACK") }
+                Spacer(Modifier.width(16.dp))
                 Text("OPERATIONAL DETAILS", style = MaterialTheme.typography.headlineSmall)
                 Spacer(Modifier.weight(1f))
                 if (loadingMap || launching) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
@@ -749,109 +765,262 @@ private fun ComposeExistingOperationsScreen(
 
     LaunchedEffect(Unit) { refresh() }
 
-    CommandLaunchScreen(title = "Ongoing Operations", onBack = onBack) {
-        CommandPanel(
-            modifier = Modifier.fillMaxSize().commandPanelWidth(),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("SAVED OPERATIONS", style = MaterialTheme.typography.headlineSmall)
-                Spacer(Modifier.weight(1f))
-                if (refreshing || loadingPath != null) {
-                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                }
-                CommandButton(onClick = ::browse, enabled = loadingPath == null) {
-                    Text("BROWSE FOR SAVE")
-                }
-                CommandButton(onClick = ::refresh, enabled = !refreshing) {
-                    Text(if (refreshing) "REFRESHING…" else "REFRESH")
-                }
-            }
-            errorMessage?.let { message ->
-                Text(message, color = MaterialTheme.colorScheme.error)
-            }
-            if (!refreshing && saves.isEmpty()) {
-                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    Text(
-                        "No valid saves found in\n${repository.savesDirectory}",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    CommandLaunchScreen(title = "Ongoing Operations") {
+        BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            ComposeOngoingOperationsPanel(
+                panelHeight = (maxHeight.value * MapViewerOngoingOperationsTokens.PANEL_HEIGHT_FRACTION)
+                    .roundToInt().toDouble().coerceAtLeast(MapViewerOngoingOperationsTokens.PANEL_MIN_HEIGHT),
+                operations = saves,
+                loading = refreshing,
+                loadingPath = loadingPath,
+                errorMessage = errorMessage,
+                onBack = onBack,
+                onBrowse = ::browse,
+                onLoad = ::load,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun ComposeOngoingOperationsPanel(
+    panelHeight: Double,
+    operations: List<MapViewerSavedOperation>,
+    loading: Boolean,
+    loadingPath: String?,
+    errorMessage: String?,
+    onBack: () -> Unit,
+    onBrowse: () -> Unit,
+    onLoad: (java.nio.file.Path) -> Unit,
+) {
+    val listState = rememberLazyListState()
+    val listWidth = MapViewerOngoingOperationsTokens.PANEL_WIDTH -
+            MapViewerOngoingOperationsTokens.LIST_LEFT * 2.0 -
+            MapViewerOngoingOperationsTokens.SCROLLBAR_WIDTH -
+            MapViewerOngoingOperationsTokens.SCROLLBAR_GAP
+    val listHeight = panelHeight - MapViewerOngoingOperationsTokens.LIST_TOP -
+            MapViewerOngoingOperationsTokens.LIST_BOTTOM_PADDING
+    Surface(
+        modifier = Modifier
+            .testTag("ongoing-operations-panel")
+            .width(MapViewerOngoingOperationsTokens.PANEL_WIDTH.dp)
+            .height(panelHeight.dp),
+        shape = RectangleShape,
+        color = CommandColours.Dark.copy(alpha = MapViewerLaunchpadTokens.PANEL_ALPHA / 255f),
+        border = BorderStroke(CommandDesignTokens.borderWidth, CommandColours.White),
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            Text(
+                "ONGOING OPERATIONS",
+                modifier = Modifier
+                    .offset(y = MapViewerLaunchpadTokens.PANEL_TITLE_TOP.dp)
+                    .fillMaxWidth()
+                    .height(MapViewerLaunchpadTokens.PANEL_TITLE_HEIGHT.dp),
+                color = CommandColours.White,
+                fontSize = MapViewerLaunchpadTokens.HEADER_FONT_SIZE.sp,
+                lineHeight = MapViewerLaunchpadTokens.HEADER_FONT_SIZE.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            CommandButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .testTag("ongoing-operations-back")
+                    .offset(
+                        x = MapViewerOngoingOperationsTokens.BACK_LEFT.dp,
+                        y = MapViewerOngoingOperationsTokens.BACK_TOP.dp,
                     )
-                }
-            } else {
+                    .width(MapViewerOngoingOperationsTokens.BACK_WIDTH.dp)
+                    .height(MapViewerOngoingOperationsTokens.BACK_HEIGHT.dp),
+            ) { Text("BACK") }
+
+            Box(
+                modifier = Modifier
+                    .testTag("ongoing-operations-list")
+                    .offset(
+                        x = MapViewerOngoingOperationsTokens.LIST_LEFT.dp,
+                        y = MapViewerOngoingOperationsTokens.LIST_TOP.dp,
+                    )
+                    .width(listWidth.dp)
+                    .height(listHeight.dp),
+            ) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        MapViewerOngoingOperationsTokens.LIST_CONTENT_INSET.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(
+                        (MapViewerOngoingOperationsTokens.ROW_STEP - MapViewerOngoingOperationsTokens.ROW_HEIGHT).dp,
+                    ),
                 ) {
-                    items(saves, key = { it.path.toString() }) { save ->
-                        SavedOperationCard(
-                            operation = save,
-                            loading = loadingPath == save.path.toString(),
-                            enabled = loadingPath == null,
-                            onClick = { load(save.path) },
-                        )
+                    when {
+                        loading -> item {
+                            OngoingOperationsMessage("Loading saved operations...")
+                        }
+                        operations.isEmpty() -> item {
+                            OngoingOperationsMessage(
+                                errorMessage ?: "No valid saves found in the default save directory.",
+                                error = errorMessage != null,
+                            )
+                        }
+                        else -> {
+                            errorMessage?.let { message -> item { OngoingOperationsMessage(message, error = true) } }
+                            itemsIndexed(operations, key = { _, operation -> operation.path.toString() }) { index, operation ->
+                                OngoingOperationRow(
+                                    operation = operation,
+                                    index = index,
+                                    enabled = loadingPath == null,
+                                    onClick = { onLoad(operation.path) },
+                                )
+                            }
+                        }
                     }
                 }
+            }
+            OngoingOperationsScrollbar(
+                state = listState,
+                modifier = Modifier
+                    .offset(
+                        x = (MapViewerOngoingOperationsTokens.LIST_LEFT + listWidth +
+                                MapViewerOngoingOperationsTokens.SCROLLBAR_GAP).dp,
+                        y = MapViewerOngoingOperationsTokens.LIST_TOP.dp,
+                    )
+                    .width(MapViewerOngoingOperationsTokens.SCROLLBAR_WIDTH.dp)
+                    .height(listHeight.dp),
+            )
+            CommandButton(
+                onClick = onBrowse,
+                enabled = loadingPath == null,
+                modifier = Modifier
+                    .testTag("ongoing-operations-browse")
+                    .offset(
+                        x = ((MapViewerOngoingOperationsTokens.PANEL_WIDTH -
+                                MapViewerOngoingOperationsTokens.BROWSE_WIDTH) / 2.0).dp,
+                        y = (panelHeight - MapViewerLaunchpadTokens.BUTTON_HEIGHT -
+                                MapViewerOngoingOperationsTokens.BROWSE_BOTTOM).dp,
+                    )
+                    .width(MapViewerOngoingOperationsTokens.BROWSE_WIDTH.dp)
+                    .height(MapViewerLaunchpadTokens.BUTTON_HEIGHT.dp),
+            ) { Text("BROWSE FOR SAVE FILE") }
+        }
+    }
+}
+
+@Composable
+private fun OngoingOperationsMessage(message: String, error: Boolean = false) = Box(
+    modifier = Modifier.fillMaxWidth().height(MapViewerOngoingOperationsTokens.TEXT_HEIGHT.dp),
+    contentAlignment = Alignment.CenterStart,
+) {
+    Text(
+        message,
+        color = if (error) MaterialTheme.colorScheme.error else CommandColours.Light,
+        fontSize = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+        lineHeight = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+    )
+}
+
+@Composable
+private fun OngoingOperationRow(
+    operation: MapViewerSavedOperation,
+    index: Int,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val thumbnail = remember(operation.thumbnail) { operation.thumbnail?.toImageBitmap() }
+    val previewHeight = MapViewerOngoingOperationsTokens.ROW_HEIGHT -
+            MapViewerOngoingOperationsTokens.PREVIEW_INSET * 2.0
+    val previewWidth = previewHeight * MapViewerOngoingOperationsTokens.PREVIEW_ASPECT_RATIO
+    val textLeft = MapViewerOngoingOperationsTokens.PREVIEW_INSET + previewWidth +
+            MapViewerOngoingOperationsTokens.TEXT_GAP
+    Surface(
+        modifier = Modifier
+            .testTag("ongoing-operation-row-$index")
+            .fillMaxWidth()
+            .height(MapViewerOngoingOperationsTokens.ROW_HEIGHT.dp)
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RectangleShape,
+        border = BorderStroke(CommandDesignTokens.borderWidth, CommandColours.White),
+        color = CommandColours.Dark.copy(alpha = MapViewerLaunchpadTokens.PANEL_ALPHA / 255f),
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            thumbnail?.let {
+                Image(
+                    bitmap = it,
+                    contentDescription = "${operation.operationName} map preview",
+                    modifier = Modifier
+                        .offset(
+                            x = MapViewerOngoingOperationsTokens.PREVIEW_INSET.dp,
+                            y = MapViewerOngoingOperationsTokens.PREVIEW_INSET.dp,
+                        )
+                        .width(previewWidth.dp)
+                        .height(previewHeight.dp),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .offset(x = textLeft.dp, y = MapViewerOngoingOperationsTokens.NAME_TOP.dp)
+                    .fillMaxWidth()
+                    .height(MapViewerOngoingOperationsTokens.TEXT_HEIGHT.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Text(
+                    operation.operationName,
+                    color = CommandColours.White,
+                    fontSize = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+                    lineHeight = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .offset(x = textLeft.dp, y = MapViewerOngoingOperationsTokens.TIMESTAMP_TOP.dp)
+                    .fillMaxWidth()
+                    .height(MapViewerOngoingOperationsTokens.TEXT_HEIGHT.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Text(
+                    SAVE_DATE_FORMAT.format(operation.updatedAt.atZone(ZoneId.systemDefault())),
+                    color = CommandColours.Light,
+                    fontSize = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+                    lineHeight = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SavedOperationCard(
-    operation: MapViewerSavedOperation,
-    loading: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
+private fun OngoingOperationsScrollbar(
+    state: androidx.compose.foundation.lazy.LazyListState,
+    modifier: Modifier,
 ) {
-    val thumbnail = remember(operation.thumbnail) { operation.thumbnail?.toImageBitmap() }
-    Card(
-        modifier = Modifier.fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick),
-        shape = RectangleShape,
-        border = BorderStroke(1.dp, CommandColours.Light),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    val enabled = state.canScrollBackward || state.canScrollForward
+    Box(
+        modifier = modifier
+            .background(CommandColours.Dark.copy(alpha = (if (enabled) 140 else 70) / 255f))
+            .border(CommandDesignTokens.borderWidth, CommandColours.White),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(116.dp).padding(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier.size(width = 160.dp, height = 96.dp)
-                    .background(MaterialTheme.colorScheme.surface),
-                contentAlignment = Alignment.Center,
-            ) {
-                thumbnail?.let {
-                    Image(
-                        bitmap = it,
-                        contentDescription = "${operation.operationName} map preview",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                    )
-                } ?: Text("No preview", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(operation.operationName, style = MaterialTheme.typography.titleLarge)
-                Text(
-                    "Updated ${SAVE_DATE_FORMAT.format(operation.updatedAt.atZone(ZoneId.systemDefault()))}",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    operation.path.fileName.toString(),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            if (loading) CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.dp)
-            else Text("Open", color = MaterialTheme.colorScheme.primary)
-        }
+    VerticalScrollbar(
+        adapter = rememberScrollbarAdapter(state),
+        modifier = Modifier.fillMaxSize().padding(MapViewerOngoingOperationsTokens.SCROLLBAR_INSET.dp),
+        style = ScrollbarStyle(
+            minimalHeight = MapViewerOngoingOperationsTokens.SCROLLBAR_MIN_THUMB_HEIGHT.dp,
+            thickness = (MapViewerOngoingOperationsTokens.SCROLLBAR_WIDTH -
+                    MapViewerOngoingOperationsTokens.SCROLLBAR_INSET * 2.0).dp,
+            shape = RectangleShape,
+            hoverDurationMillis = 0,
+            unhoverColor = CommandColours.White.copy(alpha = (if (enabled) 220 else 80) / 255f),
+            hoverColor = CommandColours.White.copy(alpha = 220 / 255f),
+        ),
+    )
     }
 }
 
-private val SAVE_DATE_FORMAT = DateTimeFormatter.ofPattern("d MMM uuuu, HH:mm")
+private val SAVE_DATE_FORMAT = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
 private const val COMPOSE_OPERATION_MAP_ID = "compose-operation-map"
 private data class ComposeViewerEditorActions(
     val displaySettings: MapViewerDisplaySettings,
@@ -1294,12 +1463,11 @@ private fun ViewerWorkspace(
                         )
                     }
 
-                    if (operationState.workspaceMode == WorkspaceMode.FLOATING) {
-                        FloatingWorkspace(
-                            state = operationState,
-                            onStateChanged = { operationState = it },
-                        )
-                    }
+                    FloatingWorkspace(
+                        state = operationState,
+                        includeMenuPanels = operationState.workspaceMode == WorkspaceMode.FLOATING,
+                        onStateChanged = { operationState = it },
+                    )
                     ComposeTransientMessageHost(
                         state = transientMessages,
                         modifier = Modifier.align(Alignment.BottomStart),
@@ -1540,42 +1708,52 @@ private fun OperationUnitAffiliation?.composeColour() = when (this) {
 }
 
 @Composable
-private fun NotesPanel(
+internal fun NotesPanel(
     state: ComposeOperationState,
     onStateChanged: (ComposeOperationState) -> Unit,
     modifier: Modifier = Modifier,
 ) = Column(
-    modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp),
-    verticalArrangement = Arrangement.spacedBy(8.dp),
+    modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+    verticalArrangement = Arrangement.spacedBy(14.dp),
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("OPERATION NOTES", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-        CommandButton(onClick = { onStateChanged(state.openNewNoteEditor()) }, enabled = !state.isReadOnly) { Text("CREATE") }
-    }
+    CommandButton(
+        onClick = { onStateChanged(state.openNewNoteEditor()) },
+        enabled = !state.isReadOnly,
+        modifier = Modifier.testTag("notes-create").width(140.dp).height(40.dp),
+    ) { Text("CREATE NOTE") }
     if (state.visibleContent.notes.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No notes") }
-    } else LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    } else LazyColumn(Modifier.testTag("notes-list").fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         items(state.visibleContent.notes, key = { it.id.value }) { note ->
-            val index = state.visibleContent.notes.indexOf(note)
-            Surface(color = CommandColours.Dark, border = BorderStroke(1.dp, CommandColours.White.copy(alpha = 0.55f)), shape = RectangleShape) {
-                Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(note.title.ifBlank { "Untitled Note" }, color = CommandColours.White, fontWeight = FontWeight.Bold)
-                    Text(note.body.lineSequence().firstOrNull().orEmpty(), color = CommandColours.Backing, maxLines = 1)
-                    Text("${note.referencedObjectIds.size} reference${if (note.referencedObjectIds.size == 1) "" else "s"}", color = CommandColours.White.copy(alpha = 0.65f))
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        CommandButton({ onStateChanged(state.openNoteEditor(note.id)) }, modifier = Modifier.weight(1f).height(32.dp)) { Text("OPEN") }
-                        CommandButton({
-                            val ids = state.visibleContent.notes.map(OperationNote::id).toMutableList()
-                            if (index > 0) java.util.Collections.swap(ids, index, index - 1)
-                            onStateChanged(state.reorderNotes(ids))
-                        }, enabled = !state.isReadOnly && index > 0, modifier = Modifier.height(32.dp)) { Text("↑") }
-                        CommandButton({
-                            val ids = state.visibleContent.notes.map(OperationNote::id).toMutableList()
-                            if (index < ids.lastIndex) java.util.Collections.swap(ids, index, index + 1)
-                            onStateChanged(state.reorderNotes(ids))
-                        }, enabled = !state.isReadOnly && index < state.visibleContent.notes.lastIndex, modifier = Modifier.height(32.dp)) { Text("↓") }
-                        CommandButton({ onStateChanged(state.deleteNote(note.id)) }, enabled = !state.isReadOnly, destructive = true, modifier = Modifier.height(32.dp)) { Text("DELETE") }
-                    }
+            Surface(
+                modifier = Modifier
+                    .testTag("notes-row-${note.id.value}")
+                    .fillMaxWidth()
+                    .height(62.dp)
+                    .clickable { onStateChanged(state.openNoteEditor(note.id)) },
+                color = CommandColours.Dark,
+                border = BorderStroke(1.dp, CommandColours.White),
+                shape = RectangleShape,
+            ) {
+                Box(Modifier.fillMaxSize()) {
+                    Text(
+                        note.title.ifBlank { "Untitled Note" },
+                        modifier = Modifier.offset(x = 10.dp, y = 5.dp).fillMaxWidth().height(28.dp).padding(end = 20.dp),
+                        color = CommandColours.White,
+                        fontSize = 24.sp,
+                        lineHeight = 24.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        note.body.lineSequence().firstOrNull().orEmpty(),
+                        modifier = Modifier.offset(x = 10.dp, y = 33.dp).fillMaxWidth().height(22.dp).padding(end = 20.dp),
+                        color = CommandColours.Backing,
+                        fontSize = 18.sp,
+                        lineHeight = 18.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
@@ -1652,11 +1830,12 @@ private fun DockedWorkspacePanel(
     ) { Text(if (dock.collapsed) "OPEN ${dock.region.name}" else "COLLAPSE") }
     if (!dock.collapsed) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-            dock.editorIds.mapNotNull(state.workspace::editor).filter { it.availableFor(state) }.forEachIndexed { index, editor ->
+            dock.editorIds.mapNotNull(state.workspace::editor).filter { it.availableFor(state) && it.isMenuPanel() }.forEachIndexed { index, editor ->
                 DockTab(editor, dock, index, state, draggedEditorId, dropTarget, onDragStarted, onDropTargetChanged, onDrop, onStateChanged)
             }
         }
-        dock.activeEditorId?.let(state.workspace::editor)?.takeIf { it.availableFor(state) }?.let { editor ->
+        (dock.activeEditorId?.let(state.workspace::editor)?.takeIf { it.availableFor(state) && it.isMenuPanel() }
+            ?: dock.editorIds.asReversed().mapNotNull(state.workspace::editor).firstOrNull { it.availableFor(state) && it.isMenuPanel() })?.let { editor ->
             Column(Modifier.fillMaxSize().padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(editor.title(state.visibleContent), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
@@ -1739,8 +1918,9 @@ private fun DockTab(
 @Composable
 private fun FloatingWorkspace(
     state: ComposeOperationState,
+    includeMenuPanels: Boolean,
     onStateChanged: (ComposeOperationState) -> Unit,
-) = state.workspace.editors.filter { it.availableFor(state) }.forEach { editor ->
+) = state.workspace.editors.filter { it.availableFor(state) && (includeMenuPanels || !it.isMenuPanel()) }.forEach { editor ->
     key(editor.id.value) {
         FloatingEditorWindow(editor, state, onStateChanged)
     }
@@ -1792,6 +1972,18 @@ private fun FloatingEditorWindow(
             title = editor.title(state.visibleContent),
             onClose = { onStateChanged(state.closeEditor(editor.id)) },
             modifier = Modifier.fillMaxSize(),
+            minimized = editor.floating.minimized,
+            pinned = editor.floating.pinned,
+            onMinimize = { onStateChanged(state.toggleEditorMinimized(editor.id)) },
+            onPin = {
+                if (editor.floating.pinned) onStateChanged(state.unpinEditor(editor.id, bounds))
+                else onStateChanged(
+                    state.pinEditor(
+                        editor.id,
+                        ViewerPoint((bounds.left + bounds.width) * densityScale, bounds.top * densityScale),
+                    ),
+                )
+            },
             titleBarModifier = Modifier.pointerInput(editor.id) {
                 detectDragGestures(
                     onDragStart = { dragStart = bounds; dragDelta = Offset.Zero },
@@ -1806,15 +1998,6 @@ private fun FloatingEditorWindow(
                         )
                     )
                 }
-            },
-            titleActions = {
-                CommandButton(onClick = { onStateChanged(state.toggleEditorMinimized(editor.id)) }) {
-                    Text(if (editor.floating.minimized) "+" else "−")
-                }
-                CommandButton(onClick = {
-                    if (editor.floating.pinned) onStateChanged(state.unpinEditor(editor.id, bounds))
-                    else onStateChanged(state.pinEditor(editor.id, ViewerPoint((bounds.left + bounds.width) * densityScale, bounds.top * densityScale)))
-                }, active = editor.floating.pinned) { Text("PIN") }
             },
         ) {
             if (!editor.floating.minimized) EditorContent(editor, state, onStateChanged, Modifier.weight(1f).fillMaxWidth())
@@ -2020,6 +2203,13 @@ internal fun SaveCommandButton(
 private fun OperationEditorState.availableFor(state: ComposeOperationState) =
     draft !is OperationEditorDraft.Operational || state.olympiadDawnEnabled
 
+private fun OperationEditorState.isMenuPanel() = kind in setOf(
+    OperationEditorKind.GAME,
+    OperationEditorKind.OPERATION_NOTES,
+    OperationEditorKind.GRAPHIC_TYPES,
+    OperationEditorKind.UNIT_TYPES,
+)
+
 @Composable
 private fun OperationalEditorContent(
     editor: OperationEditorState,
@@ -2107,6 +2297,7 @@ private fun NoteEditorContent(
 ) {
     fun update(value: OperationNoteDraft) = onStateChanged(state.updateEditorDraft(editorId, OperationEditorDraft.Note(value)))
     val picking = state.noteReferencePick?.editorId == editorId
+    var referencesExpanded by remember(editorId) { mutableStateOf(false) }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         OutlinedTextField(
             draft.title,
@@ -2116,6 +2307,45 @@ private fun NoteEditorContent(
             singleLine = true,
             label = { Text("Title") },
         )
+        CommandButton(
+            onClick = { referencesExpanded = !referencesExpanded },
+            modifier = Modifier.testTag("note-references-toggle").fillMaxWidth().height(40.dp),
+        ) {
+            Text("${draft.referencedObjectIds.size} REFERENCE${if (draft.referencedObjectIds.size == 1) "" else "S"}", Modifier.weight(1f))
+            Text(if (referencesExpanded) "⌃" else "⌄")
+        }
+        if (referencesExpanded) {
+            CommandButton(
+                onClick = { onStateChanged(if (picking) state.cancelNoteReferencePick() else state.armNoteReferencePick(editorId)) },
+                active = picking,
+                enabled = !state.isReadOnly,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) { Text(if (picking) "DONE PICKING" else "PICK MAP OBJECTS TO REFERENCE") }
+            Column(Modifier.fillMaxWidth().height(180.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (draft.referencedObjectIds.isEmpty()) Box(Modifier.fillMaxWidth().height(62.dp), contentAlignment = Alignment.Center) {
+                    Text("No referenced map objects", color = CommandColours.White.copy(alpha = 0.65f))
+                }
+                draft.referencedObjectIds.forEachIndexed { index, objectId ->
+                    val value = state.visibleContent.objectById(objectId)
+                    Surface(color = CommandColours.Dark, border = BorderStroke(1.dp, CommandColours.White), shape = RectangleShape) {
+                        Row(Modifier.fillMaxWidth().height(62.dp).padding(6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(value?.let { "${it.objectTypeLabel()}: ${it.displayName(state.visibleContent)}" } ?: "Missing object", Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            CommandButton({
+                                val ids = draft.referencedObjectIds.toMutableList()
+                                if (index > 0) java.util.Collections.swap(ids, index, index - 1)
+                                update(draft.copy(referencedObjectIds = ids))
+                            }, enabled = !state.isReadOnly && index > 0) { Text("↑") }
+                            CommandButton({
+                                val ids = draft.referencedObjectIds.toMutableList()
+                                if (index < ids.lastIndex) java.util.Collections.swap(ids, index, index + 1)
+                                update(draft.copy(referencedObjectIds = ids))
+                            }, enabled = !state.isReadOnly && index < draft.referencedObjectIds.lastIndex) { Text("↓") }
+                            CommandButton({ update(draft.copy(referencedObjectIds = draft.referencedObjectIds.filterNot { it == objectId })) }, enabled = !state.isReadOnly) { Text("REMOVE") }
+                        }
+                    }
+                }
+            }
+        }
         OutlinedTextField(
             draft.body,
             { update(draft.copy(body = it)) },
@@ -2124,36 +2354,6 @@ private fun NoteEditorContent(
             minLines = 8,
             label = { Text("Body") },
         )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("REFERENCES (${draft.referencedObjectIds.size})", Modifier.weight(1f), color = CommandColours.Backing)
-            CommandButton(
-                onClick = { onStateChanged(if (picking) state.cancelNoteReferencePick() else state.armNoteReferencePick(editorId)) },
-                active = picking,
-                enabled = !state.isReadOnly,
-            ) { Text(if (picking) "DONE PICKING" else "PICK REFERENCES") }
-        }
-        Column(Modifier.fillMaxWidth().height(150.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            if (draft.referencedObjectIds.isEmpty()) Text("No referenced map objects", color = CommandColours.White.copy(alpha = 0.65f))
-            draft.referencedObjectIds.forEachIndexed { index, objectId ->
-                val value = state.visibleContent.objectById(objectId)
-                Surface(color = CommandColours.Dark, border = BorderStroke(1.dp, CommandColours.White.copy(alpha = 0.45f)), shape = RectangleShape) {
-                    Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text(value?.let { "${it.objectTypeLabel()}: ${it.displayName(state.visibleContent)}" } ?: "Missing object", Modifier.weight(1f))
-                        CommandButton({
-                            val ids = draft.referencedObjectIds.toMutableList()
-                            if (index > 0) java.util.Collections.swap(ids, index, index - 1)
-                            update(draft.copy(referencedObjectIds = ids))
-                        }, enabled = !state.isReadOnly && index > 0) { Text("↑") }
-                        CommandButton({
-                            val ids = draft.referencedObjectIds.toMutableList()
-                            if (index < ids.lastIndex) java.util.Collections.swap(ids, index, index + 1)
-                            update(draft.copy(referencedObjectIds = ids))
-                        }, enabled = !state.isReadOnly && index < draft.referencedObjectIds.lastIndex) { Text("↓") }
-                        CommandButton({ update(draft.copy(referencedObjectIds = draft.referencedObjectIds.filterNot { it == objectId })) }, enabled = !state.isReadOnly) { Text("×") }
-                    }
-                }
-            }
-        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CommandButton({ onStateChanged(state.saveNoteEditor(editorId)) }, enabled = !state.isReadOnly, modifier = Modifier.weight(1f)) { Text("SAVE") }
             if (state.document.content.notes.any { it.id == draft.id }) {
@@ -2453,10 +2653,14 @@ private fun OperationEditorState.title(content: OperationContent): String = when
     OperationEditorKind.OPERATION_NOTES -> "Notes"
     OperationEditorKind.UNIT_TYPES -> "Units"
     OperationEditorKind.GRAPHIC_TYPES -> "Graphics"
-    OperationEditorKind.NOTE -> when (val value = target) {
-        is OperationEditorTarget.Note -> content.notes.firstOrNull { it.id == value.noteId }?.title ?: "Edit Note"
-        else -> "New Note"
-    }
+    OperationEditorKind.NOTE -> "Note - ${
+        (draft as? OperationEditorDraft.Note)?.value?.title
+            ?.ifBlank { "Untitled Note" }
+            ?: (target as? OperationEditorTarget.Note)?.noteId
+                ?.let { noteId -> content.notes.firstOrNull { it.id == noteId }?.title }
+                ?.ifBlank { "Untitled Note" }
+            ?: "Untitled Note"
+    }"
     OperationEditorKind.UNIT -> (target as? OperationEditorTarget.Object)?.objectId?.let(content::objectById)?.name?.takeIf(String::isNotBlank) ?: "Edit Unit"
     OperationEditorKind.UNIT_TEMPLATE -> when (val value = target) {
         is OperationEditorTarget.UnitTemplate -> content.unitTemplate(value.templateId)?.name ?: "Edit Unit Type"
@@ -2557,6 +2761,13 @@ private data class ComposeMapContextMenu(
 
 private data class ComposeDrawingNameEdit(val objectId: OperationObjectId, val value: String)
 
+private data class ComposeMenuTooltip(
+    val text: String,
+    val preferredLeft: Double,
+    val fallbackRight: Double,
+    val top: Double,
+)
+
 @Composable
 @OptIn(ExperimentalComposeUiApi::class)
 private fun ComposeMapContextMenu(
@@ -2568,12 +2779,20 @@ private fun ComposeMapContextMenu(
     var submenuIndex by remember(menu) { mutableStateOf<Int?>(null) }
     var submenuFocusedIndex by remember(menu) { mutableStateOf(-1) }
     var submenuCloseRequested by remember(menu) { mutableStateOf(false) }
+    var tooltip by remember(menu) { mutableStateOf<ComposeMenuTooltip?>(null) }
+    var tooltipCloseRequested by remember(menu) { mutableStateOf(false) }
     val focusRequester = remember(menu) { FocusRequester() }
     LaunchedEffect(menu) { focusRequester.requestFocus() }
     LaunchedEffect(submenuCloseRequested) {
         if (submenuCloseRequested) {
             kotlinx.coroutines.delay(MapViewerMenuTokens.CLOSE_DELAY_MILLIS)
             if (submenuCloseRequested) submenuIndex = null
+        }
+    }
+    LaunchedEffect(tooltipCloseRequested) {
+        if (tooltipCloseRequested) {
+            kotlinx.coroutines.delay(MapViewerMenuTokens.CLOSE_DELAY_MILLIS)
+            if (tooltipCloseRequested) tooltip = null
         }
     }
 
@@ -2606,7 +2825,26 @@ private fun ComposeMapContextMenu(
         val density = LocalDensity.current
         val viewportWidth = maxWidth.value.toDouble()
         val viewportHeight = maxHeight.value.toDouble()
-        val menuWidth = CommandDesignTokens.menuWidth.value.toDouble()
+        val textMeasurer = rememberTextMeasurer()
+        val menuTextStyle = TextStyle(fontSize = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp)
+        fun measureMenuWidth(title: String?, items: List<MapViewerCommandItem>): Double {
+            val titleWidth = title?.let { value ->
+                textMeasurer.measure(value, menuTextStyle).size.width / density.density.toDouble() +
+                        MapViewerMenuTokens.LABEL_LEFT_PADDING * 2.0
+            } ?: 0.0
+            val itemWidth = items.maxOfOrNull { item ->
+                val trailing = (if (item.children.isEmpty()) 0.0 else MapViewerMenuTokens.SUBMENU_ARROW_WIDTH) +
+                        (if (item.enabled) 0.0 else MapViewerMenuTokens.DISABLED_ICON_WIDTH)
+                textMeasurer.measure(item.label, menuTextStyle).size.width / density.density.toDouble() +
+                        MapViewerMenuTokens.LABEL_LEFT_PADDING + trailing
+            } ?: 0.0
+            return maxOf(
+                MapViewerMenuTokens.MIN_WIDTH,
+                titleWidth + MapViewerMenuTokens.PADDING * 2.0,
+                itemWidth + MapViewerMenuTokens.PADDING * 2.0,
+            )
+        }
+        val menuWidth = measureMenuWidth(menu.objectName, menu.actions)
         val rootHeight = ((menu.actions.size + 1) * MapViewerMenuTokens.ROW_HEIGHT) + MapViewerMenuTokens.PADDING * 2
         val rootBounds = MapViewerMenuLayoutBuilder.root(menu.position.x / density.density.toDouble(), menu.position.y / density.density.toDouble(), menuWidth, rootHeight, viewportWidth, viewportHeight)
         Box(Modifier.fillMaxSize().clickable(onClick = onDismiss))
@@ -2616,17 +2854,29 @@ private fun ComposeMapContextMenu(
             focusedIndex = focusedIndex,
             onHovered = { index ->
                 focusedIndex = index
+                tooltip = menu.actions[index].disabledReason?.let { reason ->
+                    tooltipCloseRequested = false
+                    ComposeMenuTooltip(
+                        reason,
+                        rootBounds.right + MapViewerMenuTokens.TOOLTIP_GAP,
+                        rootBounds.left - MapViewerMenuTokens.TOOLTIP_GAP,
+                        rootBounds.top + MapViewerMenuTokens.PADDING + (index + 1) * MapViewerMenuTokens.ROW_HEIGHT,
+                    )
+                }
                 if (menu.actions[index].children.isNotEmpty()) { submenuCloseRequested = false; submenuIndex = index }
                 else if (submenuIndex != null) submenuCloseRequested = true
             },
             onSelected = ::activate,
+            width = menuWidth,
             modifier = Modifier.offset { IntOffset((rootBounds.left * density.density).roundToInt(), (rootBounds.top * density.density).roundToInt()) },
+            onPointerExited = { tooltipCloseRequested = true },
         )
         submenuIndex?.let { index ->
             val children = menu.actions.getOrNull(index)?.children.orEmpty()
             if (children.isNotEmpty()) {
                 val childHeight = children.size * MapViewerMenuTokens.ROW_HEIGHT + MapViewerMenuTokens.PADDING * 2
-                val childBounds = MapViewerMenuLayoutBuilder.child(rootBounds, index + 1, menuWidth, childHeight, viewportWidth, viewportHeight)
+                val childWidth = measureMenuWidth(null, children)
+                val childBounds = MapViewerMenuLayoutBuilder.child(rootBounds, index + 1, childWidth, childHeight, viewportWidth, viewportHeight)
                 val corridorLeft = if (childBounds.left >= rootBounds.right) rootBounds.right else childBounds.right
                 Box(
                     Modifier.offset { IntOffset((corridorLeft * density.density).roundToInt(), (childBounds.top * density.density).roundToInt()) }
@@ -2639,11 +2889,55 @@ private fun ComposeMapContextMenu(
                 title = null,
                 items = children,
                 focusedIndex = submenuFocusedIndex,
-                onHovered = { childIndex -> submenuCloseRequested = false; submenuFocusedIndex = childIndex },
+                onHovered = { childIndex ->
+                    submenuCloseRequested = false
+                    submenuFocusedIndex = childIndex
+                    tooltip = children[childIndex].disabledReason?.let { reason ->
+                        tooltipCloseRequested = false
+                        ComposeMenuTooltip(
+                            reason,
+                            childBounds.right + MapViewerMenuTokens.TOOLTIP_GAP,
+                            childBounds.left - MapViewerMenuTokens.TOOLTIP_GAP,
+                            childBounds.top + MapViewerMenuTokens.PADDING + childIndex * MapViewerMenuTokens.ROW_HEIGHT,
+                        )
+                    }
+                },
                 onSelected = ::activate,
+                width = childWidth,
                 modifier = Modifier.offset { IntOffset((childBounds.left * density.density).roundToInt(), (childBounds.top * density.density).roundToInt()) }
                     .onPointerEvent(PointerEventType.Enter) { submenuCloseRequested = false },
+                onPointerExited = { tooltipCloseRequested = true },
             )
+            }
+        }
+        tooltip?.let { value ->
+            val tooltipWidth = maxOf(
+                MapViewerMenuTokens.TOOLTIP_MIN_WIDTH,
+                textMeasurer.measure(value.text, menuTextStyle).size.width / density.density.toDouble() +
+                        MapViewerMenuTokens.TOOLTIP_HORIZONTAL_PADDING * 2.0,
+            ).coerceAtMost(viewportWidth)
+            val tooltipLeft = if (value.preferredLeft + tooltipWidth <= viewportWidth) value.preferredLeft
+            else (value.fallbackRight - tooltipWidth).coerceAtLeast(0.0)
+            Surface(
+                modifier = Modifier
+                    .onPointerEvent(PointerEventType.Enter) { tooltipCloseRequested = false }
+                    .onPointerEvent(PointerEventType.Exit) { tooltip = null; tooltipCloseRequested = false }
+                    .offset {
+                        IntOffset(
+                            (tooltipLeft * density.density).roundToInt(),
+                            (value.top.coerceIn(0.0, (viewportHeight - MapViewerMenuTokens.TOOLTIP_HEIGHT).coerceAtLeast(0.0)) *
+                                    density.density).roundToInt(),
+                        )
+                    }
+                    .width(tooltipWidth.dp)
+                    .height(MapViewerMenuTokens.TOOLTIP_HEIGHT.dp),
+                color = CommandColours.Dark.copy(alpha = 245 / 255f),
+                border = BorderStroke(MapViewerMenuTokens.BORDER_WIDTH.dp, CommandColours.Red.copy(alpha = 220 / 255f)),
+                shape = RectangleShape,
+            ) {
+                Box(Modifier.fillMaxSize().padding(horizontal = MapViewerMenuTokens.TOOLTIP_HORIZONTAL_PADDING.dp), contentAlignment = Alignment.CenterStart) {
+                    Text(value.text, color = CommandColours.White, fontSize = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp, maxLines = 1)
+                }
             }
         }
 }
@@ -2651,40 +2945,112 @@ private fun ComposeMapContextMenu(
 
 @Composable
 @OptIn(ExperimentalComposeUiApi::class)
-private fun ComposeCommandMenuPanel(
+internal fun ComposeCommandMenuPanel(
     title: String?,
     items: List<MapViewerCommandItem>,
     focusedIndex: Int,
     onHovered: (Int) -> Unit,
     onSelected: (MapViewerCommandItem) -> Unit,
+    width: Double,
     modifier: Modifier,
-) = Surface(modifier.widthIn(min = MapViewerMenuTokens.MIN_WIDTH.dp).width(CommandDesignTokens.menuWidth).clickable(onClick = {}), color = CommandColours.Dark, border = BorderStroke(MapViewerMenuTokens.BORDER_WIDTH.dp, CommandColours.White), shape = RectangleShape) {
-    Column(Modifier.padding(4.dp)) {
-        title?.let { Text(it, Modifier.height(MapViewerMenuTokens.ROW_HEIGHT.dp).padding(horizontal = CommandDesignTokens.menuRowInset), style = MaterialTheme.typography.titleMedium, color = CommandColours.White) }
-        items.forEachIndexed { index, item ->
-            Row(
-                Modifier.fillMaxWidth().height(MapViewerMenuTokens.ROW_HEIGHT.dp)
-                    .background(if (focusedIndex == index) CommandColours.Backing else Color.Transparent)
-                    .onPointerEvent(PointerEventType.Enter) { onHovered(index) }
-                    .clickable { if (item.enabled) onSelected(item) }
-                    .padding(horizontal = CommandDesignTokens.menuRowInset),
-                verticalAlignment = Alignment.CenterVertically,
+    onPointerExited: () -> Unit,
+) = Surface(
+    modifier.width(width.dp).clickable(onClick = {}).onPointerEvent(PointerEventType.Exit) { onPointerExited() },
+    color = CommandColours.Dark.copy(alpha = MapViewerDialogChromeTokens.PANEL_ALPHA / 255f),
+    border = BorderStroke(MapViewerMenuTokens.BORDER_WIDTH.dp, CommandColours.White),
+    shape = RectangleShape,
+) {
+    Column(Modifier.padding(MapViewerMenuTokens.PADDING.dp)) {
+        title?.let {
+            Box(
+                Modifier.testTag("command-menu-title").fillMaxWidth().height(MapViewerMenuTokens.ROW_HEIGHT.dp)
+                    .padding(horizontal = MapViewerMenuTokens.LABEL_LEFT_PADDING.dp),
+                contentAlignment = Alignment.CenterStart,
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        item.label.uppercase(),
-                        color = when {
-                        !item.enabled -> CommandColours.White.copy(alpha = 0.38f)
-                        item.destructive -> CommandColours.Red
-                        else -> CommandColours.White
-                        },
-                    )
-                    item.disabledReason?.let { Text(it, color = CommandColours.White.copy(alpha = 0.38f), fontSize = 9.sp, maxLines = 1) }
+                Text(
+                    it,
+                    color = CommandColours.White,
+                    fontSize = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+                    lineHeight = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        items.forEachIndexed { index, item ->
+            Box(
+                Modifier.testTag("command-menu-row-$index").fillMaxWidth().height(MapViewerMenuTokens.ROW_HEIGHT.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth()
+                        .testTag("command-menu-option-$index")
+                        .height((MapViewerMenuTokens.ROW_HEIGHT - MapViewerMenuTokens.OPTION_VERTICAL_INSET * 2.0).dp)
+                        .semantics {
+                            item.disabledReason?.let { reason -> contentDescription = "${item.label}. Disabled: $reason" }
+                        }
+                        .onPointerEvent(PointerEventType.Enter) { onHovered(index) }
+                        .clickable(enabled = item.enabled) { onSelected(item) },
+                    color = when {
+                        !item.enabled -> CommandColours.Main
+                        focusedIndex == index -> CommandColours.Backing
+                        else -> CommandColours.Dark
+                    },
+                    border = BorderStroke(MapViewerMenuTokens.BORDER_WIDTH.dp, CommandColours.White),
+                    shape = RectangleShape,
+                ) {
+                    Row(
+                        Modifier.fillMaxSize().padding(start = MapViewerMenuTokens.LABEL_LEFT_PADDING.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            item.label,
+                            modifier = Modifier.weight(1f),
+                            color = when {
+                                !item.enabled -> CommandColours.White.copy(alpha = 0.55f)
+                                item.destructive -> CommandColours.Red
+                                else -> CommandColours.White
+                            },
+                            fontSize = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+                            lineHeight = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (!item.enabled) ComposeMenuWarningIcon()
+                        if (item.children.isNotEmpty()) ComposeMenuSubmenuArrow()
+                    }
                 }
-                if (item.children.isNotEmpty()) Text("▶", color = CommandColours.White)
             }
         }
     }
+}
+
+@Composable
+private fun ComposeMenuWarningIcon() = Box(
+    Modifier.testTag("command-menu-warning").width(MapViewerMenuTokens.DISABLED_ICON_WIDTH.dp).fillMaxHeight(),
+    contentAlignment = Alignment.Center,
+) {
+    Surface(
+        modifier = Modifier.size(MapViewerMenuTokens.DISABLED_ICON_SIZE.dp),
+        color = CommandColours.Dark.copy(alpha = 245 / 255f),
+        border = BorderStroke(MapViewerMenuTokens.BORDER_WIDTH.dp, CommandColours.Red.copy(alpha = 235 / 255f)),
+        shape = RectangleShape,
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("!", color = CommandColours.Red, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun ComposeMenuSubmenuArrow() = Canvas(
+    Modifier.testTag("command-menu-submenu-arrow").width(MapViewerMenuTokens.SUBMENU_ARROW_WIDTH.dp).fillMaxHeight(),
+) {
+    val centre = Offset(size.width / 2f, size.height / 2f)
+    val arm = size.minDimension * 0.16f
+    drawLine(CommandColours.White, Offset(centre.x - arm, centre.y - arm), Offset(centre.x + arm, centre.y), strokeWidth = 2.dp.toPx())
+    drawLine(CommandColours.White, Offset(centre.x + arm, centre.y), Offset(centre.x - arm, centre.y + arm), strokeWidth = 2.dp.toPx())
 }
 
 private fun OperationObject.displayName(content: OperationContent): String = when (this) {

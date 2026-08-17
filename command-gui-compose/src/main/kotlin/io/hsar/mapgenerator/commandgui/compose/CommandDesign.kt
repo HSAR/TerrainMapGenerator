@@ -1,9 +1,12 @@
 package io.hsar.mapgenerator.commandgui.compose
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,11 +42,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.hsar.mapgenerator.commandgui.MapViewerLaunchpadTokens
+import io.hsar.mapgenerator.commandgui.MapViewerDialogChromeTokens
 import io.hsar.mapgenerator.commandgui.MapViewerTransientNoticeTokens
 
 @Composable
@@ -113,7 +121,7 @@ internal object CommandDesignTokens {
     val panelPadding = 24.dp
     val panelGap = 16.dp
     val compactGap = 8.dp
-    val titleBarHeight = 42.dp
+    val titleBarHeight = MapViewerDialogChromeTokens.CONTROL_SIZE.dp
     val borderWidth = 2.dp
     val focusBorderWidth = 3.dp
     val noticeInset = MapViewerTransientNoticeTokens.VIEWPORT_INSET.dp
@@ -121,8 +129,6 @@ internal object CommandDesignTokens {
     val noticeHorizontalPadding = MapViewerTransientNoticeTokens.HORIZONTAL_PADDING.dp
     val noticeVerticalPadding = MapViewerTransientNoticeTokens.VERTICAL_PADDING.dp
     val noticeFontSize = MapViewerTransientNoticeTokens.FONT_SIZE.sp
-    val menuWidth = 220.dp
-    val menuRowInset = 8.dp
 }
 
 @Composable
@@ -148,45 +154,199 @@ internal fun CommandFloatingPanel(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     titleBarModifier: Modifier = Modifier,
-    titleActions: @Composable RowScope.() -> Unit = {},
+    minimized: Boolean = false,
+    pinned: Boolean = false,
+    onMinimize: () -> Unit = {},
+    onPin: () -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) = Surface(
     modifier = modifier,
     shape = RectangleShape,
-    color = CommandColours.Dark.copy(alpha = 0.94f),
-    border = BorderStroke(1.dp, CommandColours.Light),
+    color = CommandColours.Dark.copy(alpha = MapViewerDialogChromeTokens.PANEL_ALPHA / 255f),
+    border = BorderStroke(MapViewerDialogChromeTokens.BORDER_WIDTH.dp, CommandColours.White),
 ) {
     Column {
-        Row(
-            modifier = titleBarModifier
-                .fillMaxWidth()
-                .height(CommandDesignTokens.titleBarHeight)
-                .background(CommandColours.Dark.copy(alpha = 0.92f))
-                .border(1.dp, CommandColours.White),
-            verticalAlignment = Alignment.CenterVertically,
+        CommandDialogTitleBar(title, minimized, pinned, onMinimize, onPin, onClose, titleBarModifier)
+        Column(
+            modifier = Modifier.weight(1f).padding(MapViewerDialogChromeTokens.CONTENT_PADDING.dp),
+            verticalArrangement = Arrangement.spacedBy(CommandDesignTokens.panelGap),
+            content = content,
+        )
+    }
+}
+
+@Composable
+internal fun CommandDialogTitleBar(
+    title: String,
+    minimized: Boolean,
+    pinned: Boolean,
+    onMinimize: () -> Unit,
+    onPin: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) = Box(
+    modifier = Modifier
+        .testTag("command-dialog-title-bar")
+        .fillMaxWidth()
+        .height(MapViewerDialogChromeTokens.CONTROL_SIZE.dp),
+) {
+    Canvas(Modifier.fillMaxSize()) {
+        drawRect(
+            color = CommandColours.Dark.copy(alpha = MapViewerDialogChromeTokens.TITLE_BAR_ALPHA / 255f),
+            topLeft = androidx.compose.ui.geometry.Offset(
+                MapViewerDialogChromeTokens.BORDER_WIDTH.dp.toPx(),
+                MapViewerDialogChromeTokens.BORDER_WIDTH.dp.toPx(),
+            ),
+            size = androidx.compose.ui.geometry.Size(
+                (size.width - MapViewerDialogChromeTokens.BORDER_WIDTH.dp.toPx() * 2f).coerceAtLeast(0f),
+                MapViewerDialogChromeTokens.TITLE_BAR_HEIGHT.dp.toPx(),
+            ),
+        )
+        drawRect(
+            color = CommandColours.White,
+            topLeft = androidx.compose.ui.geometry.Offset(
+                MapViewerDialogChromeTokens.BORDER_WIDTH.dp.toPx(),
+                (MapViewerDialogChromeTokens.BORDER_WIDTH + MapViewerDialogChromeTokens.TITLE_BAR_HEIGHT).dp.toPx(),
+            ),
+            size = androidx.compose.ui.geometry.Size(
+                (size.width - MapViewerDialogChromeTokens.BORDER_WIDTH.dp.toPx() * 2f).coerceAtLeast(0f),
+                MapViewerDialogChromeTokens.BORDER_WIDTH.dp.toPx(),
+            ),
+        )
+    }
+    Row(
+        Modifier.fillMaxSize().padding(end = MapViewerDialogChromeTokens.BORDER_WIDTH.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .then(modifier),
+            contentAlignment = Alignment.CenterStart,
         ) {
             Text(
                 text = title.uppercase(),
-                modifier = Modifier.weight(1f).padding(start = 14.dp),
-                color = CommandColours.White,
-                style = MaterialTheme.typography.labelLarge.copy(fontSize = CommandDesignTokens.buttonFontSize),
-            )
-            titleActions()
-            Box(
                 modifier = Modifier
-                    .size(42.dp)
-                    .border(1.dp, CommandColours.White)
-                    .clickable(onClick = onClose),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("×", color = CommandColours.White, fontSize = 28.sp, lineHeight = 28.sp)
+                    .testTag("command-dialog-title")
+                    .fillMaxWidth()
+                    .padding(
+                        start = (MapViewerDialogChromeTokens.BORDER_WIDTH + MapViewerDialogChromeTokens.TITLE_TEXT_LEFT).dp,
+                        end = MapViewerDialogChromeTokens.TITLE_TEXT_RIGHT_GAP.dp,
+                    ),
+                color = CommandColours.White,
+                fontSize = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+                lineHeight = MapViewerLaunchpadTokens.BODY_FONT_SIZE.sp,
+                fontWeight = FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        CommandDialogControl(
+            type = CommandDialogControlType.MINIMIZE,
+            active = false,
+            directionDown = minimized,
+            contentDescription = if (minimized) "Restore dialog" else "Minimize dialog",
+            onClick = onMinimize,
+        )
+        CommandDialogControl(
+            type = CommandDialogControlType.PIN,
+            active = pinned,
+            contentDescription = if (pinned) "Unpin dialog" else "Pin dialog",
+            onClick = onPin,
+        )
+        CommandDialogControl(
+            type = CommandDialogControlType.CLOSE,
+            active = false,
+            contentDescription = "Close dialog",
+            onClick = onClose,
+        )
+    }
+}
+
+private enum class CommandDialogControlType { MINIMIZE, PIN, CLOSE }
+
+internal data class CommandDialogFrameEdges(val near: Float, val far: Float)
+
+internal fun commandDialogFrameEdges(size: Float, strokeWidth: Float): CommandDialogFrameEdges =
+    CommandDialogFrameEdges(strokeWidth / 2f, size - strokeWidth / 2f)
+
+@Composable
+private fun CommandDialogControl(
+    type: CommandDialogControlType,
+    active: Boolean,
+    directionDown: Boolean = false,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    val interactions = remember { MutableInteractionSource() }
+    val hovered by interactions.collectIsHoveredAsState()
+    val focused by interactions.collectIsFocusedAsState()
+    val pressed by interactions.collectIsPressedAsState()
+    Canvas(
+        Modifier
+            .testTag("command-dialog-${type.name.lowercase()}")
+            .size(MapViewerDialogChromeTokens.CONTROL_SIZE.dp)
+            .semantics { this.contentDescription = contentDescription }
+            .hoverable(interactions)
+            .clickable(interactionSource = interactions, indication = null, role = Role.Button, onClick = onClick)
+            .focusable(interactionSource = interactions),
+    ) {
+        val stroke = MapViewerDialogChromeTokens.ICON_STROKE_WIDTH.dp.toPx()
+        val frameEdges = commandDialogFrameEdges(size.height, stroke)
+        drawRect(
+            when {
+                pressed -> CommandColours.Light
+                hovered || focused -> CommandColours.Main
+                else -> CommandColours.Dark
+            },
+        )
+        if (active) {
+            drawRect(
+                CommandColours.White.copy(alpha = MapViewerDialogChromeTokens.ACTIVE_CONTROL_FILL_ALPHA / 255f),
+                topLeft = androidx.compose.ui.geometry.Offset(stroke, stroke),
+                size = androidx.compose.ui.geometry.Size(size.width - stroke * 2f, size.height - stroke * 2f),
+            )
+        }
+        drawLine(
+            CommandColours.White,
+            androidx.compose.ui.geometry.Offset(0f, frameEdges.near),
+            androidx.compose.ui.geometry.Offset(size.width, frameEdges.near),
+            stroke,
+        )
+        drawLine(
+            CommandColours.White,
+            androidx.compose.ui.geometry.Offset(0f, frameEdges.far),
+            androidx.compose.ui.geometry.Offset(size.width, frameEdges.far),
+            stroke,
+        )
+        drawLine(
+            CommandColours.White,
+            androidx.compose.ui.geometry.Offset(frameEdges.near, 0f),
+            androidx.compose.ui.geometry.Offset(frameEdges.near, size.height),
+            stroke,
+        )
+        val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+        val arm = size.minDimension * 0.22f
+        when (type) {
+            CommandDialogControlType.MINIMIZE -> {
+                val tipY = center.y + if (directionDown) arm * 0.55f else -arm * 0.55f
+                val edgeY = center.y + if (directionDown) -arm * 0.55f else arm * 0.55f
+                drawLine(CommandColours.White, androidx.compose.ui.geometry.Offset(center.x - arm, edgeY), androidx.compose.ui.geometry.Offset(center.x, tipY), stroke)
+                drawLine(CommandColours.White, androidx.compose.ui.geometry.Offset(center.x, tipY), androidx.compose.ui.geometry.Offset(center.x + arm, edgeY), stroke)
+            }
+            CommandDialogControlType.PIN -> {
+                drawLine(CommandColours.White, androidx.compose.ui.geometry.Offset(center.x - arm, center.y - arm * .8f), androidx.compose.ui.geometry.Offset(center.x + arm, center.y - arm * .8f), stroke)
+                drawLine(CommandColours.White, androidx.compose.ui.geometry.Offset(center.x - arm * .55f, center.y - arm * .8f), androidx.compose.ui.geometry.Offset(center.x - arm * .55f, center.y + arm * .25f), stroke)
+                drawLine(CommandColours.White, androidx.compose.ui.geometry.Offset(center.x - arm * .55f, center.y + arm * .25f), androidx.compose.ui.geometry.Offset(center.x + arm * .55f, center.y + arm * .25f), stroke)
+                drawLine(CommandColours.White, androidx.compose.ui.geometry.Offset(center.x + arm * .55f, center.y + arm * .25f), androidx.compose.ui.geometry.Offset(center.x + arm * .55f, center.y - arm * .8f), stroke)
+                drawLine(CommandColours.White, androidx.compose.ui.geometry.Offset(center.x, center.y + arm * .25f), androidx.compose.ui.geometry.Offset(center.x, center.y + arm), stroke)
+            }
+            CommandDialogControlType.CLOSE -> {
+                drawLine(CommandColours.White, androidx.compose.ui.geometry.Offset(center.x - arm, center.y - arm), androidx.compose.ui.geometry.Offset(center.x + arm, center.y + arm), stroke)
+                drawLine(CommandColours.White, androidx.compose.ui.geometry.Offset(center.x + arm, center.y - arm), androidx.compose.ui.geometry.Offset(center.x - arm, center.y + arm), stroke)
             }
         }
-        Column(
-                modifier = Modifier.weight(1f).padding(CommandDesignTokens.panelPadding),
-                verticalArrangement = Arrangement.spacedBy(CommandDesignTokens.panelGap),
-            content = content,
-        )
     }
 }
 

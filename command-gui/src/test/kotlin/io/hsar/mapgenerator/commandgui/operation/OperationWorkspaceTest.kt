@@ -33,6 +33,21 @@ class OperationWorkspaceTest {
     }
 
     @Test
+    fun `floating dialog opens without displacing a dock tab`() {
+        // Arrange
+        val docked = OperationWorkspaceState.default().open(OperationWorkspaceState.notesEditor(), OperationDockRegion.LEFT)
+        val note = OperationNote(OperationNoteId(UUID.fromString("00000000-0000-0000-0000-000000000003")), "Orders", "Hold position")
+
+        // Act
+        val opened = docked.openFloating(note.editorState())
+
+        // Assert
+        assertThat(opened.dockContaining(OperationWorkspaceState.DEFAULT_NOTES_ID)?.activeEditorId, equalTo(OperationWorkspaceState.DEFAULT_NOTES_ID))
+        assertThat(opened.dockContaining(OperationEditorId("note:${note.id.value}")), equalTo(null))
+        assertThat(opened.activeEditorId, equalTo(OperationEditorId("note:${note.id.value}")))
+    }
+
+    @Test
     fun `switching modes retains draft floating state and dock placement`() {
         // Arrange
         val opened = OperationWorkspaceState.default().open(unit.editorState())

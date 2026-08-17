@@ -40,4 +40,11 @@ class CommandDesignTest {
     fun `focused buttons use a white rather than blue frame`() {
         assertThat(COMMAND_BUTTON_FOCUS_COLOUR, equalTo(CommandColours.White))
     }
+
+    @Test
+    fun `dialog control strokes remain fully inside the forty two pixel title frame`() {
+        val edges = commandDialogFrameEdges(size = 42f, strokeWidth = 2f)
+
+        assertThat(edges, equalTo(CommandDialogFrameEdges(near = 1f, far = 41f)))
+    }
 }

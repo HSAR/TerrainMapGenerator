@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.MapViewerDialogChromeTokens
 import io.hsar.mapgenerator.commandgui.korge.interaction.SELECTION_FRAME_SCREEN_PADDING
 import korlibs.math.geom.Vector2D
 
@@ -42,14 +43,14 @@ internal fun ScreenBounds.offsetBy(dx: Double, dy: Double): ScreenBounds =
 
 internal object MapViewerDialogLayoutBuilder {
     const val OUTER_PADDING = 16.0
-    const val TITLE_BAR_HEIGHT = 38.0
-    const val BORDER_INSET = 2.0
-    const val CONTENT_PADDING = 18.0
+    const val TITLE_BAR_HEIGHT = MapViewerDialogChromeTokens.TITLE_BAR_HEIGHT
+    const val BORDER_INSET = MapViewerDialogChromeTokens.BORDER_WIDTH
+    const val CONTENT_PADDING = MapViewerDialogChromeTokens.CONTENT_PADDING
     const val FOOTER_TOP_GAP = 14.0
     const val FOOTER_BOTTOM_PADDING = 16.0
     const val FOOTER_BUTTON_HEIGHT = 40.0
     const val RESIZE_HANDLE_SIZE = 24.0
-    const val CLOSE_BUTTON_SIZE = TITLE_BAR_HEIGHT + BORDER_INSET * 2.0
+    const val CLOSE_BUTTON_SIZE = MapViewerDialogChromeTokens.CONTROL_SIZE
     const val MIN_HEIGHT = 300.0
 
     fun defaultBounds(

@@ -119,18 +119,18 @@ data class ComposeOperationState(
     fun openNewNoteEditor(): ComposeOperationState {
         if (isReadOnly) return this
         val draft = OperationNoteDraft()
-        return updateWorkspace(workspace.open(OperationEditorState(
+        return updateWorkspace(workspace.openFloating(OperationEditorState(
             id = OperationEditorId("note:new:${draft.id.value}"),
             kind = OperationEditorKind.NOTE,
             target = OperationEditorTarget.NewNote(draft.id),
             draft = OperationEditorDraft.Note(draft),
-            floating = io.hsar.mapgenerator.commandgui.operation.OperationFloatingEditorState(OperationEditorBounds(128.0, 96.0, 560.0, 640.0)),
+            floating = io.hsar.mapgenerator.commandgui.operation.OperationFloatingEditorState(OperationEditorBounds(128.0, 96.0, 700.0, 720.0)),
         )))
     }
 
     fun openNoteEditor(id: OperationNoteId): ComposeOperationState {
         val note = visibleContent.notes.firstOrNull { it.id == id } ?: return this
-        return updateWorkspace(workspace.open(note.editorState()))
+        return updateWorkspace(workspace.openFloating(note.editorState()))
     }
 
     fun openUnitEditor(id: OperationObjectId): ComposeOperationState {

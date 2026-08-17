@@ -1,5 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
+import io.hsar.mapgenerator.commandgui.MapViewerDialogChromeTokens
 import io.hsar.mapgenerator.image.Palette
 import korlibs.image.text.TextAlignment
 import korlibs.korge.input.mouse
@@ -177,10 +178,10 @@ internal object MapViewerDialogChrome {
         }
     }
 
-    const val TITLE_BAR_ALPHA = 235
-    internal const val TITLE_TEXT_LEFT = 14.0
-    internal const val TITLE_TEXT_RIGHT_GAP = 14.0
-    internal const val DIALOG_PANEL_FILL_ALPHA = 220
+    const val TITLE_BAR_ALPHA = MapViewerDialogChromeTokens.TITLE_BAR_ALPHA
+    internal const val TITLE_TEXT_LEFT = MapViewerDialogChromeTokens.TITLE_TEXT_LEFT
+    internal const val TITLE_TEXT_RIGHT_GAP = MapViewerDialogChromeTokens.TITLE_TEXT_RIGHT_GAP
+    internal const val DIALOG_PANEL_FILL_ALPHA = MapViewerDialogChromeTokens.PANEL_ALPHA
 
     internal fun titleTextWidth(layout: MapViewerDialogLayout): Double =
         (
@@ -257,7 +258,7 @@ internal object MapViewerDialogChrome {
         }
     }
 
-    private const val ACTIVE_CONTROL_FILL_ALPHA = 72
+    private const val ACTIVE_CONTROL_FILL_ALPHA = MapViewerDialogChromeTokens.ACTIVE_CONTROL_FILL_ALPHA
 }
 
 internal object MapViewerDialogTitleTabLayoutBuilder {

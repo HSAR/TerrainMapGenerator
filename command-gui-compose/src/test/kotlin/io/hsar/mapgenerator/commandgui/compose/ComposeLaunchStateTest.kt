@@ -30,6 +30,23 @@ class ComposeLaunchStateTest {
     }
 
     @Test
+    fun `persistent launch chrome remains on every launch screen and leaves with an opened operation`() {
+        val state = ComposeLaunchState()
+
+        val mainChrome = state.showsPersistentLaunchChrome
+        state.showNewOperation()
+        val newOperationChrome = state.showsPersistentLaunchChrome
+        state.showExistingOperations()
+        val ongoingOperationsChrome = state.showsPersistentLaunchChrome
+        state.openOperation(document("Opened Operation"))
+
+        assertThat(mainChrome, equalTo(true))
+        assertThat(newOperationChrome, equalTo(true))
+        assertThat(ongoingOperationsChrome, equalTo(true))
+        assertThat(state.showsPersistentLaunchChrome, equalTo(false))
+    }
+
+    @Test
     fun `creates an operation and returns to launchpad`() {
         val state = ComposeLaunchState()
 

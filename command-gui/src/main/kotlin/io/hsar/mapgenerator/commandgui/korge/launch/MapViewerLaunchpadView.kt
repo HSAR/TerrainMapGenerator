@@ -2,6 +2,7 @@ package io.hsar.mapgenerator.commandgui.korge.launch
 
 import io.hsar.mapgenerator.commandgui.MapViewerSavedOperation
 import io.hsar.mapgenerator.commandgui.MapViewerLaunchpadTokens
+import io.hsar.mapgenerator.commandgui.MapViewerOngoingOperationsTokens
 import io.hsar.mapgenerator.commandgui.korge.adapter.toKorgeBitmap
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerFontRole
 import io.hsar.mapgenerator.commandgui.korge.ui.MapViewerScrollState
@@ -143,7 +144,10 @@ internal class MapViewerLaunchpadView(
         val listBounds = layout.saveListBounds
 
         val content = panel.container().also {
-            it.xy(listBounds.left + 12.0, listBounds.top + 12.0 - scrollState.offset)
+            it.xy(
+                listBounds.left + MapViewerOngoingOperationsTokens.LIST_CONTENT_INSET,
+                listBounds.top + MapViewerOngoingOperationsTokens.LIST_CONTENT_INSET - scrollState.offset,
+            )
         }
         val operations = savedOperations
         if (operations == null) {
@@ -163,19 +167,22 @@ internal class MapViewerLaunchpadView(
 
         MapViewerLaunchUi.button(
             parent = panel,
-            width = 280.0,
+            width = MapViewerOngoingOperationsTokens.BROWSE_WIDTH,
             height = BUTTON_HEIGHT,
             label = "Browse For Save File",
             uppercase = true,
             onClick = onOpenSavePicker,
-        ).xy((bounds.width - 280.0) * 0.5, bounds.height - BUTTON_HEIGHT - 24.0)
+        ).xy(
+            (bounds.width - MapViewerOngoingOperationsTokens.BROWSE_WIDTH) * 0.5,
+            bounds.height - BUTTON_HEIGHT - MapViewerOngoingOperationsTokens.BROWSE_BOTTOM,
+        )
 
     }
 
     private fun renderSaveRow(parent: Container, summary: MapViewerSavedOperation, index: Int) {
         val rowTop = index * SAVE_ROW_HEIGHT
         val rowWidth = layout.saveRowWidth
-        val rowHeight = SAVE_ROW_HEIGHT - 12.0
+        val rowHeight = MapViewerOngoingOperationsTokens.ROW_HEIGHT
         val row = parent.container()
         row.xy(0.0, rowTop)
         MapViewerUiBoxes.box(row, rowWidth, rowHeight)
@@ -183,29 +190,29 @@ internal class MapViewerLaunchpadView(
             onClick { onLoadSavedOperation(summary) }
         }
 
-        val borderInset = 4.0
+        val borderInset = MapViewerOngoingOperationsTokens.PREVIEW_INSET
         val previewFrameHeight = rowHeight - (borderInset * 2.0)
-        val previewFrameWidth = previewFrameHeight * 16.0 / 9.0
+        val previewFrameWidth = previewFrameHeight * MapViewerOngoingOperationsTokens.PREVIEW_ASPECT_RATIO
         val previewFrameLeft = borderInset
         val previewFrameTop = borderInset
         MapViewerThumbnailViews.render(row, summary.thumbnail?.toKorgeBitmap(), previewFrameLeft, previewFrameTop, previewFrameWidth, previewFrameHeight)
 
-        val textLeft = previewFrameLeft + previewFrameWidth + 18.0
+        val textLeft = previewFrameLeft + previewFrameWidth + MapViewerOngoingOperationsTokens.TEXT_GAP
         MapViewerTextViews.leftBox(
             parent = row,
             text = summary.operationName,
             width = layout.savePanelBounds.width - textLeft,
-            height = 28.0,
+            height = MapViewerOngoingOperationsTokens.TEXT_HEIGHT,
             role = MapViewerFontRole.STRONG,
             color = Palette.Colours.WHITE,
-        ).xy(textLeft, 12.0)
+        ).xy(textLeft, MapViewerOngoingOperationsTokens.NAME_TOP)
         MapViewerTextViews.leftBox(
             parent = row,
             text = formatTimestamp(summary.updatedAt),
             width = layout.savePanelBounds.width - textLeft,
-            height = 28.0,
+            height = MapViewerOngoingOperationsTokens.TEXT_HEIGHT,
             color = Palette.Colours.LIGHT,
-        ).xy(textLeft, 44.0)
+        ).xy(textLeft, MapViewerOngoingOperationsTokens.TIMESTAMP_TOP)
     }
 
     private fun totalContentHeight(): Double =
@@ -260,7 +267,7 @@ internal class MapViewerLaunchpadView(
         const val Z_INDEX = 60_000.0
         const val BUTTON_WIDTH = MapViewerLaunchpadTokens.BUTTON_WIDTH
         const val BUTTON_HEIGHT = MapViewerLaunchpadTokens.BUTTON_HEIGHT
-        const val SAVE_ROW_HEIGHT = 108.0
+        const val SAVE_ROW_HEIGHT = MapViewerOngoingOperationsTokens.ROW_STEP
         val TIMESTAMP_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
     }
 }
@@ -290,14 +297,15 @@ internal object MapViewerLaunchpadLayoutBuilder {
     fun build(viewportWidth: Int, viewportHeight: Int): MapViewerLaunchpadLayout {
         val homePanelWidth = MapViewerLaunchpadTokens.PANEL_WIDTH
         val homePanelHeight = MapViewerLaunchpadTokens.PANEL_HEIGHT
-        val savePanelWidth = 760.0
-        val savePanelHeight = (viewportHeight * 0.78).roundToInt().toDouble().coerceAtLeast(520.0)
-        val saveListTop = 110.0
-        val saveListBottomPadding = 88.0
-        val saveListLeft = 24.0
-        val scrollbarWidth = MapViewerScrollbar.WIDTH
-        val saveListWidth = savePanelWidth - saveListLeft * 2.0 - scrollbarWidth - 12.0
-        val saveListHeight = savePanelHeight - saveListTop - saveListBottomPadding - 24.0
+        val savePanelWidth = MapViewerOngoingOperationsTokens.PANEL_WIDTH
+        val savePanelHeight = (viewportHeight * MapViewerOngoingOperationsTokens.PANEL_HEIGHT_FRACTION)
+            .roundToInt().toDouble().coerceAtLeast(MapViewerOngoingOperationsTokens.PANEL_MIN_HEIGHT)
+        val saveListTop = MapViewerOngoingOperationsTokens.LIST_TOP
+        val saveListLeft = MapViewerOngoingOperationsTokens.LIST_LEFT
+        val scrollbarWidth = MapViewerOngoingOperationsTokens.SCROLLBAR_WIDTH
+        val saveListWidth = savePanelWidth - saveListLeft * 2.0 - scrollbarWidth -
+                MapViewerOngoingOperationsTokens.SCROLLBAR_GAP
+        val saveListHeight = savePanelHeight - saveListTop - MapViewerOngoingOperationsTokens.LIST_BOTTOM_PADDING
         return MapViewerLaunchpadLayout(
             headerBounds = MapViewerLaunchShellLayoutBuilder.build(viewportWidth).headerBounds,
             homePanelBounds = ScreenBounds(
@@ -319,12 +327,12 @@ internal object MapViewerLaunchpadLayoutBuilder {
                 height = saveListHeight,
             ),
             scrollbarBounds = ScreenBounds(
-                left = saveListLeft + saveListWidth + 12.0,
+                left = saveListLeft + saveListWidth + MapViewerOngoingOperationsTokens.SCROLLBAR_GAP,
                 top = saveListTop,
                 width = scrollbarWidth,
                 height = saveListHeight,
             ),
-            saveRowWidth = saveListWidth - 24.0,
+            saveRowWidth = saveListWidth - MapViewerOngoingOperationsTokens.LIST_CONTENT_INSET * 2.0,
             viewportWidth = viewportWidth.toDouble(),
             viewportHeight = viewportHeight.toDouble(),
         )

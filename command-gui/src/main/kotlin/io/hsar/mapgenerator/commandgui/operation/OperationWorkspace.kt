@@ -130,6 +130,13 @@ data class OperationWorkspaceState(
         )
     }
 
+    /** Opens a renderer-neutral non-modal dialog without assigning it to a workspace dock. */
+    fun openFloating(editor: OperationEditorState): OperationWorkspaceState {
+        val existing = editors.firstOrNull { it.id == editor.id || it.kind == editor.kind && it.target == editor.target }
+        if (existing != null) return activate(existing.id)
+        return copy(editors = editors + editor, activeEditorId = editor.id)
+    }
+
     fun close(id: OperationEditorId) = copy(
         editors = editors.filterNot { it.id == id },
         activeEditorId = activeEditorId.takeUnless { it == id } ?: editors.lastOrNull { it.id != id }?.id,
@@ -240,7 +247,7 @@ private fun Int.sign() = when {
 private fun Int.floorMod(modulus: Int) = ((this % modulus) + modulus) % modulus
 
 fun OperationNote.editorState(
-    bounds: OperationEditorBounds = OperationEditorBounds(128.0, 96.0, 560.0, 640.0),
+    bounds: OperationEditorBounds = OperationEditorBounds(128.0, 96.0, 700.0, 720.0),
 ) = OperationEditorState(
     id = OperationEditorId("note:${id.value}"),
     kind = OperationEditorKind.NOTE,

@@ -380,6 +380,29 @@ class ComposeOperationStateTest {
     }
 
     @Test
+    fun `existing note opens as a prefilled floating dialog without replacing the notes dock`() {
+        // Arrange
+        val note = OperationNote(OperationNoteId(UUID(0, 39)), "Orders", "Hold position")
+        val noteEntry = OperationTimelineEntry(
+            OperationChangeSet(notes = listOf(OperationValueChange(after = note))),
+            MapViewerLedgerEntryKind.NOTE,
+            "created note",
+        )
+        val initial = ComposeOperationState(documentWith(unit).let { it.copy(timeline = it.timeline.record(noteEntry)) })
+            .togglePanel(MapViewerPanel.NOTES)
+
+        // Act
+        val opened = initial.openNoteEditor(note.id)
+
+        // Assert
+        val editor = opened.openEditors.single { it.kind == OperationEditorKind.NOTE }
+        assertThat((editor.draft as OperationEditorDraft.Note).value.title, equalTo("Orders"))
+        assertThat((editor.draft as OperationEditorDraft.Note).value.body, equalTo("Hold position"))
+        assertThat(opened.workspace.dockContaining(editor.id), equalTo(null))
+        assertThat(opened.workspace.dockContaining(OperationWorkspaceState.DEFAULT_NOTES_ID)?.activeEditorId, equalTo(OperationWorkspaceState.DEFAULT_NOTES_ID))
+    }
+
+    @Test
     fun `reference picking accepts every map object kind updates only the draft and remains armed`() {
         val drawing = OperationDrawingObject(OperationObjectId(UUID(0, 50)), OperationLineDrawing(
             OperationDrawingPoint(.1, .1), OperationDrawingPoint(.2, .2), OperationArgb.of(255, 255, 255, 255),

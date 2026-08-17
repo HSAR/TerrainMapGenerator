@@ -12,6 +12,20 @@ object MapViewerTransientNoticeTokens {
     const val FADE_LIFT = 12.0
 }
 
+/** Renderer-independent non-modal map-dialog chrome inherited from KorGE. */
+object MapViewerDialogChromeTokens {
+    const val BORDER_WIDTH = 2.0
+    const val TITLE_BAR_HEIGHT = 38.0
+    const val CONTROL_SIZE = TITLE_BAR_HEIGHT + BORDER_WIDTH * 2.0
+    const val TITLE_TEXT_LEFT = 14.0
+    const val TITLE_TEXT_RIGHT_GAP = 14.0
+    const val CONTENT_PADDING = 18.0
+    const val PANEL_ALPHA = 220
+    const val TITLE_BAR_ALPHA = 235
+    const val ACTIVE_CONTROL_FILL_ALPHA = 72
+    const val ICON_STROKE_WIDTH = 2.0
+}
+
 /** The legacy launchpad's logical-pixel geometry. */
 object MapViewerLaunchpadTokens {
     const val HEADER_TOP = 20.0
@@ -32,4 +46,33 @@ object MapViewerLaunchpadTokens {
     const val BUTTON_STEP = 62.0
     const val PANEL_ALPHA = 220
     const val BACKGROUND_WASH_ALPHA = 72
+}
+
+/** The legacy ongoing-operations browser's logical-pixel geometry. */
+object MapViewerOngoingOperationsTokens {
+    const val PANEL_WIDTH = 760.0
+    const val PANEL_HEIGHT_FRACTION = 0.78
+    const val PANEL_MIN_HEIGHT = 520.0
+    const val BACK_LEFT = 20.0
+    const val BACK_TOP = 16.0
+    const val BACK_WIDTH = 120.0
+    const val BACK_HEIGHT = 42.0
+    const val LIST_LEFT = 24.0
+    const val LIST_TOP = 110.0
+    const val LIST_BOTTOM_PADDING = 112.0
+    const val LIST_CONTENT_INSET = 12.0
+    const val SCROLLBAR_GAP = 12.0
+    const val SCROLLBAR_WIDTH = 18.0
+    const val SCROLLBAR_INSET = 2.0
+    const val SCROLLBAR_MIN_THUMB_HEIGHT = 28.0
+    const val ROW_STEP = 108.0
+    const val ROW_HEIGHT = 96.0
+    const val PREVIEW_INSET = 4.0
+    const val PREVIEW_ASPECT_RATIO = 16.0 / 9.0
+    const val TEXT_GAP = 18.0
+    const val NAME_TOP = 12.0
+    const val TIMESTAMP_TOP = 44.0
+    const val TEXT_HEIGHT = 28.0
+    const val BROWSE_WIDTH = 280.0
+    const val BROWSE_BOTTOM = 24.0
 }
