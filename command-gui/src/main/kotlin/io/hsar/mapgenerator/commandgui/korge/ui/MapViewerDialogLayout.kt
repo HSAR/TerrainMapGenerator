@@ -1,7 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import io.hsar.mapgenerator.commandgui.MapViewerDialogChromeTokens
-import io.hsar.mapgenerator.commandgui.korge.interaction.SELECTION_FRAME_SCREEN_PADDING
 import korlibs.math.geom.Vector2D
 
 internal data class MapViewerDialogSize(
@@ -49,7 +48,7 @@ internal object MapViewerDialogLayoutBuilder {
     const val FOOTER_TOP_GAP = 14.0
     const val FOOTER_BOTTOM_PADDING = 16.0
     const val FOOTER_BUTTON_HEIGHT = 40.0
-    const val RESIZE_HANDLE_SIZE = 24.0
+    const val RESIZE_HANDLE_SIZE = MapViewerDialogChromeTokens.RESIZE_HANDLE_SIZE
     const val CLOSE_BUTTON_SIZE = MapViewerDialogChromeTokens.CONTROL_SIZE
     const val MIN_HEIGHT = 300.0
 
@@ -171,8 +170,8 @@ internal object MapViewerDialogLayoutBuilder {
                 null
             },
             resizeHandle = ScreenBounds(
-                left = bounds.width - RESIZE_HANDLE_SIZE + SELECTION_FRAME_SCREEN_PADDING,
-                top = bounds.height - RESIZE_HANDLE_SIZE + SELECTION_FRAME_SCREEN_PADDING,
+                left = bounds.width - RESIZE_HANDLE_SIZE + MapViewerDialogChromeTokens.RESIZE_HANDLE_OUTSET,
+                top = bounds.height - RESIZE_HANDLE_SIZE + MapViewerDialogChromeTokens.RESIZE_HANDLE_OUTSET,
                 width = RESIZE_HANDLE_SIZE,
                 height = RESIZE_HANDLE_SIZE,
             ),

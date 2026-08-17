@@ -1,7 +1,6 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
-import io.hsar.mapgenerator.commandgui.korge.interaction.SELECTION_BRACKET_LENGTH_PX
-import io.hsar.mapgenerator.commandgui.korge.interaction.SELECTION_BRACKET_THICKNESS_PX
+import io.hsar.mapgenerator.commandgui.MapViewerDialogChromeTokens
 import io.hsar.mapgenerator.image.Palette
 import korlibs.korge.view.Container
 import korlibs.korge.view.solidRect
@@ -23,16 +22,16 @@ internal object MapViewerCornerBrackets {
             Corner.BOTTOM_LEFT -> inset
 
             Corner.TOP_RIGHT,
-            Corner.BOTTOM_RIGHT -> width - inset - SELECTION_BRACKET_LENGTH_PX
+            Corner.BOTTOM_RIGHT -> width - inset - MapViewerDialogChromeTokens.RESIZE_BRACKET_LENGTH
         }
         val top = when (corner) {
             Corner.TOP_LEFT,
             Corner.TOP_RIGHT -> inset
 
             Corner.BOTTOM_RIGHT,
-            Corner.BOTTOM_LEFT -> height - inset - SELECTION_BRACKET_THICKNESS_PX
+            Corner.BOTTOM_LEFT -> height - inset - MapViewerDialogChromeTokens.RESIZE_BRACKET_THICKNESS
         }
-        parent.solidRect(SELECTION_BRACKET_LENGTH_PX, SELECTION_BRACKET_THICKNESS_PX, color) {
+        parent.solidRect(MapViewerDialogChromeTokens.RESIZE_BRACKET_LENGTH, MapViewerDialogChromeTokens.RESIZE_BRACKET_THICKNESS, color) {
             x = left
             y = top
         }
@@ -42,16 +41,16 @@ internal object MapViewerCornerBrackets {
             Corner.BOTTOM_LEFT -> inset
 
             Corner.TOP_RIGHT,
-            Corner.BOTTOM_RIGHT -> width - inset - SELECTION_BRACKET_THICKNESS_PX
+            Corner.BOTTOM_RIGHT -> width - inset - MapViewerDialogChromeTokens.RESIZE_BRACKET_THICKNESS
         }
         val verticalTop = when (corner) {
             Corner.TOP_LEFT,
             Corner.TOP_RIGHT -> inset
 
             Corner.BOTTOM_RIGHT,
-            Corner.BOTTOM_LEFT -> height - inset - SELECTION_BRACKET_LENGTH_PX
+            Corner.BOTTOM_LEFT -> height - inset - MapViewerDialogChromeTokens.RESIZE_BRACKET_LENGTH
         }
-        parent.solidRect(SELECTION_BRACKET_THICKNESS_PX, SELECTION_BRACKET_LENGTH_PX, color) {
+        parent.solidRect(MapViewerDialogChromeTokens.RESIZE_BRACKET_THICKNESS, MapViewerDialogChromeTokens.RESIZE_BRACKET_LENGTH, color) {
             x = verticalLeft
             y = verticalTop
         }

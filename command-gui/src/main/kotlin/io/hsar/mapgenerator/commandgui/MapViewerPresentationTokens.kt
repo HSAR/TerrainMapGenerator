@@ -24,6 +24,10 @@ object MapViewerDialogChromeTokens {
     const val TITLE_BAR_ALPHA = 235
     const val ACTIVE_CONTROL_FILL_ALPHA = 72
     const val ICON_STROKE_WIDTH = 2.0
+    const val RESIZE_HANDLE_SIZE = 24.0
+    const val RESIZE_HANDLE_OUTSET = 4.0
+    const val RESIZE_BRACKET_LENGTH = 18.0
+    const val RESIZE_BRACKET_THICKNESS = 5.0
 }
 
 /** The legacy launchpad's logical-pixel geometry. */

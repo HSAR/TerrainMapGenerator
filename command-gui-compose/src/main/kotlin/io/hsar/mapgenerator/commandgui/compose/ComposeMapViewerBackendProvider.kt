@@ -1583,7 +1583,7 @@ private fun ToolRail(
 }
 
 @Composable
-private fun UnitTypesPalette(
+internal fun UnitTypesPalette(
     templates: List<OperationUnitTemplate>,
     expanded: Boolean,
     editable: Boolean,
@@ -1608,7 +1608,7 @@ private fun UnitTypesPalette(
         if (expanded) {
             CommandButton(onClick = onCreate, enabled = editable, modifier = Modifier.fillMaxWidth()) { Text("CREATE UNIT TYPE") }
             if (templates.isEmpty()) Text("No unit types", color = CommandColours.White.copy(alpha = 0.7f))
-            LazyColumn(Modifier.height(430.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 (OperationUnitAffiliation.entries.map { it as OperationUnitAffiliation? } + null).forEach { affiliation ->
                     val group = templates.filter { it.affiliation == affiliation }
                     if (group.isNotEmpty()) {
@@ -1620,28 +1620,20 @@ private fun UnitTypesPalette(
                             ) { Text("${if (groupKey in collapsedAffiliationGroups) "▶" else "▼"} $groupKey", color = affiliation.composeColour(), fontWeight = FontWeight.Bold) }
                         }
                         if (groupKey !in collapsedAffiliationGroups) items(group, key = { it.id.value }) { template ->
-                            Surface(
-                                color = if (activePlacement == template.id) CommandColours.Backing else CommandColours.Dark,
-                                border = BorderStroke(1.dp, template.affiliation.composeColour()),
-                                shape = RectangleShape,
-                            ) {
-                                Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        androidx.compose.foundation.Image(
-                                            bitmap = template.image.toComposeImageBitmap(),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(42.dp),
-                                            contentScale = ContentScale.Fit,
-                                        )
-                                        Text(template.name, Modifier.weight(1f), color = CommandColours.White)
-                                    }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        CommandButton(onClick = { onPlace(template.id) }, enabled = editable, active = activePlacement == template.id, modifier = Modifier.weight(1f).height(32.dp)) { Text("PLACE") }
-                                        CommandButton(onClick = { onEdit(template.id) }, enabled = editable, modifier = Modifier.weight(1f).height(32.dp)) { Text("EDIT") }
-                                        CommandButton(onClick = { onDelete(template.id) }, enabled = editable, destructive = true, modifier = Modifier.weight(1f).height(32.dp)) { Text("DELETE") }
-                                    }
-                                }
-                            }
+                            ComposeUniversalListRow(
+                                item = ComposeUniversalListItem(
+                                    title = template.name,
+                                    preview = template.image.toComposeImageBitmap(),
+                                    selected = activePlacement == template.id,
+                                    borderColour = template.affiliation.composeColour(),
+                                ),
+                                modifier = Modifier.testTag("unit-type-row-${template.id.value}"),
+                                trailingAction = ComposeUniversalListAction("PLACE", editable, activePlacement == template.id) { onPlace(template.id) },
+                                contextActions = listOf(
+                                    ComposeUniversalListAction("Edit Unit Type", editable) { onEdit(template.id) },
+                                    ComposeUniversalListAction("Delete Unit Type", editable, destructive = true) { onDelete(template.id) },
+                                ),
+                            )
                         }
                     }
                 }
@@ -1651,7 +1643,7 @@ private fun UnitTypesPalette(
 }
 
 @Composable
-private fun GraphicTypesPalette(
+internal fun GraphicTypesPalette(
     templates: List<OperationGraphicTemplate>,
     expanded: Boolean,
     editable: Boolean,
@@ -1674,25 +1666,21 @@ private fun GraphicTypesPalette(
         if (expanded) {
             CommandButton(onClick = onCreate, enabled = editable, modifier = Modifier.fillMaxWidth()) { Text("CREATE GRAPHIC TYPE") }
             if (templates.isEmpty()) Text("No graphic types", color = CommandColours.White.copy(alpha = 0.7f))
-            LazyColumn(Modifier.height(330.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(templates.sortedBy(OperationGraphicTemplate::index), key = { it.id.value }) { template ->
-                    Surface(
-                        color = if (activePlacement == template.id) CommandColours.Backing else CommandColours.Dark,
-                        border = BorderStroke(1.dp, CommandColours.White.copy(alpha = 0.7f)),
-                        shape = RectangleShape,
-                    ) {
-                        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                androidx.compose.foundation.Image(template.image.toComposeImageBitmap(), null, Modifier.size(42.dp), contentScale = ContentScale.Fit)
-                                Text(template.name, Modifier.weight(1f), color = CommandColours.White)
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                CommandButton({ onPlace(template.id) }, enabled = editable, active = activePlacement == template.id, modifier = Modifier.weight(1f).height(32.dp)) { Text("PLACE") }
-                                CommandButton({ onEdit(template.id) }, enabled = editable, modifier = Modifier.weight(1f).height(32.dp)) { Text("EDIT") }
-                                CommandButton({ onDelete(template.id) }, enabled = editable, destructive = true, modifier = Modifier.weight(1f).height(32.dp)) { Text("DELETE") }
-                            }
-                        }
-                    }
+                    ComposeUniversalListRow(
+                        item = ComposeUniversalListItem(
+                            title = template.name,
+                            preview = template.image.toComposeImageBitmap(),
+                            selected = activePlacement == template.id,
+                        ),
+                        modifier = Modifier.testTag("graphic-type-row-${template.id.value}"),
+                        trailingAction = ComposeUniversalListAction("PLACE", editable, activePlacement == template.id) { onPlace(template.id) },
+                        contextActions = listOf(
+                            ComposeUniversalListAction("Edit Graphic Type", editable) { onEdit(template.id) },
+                            ComposeUniversalListAction("Delete Graphic Type", editable, destructive = true) { onDelete(template.id) },
+                        ),
+                    )
                 }
             }
         }
@@ -1713,7 +1701,7 @@ internal fun NotesPanel(
     onStateChanged: (ComposeOperationState) -> Unit,
     modifier: Modifier = Modifier,
 ) = Column(
-    modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+    modifier = modifier.background(CommandColours.Dark),
     verticalArrangement = Arrangement.spacedBy(14.dp),
 ) {
     CommandButton(
@@ -1725,37 +1713,17 @@ internal fun NotesPanel(
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No notes") }
     } else LazyColumn(Modifier.testTag("notes-list").fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         items(state.visibleContent.notes, key = { it.id.value }) { note ->
-            Surface(
+            ComposeUniversalListRow(
+                item = ComposeUniversalListItem(
+                    title = note.title.ifBlank { "Untitled Note" },
+                    subtitle = note.body.lineSequence().firstOrNull().orEmpty(),
+                ),
                 modifier = Modifier
                     .testTag("notes-row-${note.id.value}")
-                    .fillMaxWidth()
-                    .height(62.dp)
-                    .clickable { onStateChanged(state.openNoteEditor(note.id)) },
-                color = CommandColours.Dark,
-                border = BorderStroke(1.dp, CommandColours.White),
-                shape = RectangleShape,
-            ) {
-                Box(Modifier.fillMaxSize()) {
-                    Text(
-                        note.title.ifBlank { "Untitled Note" },
-                        modifier = Modifier.offset(x = 10.dp, y = 5.dp).fillMaxWidth().height(28.dp).padding(end = 20.dp),
-                        color = CommandColours.White,
-                        fontSize = 24.sp,
-                        lineHeight = 24.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        note.body.lineSequence().firstOrNull().orEmpty(),
-                        modifier = Modifier.offset(x = 10.dp, y = 33.dp).fillMaxWidth().height(22.dp).padding(end = 20.dp),
-                        color = CommandColours.Backing,
-                        fontSize = 18.sp,
-                        lineHeight = 18.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+                    .fillMaxWidth(),
+                height = 62.dp,
+                onClick = { onStateChanged(state.openNoteEditor(note.id)) },
+            )
         }
     }
 }
@@ -2002,26 +1970,38 @@ private fun FloatingEditorWindow(
         ) {
             if (!editor.floating.minimized) EditorContent(editor, state, onStateChanged, Modifier.weight(1f).fillMaxWidth())
         }
-        if (!editor.floating.minimized) Canvas(
-            Modifier.align(Alignment.BottomEnd).size(30.dp).pointerInput(editor.id) {
-                detectDragGestures(
-                    onDragStart = { dragStart = bounds; dragDelta = Offset.Zero },
-                    onDragEnd = { commit(bounds) },
-                ) { change, amount ->
-                    change.consume()
-                    dragDelta += amount
-                    bounds = clamped(
-                        dragStart.copy(
-                            width = clampedDialogDimensionAtPointer(dragStart.width.toFloat(), dragDelta.x / density.density, 320f).toDouble(),
-                            height = clampedDialogDimensionAtPointer(dragStart.height.toFloat(), dragDelta.y / density.density, 240f).toDouble(),
-                        )
+        if (!editor.floating.minimized) {
+            val resizeHandle = composeFloatingDialogResizeHandleLayout(bounds.width.toFloat(), bounds.height.toFloat())
+            Canvas(
+                Modifier
+                    .offset(
+                        resizeHandle.left.dp,
+                        resizeHandle.top.dp,
                     )
-                }
-            },
-        ) {
-            val inset = size.minDimension * 0.15f
-            drawLine(CommandColours.White, Offset(inset, size.height - inset), Offset(size.width - inset, size.height - inset), strokeWidth = 2f)
-            drawLine(CommandColours.White, Offset(size.width - inset, inset), Offset(size.width - inset, size.height - inset), strokeWidth = 2f)
+                    .size(resizeHandle.size.dp)
+                    .pointerInput(editor.id) {
+                        detectDragGestures(
+                            onDragStart = { dragStart = bounds; dragDelta = Offset.Zero },
+                            onDragEnd = { commit(bounds) },
+                        ) { change, amount ->
+                            change.consume()
+                            dragDelta += amount
+                            bounds = clamped(
+                                dragStart.copy(
+                                    width = clampedDialogDimensionAtPointer(dragStart.width.toFloat(), dragDelta.x / density.density, 320f).toDouble(),
+                                    height = clampedDialogDimensionAtPointer(dragStart.height.toFloat(), dragDelta.y / density.density, 240f).toDouble(),
+                                )
+                            )
+                        }
+                    },
+            ) {
+                val bracket = composeFloatingDialogResizeBracket()
+                drawPath(Path().apply {
+                    moveTo(bracket.points.first().x.toFloat(), bracket.points.first().y.toFloat())
+                    bracket.points.drop(1).forEach { lineTo(it.x.toFloat(), it.y.toFloat()) }
+                    close()
+                }, CommandColours.White.copy(alpha = 230f / 255f))
+            }
         }
     }
 }
@@ -2327,22 +2307,27 @@ private fun NoteEditorContent(
                 }
                 draft.referencedObjectIds.forEachIndexed { index, objectId ->
                     val value = state.visibleContent.objectById(objectId)
-                    Surface(color = CommandColours.Dark, border = BorderStroke(1.dp, CommandColours.White), shape = RectangleShape) {
-                        Row(Modifier.fillMaxWidth().height(62.dp).padding(6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text(value?.let { "${it.objectTypeLabel()}: ${it.displayName(state.visibleContent)}" } ?: "Missing object", Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            CommandButton({
+                    ComposeUniversalListRow(
+                        item = ComposeUniversalListItem(
+                            title = value?.let { "${it.objectTypeLabel()}: ${it.displayName(state.visibleContent)}" } ?: "Missing object",
+                        ),
+                        height = 62.dp,
+                        trailingAction = ComposeUniversalListAction("REMOVE", !state.isReadOnly, destructive = true) {
+                            update(draft.copy(referencedObjectIds = draft.referencedObjectIds.filterNot { it == objectId }))
+                        },
+                        contextActions = listOf(
+                            ComposeUniversalListAction("Move Earlier", !state.isReadOnly && index > 0) {
                                 val ids = draft.referencedObjectIds.toMutableList()
                                 if (index > 0) java.util.Collections.swap(ids, index, index - 1)
                                 update(draft.copy(referencedObjectIds = ids))
-                            }, enabled = !state.isReadOnly && index > 0) { Text("↑") }
-                            CommandButton({
+                            },
+                            ComposeUniversalListAction("Move Later", !state.isReadOnly && index < draft.referencedObjectIds.lastIndex) {
                                 val ids = draft.referencedObjectIds.toMutableList()
                                 if (index < ids.lastIndex) java.util.Collections.swap(ids, index, index + 1)
                                 update(draft.copy(referencedObjectIds = ids))
-                            }, enabled = !state.isReadOnly && index < draft.referencedObjectIds.lastIndex) { Text("↓") }
-                            CommandButton({ update(draft.copy(referencedObjectIds = draft.referencedObjectIds.filterNot { it == objectId })) }, enabled = !state.isReadOnly) { Text("REMOVE") }
-                        }
-                    }
+                            },
+                        ),
+                    )
                 }
             }
         }
@@ -3153,46 +3138,19 @@ private fun OperationTurnButton(
         ?.image
     val active = marker?.appliedCount == state.document.timeline.appliedCount &&
         (state.historyPreviewCount == null || state.historyPreviewCount == marker.appliedCount)
-    Surface(
-        modifier = Modifier.fillMaxWidth().height(56.dp).clickable(enabled = onSelect != null) { onSelect?.invoke() },
-        color = if (active) CommandColours.Dark else CommandColours.Main,
-        border = BorderStroke(2.dp, CommandColours.White),
-        shape = RectangleShape,
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            if (thumbnail != null) {
-                Image(
-                    bitmap = remember(thumbnail) { thumbnail.toImageBitmap() },
-                    contentDescription = "${group.name} thumbnail",
-                    modifier = Modifier.width(80.dp).fillMaxHeight(),
-                    contentScale = ContentScale.Crop,
-                )
-            } else {
-                Box(
-                    Modifier.width(80.dp).fillMaxHeight().background(CommandColours.Dark).border(1.dp, CommandColours.Backing),
-                    contentAlignment = Alignment.Center,
-                ) { Text("NO IMAGE", style = MaterialTheme.typography.labelSmall, maxLines = 1) }
-            }
-            Text(
-                group.name,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                marker?.appliedCount?.let(::operationTurnIndexLabel) ?: "----",
-                modifier = Modifier.width(48.dp),
-                style = MaterialTheme.typography.labelMedium,
-                color = if (active) CommandColours.White else CommandColours.Light,
-                maxLines = 1,
-            )
-        }
-    }
+    ComposeUniversalListRow(
+        item = ComposeUniversalListItem(
+            title = group.name,
+            preview = thumbnail?.let { remember(it) { it.toImageBitmap() } },
+            previewContentDescription = "${group.name} thumbnail",
+            previewPlaceholder = "NO IMAGE",
+            trailingLabel = marker?.appliedCount?.let(::operationTurnIndexLabel) ?: "----",
+            selected = active,
+        ),
+        height = 56.dp,
+        previewWidth = 80.dp,
+        onClick = onSelect,
+    )
 }
 
 @Composable
