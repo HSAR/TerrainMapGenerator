@@ -42,8 +42,6 @@ import io.hsar.mapgenerator.commandgui.operation.nextTurnName
 import java.util.*
 import java.util.Collections.emptySet
 
-enum class ComposeSaveStatus { CLEAN, DIRTY, SAVING, FAILED }
-
 data class ComposeUnitPlacement(
     val templateId: OperationUnitTemplateId,
     val objectId: OperationObjectId = OperationObjectId(UUID.randomUUID()),
@@ -74,17 +72,12 @@ data class ComposeOperationState(
     val graphicPlacement: ComposeGraphicPlacement? = null,
     val noteReferencePick: ComposeNoteReferencePick? = null,
     val revision: Long = if (document.persisted) 0L else 1L,
-    val savingRevision: Long? = null,
-    val savedRevision: Long = 0L,
-    val saveStatus: ComposeSaveStatus = if (document.persisted) ComposeSaveStatus.CLEAN else ComposeSaveStatus.DIRTY,
-    val saveFailure: String? = null,
 ) {
     val isReadOnly get() = historyPreviewCount != null
     val visibleContent
         get() = previewContent
             ?: historyPreviewCount?.let(document.timeline::contentAt)
             ?: document.content
-    val hasUnsavedChanges get() = revision > savedRevision
     val workspaceMode get() = workspace.mode
     val openEditors get() = workspace.editors
 
@@ -539,28 +532,12 @@ data class ComposeOperationState(
         return restored.copy(historyPreviewCount = null).cancelTransientWorkflows().pruneSelection().pruneEditors()
     }
 
-    fun saveStarted(targetRevision: Long = revision) = copy(
-        savingRevision = targetRevision,
-        saveStatus = ComposeSaveStatus.SAVING,
-        saveFailure = null,
-    )
-
-    fun saveSucceeded(savedDocument: OperationDocument, targetRevision: Long) = copy(
+    fun withPersistedDocument(savedDocument: OperationDocument, targetRevision: Long) = copy(
         document = if (revision == targetRevision) savedDocument else document.copy(
             updatedAt = savedDocument.updatedAt,
             sourcePath = savedDocument.sourcePath,
-            additionalDataJson = savedDocument.additionalDataJson,
+            persisted = true,
         ),
-        savingRevision = null,
-        savedRevision = maxOf(savedRevision, targetRevision),
-        saveStatus = if (revision > targetRevision) ComposeSaveStatus.DIRTY else ComposeSaveStatus.CLEAN,
-        saveFailure = null,
-    )
-
-    fun saveFailed(message: String) = copy(
-        savingRevision = null,
-        saveStatus = ComposeSaveStatus.FAILED,
-        saveFailure = message,
     )
 
     fun savedCamera(): MapViewerSavedCamera? = viewport?.let { current ->
@@ -629,12 +606,10 @@ data class ComposeOperationState(
         unitPlacement = unitPlacement,
         graphicPlacement = graphicPlacement,
         revision = revision + 1,
-        saveStatus = if (saveStatus == ComposeSaveStatus.SAVING) saveStatus else ComposeSaveStatus.DIRTY,
-        saveFailure = null,
     )
 
     private fun markUiDirtyIfChanged(previousSelection: Set<OperationObjectId>) =
-        if (selectedObjectIds == previousSelection) this else copy(revision = revision + 1, saveStatus = ComposeSaveStatus.DIRTY, saveFailure = null)
+        if (selectedObjectIds == previousSelection) this else copy(revision = revision + 1)
 
     private fun pruneSelection() = copy(
         selectedObjectIds = selectedObjectIds.intersect(visibleContent.objects.mapTo(hashSetOf()) { it.id }),

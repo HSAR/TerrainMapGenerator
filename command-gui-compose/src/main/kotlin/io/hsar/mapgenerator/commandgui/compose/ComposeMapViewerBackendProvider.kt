@@ -136,6 +136,14 @@ import io.hsar.mapgenerator.commandgui.MapViewerMenuTokens
 import io.hsar.mapgenerator.commandgui.MapViewerLaunchpadTokens
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
 import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
+import io.hsar.mapgenerator.commandgui.MapViewerSaveCompletion
+import io.hsar.mapgenerator.commandgui.MapViewerSaveCoordinator
+import io.hsar.mapgenerator.commandgui.MapViewerSaveCoordinatorState
+import io.hsar.mapgenerator.commandgui.MapViewerSaveExecutor
+import io.hsar.mapgenerator.commandgui.MapViewerSaveReason
+import io.hsar.mapgenerator.commandgui.MapViewerSaveSnapshot
+import io.hsar.mapgenerator.commandgui.MapViewerSaveStatus
+import io.hsar.mapgenerator.commandgui.MapViewerExitTarget
 import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
 import io.hsar.mapgenerator.commandgui.MapViewerSavedOperation
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
@@ -845,10 +853,9 @@ private fun SavedOperationCard(
 
 private val SAVE_DATE_FORMAT = DateTimeFormatter.ofPattern("d MMM uuuu, HH:mm")
 private const val COMPOSE_OPERATION_MAP_ID = "compose-operation-map"
-private const val COMPOSE_AUTOSAVE_DEBOUNCE_MS = 2_000L
-
 private data class ComposeViewerEditorActions(
     val displaySettings: MapViewerDisplaySettings,
+    val saveState: MapViewerSaveCoordinatorState,
     val onCommand: (MapViewerCommand) -> Unit,
     val onSave: () -> Unit,
     val onEditDrawingName: (OperationObjectId) -> Unit,
@@ -868,6 +875,13 @@ private fun Modifier.trackEditableTextFocus() = composed {
     onFocusChanged { onChanged(it.isFocused) }
 }
 
+private fun ComposeOperationState.saveSnapshot() = MapViewerSaveSnapshot(
+    revision = revision,
+    document = document,
+    camera = savedCamera(),
+    uiState = operationUiState(),
+)
+
 @Composable
 private fun ViewerWorkspace(
     initialMap: ComposeActiveMap,
@@ -882,9 +896,10 @@ private fun ViewerWorkspace(
     modalHost: ComposeModalHostState,
     filePicker: ComposeFilePicker,
 ) {
-    var operationState by remember(initialMap.document) {
+    val operationStateHolder = remember(initialMap.document) {
         mutableStateOf(ComposeOperationState(initialMap.document))
     }
+    var operationState by operationStateHolder
     var displaySettings by remember { mutableStateOf(initialDisplaySettings) }
     val unitIconSizePx = displaySettings.unitIconSizePx
     var escapeMenuOpen by remember { mutableStateOf(false) }
@@ -894,82 +909,91 @@ private fun ViewerWorkspace(
     var drawingColour by remember { mutableStateOf(MapViewerDrawingColour.RED) }
     var drawingNameEdit by remember { mutableStateOf<ComposeDrawingNameEdit?>(null) }
     var toolGestureCancellationEpoch by remember { mutableStateOf(0) }
-    var pendingExit by remember { mutableStateOf<ComposePendingExit?>(null) }
     val transientMessages = remember { ComposeTransientMessageHostState() }
     var draggedDockTab by remember { mutableStateOf<OperationEditorId?>(null) }
     var dockDropTarget by remember { mutableStateOf<Pair<OperationDockRegion, Int>?>(null) }
     var dispatchedKeysDown by remember { mutableStateOf(emptySet<Key>()) }
     var editableTextFocused by remember { mutableStateOf(false) }
-    val autosaveScheduler = remember { ComposeAutosaveScheduler(debounceMillis = COMPOSE_AUTOSAVE_DEBOUNCE_MS) }
     val scope = rememberCoroutineScope()
     val mapFocusRequester = remember { FocusRequester() }
+    val currentReturnToLaunchpad by rememberUpdatedState(onReturnToLaunchpad)
+    val currentExitProgram by rememberUpdatedState(onExitProgram)
+    val saveCoordinatorStateHolder = remember(initialMap.document) {
+        mutableStateOf(MapViewerSaveCoordinatorState.initial(operationState.saveSnapshot()))
+    }
+    var saveCoordinatorState by saveCoordinatorStateHolder
+    val saveCoordinator = remember(initialMap.document.operationId) {
+        MapViewerSaveCoordinator(
+            initialSnapshot = operationState.saveSnapshot(),
+            saver = MapViewerSaveExecutor { attempt, complete ->
+                scope.launch {
+                    val completion = runCatching {
+                        withContext(Dispatchers.IO) {
+                            repository.saveOperation(
+                                attempt.snapshot.document,
+                                attempt.snapshot.camera,
+                                attempt.snapshot.uiState,
+                            )
+                        }
+                    }.fold(
+                        onSuccess = MapViewerSaveCompletion::Success,
+                        onFailure = { failure ->
+                            MapViewerSaveCompletion.Failure(failure.message ?: failure::class.simpleName ?: "Unknown save failure")
+                        },
+                    )
+                    complete(completion)
+                }
+            },
+            completionDispatcher = { completion -> scope.launch { completion() } },
+            onStateChanged = { saveCoordinatorStateHolder.value = it },
+            onSaveSucceeded = { saved, revision, _ ->
+                operationStateHolder.value = operationStateHolder.value.withPersistedDocument(saved, revision)
+                transientMessages.show("Saved", ComposeMessageSeverity.SUCCESS)
+            },
+            onFailureSeriesStarted = {
+                transientMessages.show("Save failed", ComposeMessageSeverity.ERROR)
+            },
+            onExitReady = { target ->
+                when (target) {
+                    MapViewerExitTarget.LAUNCHPAD -> currentReturnToLaunchpad()
+                    MapViewerExitTarget.DESKTOP -> currentExitProgram()
+                }
+            },
+        )
+    }
 
     LaunchedEffect(initialMap.document.operationId) {
         if (operationState.workspace.activeEditorId == null) mapFocusRequester.requestFocus()
     }
 
-    fun autosaveObservation() = ComposeAutosaveObservation(
-        revision = operationState.revision,
-        savedRevision = operationState.savedRevision,
-        savingRevision = operationState.savingRevision,
-        failed = operationState.saveStatus == ComposeSaveStatus.FAILED,
-        exiting = pendingExit != null,
-    )
+    fun saveNow() {
+        saveCoordinator.observe(operationState.saveSnapshot())
+        saveCoordinator.requestSave(MapViewerSaveReason.MANUAL)
+    }
 
-    fun saveNow(onSuccess: (() -> Unit)? = null) {
-        if (operationState.savingRevision != null) return
-        val snapshot = operationState
-        val targetRevision = snapshot.revision
-        operationState = operationState.saveStarted(targetRevision)
-        scope.launch {
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    repository.saveOperation(snapshot.document, snapshot.savedCamera(), snapshot.operationUiState())
-                }
-            }.onSuccess { saved ->
-                operationState = operationState.saveSucceeded(saved, targetRevision)
-                transientMessages.show("Saved", ComposeMessageSeverity.SUCCESS)
-                if (operationState.revision == targetRevision) onSuccess?.invoke()
-            }.onFailure { failure ->
-                operationState = operationState.saveFailed(failure.message ?: failure::class.simpleName ?: "Unknown save failure")
-                transientMessages.show("Save failed", ComposeMessageSeverity.ERROR)
-            }
+    fun requestExit(target: MapViewerExitTarget) {
+        saveCoordinator.observe(operationState.saveSnapshot())
+        saveCoordinator.requestExit(target)
+    }
+
+    val currentExitRequester by rememberUpdatedState<(MapViewerExitTarget) -> Unit>(::requestExit)
+
+    DisposableEffect(saveCoordinator) {
+        onCloseRequestHandlerChanged { currentExitRequester(MapViewerExitTarget.DESKTOP) }
+        onDispose {
+            saveCoordinator.dispose()
+            onCloseRequestHandlerChanged(currentExitProgram)
         }
     }
 
-    fun requestExit(target: ComposePendingExit) {
-        autosaveScheduler.cancel()
-        pendingExit = target
-        saveNow {
-            pendingExit = null
-            when (target) {
-                ComposePendingExit.LAUNCHPAD -> onReturnToLaunchpad()
-                ComposePendingExit.DESKTOP -> onExitProgram()
-            }
-        }
+    LaunchedEffect(saveCoordinator, operationState.revision) {
+        saveCoordinator.observe(operationState.saveSnapshot())
     }
 
-    val currentExitRequester by rememberUpdatedState<(ComposePendingExit) -> Unit>(::requestExit)
-
-    DisposableEffect(Unit) {
-        onCloseRequestHandlerChanged { currentExitRequester(ComposePendingExit.DESKTOP) }
-        onDispose { onCloseRequestHandlerChanged(onExitProgram) }
-    }
-
-    LaunchedEffect(operationState.revision, operationState.savedRevision, operationState.savingRevision) {
-        val waitMillis = autosaveScheduler.observe(autosaveObservation()) ?: return@LaunchedEffect
-        kotlinx.coroutines.delay(waitMillis)
-        if (autosaveScheduler.consumeIfDue(autosaveObservation()) != null) saveNow()
-    }
-
-    LaunchedEffect(pendingExit, operationState.savingRevision, operationState.saveStatus) {
-        val target = pendingExit ?: return@LaunchedEffect
-        if (operationState.savingRevision == null && operationState.saveStatus != ComposeSaveStatus.FAILED) {
-            saveNow {
-                pendingExit = null
-                if (target == ComposePendingExit.LAUNCHPAD) onReturnToLaunchpad() else onExitProgram()
-            }
-        }
+    LaunchedEffect(saveCoordinator, saveCoordinatorState.nextScheduledAtMillis) {
+        val dueAt = saveCoordinatorState.nextScheduledAtMillis ?: return@LaunchedEffect
+        kotlinx.coroutines.delay((dueAt - System.currentTimeMillis()).coerceAtLeast(0L))
+        saveCoordinator.wake()
     }
 
     LaunchedEffect(displaySettings.destroyedUnitDisplayMode, operationState.visibleContent.objects) {
@@ -1001,8 +1025,8 @@ private fun ViewerWorkspace(
             MapViewerCommand.Save -> saveNow()
             MapViewerCommand.Undo -> operationState = operationState.undo()
             MapViewerCommand.Redo -> operationState = operationState.redo()
-            MapViewerCommand.ReturnToLaunchpad -> { escapeMenuOpen = false; requestExit(ComposePendingExit.LAUNCHPAD) }
-            MapViewerCommand.Exit -> { escapeMenuOpen = false; requestExit(ComposePendingExit.DESKTOP) }
+            MapViewerCommand.ReturnToLaunchpad -> { escapeMenuOpen = false; requestExit(MapViewerExitTarget.LAUNCHPAD) }
+            MapViewerCommand.Exit -> { escapeMenuOpen = false; requestExit(MapViewerExitTarget.DESKTOP) }
             MapViewerCommand.CloseEscapeMenu -> escapeMenuOpen = false
             is MapViewerCommand.SetWorkspaceMode -> operationState = operationState.updateWorkspaceMode(command.mode)
             is MapViewerCommand.SetDestroyedUnitDisplayMode -> displaySettings = displaySettings.copy(destroyedUnitDisplayMode = onDestroyedUnitDisplayModeChanged(command.mode))
@@ -1045,6 +1069,7 @@ private fun ViewerWorkspace(
 
     val editorActions = ComposeViewerEditorActions(
         displaySettings = displaySettings,
+        saveState = saveCoordinatorState,
         onCommand = ::dispatch,
         onSave = { dispatch(MapViewerCommand.Save) },
         onEditDrawingName = { id ->
@@ -1178,7 +1203,7 @@ private fun ViewerWorkspace(
                                             operationState.activeTool,
                                             operationState.unitPlacement != null || operationState.graphicPlacement != null || operationState.noteReferencePick != null,
                                             operationState.workspace,
-                                            operationState.savingRevision == null,
+                                            saveCoordinatorState.manualSaveEnabled,
                                         ),
                                     ),
                                 )
@@ -1302,24 +1327,21 @@ private fun ViewerWorkspace(
             )
         })
     }
-    LaunchedEffect(pendingExit, operationState.saveStatus, operationState.saveFailure) {
-        if (pendingExit != null && operationState.saveStatus == ComposeSaveStatus.FAILED) {
+    LaunchedEffect(saveCoordinatorState.awaitingExitRetry, saveCoordinatorState.failure) {
+        if (saveCoordinatorState.awaitingExitRetry) {
             modalHost.show(ComposeModalRequest(
                 key = "save-failure",
                 priority = ComposeModalPriority.LOSS_PREVENTION,
-                onCancelled = { pendingExit = null },
+                onCancelled = saveCoordinator::cancelExit,
             ) { dismiss ->
                 SaveFailureDialog(
-                    message = operationState.saveFailure.orEmpty(),
-                    onRetry = retry@{
-                        val target = pendingExit ?: return@retry
+                    message = saveCoordinatorState.failure.orEmpty(),
+                    onRetry = {
                         dismiss()
-                        saveNow {
-                            pendingExit = null
-                            if (target == ComposePendingExit.LAUNCHPAD) onReturnToLaunchpad() else onExitProgram()
-                        }
+                        saveCoordinator.observe(operationState.saveSnapshot())
+                        saveCoordinator.retryExit()
                     },
-                    onCancel = { pendingExit = null; dismiss() },
+                    onCancel = { saveCoordinator.cancelExit(); dismiss() },
                 )
             })
         }
@@ -1951,16 +1973,7 @@ private fun GameSettingsContent(
     modifier: Modifier,
 ) = Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Text("SAVE", fontWeight = FontWeight.Bold)
-    CommandButton(actions.onSave, enabled = state.savingRevision == null, modifier = Modifier.fillMaxWidth()) {
-        Text(
-            when (state.saveStatus) {
-                ComposeSaveStatus.CLEAN -> "SAVED"
-                ComposeSaveStatus.DIRTY -> "SAVE"
-                ComposeSaveStatus.SAVING -> "SAVING…"
-                ComposeSaveStatus.FAILED -> "SAVE FAILED"
-            },
-        )
-    }
+    SaveCommandButton(actions.saveState, actions.onSave, Modifier.fillMaxWidth())
     Text("WORKSPACE MODE", fontWeight = FontWeight.Bold)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         WorkspaceMode.entries.forEach { mode ->
@@ -1986,6 +1999,22 @@ private fun GameSettingsContent(
             CommandButton({ actions.onFireArcDisplayModeChanged(mode) }, active = actions.displaySettings.fireArcDisplayMode == mode, modifier = Modifier.fillMaxWidth()) { Text(mode.label.uppercase()) }
         }
     }
+}
+
+@Composable
+internal fun SaveCommandButton(
+    state: MapViewerSaveCoordinatorState,
+    onSave: () -> Unit,
+    modifier: Modifier = Modifier,
+) = CommandButton(onSave, enabled = state.manualSaveEnabled, modifier = modifier) {
+    Text(
+        when (state.status) {
+            MapViewerSaveStatus.CLEAN -> "SAVED"
+            MapViewerSaveStatus.DIRTY -> "SAVE"
+            MapViewerSaveStatus.SAVING -> "SAVING…"
+            MapViewerSaveStatus.FAILED -> "SAVE FAILED"
+        },
+    )
 }
 
 private fun OperationEditorState.availableFor(state: ComposeOperationState) =
@@ -2486,7 +2515,7 @@ private fun EscapeMenuDialog(
     }
 
 @Composable
-private fun SaveFailureDialog(
+internal fun SaveFailureDialog(
     message: String,
     onRetry: () -> Unit,
     onCancel: () -> Unit,
@@ -2518,8 +2547,6 @@ private fun DrawingNameDialog(
             CommandButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("CANCEL") }
         }
 }
-
-private enum class ComposePendingExit { LAUNCHPAD, DESKTOP }
 
 private data class ComposeMapContextMenu(
     val objectId: OperationObjectId,

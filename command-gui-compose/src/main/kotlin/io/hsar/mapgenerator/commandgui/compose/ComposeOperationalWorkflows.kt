@@ -19,7 +19,7 @@ internal fun ComposeOperationState.openSensorReport(unitId: OperationObjectId, m
     val editor = operationalEditor(unitId, OperationEditorKind.SENSOR_REPORT, mode.name.lowercase(), "sensor:${mode.name.lowercase()}:$unitId", result.text)
     return copy(
         document = document.copy(additionalDataJson = result.additionalDataJson), workspace = workspace.open(editor),
-        revision = revision + 1, saveStatus = ComposeSaveStatus.DIRTY, saveFailure = null,
+        revision = revision + 1,
     )
 }
 
@@ -56,13 +56,13 @@ internal fun ComposeOperationState.fireTactical(editorId: OperationEditorId): Co
     val gunrep = operationalEditor(targetId, OperationEditorKind.GUNREP, "gunrep", "gunrep:${UUID.randomUUID()}", result.gunrepText)
     return copy(
         document = document.copy(timeline = document.timeline.record(entry), additionalDataJson = result.additionalDataJson),
-        workspace = workspace.open(gunrep), revision = revision + 1, saveStatus = ComposeSaveStatus.DIRTY, saveFailure = null,
+        workspace = workspace.open(gunrep), revision = revision + 1,
     )
 }
 
 private fun ComposeOperationState.openOperationalEditor(unitId: OperationObjectId, kind: OperationEditorKind, mode: String, id: String): ComposeOperationState {
     if (!olympiadDawnEnabled || visibleContent.objectById(unitId) !is OperationUnit) return this
-    return copy(workspace = workspace.open(operationalEditor(unitId, kind, mode, id)), revision = revision + 1, saveStatus = ComposeSaveStatus.DIRTY, saveFailure = null)
+    return copy(workspace = workspace.open(operationalEditor(unitId, kind, mode, id)), revision = revision + 1)
 }
 
 private fun operationalEditor(unitId: OperationObjectId, kind: OperationEditorKind, mode: String, id: String, report: String = "") = OperationEditorState(

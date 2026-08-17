@@ -11,6 +11,8 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.StandardCopyOption
 import java.time.Clock
 import java.util.*
 import java.util.Collections.emptySet
@@ -26,6 +28,7 @@ internal class OperationSaveWriter(
     private val clock: Clock = Clock.systemUTC(),
     private val uuidGenerator: () -> UUID = UUID::randomUUID,
     private val storage: OperationToolStorage = OperationToolStorage(),
+    private val archiveCommitter: OperationArchiveCommitter = OperationArchiveCommitter(),
 ) {
     fun write(request: OperationSaveRequest, targetPath: Path = defaultSavePath(request.operationName, request.operationId)): Path {
         if (targetPath.parent == defaultSaveDirectory()) {
@@ -104,22 +107,24 @@ internal class OperationSaveWriter(
         )
         val ledgerFile = LedgerFileDto(entries = ledger)
 
-        ZipOutputStream(Files.newOutputStream(targetPath)).use { zip ->
-            assets.assets.forEach { asset ->
-                zip.putNextEntry(ZipEntry(asset.path))
-                zip.write(asset.bytes)
+        archiveCommitter.write(targetPath) { stagedPath ->
+            ZipOutputStream(Files.newOutputStream(stagedPath)).use { zip ->
+                assets.assets.forEach { asset ->
+                    zip.putNextEntry(ZipEntry(asset.path))
+                    zip.write(asset.bytes)
+                    zip.closeEntry()
+                }
+                zip.putNextEntry(ZipEntry(GAME_JSON))
+                zip.write(OperationSaveJson.objectMapper.writeValueAsBytes(game))
                 zip.closeEntry()
-            }
-            zip.putNextEntry(ZipEntry(GAME_JSON))
-            zip.write(OperationSaveJson.objectMapper.writeValueAsBytes(game))
-            zip.closeEntry()
-            zip.putNextEntry(ZipEntry(LEDGER_JSON))
-            zip.write(OperationSaveJson.objectMapper.writeValueAsBytes(ledgerFile))
-            zip.closeEntry()
-            request.additionalDataJson?.let { additionalData ->
-                zip.putNextEntry(ZipEntry(ADDITIONAL_DATA_JSON))
-                zip.write(additionalData)
+                zip.putNextEntry(ZipEntry(LEDGER_JSON))
+                zip.write(OperationSaveJson.objectMapper.writeValueAsBytes(ledgerFile))
                 zip.closeEntry()
+                request.additionalDataJson?.let { additionalData ->
+                    zip.putNextEntry(ZipEntry(ADDITIONAL_DATA_JSON))
+                    zip.write(additionalData)
+                    zip.closeEntry()
+                }
             }
         }
 
@@ -150,6 +155,47 @@ internal class OperationSaveWriter(
         const val LEDGER_JSON = "ledger.json"
         const val ADDITIONAL_DATA_JSON = "additionalData.json"
         const val ASSET_ROLE_MAP = "map"
+    }
+}
+
+internal class OperationArchiveCommitter(
+    private val move: (Path, Path, Boolean) -> Path = { source, target, atomic ->
+        if (atomic) Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        else Files.move(source, target, StandardCopyOption.REPLACE_EXISTING)
+    },
+) {
+    fun write(targetPath: Path, writeArchive: (Path) -> Unit) {
+        val absoluteTarget = targetPath.toAbsolutePath()
+        val parent = absoluteTarget.parent ?: error("Save target must have a parent directory")
+        Files.createDirectories(parent)
+        val staged = Files.createTempFile(parent, ".${absoluteTarget.fileName}.", ".tmp")
+        try {
+            writeArchive(staged)
+            try {
+                move(staged, absoluteTarget, true)
+            } catch (_: AtomicMoveNotSupportedException) {
+                replaceWithBackup(staged, absoluteTarget)
+            }
+        } finally {
+            Files.deleteIfExists(staged)
+        }
+    }
+
+    private fun replaceWithBackup(staged: Path, target: Path) {
+        val backup = target.takeIf(Files::exists)?.let {
+            Files.createTempFile(target.parent, ".${target.fileName}.", ".backup").also(Files::deleteIfExists)
+        }
+        try {
+            backup?.let { move(target, it, false) }
+            try {
+                move(staged, target, false)
+            } catch (failure: Throwable) {
+                backup?.takeIf(Files::exists)?.let { move(it, target, false) }
+                throw failure
+            }
+        } finally {
+            backup?.let { runCatching { Files.deleteIfExists(it) } }
+        }
     }
 }
 

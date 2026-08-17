@@ -2,7 +2,7 @@
 
 ## Current status
 
-The latest completed migration work is **Phase 4, Slice 3 (focus, dialogs, feedback and look-and-feel parity)**. Treat Phase 4 Slice 4 and later as planned work even where scaffolding exists.
+The latest completed migration work is **Phase 4, Slice 4 (lossless save and exit orchestration)**. Treat Phase 4 Slice 5 and later as planned work even where scaffolding exists.
 
 Use a strangler migration: locate tested KorGE behaviour, move reusable rules to neutral types, add renderer-independent fixtures, connect Compose through thin adapters, and remove compatibility code only after every consumer has crossed the boundary. KorGE is the compatibility backend, not the destination for new product UI.
 
@@ -12,11 +12,11 @@ Use a strangler migration: locate tested KorGE behaviour, move reusable rules to
 - Engine-neutral state and rules belong in `commandgui` or `commandgui.operation`; KorGE/korlibs types stay below `korge`; Compose/Skia types stay in `command-gui-compose`. Save codecs import neither renderer.
 - `OperationCore.kt` owns operation content. `OperationTimelineAuthoring.kt` owns timeline construction, turn grouping, descriptions and affected targets. A persisted batch remains one top-level entry, but do not collapse its sequential `componentChangeSets`.
 - Neutral transforms, selection geometry, tool gestures, grid layout/references, measurements, command resolution, viewer-chrome geometry, menu geometry and fire-arc primitives are authoritative. Renderer code converts coordinates, measures text, paints and adapts input.
-- `ComposeOperationState` owns document/head replay, camera, tool, selection, previews, save revisions, workflows and `OperationWorkspaceState`. Composables retain only ephemeral pointer, focus or popup state. Editor identity, drafts, bounds, dock/floating placement and validation inputs remain neutral and persistable.
+- `ComposeOperationState` owns document/head replay, camera, tool, selection, previews, the current document revision, workflows and `OperationWorkspaceState`. `MapViewerSaveCoordinator` owns saved/in-flight revisions, debounce/retry timing, failure state and pending exits. Composables retain only ephemeral pointer, focus or popup state.
 - `MapViewerSaveRepository.loadOperation/createOperation/saveOperation` is the archive boundary. Preserve unknown `additionalData.json` fields additively. Disabling `OLYMPIAD_DAWN_EXPERIMENTAL` hides entry points without deleting saved payloads.
 - `enabledLayerIds` remains persistence-only until a separately approved layer slice. Compose paints the supplied base map and grid directly.
 
-## Protected behaviour through Phase 4 Slice 3
+## Protected behaviour through Phase 4 Slice 4
 
 ### Map, authoring and operational rules
 
@@ -95,23 +95,26 @@ Use a strangler migration: locate tested KorGE behaviour, move reusable rules to
 - Required build metadata, project licence, third-party notices and 64/128/256/512 application icons are packaging-tested. Missing required resources fail tests; optional presentation failures degrade with an explicit diagnostic.
 - Slice 3 parity evidence is manual and measurement-led rather than checked-in golden PNGs. Follow `command-gui/docs/phase4-slice3-parity.md`; keep temporary captures under ignored `build/reports/parity`, verify the stated window/DPI matrix, and distinguish deliberate Compose differences from known KorGE defects.
 
+### Save and exit contract
+
+- `MapViewerSaveCoordinator` is the renderer-neutral authority. Feed it immutable document/camera/UI snapshots and inject asynchronous saving, time and completion dispatch; do not restore Compose-local save callbacks or timers.
+- Permit one write at a time. Coalesce newer manual requests, preserve dirty revisions during older writes and ignore duplicate, stale or post-disposal completions. Ordinary autosave uses a two-second trailing debounce and 2/4/8/16/32/60-second capped retry delays; notify only once per failure series.
+- Return to Launchpad, Escape Exit and native window close use the same request path. Clean exits proceed immediately; dirty and in-flight exits wait for the newest revision. The latest destination wins. Exit failure pauses retry behind the loss-prevention Retry/Cancel Exit modal; cancellation keeps the viewer dirty and resumes ordinary retry.
+- `OperationSaveWriter` stages a complete sibling archive before replacement. Prefer atomic replace; the unsupported-atomic fallback must preserve and restore the previous archive and clean temporary/backup files. Keep archive format 6, UI schema 7 and unknown additional data unchanged.
+
 ## Completed migration summary
 
 - **Phases 1–3:** neutral document editing, transforms/selection, authoring, persistence, sensors/reports/ECM and Olympiad Dawn tactical rules moved behind renderer-independent APIs; Compose gained equivalent authoring and workflow bodies.
 - **Phase 4 Slice 1:** typed dock/floating workspace shell, restoration, validation and navigation completed.
 - **Phase 4 Slice 2:** viewer floating menus, typed menu editors, schema-7 migration, unified command/context dispatch, bubble-phase shortcuts, Escape precedence, custom menu-chain geometry/timing, global destroyed-unit modes and shared fire-arc primitives completed.
 - **Phase 4 Slice 3:** shared design tokens and scale fixtures, deterministic editor/map focus, typed priority/FIFO modal and transient-message hosts, parented asynchronous file selection, launchpad About/diagnostics/licences, font fallback diagnostics and manual parity evidence completed.
+- **Phase 4 Slice 4:** renderer-neutral serialized save coordination, coalesced revision snapshots, capped failure recovery, unified loss-protected exit routing and staged atomic archive replacement completed.
 
 ## Remaining migration plan
 
-### Phase 4 Slice 4 — Save and exit orchestration
-
-This is the immediate next slice. Preserve Slice 3 interaction and presentation behaviour while making every save/exit path lossless under concurrency and failure.
-
-- Extract a testable save coordinator with injected saver, debounce clock and completion dispatcher. At most one save is in flight; mutations during save stay dirty; stale completion cannot mark a newer revision saved; requests coalesce; autosave recovers after failure.
-- Route window close, Escape Exit and Return to Launchpad through one request path. Clean exits proceed; dirty exits save; in-flight exits wait; failures offer Retry and Cancel Exit without losing the operation.
-
 ### Phase 4 Slice 5 — Loading, packaging and desktop polish
+
+This is the immediate next slice.
 
 - Give create/open/render/decode/archive operations explicit idle/running/succeeded/failed/cancelled state. Run expensive work off the UI thread, make cancellation cooperative and ignore stale completions.
 - Define image/archive limits before allocation and present actionable failures. Build a portable Windows distribution with icons, fonts and licences, then smoke-test create/save/close/reopen from paths containing spaces and non-ASCII characters.

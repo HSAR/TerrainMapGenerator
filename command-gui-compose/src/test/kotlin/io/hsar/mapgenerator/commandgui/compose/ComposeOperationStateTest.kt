@@ -164,14 +164,24 @@ class ComposeOperationStateTest {
     }
 
     @Test
-    fun `save completion keeps changes made during an in flight save dirty`() {
-        val started = ComposeOperationState(documentWith(unit)).saveStarted()
-        val changed = started.selectTool(MapViewerTool.DRAW)
+    fun `save completion merges metadata without replacing newer content`() {
+        val started = ComposeOperationState(documentWith(unit))
+        val changed = started.selectObject(objectId).deleteSelection().let { state ->
+            state.copy(document = state.document.copy(additionalDataJson = "newer".toByteArray()))
+        }
+        val saved = started.document.copy(
+            persisted = true,
+            sourcePath = java.nio.file.Path.of("saved.oct.zip"),
+            additionalDataJson = "older".toByteArray(),
+        )
 
-        val completed = changed.saveSucceeded(started.document, started.revision)
+        val completed = changed.withPersistedDocument(saved, started.revision)
 
-        assertThat(completed.saveStatus, equalTo(ComposeSaveStatus.DIRTY))
-        assertThat(completed.hasUnsavedChanges, equalTo(true))
+        assertThat(completed.document.content.objects.isEmpty(), equalTo(true))
+        assertThat(completed.document.additionalDataJson?.decodeToString(), equalTo("newer"))
+        assertThat(completed.document.sourcePath, equalTo(saved.sourcePath))
+        assertThat(completed.document.persisted, equalTo(true))
+        assertThat(completed.revision, equalTo(changed.revision))
     }
 
     @Test
@@ -189,8 +199,7 @@ class ComposeOperationStateTest {
         assertThat(state.workspaceMode, equalTo(MapViewerWorkspaceMode.FLOATING))
         assertThat(state.enabledLayerIds, equalTo(setOf("GRID")))
         assertThat(state.openEditors, equalTo(emptyList()))
-        assertThat(state.saveStatus, equalTo(ComposeSaveStatus.CLEAN))
-        assertThat(state.hasUnsavedChanges, equalTo(false))
+        assertThat(state.revision, equalTo(0L))
     }
 
     @Test
@@ -245,18 +254,6 @@ class ComposeOperationStateTest {
         assertThat(attemptedEdit.document.timeline, equalTo(live.document.timeline))
         assertThat(attemptedEdit.visibleContent.objects.single(), equalTo(unit))
         assertThat(attemptedEdit.returnToCurrent().visibleContent.objects.isEmpty(), equalTo(true))
-    }
-
-    @Test
-    fun `failed save remains dirty until a later successful revision is saved`() {
-        val dirty = ComposeOperationState(documentWith(unit)).selectTool(MapViewerTool.DRAW)
-        val failed = dirty.saveStarted().saveFailed("disk unavailable")
-        val retried = failed.saveStarted().saveSucceeded(failed.document.copy(persisted = true), failed.revision)
-
-        assertThat(failed.saveStatus, equalTo(ComposeSaveStatus.FAILED))
-        assertThat(failed.hasUnsavedChanges, equalTo(true))
-        assertThat(retried.saveStatus, equalTo(ComposeSaveStatus.CLEAN))
-        assertThat(retried.hasUnsavedChanges, equalTo(false))
     }
 
     @Test
