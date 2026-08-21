@@ -19,19 +19,45 @@ data class MapViewerScreenBounds(val left: Double, val top: Double, val right: D
     val width get() = (right - left).coerceAtLeast(1.0)
     val height get() = (bottom - top).coerceAtLeast(1.0)
 
+    fun expanded(amount: Double) = MapViewerScreenBounds(left - amount, top - amount, right + amount, bottom + amount)
+
+    fun overlaps(bounds: MapSelectionScreenBounds) =
+        left <= bounds.right && right >= bounds.left && top <= bounds.bottom && bottom >= bounds.top
+
+    fun intersectsSegment(start: ViewerPoint, end: ViewerPoint, padding: Double = 0.0) = expanded(padding).let { viewport ->
+        minOf(start.x, end.x) <= viewport.right && maxOf(start.x, end.x) >= viewport.left &&
+                minOf(start.y, end.y) <= viewport.bottom && maxOf(start.y, end.y) >= viewport.top
+    }
+
+    fun intersectsCircle(centre: ViewerPoint, radius: Double, padding: Double = 0.0) =
+        overlaps(MapSelectionScreenBounds(centre.x - radius - padding, centre.y - radius - padding, centre.x + radius + padding, centre.y + radius + padding))
+
     companion object {
         fun viewport(viewport: MapViewport) = MapViewerScreenBounds(0.0, 0.0, viewport.viewportWidth.toDouble(), viewport.viewportHeight.toDouble())
     }
 }
 
 data class MapViewerMapBounds(val left: Double, val top: Double, val right: Double, val bottom: Double) {
+    fun expanded(amount: Double) = MapViewerMapBounds(left - amount, top - amount, right + amount, bottom + amount)
+
+    fun overlaps(other: MapViewerMapBounds) =
+        left <= other.right && right >= other.left && top <= other.bottom && bottom >= other.top
+
     companion object {
-        fun visible(viewport: MapViewport, mapOffsetX: Double, mapOffsetY: Double, mapWidth: Int, mapHeight: Int) = MapViewerMapBounds(
-            left = max(0.0, viewport.left - mapOffsetX),
-            top = max(0.0, viewport.top - mapOffsetY),
-            right = min(mapWidth.toDouble(), viewport.left + viewport.visibleWidth - mapOffsetX),
-            bottom = min(mapHeight.toDouble(), viewport.top + viewport.visibleHeight - mapOffsetY),
+        fun visible(
+            viewport: MapViewport,
+            mapOffsetX: Double,
+            mapOffsetY: Double,
+            mapWidth: Int,
+            mapHeight: Int,
+            screenPadding: Double = 0.0,
+        ) = viewport.visibleWorldBounds(screenPadding).let { visible -> MapViewerMapBounds(
+            left = max(0.0, visible.left - mapOffsetX),
+            top = max(0.0, visible.top - mapOffsetY),
+            right = min(mapWidth.toDouble(), visible.right - mapOffsetX),
+            bottom = min(mapHeight.toDouble(), visible.bottom - mapOffsetY),
         )
+        }
     }
 }
 

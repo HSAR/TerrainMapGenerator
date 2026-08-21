@@ -88,7 +88,7 @@ object MapViewerImageLoader {
             reader.input = input
             val width = reader.getWidth(0)
             val height = reader.getHeight(0)
-            validateDimensions(width, height, fileName, limits)
+            validateMapViewerImageDimensions(width, height, fileName, limits)
             cancellation.ensureActive()
             reader.read(0)?.toArgb() ?: unsupported(fileName)
         } finally {
@@ -103,34 +103,19 @@ object MapViewerImageLoader {
         cancellation: MapViewerCancellationSignal,
     ): BufferedImage {
         val source = String(bytes, StandardCharsets.UTF_8)
-        source.svgDimensions()?.let { (width, height) -> validateDimensions(width, height, fileName, limits) }
+        source.svgDimensions()?.let { (width, height) -> validateMapViewerImageDimensions(width, height, fileName, limits) }
         cancellation.ensureActive()
         return runCatching { renderSvg(source) }
             .getOrElse { failure ->
                 throw MapViewerLoadException(MapViewerLoadFailure.Unsupported("$fileName is not a supported SVG image: ${failure.message ?: "decode failed"}"))
             }
-            .also { image -> validateDimensions(image.width, image.height, fileName, limits) }
+            .also { image -> validateMapViewerImageDimensions(image.width, image.height, fileName, limits) }
     }
 
     private fun validateEncodedSize(size: Long, fileName: String, limits: MapViewerLoadLimits) {
         if (size > limits.maximumEncodedImageBytes) {
             throw MapViewerLoadException(
                 MapViewerLoadFailure.LimitExceeded(fileName, size, limits.maximumEncodedImageBytes),
-            )
-        }
-    }
-
-    private fun validateDimensions(width: Int, height: Int, fileName: String, limits: MapViewerLoadLimits) {
-        val dimension = maxOf(width, height).toLong()
-        if (dimension > limits.maximumImageDimension) {
-            throw MapViewerLoadException(
-                MapViewerLoadFailure.LimitExceeded("$fileName image dimension", dimension, limits.maximumImageDimension.toLong(), "pixels"),
-            )
-        }
-        val pixels = width.toLong() * height.toLong()
-        if (pixels > limits.maximumImagePixels) {
-            throw MapViewerLoadException(
-                MapViewerLoadFailure.LimitExceeded("$fileName decoded image", pixels, limits.maximumImagePixels, "pixels"),
             )
         }
     }
@@ -397,5 +382,28 @@ object MapViewerImageLoader {
         override fun writeImage(image: BufferedImage, output: TranscoderOutput?) {
             this.image = image
         }
+    }
+}
+
+internal fun validateMapViewerImageDimensions(
+    width: Int,
+    height: Int,
+    fileName: String,
+    limits: MapViewerLoadLimits = MapViewerLoadLimits(),
+) {
+    if (width <= 0 || height <= 0) {
+        throw MapViewerLoadException(MapViewerLoadFailure.Invalid("$fileName has invalid image dimensions $width x $height."))
+    }
+    val dimension = maxOf(width, height).toLong()
+    if (dimension > limits.maximumImageDimension) {
+        throw MapViewerLoadException(
+            MapViewerLoadFailure.LimitExceeded("$fileName image dimension", dimension, limits.maximumImageDimension.toLong(), "pixels"),
+        )
+    }
+    val pixels = width.toLong() * height.toLong()
+    if (pixels > limits.maximumImagePixels) {
+        throw MapViewerLoadException(
+            MapViewerLoadFailure.LimitExceeded("$fileName decoded image", pixels, limits.maximumImagePixels, "pixels"),
+        )
     }
 }

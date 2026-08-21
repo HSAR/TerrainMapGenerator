@@ -141,6 +141,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerGridReference
 import io.hsar.mapgenerator.commandgui.MapViewerImageLoader
 import io.hsar.mapgenerator.commandgui.MapViewerMenuLayoutBuilder
 import io.hsar.mapgenerator.commandgui.MapViewerMenuTokens
+import io.hsar.mapgenerator.commandgui.MapViewerMapBounds
 import io.hsar.mapgenerator.commandgui.MapViewerLaunchpadTokens
 import io.hsar.mapgenerator.commandgui.MapViewerOngoingOperationsTokens
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
@@ -156,6 +157,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerExitTarget
 import io.hsar.mapgenerator.commandgui.MapViewerSavedCamera
 import io.hsar.mapgenerator.commandgui.MapViewerSavedOperation
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
+import io.hsar.mapgenerator.commandgui.MapViewerScreenBounds
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.MapViewerTool
 import io.hsar.mapgenerator.commandgui.MapViewerWorkspaceMode
@@ -221,13 +223,11 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
 import java.awt.Frame
 import kotlin.random.Random
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Collections.emptyList
 import java.util.Collections.emptySet
-import javax.imageio.ImageIO
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -3199,14 +3199,6 @@ internal fun operationTurnIndexLabel(appliedCount: Int): String = "%04X".format(
 
 private const val PROTOTYPE_STATE_ROW_LIMIT = 12
 
-private data class ComposeRasterTile(
-    val left: Int,
-    val top: Int,
-    val width: Int,
-    val height: Int,
-    val image: ImageBitmap,
-)
-
 private data class ComposeSelectionMarquee(
     val start: Offset,
     val current: Offset,
@@ -3257,9 +3249,14 @@ private fun MapCanvas(
 ) {
     val nordFontFamily = NordFontFamily()
     val textMeasurer = rememberTextMeasurer()
-    val tiles = remember(renderData.baseImage) {
-        RasterTileSet.from(renderData.baseImage).tiles.map { tile ->
-            ComposeRasterTile(tile.left, tile.top, tile.image.width, tile.image.height, tile.image.toImageBitmap())
+    val coroutineScope = rememberCoroutineScope()
+    val tileSet = remember(renderData.baseImage) { RasterTileSet.from(renderData.baseImage) }
+    val tileCache = remember(coroutineScope) { ComposeRasterTileCache(coroutineScope) }
+    val templateBitmapLoader = remember(coroutineScope) { ComposeTemplateBitmapLoader(coroutineScope) }
+    DisposableEffect(tileCache, templateBitmapLoader) {
+        onDispose {
+            tileCache.dispose()
+            templateBitmapLoader.dispose()
         }
     }
     val mapWidth = renderData.baseImage.width
@@ -3298,8 +3295,6 @@ private fun MapCanvas(
         toolSession = null
         activeReferenceCoordinate = null
     }
-    val unitIcons = remember(content.unitTemplates) { content.unitTemplates.associate { it.id to it.image.toImageBitmap() } }
-    val graphicIcons = remember(content.graphicTemplates) { content.graphicTemplates.associate { it.id to it.image.toImageBitmap() } }
     val gridOverlay = remember(
         renderData.gridLayer, currentViewport, nordFontFamily, toolSession?.measurementOrigin, toolSession?.measurement, activeReferenceCoordinate,
     ) {
@@ -3359,6 +3354,47 @@ private fun MapCanvas(
     val interactionContent = if (destroyedUnitDisplayMode == OperationDestroyedUnitDisplayMode.Hide)
         content.copy(objects = content.objects.filter { it !is OperationUnit || OperationDestroyedUnitDisplayPolicy.visible(it, destroyedUnitDisplayMode) })
     else content
+    val screenBounds = MapViewerScreenBounds.viewport(currentViewport)
+    val renderVisibility = OperationRenderVisibility.resolve(interactionContent, selectionProjection, screenBounds)
+    val visibleMapBounds = MapViewerMapBounds.visible(currentViewport, mapOffsetX, mapOffsetY, mapWidth, mapHeight)
+    val requestedTiles = remember(tileSet, visibleMapBounds) {
+        tileSet.visibleTiles(
+            visibleMapBounds.left,
+            visibleMapBounds.top,
+            visibleMapBounds.right,
+            visibleMapBounds.bottom,
+            overscanTiles = 1,
+        )
+    }
+    LaunchedEffect(tileSet, requestedTiles.map(RasterTileDescriptor::key)) {
+        tileCache.request(tileSet, requestedTiles)
+    }
+    val tiles = requestedTiles.mapNotNull { descriptor -> tileCache.ready[descriptor.key] }
+
+    val unitBitmapRequests = renderVisibility.units.mapNotNull { unit ->
+        interactionContent.unitTemplate(unit.unitTemplateId)?.let { template ->
+            ComposeTemplateBitmapRequest(
+                ComposeTemplateBitmapKey(ComposeTemplateBitmapKind.UNIT, template.id.value, template.image),
+            )
+        }
+    }.distinctBy(ComposeTemplateBitmapRequest::key)
+    val graphicBitmapRequests = renderVisibility.graphics.mapNotNull { graphic ->
+        interactionContent.graphicTemplate(graphic.graphicTemplateId)?.let { template ->
+            ComposeTemplateBitmapRequest(
+                ComposeTemplateBitmapKey(ComposeTemplateBitmapKind.GRAPHIC, template.id.value, template.image),
+            )
+        }
+    }.distinctBy(ComposeTemplateBitmapRequest::key)
+    val templateBitmapRequests = unitBitmapRequests + graphicBitmapRequests
+    LaunchedEffect(templateBitmapRequests.map(ComposeTemplateBitmapRequest::key)) {
+        templateBitmapLoader.request(templateBitmapRequests)
+    }
+    val unitIcons = unitBitmapRequests.associate { request ->
+        OperationUnitTemplateId(request.key.id) to request.keyedBitmap(templateBitmapLoader.ready)
+    }
+    val graphicIcons = graphicBitmapRequests.associate { request ->
+        OperationGraphicTemplateId(request.key.id) to request.keyedBitmap(templateBitmapLoader.ready)
+    }
 
     fun objectAtScreen(point: Offset): OperationObject? = interactionContent.objectAtScreen(
         ViewerPoint(point.x.toDouble(), point.y.toDouble()), selectionProjection,
@@ -3627,11 +3663,17 @@ private fun MapCanvas(
                 tiles.forEach { tile ->
                     drawImage(
                         image = tile.image,
-                        dstOffset = IntOffset(tile.left, tile.top),
-                        dstSize = IntSize(tile.width, tile.height),
+                        dstOffset = IntOffset(tile.drawLeft, tile.drawTop),
+                        dstSize = IntSize(tile.image.width, tile.image.height),
                     )
                 }
-                tacticalOverlayLines.forEach { (source, target) ->
+                tacticalOverlayLines.filter { (source, target) ->
+                    screenBounds.intersectsSegment(
+                        ViewerPoint(currentViewport.screenX(mapOffsetX + source.x * mapWidth), currentViewport.screenY(mapOffsetY + source.y * mapHeight)),
+                        ViewerPoint(currentViewport.screenX(mapOffsetX + target.x * mapWidth), currentViewport.screenY(mapOffsetY + target.y * mapHeight)),
+                        padding = 4.0,
+                    )
+                }.forEach { (source, target) ->
                     drawLine(
                         CommandColours.Backing,
                         Offset((source.x * mapWidth).toFloat(), (source.y * mapHeight).toFloat()),
@@ -3639,7 +3681,14 @@ private fun MapCanvas(
                         strokeWidth = ComposeDrawingPresentation.worldStrokeWidth(zoom.toDouble()) * 2f,
                     )
                 }
-                ecmFields.forEach { field ->
+                ecmFields.filter { field ->
+                    val emitter = content.objectById(field.emitterId) as? OperationUnit ?: return@filter false
+                    val centre = ViewerPoint(
+                        currentViewport.screenX(mapOffsetX + emitter.coordinate.x * mapWidth),
+                        currentViewport.screenY(mapOffsetY + emitter.coordinate.y * mapHeight),
+                    )
+                    screenBounds.intersectsCircle(centre, field.rangeUnits / unitsPerPixel * currentViewport.zoom, padding = 2.0)
+                }.forEach { field ->
                     val emitter = content.objectById(field.emitterId) as? OperationUnit ?: return@forEach
                     val centre = Offset((emitter.coordinate.x * mapWidth).toFloat(), (emitter.coordinate.y * mapHeight).toFloat())
                     val radius = (field.rangeUnits / unitsPerPixel).toFloat()
@@ -3648,13 +3697,13 @@ private fun MapCanvas(
                     val radians = Math.toRadians(field.bearingDegrees)
                     drawLine(CommandColours.Backing, centre, centre + Offset((kotlin.math.sin(radians) * radius).toFloat(), (-kotlin.math.cos(radians) * radius).toFloat()), ComposeDrawingPresentation.worldStrokeWidth(zoom.toDouble()))
                 }
-                content.objects.filterIsInstance<OperationDrawingObject>().forEach { value ->
+                renderVisibility.drawings.forEach { value ->
                     drawOperationDrawing(value.drawing, mapWidth, mapHeight, ComposeDrawingPresentation.worldStrokeWidth(zoom.toDouble()))
                 }
                 toolSession?.drawing?.let {
                     drawOperationDrawing(it.preview, mapWidth, mapHeight, ComposeDrawingPresentation.worldStrokeWidth(zoom.toDouble()))
                 }
-                content.objects.filterIsInstance<OperationGraphic>().forEach { value ->
+                renderVisibility.graphics.forEach { value ->
                     val icon = graphicIcons[value.graphicTemplateId]
                     val centre = Offset((value.coordinate.x * mapWidth).toFloat(), (value.coordinate.y * mapHeight).toFloat())
                     val width = (value.normalizedWidth * mapWidth).roundToInt().coerceAtLeast(1)
@@ -3698,7 +3747,10 @@ private fun MapCanvas(
                         currentViewport.screenY(mapOffsetY + unit.coordinate.y * mapHeight).toFloat(),
                     )
                     val colour = (unit.affiliation ?: interactionContent.unitTemplate(unit.unitTemplateId)?.affiliation).facingIndicatorColor()
-                    OperationFireArcOverlayBuilder.build(facing, OperationFireArcOverlayService.weaponsFor(unit, interactionContent)).forEach { primitive ->
+                    val primitives = OperationFireArcOverlayBuilder.build(facing, OperationFireArcOverlayService.weaponsFor(unit, interactionContent))
+                    val maximumRadius = primitives.maxOfOrNull { it.radiusUnits / unitsPerPixel * currentViewport.zoom } ?: return@forEach
+                    if (!screenBounds.intersectsCircle(ViewerPoint(centre.x.toDouble(), centre.y.toDouble()), maximumRadius, padding = 2.0)) return@forEach
+                    primitives.forEach { primitive ->
                         val radius = (primitive.radiusUnits / unitsPerPixel * currentViewport.zoom).toFloat()
                         val stroke = androidx.compose.ui.graphics.drawscope.Stroke(primitive.strokeWidthPx.toFloat())
                         val primitiveColour = colour.copy(alpha = if (primitive.outerBoundary) 0.9f else 0.45f)
@@ -3720,7 +3772,7 @@ private fun MapCanvas(
                         }
                     }
                 }
-            interactionContent.objects.filterIsInstance<OperationUnit>().forEach { value ->
+            renderVisibility.units.forEach { value ->
                 val icon = unitIcons[value.unitTemplateId]
                 val centre = Offset(
                     currentViewport.screenX(mapOffsetX + value.coordinate.x * mapWidth).toFloat(),
@@ -3753,21 +3805,18 @@ private fun MapCanvas(
                     drawLine(crossColour, centre + Offset(radius, -radius), centre + Offset(-radius, radius), 2f)
                 }
             }
-            content.objects.filterIsInstance<OperationDrawingObject>().forEach { value ->
+            interactionContent.objects.filterIsInstance<OperationDrawingObject>().forEach { value ->
                 value.optionalDisplayName?.let { label ->
                     val bounds = value.selectionScreenBounds(selectionProjection)
                     val style = TextStyle(Color.White, fontFamily = nordFontFamily, fontSize = 18.sp)
                     val measured = textMeasurer.measure(label, style)
                     val position = ComposeDrawingPresentation.labelTopLeft(bounds, measured.size.width, measured.size.height)
-                    drawText(
-                        textMeasurer,
-                        label,
-                        Offset(position.x.toFloat(), position.y.toFloat()),
-                        style,
-                    )
+                    if (screenBounds.overlaps(MapSelectionScreenBounds(position.x, position.y, position.x + measured.size.width, position.y + measured.size.height))) {
+                        drawText(textMeasurer, label, Offset(position.x.toFloat(), position.y.toFloat()), style)
+                    }
                 }
             }
-            content.objects.filterIsInstance<OperationGraphic>().forEach { value ->
+            interactionContent.objects.filterIsInstance<OperationGraphic>().forEach { value ->
                 value.customProperties["displayName"]?.takeIf(String::isNotBlank)?.let { label ->
                     val centre = Offset(
                         currentViewport.screenX(mapOffsetX + value.coordinate.x * mapWidth).toFloat(),
@@ -3776,7 +3825,11 @@ private fun MapCanvas(
                     val height = value.normalizedHeight * mapHeight * currentViewport.zoom
                     val style = TextStyle(Color.White, fontFamily = nordFontFamily, fontSize = 16.sp)
                     val measured = textMeasurer.measure(label, style)
-                    drawText(textMeasurer, label, Offset(centre.x - measured.size.width / 2f, centre.y - height.toFloat() / 2f - measured.size.height - 4f), style)
+                    val left = centre.x - measured.size.width / 2f
+                    val top = centre.y - height.toFloat() / 2f - measured.size.height - 4f
+                    if (screenBounds.overlaps(MapSelectionScreenBounds(left.toDouble(), top.toDouble(), left + measured.size.width.toDouble(), top + measured.size.height.toDouble()))) {
+                        drawText(textMeasurer, label, Offset(left, top), style)
+                    }
                 }
             }
             val selected = selectedObjects()
@@ -4011,7 +4064,4 @@ private fun io.hsar.mapgenerator.commandgui.operation.OperationArgb.toComposeCol
     Color(red = red, green = green, blue = blue, alpha = alpha)
 
 internal fun java.awt.image.BufferedImage.toImageBitmap(): ImageBitmap =
-    ByteArrayOutputStream().use { output ->
-        ImageIO.write(this, "png", output)
-        Image.makeFromEncoded(output.toByteArray()).toComposeImageBitmap()
-    }
+    toComposeImageBitmap()

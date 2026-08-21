@@ -89,6 +89,19 @@ class ComposeInteractionHostsTest {
     }
 
     @Test
+    fun `diagnostics expose renderer and GPU cache configuration`() {
+        // Arrange
+        val build = ComposeBuildInfo(version = "test", renderer = "SOFTWARE", gpuCacheLimit = "512M")
+
+        // Act
+        val diagnostics = build.diagnostics("available")
+
+        // Assert
+        assertThat(diagnostics, containsString("Renderer: SOFTWARE"))
+        assertThat(diagnostics, containsString("GPU cache: 512M"))
+    }
+
+    @Test
     fun `all application icon resolutions are packaged square and non-empty`() {
         listOf(64, 128, 256, 512).forEach { size ->
             val image = requireNotNull(javaClass.classLoader.getResourceAsStream("logo${size.toString().padStart(3, '0')}.png")).use(ImageIO::read)

@@ -16,6 +16,15 @@ data class MapViewport(
     val visibleHeight: Double get() = viewportHeight / zoom
     val left: Double get() = center.x - visibleWidth / 2.0
     val top: Double get() = center.y - visibleHeight / 2.0
+    val right: Double get() = center.x + visibleWidth / 2.0
+    val bottom: Double get() = center.y + visibleHeight / 2.0
+
+    fun visibleWorldBounds(screenPadding: Double = 0.0) = MapViewerMapBounds(
+        left = left - screenPadding / zoom,
+        top = top - screenPadding / zoom,
+        right = right + screenPadding / zoom,
+        bottom = bottom + screenPadding / zoom,
+    )
 
     fun resized(width: Int, height: Int): MapViewport =
         copy(viewportWidth = width.coerceAtLeast(1), viewportHeight = height.coerceAtLeast(1)).clamped()

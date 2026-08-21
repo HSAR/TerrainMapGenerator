@@ -532,6 +532,22 @@ class ComposeOperationStateTest {
         assertThat(closedGame.workspace.dockContaining(io.hsar.mapgenerator.commandgui.operation.OperationWorkspaceState.DEFAULT_NOTES_ID)?.region, equalTo(io.hsar.mapgenerator.commandgui.operation.OperationDockRegion.LEFT))
     }
 
+    @Test
+    fun `physical viewport resize preserves camera centre and zoom`() {
+        // Arrange
+        val viewport = MapViewport.centered(1_000.0, 800.0, 400, 300, zoom = 2.0).pan(ViewerPoint(25.0, -10.0))
+        val state = ComposeOperationState(documentWith(unit)).updateViewport(viewport)
+
+        // Act
+        val resized = state.updateViewport(viewport.resized(800, 600)).viewport!!
+
+        // Assert
+        assertThat(resized.center, equalTo(viewport.center))
+        assertThat(resized.zoom, equalTo(viewport.zoom))
+        assertThat(resized.viewportWidth, equalTo(800))
+        assertThat(resized.viewportHeight, equalTo(600))
+    }
+
     private fun graphicTemplate() = OperationGraphicTemplate(
         OperationGraphicTemplateId(UUID(0, 20)), "Arrow", BufferedImage(20, 10, BufferedImage.TYPE_INT_ARGB), 0, .032, .032,
     )

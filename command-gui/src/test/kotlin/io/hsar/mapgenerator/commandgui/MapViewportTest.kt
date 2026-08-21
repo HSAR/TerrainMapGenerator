@@ -42,4 +42,36 @@ class MapViewportTest {
         assertThat(moved.top, equalTo(0.0))
         assertThat(oversized.center, equalTo(ViewerPoint(50.0, 40.0)))
     }
+
+    @Test
+    fun `visible bounds include physical pixel padding at the current zoom`() {
+        // Arrange
+        val viewport = MapViewport.centered(1_000.0, 800.0, 400, 200, zoom = 2.0)
+
+        // Act
+        val bounds = viewport.visibleWorldBounds(screenPadding = 20.0)
+
+        // Assert
+        assertThat(bounds.left, equalTo(viewport.left - 10.0))
+        assertThat(bounds.top, equalTo(viewport.top - 10.0))
+        assertThat(bounds.right, equalTo(viewport.right + 10.0))
+        assertThat(bounds.bottom, equalTo(viewport.bottom + 10.0))
+    }
+
+    @Test
+    fun `zoom saturates at shared minimum and maximum while resize preserves zoom`() {
+        // Arrange
+        val viewport = MapViewport.centered(1_000.0, 800.0, 400, 200)
+        val cursor = ViewerPoint(200.0, 100.0)
+
+        // Act
+        val minimum = viewport.zoomAt(cursor, 0.0001)
+        val maximum = viewport.zoomAt(cursor, 10_000.0)
+        val resized = maximum.resized(800, 600)
+
+        // Assert
+        assertThat(minimum.zoom, equalTo(MapViewerSettings.MIN_ZOOM))
+        assertThat(maximum.zoom, equalTo(MapViewerSettings.MAX_ZOOM))
+        assertThat(resized.zoom, equalTo(maximum.zoom))
+    }
 }

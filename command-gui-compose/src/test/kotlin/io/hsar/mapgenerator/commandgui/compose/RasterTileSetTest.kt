@@ -31,15 +31,14 @@ class RasterTileSetTest {
 
         // Act
         val tiles = RasterTileSet.from(image, tileSize = 2)
+        image.setRGB(4, 2, 0xFF112233.toInt())
+        val edge = tiles.materialize(tiles.tiles.single { it.left == 4 && it.top == 2 })
 
         // Assert
         assertThat(tiles.tiles.size, equalTo(6))
-        assertThat(tiles.tiles.maxOf { it.image.width }, equalTo(2))
-        assertThat(tiles.tiles.maxOf { it.image.height }, equalTo(2))
-        assertThat(
-            tiles.tiles.single { it.left == 4 && it.top == 2 }.image.getRGB(0, 0),
-            equalTo(image.getRGB(4, 2)),
-        )
+        assertThat(tiles.tiles.maxOf { it.width }, equalTo(2))
+        assertThat(tiles.tiles.maxOf { it.height }, equalTo(2))
+        assertThat(edge.image.getRGB(1, 1), equalTo(0xFF112233.toInt()))
     }
 
     @Test
@@ -66,5 +65,17 @@ class RasterTileSetTest {
 
         // Assert
         assertThat(visible.map { it.left to it.top }, equalTo(listOf(4 to 0)))
+    }
+
+    @Test
+    fun `visible tiles are prioritised before one tile of overscan`() {
+        // Arrange
+        val tileSet = RasterTileSet.from(BufferedImage(12, 4, BufferedImage.TYPE_INT_ARGB), tileSize = 4)
+
+        // Act
+        val requested = tileSet.visibleTiles(left = 4.1, top = 0.0, right = 7.9, bottom = 4.0, overscanTiles = 1)
+
+        // Assert
+        assertThat(requested.map { it.left }, equalTo(listOf(4, 0, 8)))
     }
 }

@@ -2,7 +2,7 @@
 
 ## Current status
 
-The latest completed migration work is **Phase 4, Slice 5 (bounded cancellable loading and portable desktop distribution)**. Treat Phase 4 Slice 6 and later as planned work even where scaffolding exists.
+The latest completed migration work is **Phase 4, Slice 6 (bounded, cancellable Compose rendering)**. Treat Phase 5 and later as planned work even where scaffolding exists.
 
 Use a strangler migration: locate tested KorGE behaviour, move reusable rules to neutral types, add renderer-independent fixtures, connect Compose through thin adapters, and remove compatibility code only after every consumer has crossed the boundary. KorGE is the compatibility backend, not the destination for new product UI.
 
@@ -16,7 +16,7 @@ Use a strangler migration: locate tested KorGE behaviour, move reusable rules to
 - `MapViewerSaveRepository.loadOperation/createOperation/saveOperation` is the archive boundary. Preserve unknown `additionalData.json` fields additively. Disabling `OLYMPIAD_DAWN_EXPERIMENTAL` hides entry points without deleting saved payloads.
 - `enabledLayerIds` remains persistence-only until a separately approved layer slice. Compose paints the supplied base map and grid directly.
 
-## Protected behaviour through Phase 4 Slice 5
+## Protected behaviour through Phase 4 Slice 6
 
 ### Map, authoring and operational rules
 
@@ -115,6 +115,14 @@ Use a strangler migration: locate tested KorGE behaviour, move reusable rules to
 - Preserve the current valid launch form, catalogue or editor draft after a load failure. Present typed, actionable failures inline; cancellation is not an error. Startup `--map` decoding for Compose belongs to the cancellable launch workflow, while KorGE retains its compatibility preload.
 - The portable Windows launcher enters Compose when invoked without arguments and retains explicit CLI commands and `--viewer=korge|compose`. `:render:portableZip` must include the runtime, executable, icon, fonts, project licence and third-party notices. `:render:portableSmoke` must execute create/save/reopen from extracted and save paths containing spaces and non-ASCII characters.
 
+### Rendering hardening contract
+
+- `MapViewport` remains a physical-pixel camera with zoom clamped to 0.5–4.0. Cursor zoom anchors the source point under the pointer; dock, window and DPI resize preserve centre and zoom while updating physical viewport dimensions.
+- Compose map painting uses order-preserving `OperationRenderVisibility` candidates, but selection, marquee, context targeting and transforms always query complete operation content. Preserve the established map/tactical/ECM/drawing/preview/graphic/grid/fire-arc/unit/label/selection layer order.
+- Base-map rasters are descriptor-only 1024 px tiles with one source-pixel bleed to prevent filtered seams. Request visible tiles plus one tile of overscan, visible-first and centre-out, through two cancellable workers. Ignore results from obsolete viewports, replaced maps and disposed canvases.
+- Retain no more than 256 MiB of inactive RGBA tiles and protect the current active set only up to the 400 MiB Slice 5 decoded-map envelope. The Compose launcher defaults Skiko's GPU resource cache to 512M without overriding an explicit system property. Template textures exist only while referenced by visible paint candidates; unit uploads may be reduced to the shared 128 px display maximum.
+- Follow `docs/phase4-slice6-rendering.md` for Direct3D/software, zoom, large-map, resize and DPI verification. Generated evidence belongs under ignored build reports.
+
 ## Completed migration summary
 
 - **Phases 1–3:** neutral document editing, transforms/selection, authoring, persistence, sensors/reports/ECM and Olympiad Dawn tactical rules moved behind renderer-independent APIs; Compose gained equivalent authoring and workflow bodies.
@@ -123,19 +131,15 @@ Use a strangler migration: locate tested KorGE behaviour, move reusable rules to
 - **Phase 4 Slice 3:** shared design tokens and scale fixtures, deterministic editor/map focus, typed priority/FIFO modal and transient-message hosts, parented asynchronous file selection, launchpad About/diagnostics/licences, font fallback diagnostics and manual parity evidence completed.
 - **Phase 4 Slice 4:** renderer-neutral serialized save coordination, coalesced revision snapshots, capped failure recovery, unified loss-protected exit routing and staged atomic archive replacement completed.
 - **Phase 4 Slice 5:** explicit cancellable loading state, bounded image/archive decoding, stale-completion rejection, Compose loading presentation, Compose-first portable launcher and Unicode-path packaged smoke coverage completed.
+- **Phase 4 Slice 6:** conservative render visibility, lazy map tiles, bounded retained texture caches, obsolete-work cancellation and physical-pixel resize/DPI verification completed.
 
 ## Remaining migration plan
-
-### Phase 4 Slice 6 — Rendering hardening
-
-This is the immediate next slice.
-
-- Add conservative visible-tile/object culling, bounded caches and obsolete-work cancellation without changing layer order or hit testing.
-- Verify supported map dimensions, minimum/default/maximum zoom, cursor anchoring, dock/window resize and DPI/monitor transitions on hardware and software Skia paths.
 
 Phase 4 is complete only when workspace restoration is exact; menus, focus, multiline editing, clipboard and IME have Compose UI coverage; every close path is lossless under failure/concurrency; loading cancels safely; and the portable Windows image passes its smoke matrix.
 
 ### Phase 5 — Prove parity and change the default
+
+This is the immediate next phase.
 
 - Protect schemas 1–7, unknown fields, undone heads, generated assets and Compose→KorGE→Compose round trips.
 - Add renderer snapshots across zoom/DPI and Compose UI journeys for every launch path, tool, editor/report, menu/shortcut/context action, workspace restore and failed-save exit.

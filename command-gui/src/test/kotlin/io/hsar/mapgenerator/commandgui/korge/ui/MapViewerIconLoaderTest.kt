@@ -3,6 +3,7 @@ package io.hsar.mapgenerator.commandgui.korge.ui
 import korlibs.image.color.RGBA
 import io.hsar.mapgenerator.commandgui.MapViewerLoadLimits
 import io.hsar.mapgenerator.commandgui.MapViewerImageLoader
+import io.hsar.mapgenerator.commandgui.validateMapViewerImageDimensions
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
@@ -14,6 +15,19 @@ import java.io.File
 import javax.imageio.ImageIO
 
 class MapViewerIconLoaderTest {
+
+    @Test
+    fun `image metadata accepts supported boundaries without allocating their pixels`() {
+        // Arrange / Act / Assert
+        validateMapViewerImageDimensions(16_384, 1, "axis.png")
+        validateMapViewerImageDimensions(10_000, 10_000, "pixels.png")
+        org.junit.jupiter.api.assertThrows<IllegalArgumentException> {
+            validateMapViewerImageDimensions(16_385, 1, "wide.png")
+        }
+        org.junit.jupiter.api.assertThrows<IllegalArgumentException> {
+            validateMapViewerImageDimensions(10_000, 10_001, "dense.png")
+        }
+    }
 
     @Test
     fun `checked image loading rejects dimensions before raster allocation`() {

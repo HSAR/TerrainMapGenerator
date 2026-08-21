@@ -170,12 +170,19 @@ internal data class ComposeBuildInfo(
         System.getProperty("os.version", "unknown"),
         System.getProperty("os.arch", "unknown"),
     ).joinToString(" "),
+    val renderer: String = System.getenv("SKIKO_RENDER_API")
+        ?.takeIf(String::isNotBlank)
+        ?: System.getProperty("skiko.renderApi")?.takeIf(String::isNotBlank)
+        ?: "AUTO",
+    val gpuCacheLimit: String = System.getProperty("skiko.gpu.resourceCacheLimit")?.takeIf(String::isNotBlank) ?: "Skiko default",
 ) {
     fun diagnostics(fontStatus: String) = listOf(
         "Operational Command Tool $version",
         "Backend: $backend",
         "Java: $java",
         "OS: $operatingSystem",
+        "Renderer: $renderer",
+        "GPU cache: $gpuCacheLimit",
         "Font: $fontStatus",
     ).joinToString("\n")
 
