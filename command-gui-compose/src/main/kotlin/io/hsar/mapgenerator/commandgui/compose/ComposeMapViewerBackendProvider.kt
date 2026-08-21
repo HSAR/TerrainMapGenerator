@@ -1095,6 +1095,9 @@ private fun ViewerWorkspace(
         MapViewerSaveCoordinator(
             initialSnapshot = operationState.saveSnapshot(),
             saver = MapViewerSaveExecutor { attempt, complete ->
+                if (attempt.reason == MapViewerSaveReason.AUTOSAVE) {
+                    operationStateHolder.value = operationStateHolder.value.advanceTimelineToLiveHeadForAutosave()
+                }
                 scope.launch {
                     val completion = runCatching {
                         withContext(Dispatchers.IO) {

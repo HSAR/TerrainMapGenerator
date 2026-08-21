@@ -479,6 +479,23 @@ class ComposeOperationStateTest {
     }
 
     @Test
+    fun `autosave advances the timeline while retaining the read only preview`() {
+        val thumbnail = BufferedImage(32, 18, BufferedImage.TYPE_INT_RGB)
+        val withTurn = ComposeOperationState(documentWith(unit)).addTurn("Turn 1", thumbnail)
+        val renamed = withTurn.editUnit(unit.copy(instanceName = "Renamed"))
+        val turnIndex = renamed.document.timeline.entries.indexOfFirst { it.turnName == "Turn 1" }
+        val reverted = renamed.revertToTurn(turnIndex)
+
+        val autosaving = reverted.advanceTimelineToLiveHeadForAutosave()
+
+        assertThat(autosaving.document.timeline.canRedo, equalTo(false))
+        assertThat(autosaving.isReadOnly, equalTo(true))
+        assertThat((autosaving.visibleContent.objectById(objectId) as OperationUnit).instanceName, equalTo("Unit"))
+        assertThat((autosaving.document.content.objectById(objectId) as OperationUnit).instanceName, equalTo("Renamed"))
+        assertThat(autosaving.revision, equalTo(reverted.revision))
+    }
+
+    @Test
     fun `branching after an undone turn prunes its generated thumbnail`() {
         val assetId = UUID.fromString("00000000-0000-0000-0000-000000000061")
         val withTurn = ComposeOperationState(documentWith(unit)).addTurn(

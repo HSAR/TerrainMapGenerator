@@ -597,9 +597,7 @@ internal class MapViewerScene(
                             return true
                         }
 
-                        val autosaveController = MapViewerAutosaveController { complete ->
-                            saveOperation("Autosaved") { success -> complete(success) }
-                        }
+                        lateinit var autosaveController: MapViewerAutosaveController
 
                         fun clearTransientInteractionState() {
                             contextMenuManager.close()
@@ -1114,6 +1112,17 @@ internal class MapViewerScene(
                             override fun reorderNotes(ids: List<MapNoteId>) {
                                 noteStore.reorder(ids)
                             }
+                        }
+                        autosaveController = MapViewerAutosaveController { complete ->
+                            if (actionHistory.canRedo) {
+                                clearTransientInteractionState()
+                                selectionController.clear()
+                                actionHistory.advanceToLiveHeadForAutosave(ledgerController)
+                                turnMode = TurnPanelMode.Edit
+                                reconcileMarkedTacticalState()
+                                refreshHistoryUi()
+                            }
+                            saveOperation("Autosaved") { success -> complete(success) }
                         }
                         fun performUndo() {
                             val wasReadOnly = turnMode is TurnPanelMode.ReadOnly

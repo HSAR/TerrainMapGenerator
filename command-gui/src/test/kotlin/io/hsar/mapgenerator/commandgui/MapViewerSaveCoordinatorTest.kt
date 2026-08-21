@@ -1,6 +1,8 @@
 package io.hsar.mapgenerator.commandgui
 
 import io.hsar.mapgenerator.commandgui.operation.OperationDocument
+import io.hsar.mapgenerator.commandgui.operation.OperationTimeline
+import io.hsar.mapgenerator.commandgui.operation.OperationTimelineEntries
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
@@ -30,6 +32,24 @@ class MapViewerSaveCoordinatorTest {
         coordinator.wake()
         assertThat(executor.attempts.single().snapshot.revision, equalTo(2L))
         assertThat(executor.attempts.single().reason, equalTo(MapViewerSaveReason.AUTOSAVE))
+    }
+
+    @Test
+    fun `autosave advances a rewound timeline to its live head`() {
+        val timeline = OperationTimeline()
+            .record(OperationTimelineEntries.turn("Turn 1"))
+            .record(OperationTimelineEntries.turn("Turn 2"))
+            .undo()
+        val coordinator = coordinator(snapshot(1).let { snapshot ->
+            snapshot.copy(document = snapshot.document.copy(timeline = timeline))
+        })
+
+        now += 2_000L
+        coordinator.wake()
+
+        val savedTimeline = executor.attempts.single().snapshot.document.timeline
+        assertThat(savedTimeline.appliedCount, equalTo(savedTimeline.entries.size))
+        assertThat(savedTimeline.canRedo, equalTo(false))
     }
 
     @Test

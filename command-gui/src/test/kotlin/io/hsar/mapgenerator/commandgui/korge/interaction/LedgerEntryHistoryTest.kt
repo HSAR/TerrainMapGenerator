@@ -333,6 +333,26 @@ class LedgerEntryHistoryTest {
     }
 
     @Test
+    fun `autosave advances history to the live head and empties redo entries`() {
+        val history = MapActionHistory()
+        val controller = TestLedgerController()
+        val first = TestLedgerEntry("first")
+        val second = TestLedgerEntry("second")
+        val third = TestLedgerEntry("third")
+        listOf(first, second, third).forEach(history::record)
+        history.undoEntry(controller)
+        history.undoEntry(controller)
+        controller.events.clear()
+
+        val reapplied = history.advanceToLiveHeadForAutosave(controller)
+
+        assertThat(reapplied, equalTo(listOf(second, third)))
+        assertThat(history.appliedEntries, equalTo(listOf(first, second, third)))
+        assertThat(history.canRedo, equalTo(false))
+        assertThat(controller.events, equalTo(listOf("redo second", "redo third")))
+    }
+
+    @Test
     fun `edit mode injects an active current row when the current ledger does not end with a turn`() {
         val history = MapActionHistory()
         history.record(TestLedgerEntry("first"))

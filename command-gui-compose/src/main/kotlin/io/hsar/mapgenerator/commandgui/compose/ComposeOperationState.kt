@@ -532,6 +532,12 @@ data class ComposeOperationState(
         return restored.copy(historyPreviewCount = null).cancelTransientWorkflows().pruneSelection().pruneEditors()
     }
 
+    fun advanceTimelineToLiveHeadForAutosave() = if (document.timeline.canRedo) {
+        copy(document = document.copy(timeline = document.timeline.withAppliedCount(document.timeline.entries.size)))
+    } else {
+        this
+    }
+
     fun withPersistedDocument(savedDocument: OperationDocument, targetRevision: Long) = copy(
         document = if (revision == targetRevision) savedDocument else document.copy(
             updatedAt = savedDocument.updatedAt,

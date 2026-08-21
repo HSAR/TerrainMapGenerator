@@ -159,7 +159,7 @@ class MapViewerSaveCoordinator(
         scheduledAtMillis = null
         failure = null
         queuedImmediateSave = false
-        val attempt = MapViewerSaveAttempt(nextAttemptId++, reason, latestSnapshot)
+        val attempt = MapViewerSaveAttempt(nextAttemptId++, reason, latestSnapshot.forSave(reason))
         inFlight = attempt
         publish()
         runCatching { saver.save(attempt) { completion -> completionDispatcher { complete(attempt.id, completion) } } }
@@ -223,6 +223,13 @@ class MapViewerSaveCoordinator(
     private fun retryDelay() = retryDelaysMillis
         .ifEmpty { listOf(60_000L) }
         .getOrElse((failureCount - 1).coerceAtLeast(0)) { retryDelaysMillis.lastOrNull() ?: 60_000L }
+
+    private fun MapViewerSaveSnapshot.forSave(reason: MapViewerSaveReason) =
+        if (reason == MapViewerSaveReason.AUTOSAVE && document.timeline.canRedo) {
+            copy(document = document.copy(timeline = document.timeline.withAppliedCount(document.timeline.entries.size)))
+        } else {
+            this
+        }
 
     private fun publish() {
         state = stateValue()

@@ -664,6 +664,9 @@ internal class MapActionHistory {
             }
         }
 
+    fun advanceToLiveHeadForAutosave(controller: LedgerController): List<LedgerEntry> =
+        revertToCurrent(controller)
+
     fun revertToAppliedIndex(index: Int, controller: LedgerController): List<LedgerEntry> =
         revertToLedgerIndex(index, controller)
 }
