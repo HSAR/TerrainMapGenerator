@@ -5,15 +5,15 @@ import io.hsar.mapgenerator.contourgenerator.TerrainProfile
 import io.hsar.mapgenerator.contourgenerator.TopographyGenerator
 import io.hsar.mapgenerator.contourgenerator.TopographyRenderer
 import io.hsar.mapgenerator.contourgenerator.TopographyRequest
+import io.hsar.mapgenerator.commandgui.MapViewerLaunchBackgroundWork
 import korlibs.image.awt.toBMP32
 import korlibs.image.bitmap.Bitmap32
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.awt.image.BufferedImage
 import java.util.PriorityQueue
 import java.util.Random
@@ -175,16 +175,17 @@ internal object LaunchBackgroundTilePlan {
             JITTER_RANGE_MILLISECONDS,
         ) + MINIMUM_JITTER_MILLISECONDS
 
-    fun parallelism(availableProcessors: Int): Int =
-        (availableProcessors - 1).coerceIn(1, MAXIMUM_PARALLELISM)
+    fun parallelism(availableProcessors: Int) = availableProcessors
+        .also { require(it > 0) }
+        .coerceAtMost(MAXIMUM_PARALLELISM)
 
     private fun tieBreak(seed: Long, coordinate: LaunchBackgroundTileCoordinate): Long =
         seed xor
                 coordinate.column.toLong() * COLUMN_SALT xor
                 coordinate.row.toLong() * ROW_SALT
 
-    private const val MAXIMUM_PARALLELISM = 16
     private const val MINIMUM_JITTER_MILLISECONDS = 40L
+    private const val MAXIMUM_PARALLELISM = 4
     private const val MAXIMUM_JITTER_MILLISECONDS = 320L
     private const val JITTER_RANGE_MILLISECONDS = MAXIMUM_JITTER_MILLISECONDS - MINIMUM_JITTER_MILLISECONDS + 1L
     private const val COLUMN_SALT = 0x45D9F3BL
@@ -239,10 +240,9 @@ private fun LaunchBackgroundTileCoordinate.previewJob(): LaunchBackgroundRenderJ
 private fun LaunchBackgroundTileCoordinate.refinementJob(): LaunchBackgroundRenderJob =
     LaunchBackgroundRenderJob(this, LaunchBackgroundTileQuality.REFINEMENT)
 
-@OptIn(ExperimentalCoroutinesApi::class)
 internal class LaunchBackgroundTileGenerator(
     private val parallelism: Int = LaunchBackgroundTilePlan.parallelism(Runtime.getRuntime().availableProcessors()),
-    private val dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(parallelism),
+    private val dispatcher: CoroutineDispatcher = MapViewerLaunchBackgroundWork.dispatcher,
     private val render: (TopographyRequest) -> BufferedImage = { request ->
         TopographyRenderer.render(TopographyGenerator.generate(request))
     },
@@ -260,7 +260,8 @@ internal class LaunchBackgroundTileGenerator(
         onFailure: suspend (LaunchBackgroundRenderJob, Throwable, Long) -> Unit = { _, _, _ -> },
     ): Unit = coroutineScope {
         val random = Random(background.seed xor SCHEDULER_RANDOM_SALT)
-        val scheduler = LaunchBackgroundJobScheduler(priorityOrder(background), random::nextDouble)
+        val orderedTiles = withContext(dispatcher) { priorityOrder(background) }
+        val scheduler = LaunchBackgroundJobScheduler(orderedTiles, random::nextDouble)
         val events = Channel<GenerationEvent>(Channel.UNLIMITED)
         var activeRenders = 0
         var pendingPublications = 0
@@ -331,7 +332,6 @@ internal class LaunchBackgroundTileGenerator(
             }
         }
         events.close()
-        Unit
     }
 
     private sealed interface GenerationEvent {

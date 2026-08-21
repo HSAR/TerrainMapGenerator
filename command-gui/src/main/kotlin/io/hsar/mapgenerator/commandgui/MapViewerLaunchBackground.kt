@@ -6,15 +6,16 @@ import io.hsar.mapgenerator.contourgenerator.TopographyGenerator
 import io.hsar.mapgenerator.contourgenerator.TopographyRenderer
 import io.hsar.mapgenerator.contourgenerator.TopographyRequest
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.awt.image.BufferedImage
 import java.util.PriorityQueue
 import java.util.Random
+import java.util.concurrent.Executors
 import kotlin.collections.ArrayDeque
 import kotlin.math.ceil
 import kotlin.math.roundToInt
@@ -97,16 +98,13 @@ data class MapViewerLaunchTileCoordinate(val column: Int, val row: Int) {
         }
 
     companion object {
-        /** World-space extent; the refinement raster is deliberately rendered at twice this resolution. */
-        const val TILE_SIZE = 180
-        const val TILE_BLEED = 18
-        const val TILE_CLIP_OVERLAP = 1
+        const val TILE_SIZE = 360
+        const val TILE_BLEED = 36
+        const val TILE_CLIP_OVERLAP = 2
         const val TILE_CLIP_SIZE = TILE_SIZE + TILE_CLIP_OVERLAP
         const val PADDED_TILE_SIZE = TILE_SIZE + TILE_BLEED * 2
-        const val REFINEMENT_SCALE = 2
-        const val REFINEMENT_PADDED_TILE_SIZE = PADDED_TILE_SIZE * REFINEMENT_SCALE
         const val PREVIEW_DIVISOR = 8
-        const val PREVIEW_PADDED_TILE_SIZE = REFINEMENT_PADDED_TILE_SIZE / PREVIEW_DIVISOR
+        const val PREVIEW_PADDED_TILE_SIZE = PADDED_TILE_SIZE / PREVIEW_DIVISOR
         private const val NOISE_SCALE = 475.0
         private val CONTOUR_LEVELS = (5..15).map { it * 0.05 }
 
@@ -132,13 +130,12 @@ private data class MapViewerLaunchTileSettings(
 private fun MapViewerLaunchTileQuality.settings() = when (this) {
     MapViewerLaunchTileQuality.PREVIEW -> MapViewerLaunchTileSettings(
         MapViewerLaunchTileCoordinate.PREVIEW_PADDED_TILE_SIZE,
-        MapViewerLaunchTileCoordinate.PREVIEW_DIVISOR.toDouble() /
-                MapViewerLaunchTileCoordinate.REFINEMENT_SCALE,
+        MapViewerLaunchTileCoordinate.PREVIEW_DIVISOR.toDouble(),
         ContourTracingOptions(stepPixels = 1.0, seedGridStepPixels = 2, maximumPointsPerDirection = 2_500),
     )
     MapViewerLaunchTileQuality.REFINEMENT -> MapViewerLaunchTileSettings(
-        MapViewerLaunchTileCoordinate.REFINEMENT_PADDED_TILE_SIZE,
-        1.0 / MapViewerLaunchTileCoordinate.REFINEMENT_SCALE,
+        MapViewerLaunchTileCoordinate.PADDED_TILE_SIZE,
+        1.0,
         ContourTracingOptions(stepPixels = 2.0, seedGridStepPixels = 12, maximumPointsPerDirection = 20_000),
     )
 }
@@ -181,18 +178,29 @@ object MapViewerLaunchTilePlan {
             JITTER_RANGE_MILLISECONDS,
         ) + MINIMUM_JITTER_MILLISECONDS
 
-    fun parallelism(availableProcessors: Int) = (availableProcessors - 1).coerceIn(1, MAXIMUM_PARALLELISM)
+    fun parallelism(availableProcessors: Int) = availableProcessors
+        .also { require(it > 0) }
+        .coerceAtMost(MAXIMUM_PARALLELISM)
 
     private fun tieBreak(seed: Long, coordinate: MapViewerLaunchTileCoordinate) =
         seed xor coordinate.column.toLong() * COLUMN_SALT xor coordinate.row.toLong() * ROW_SALT
 
-    private const val MAXIMUM_PARALLELISM = 16
     private const val MINIMUM_JITTER_MILLISECONDS = 40L
+    private const val MAXIMUM_PARALLELISM = 4
     private const val MAXIMUM_JITTER_MILLISECONDS = 320L
     private const val JITTER_RANGE_MILLISECONDS = MAXIMUM_JITTER_MILLISECONDS - MINIMUM_JITTER_MILLISECONDS + 1L
     private const val COLUMN_SALT = 0x45D9F3BL
     private const val ROW_SALT = 0x119DE1F3L
     private const val QUALITY_SALT = 0x9E3779B9L
+}
+
+internal object MapViewerLaunchBackgroundWork {
+    val dispatcher: CoroutineDispatcher = Executors.newFixedThreadPool(4) { task ->
+        Thread(task, "launch-background-generator").apply {
+            isDaemon = true
+            priority = Thread.MIN_PRIORITY
+        }
+    }.asCoroutineDispatcher()
 }
 
 internal class MapViewerLaunchJobScheduler(
@@ -229,10 +237,9 @@ internal class MapViewerLaunchJobScheduler(
 private fun MapViewerLaunchTileCoordinate.job(quality: MapViewerLaunchTileQuality) =
     MapViewerLaunchRenderJob(this, quality)
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class MapViewerLaunchBackgroundBatchGenerator internal constructor(
     private val parallelism: Int = MapViewerLaunchTilePlan.parallelism(Runtime.getRuntime().availableProcessors()),
-    private val dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(parallelism),
+    private val dispatcher: CoroutineDispatcher = MapViewerLaunchBackgroundWork.dispatcher,
     private val render: (TopographyRequest) -> BufferedImage = { request ->
         TopographyRenderer.render(TopographyGenerator.generate(request))
     },
@@ -251,7 +258,8 @@ class MapViewerLaunchBackgroundBatchGenerator internal constructor(
         onTile: suspend (MapViewerLaunchTileUpdate) -> Unit,
         onFailure: suspend (MapViewerLaunchRenderJob, Throwable, Long) -> Unit = { _, _, _ -> },
     ): Unit = coroutineScope {
-        val scheduler = MapViewerLaunchJobScheduler(priorityOrder(spec), Random(spec.seed xor SCHEDULER_RANDOM_SALT)::nextDouble)
+        val orderedTiles = withContext(dispatcher) { priorityOrder(spec) }
+        val scheduler = MapViewerLaunchJobScheduler(orderedTiles, Random(spec.seed xor SCHEDULER_RANDOM_SALT)::nextDouble)
         val events = Channel<GenerationEvent>(Channel.UNLIMITED)
         var activeRenders = 0
         var pendingPublications = 0

@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.graphics.RectangleShape
@@ -48,16 +49,25 @@ import io.hsar.mapgenerator.commandgui.MapViewerLaunchTileReveal
 import io.hsar.mapgenerator.commandgui.MapViewerLaunchTileUpdate
 import io.hsar.mapgenerator.commandgui.MapViewerLaunchpadTokens
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.apache.logging.log4j.LogManager
+import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
 internal val LocalComposeLaunchBackgroundState = staticCompositionLocalOf<ComposeLaunchBackgroundState> {
     error("Compose launch background state is unavailable")
 }
+
+private val composeLaunchBackgroundDispatcher = Executors.newSingleThreadExecutor { task ->
+    Thread(task, "launch-background-bitmap-converter").apply {
+        isDaemon = true
+        priority = Thread.MIN_PRIORITY
+    }
+}.asCoroutineDispatcher()
 
 internal data class ComposeLaunchTileVisual(
     val coordinate: MapViewerLaunchTileCoordinate,
@@ -66,6 +76,12 @@ internal data class ComposeLaunchTileVisual(
     val refinement: ImageBitmap? = null,
     val refinementArrivedAtNanos: Long? = null,
     val previewAlphaAtRefinement: Float = 0f,
+)
+
+internal data class ComposeOutgoingLaunchBackground(
+    val spec: MapViewerLaunchBackgroundSpec,
+    val tiles: List<ComposeLaunchTileVisual>,
+    val startedAtNanos: Long,
 )
 
 internal class ComposeLaunchBackgroundState(
@@ -80,6 +96,8 @@ internal class ComposeLaunchBackgroundState(
     val tiles = mutableStateMapOf<MapViewerLaunchTileCoordinate, ComposeLaunchTileVisual>()
     var revision by mutableIntStateOf(0)
         private set
+    var outgoing by mutableStateOf<ComposeOutgoingLaunchBackground?>(null)
+        private set
     private var generationStarted = false
     private var generationJob: Job? = null
     private var generation = 0
@@ -88,11 +106,17 @@ internal class ComposeLaunchBackgroundState(
 
     val biome: String
         get() = spec?.biome ?: MapViewerLaunchBackgroundSpec.biome(seed)
+    val started: Boolean
+        get() = generationStarted
 
-    fun ensureStarted(viewportWidth: Int, viewportHeight: Int) {
-        if (generationStarted) return
+    fun updateViewport(viewportWidth: Int, viewportHeight: Int) {
         this.viewportWidth = viewportWidth
         this.viewportHeight = viewportHeight
+    }
+
+    fun ensureStarted(viewportWidth: Int, viewportHeight: Int) {
+        updateViewport(viewportWidth, viewportHeight)
+        if (generationStarted) return
         generationStarted = true
         val activeGeneration = generation
         val generatedSpec = MapViewerLaunchBackgroundSpec.forViewport(viewportWidth, viewportHeight, seed)
@@ -115,6 +139,14 @@ internal class ComposeLaunchBackgroundState(
         generation++
         generationJob?.cancel()
         generationJob = null
+        outgoing = spec?.let { currentSpec ->
+            val currentTiles = tiles.toMap()
+            ComposeOutgoingLaunchBackground(
+                currentSpec,
+                currentTiles.values.sortedWith(compareBy({ it.coordinate.row }, { it.coordinate.column })),
+                System.nanoTime(),
+            )
+        }
         tiles.clear()
         revision++
         seed = newSeed
@@ -123,16 +155,32 @@ internal class ComposeLaunchBackgroundState(
         if (viewportWidth > 0 && viewportHeight > 0) ensureStarted(viewportWidth, viewportHeight)
     }
 
-    fun isAnimating(nowNanos: Long): Boolean = tiles.values.any { tile ->
-        tile.refinementArrivedAtNanos?.let { arrived ->
-            elapsedMilliseconds(arrived, nowNanos) < MapViewerLaunchTileReveal.REFINEMENT_FADE_MILLISECONDS
-        } ?: tile.previewArrivedAtNanos?.let { arrived ->
-            elapsedMilliseconds(arrived, nowNanos) < MapViewerLaunchTileReveal.PREVIEW_FADE_MILLISECONDS
-        } ?: false
+    fun advanceAnimations(nowNanos: Long): Boolean {
+        tiles.values.filter { tile ->
+            tile.preview != null && tile.refinementArrivedAtNanos?.let { arrived ->
+                elapsedMilliseconds(arrived, nowNanos) >= MapViewerLaunchTileReveal.REFINEMENT_FADE_MILLISECONDS
+            } == true
+        }.forEach { tile ->
+            tiles[tile.coordinate] = tile.copy(
+                preview = null,
+                previewArrivedAtNanos = null,
+                previewAlphaAtRefinement = 0f,
+            )
+        }
+        outgoing?.takeIf { outgoingBackground ->
+            elapsedMilliseconds(outgoingBackground.startedAtNanos, nowNanos) >= outgoingDuration(outgoingBackground.tiles.size)
+        }?.let { outgoing = null }
+        return outgoing != null || tiles.values.any { tile ->
+            tile.refinementArrivedAtNanos?.let { arrived ->
+                elapsedMilliseconds(arrived, nowNanos) < MapViewerLaunchTileReveal.REFINEMENT_FADE_MILLISECONDS
+            } ?: tile.previewArrivedAtNanos?.let { arrived ->
+                elapsedMilliseconds(arrived, nowNanos) < MapViewerLaunchTileReveal.PREVIEW_FADE_MILLISECONDS
+            } ?: false
+        }
     }
 
     private suspend fun accept(update: MapViewerLaunchTileUpdate) {
-        val bitmap = withContext(Dispatchers.Default) { update.image.toComposeImageBitmap() }
+        val bitmap = withContext(composeLaunchBackgroundDispatcher) { update.image.toComposeImageBitmap() }
         val arrivedAt = System.nanoTime()
         val current = tiles[update.coordinate] ?: ComposeLaunchTileVisual(update.coordinate)
         tiles[update.coordinate] = when (update.quality) {
@@ -228,30 +276,28 @@ internal fun ComposeLaunchBackground(
     val viewportHeight = launchBackgroundWorldPixels(maxHeight.value)
     val state = LocalComposeLaunchBackgroundState.current
     LaunchedEffect(state, viewportWidth, viewportHeight) {
-        state.ensureStarted(viewportWidth, viewportHeight)
+        state.updateViewport(viewportWidth, viewportHeight)
+        if (!state.started) {
+            delay(INITIAL_VIEWPORT_SETTLE_MILLISECONDS)
+            state.ensureStarted(viewportWidth, viewportHeight)
+        }
     }
     var frameNanos by remember { mutableLongStateOf(System.nanoTime()) }
     LaunchedEffect(state.revision) {
         do {
             withFrameNanos { frameNanos = System.nanoTime() }
-        } while (state.isAnimating(frameNanos))
+        } while (state.advanceAnimations(frameNanos))
+    }
+    state.outgoing?.let { outgoing ->
+        LaunchBackgroundCanvas(outgoing.spec) {
+            outgoing.tiles.forEachIndexed { index, tile -> drawOutgoingTile(tile, index, outgoing.startedAtNanos, frameNanos) }
+        }
     }
     val spec = state.spec
     if (spec != null) {
         val tiles = state.tiles.values.sortedWith(compareBy({ it.coordinate.row }, { it.coordinate.column }))
-        Canvas(Modifier.fillMaxSize()) {
-            val placement = MapViewerLaunchBackgroundLayout.cover(
-                spec.textureWidth,
-                spec.textureHeight,
-                size.width.roundToInt().coerceAtLeast(1),
-                size.height.roundToInt().coerceAtLeast(1),
-            )
-            withTransform({
-                translate(placement.left.toFloat(), placement.top.toFloat())
-                scale(placement.scale.toFloat(), placement.scale.toFloat(), Offset.Zero)
-            }) {
-                tiles.forEach { tile -> drawTile(tile, frameNanos) }
-            }
+        LaunchBackgroundCanvas(spec) {
+            tiles.forEach { tile -> drawTile(tile, frameNanos) }
         }
     }
     Box(
@@ -259,6 +305,23 @@ internal fun ComposeLaunchBackground(
             Color.Black.copy(alpha = MapViewerLaunchpadTokens.BACKGROUND_WASH_ALPHA / 255f),
         ),
     )
+}
+
+@Composable
+private fun LaunchBackgroundCanvas(
+    spec: MapViewerLaunchBackgroundSpec,
+    draw: DrawScope.() -> Unit,
+) = Canvas(Modifier.fillMaxSize()) {
+    val placement = MapViewerLaunchBackgroundLayout.cover(
+        spec.textureWidth,
+        spec.textureHeight,
+        size.width.roundToInt().coerceAtLeast(1),
+        size.height.roundToInt().coerceAtLeast(1),
+    )
+    withTransform({
+        translate(placement.left.toFloat(), placement.top.toFloat())
+        scale(placement.scale.toFloat(), placement.scale.toFloat(), Offset.Zero)
+    }, draw)
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTile(tile: ComposeLaunchTileVisual, nowNanos: Long) {
@@ -289,8 +352,43 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTile(tile: Comp
             drawImage(preview, dstOffset = destination, dstSize = destinationSize, alpha = previewAlpha, filterQuality = FilterQuality.None)
         }
         tile.refinement?.let { refinement ->
-            drawImage(refinement, dstOffset = destination, dstSize = destinationSize, alpha = refinementAlpha, filterQuality = FilterQuality.High)
+            drawImage(refinement, dstOffset = destination, dstSize = destinationSize, alpha = refinementAlpha, filterQuality = FilterQuality.Low)
         }
+    }
+}
+
+private fun DrawScope.drawOutgoingTile(
+    tile: ComposeLaunchTileVisual,
+    index: Int,
+    startedAtNanos: Long,
+    nowNanos: Long,
+) {
+    val coordinate = tile.coordinate
+    clipRect(
+        coordinate.left.toFloat(),
+        coordinate.top.toFloat(),
+        (coordinate.left + MapViewerLaunchTileCoordinate.TILE_CLIP_SIZE).toFloat(),
+        (coordinate.top + MapViewerLaunchTileCoordinate.TILE_CLIP_SIZE).toFloat(),
+    ) {
+        val destination = IntOffset(
+            coordinate.left - MapViewerLaunchTileCoordinate.TILE_BLEED,
+            coordinate.top - MapViewerLaunchTileCoordinate.TILE_BLEED,
+        )
+        val destinationSize = IntSize(
+            MapViewerLaunchTileCoordinate.PADDED_TILE_SIZE,
+            MapViewerLaunchTileCoordinate.PADDED_TILE_SIZE,
+        )
+        tile.refinement?.let { drawImage(it, dstOffset = destination, dstSize = destinationSize, filterQuality = FilterQuality.Low) }
+            ?: tile.preview?.let { drawImage(it, dstOffset = destination, dstSize = destinationSize, filterQuality = FilterQuality.None) }
+        val blackoutElapsed = elapsedMilliseconds(startedAtNanos, nowNanos) - index * BLACKOUT_STAGGER_MILLISECONDS
+        drawRect(
+            Color.Black.copy(alpha = (blackoutElapsed / BLACKOUT_FADE_MILLISECONDS).coerceIn(0.0, 1.0).toFloat()),
+            topLeft = Offset(coordinate.left.toFloat(), coordinate.top.toFloat()),
+            size = androidx.compose.ui.geometry.Size(
+                MapViewerLaunchTileCoordinate.TILE_CLIP_SIZE.toFloat(),
+                MapViewerLaunchTileCoordinate.TILE_CLIP_SIZE.toFloat(),
+            ),
+        )
     }
 }
 
@@ -298,3 +396,10 @@ private fun elapsedMilliseconds(startedAtNanos: Long, nowNanos: Long) =
     (nowNanos - startedAtNanos).coerceAtLeast(0L) / 1_000_000.0
 
 internal fun launchBackgroundWorldPixels(logicalDp: Float) = logicalDp.roundToInt().coerceAtLeast(1)
+
+private fun outgoingDuration(tileCount: Int) = BLACKOUT_FADE_MILLISECONDS +
+        (tileCount - 1).coerceAtLeast(0) * BLACKOUT_STAGGER_MILLISECONDS
+
+private const val BLACKOUT_FADE_MILLISECONDS = 280.0
+private const val BLACKOUT_STAGGER_MILLISECONDS = 45.0
+private const val INITIAL_VIEWPORT_SETTLE_MILLISECONDS = 300L

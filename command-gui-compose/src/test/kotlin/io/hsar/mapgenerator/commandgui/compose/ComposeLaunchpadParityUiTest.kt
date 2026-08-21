@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -31,6 +32,34 @@ import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.equalTo
 
 class ComposeLaunchpadParityUiTest {
+    @Test
+    @OptIn(ExperimentalTestApi::class)
+    fun `launch background waits for the logical viewport to settle`() = runComposeUiTest {
+        mainClock.autoAdvance = false
+        var viewportWidth by mutableStateOf(800)
+        lateinit var state: ComposeLaunchBackgroundState
+        setContent {
+            val scope = rememberCoroutineScope()
+            state = remember { ComposeLaunchBackgroundState(73L, scope) }
+            CompositionLocalProvider(LocalComposeLaunchBackgroundState provides state) {
+                Box(Modifier.size(viewportWidth.dp, 600.dp)) {
+                    ComposeLaunchBackground()
+                }
+            }
+        }
+
+        mainClock.advanceTimeBy(200)
+        viewportWidth = 1000
+        mainClock.advanceTimeBy(200)
+
+        assertThat(state.spec, equalTo(null))
+
+        mainClock.advanceTimeBy(200)
+
+        assertThat(state.spec?.textureWidth, equalTo(1500))
+        assertThat(state.spec?.textureHeight, equalTo(900))
+    }
+
     @Test
     fun `launch background world extent does not double count display density`() {
         val worldViewportWidth = launchBackgroundWorldPixels(logicalDp = 800f)

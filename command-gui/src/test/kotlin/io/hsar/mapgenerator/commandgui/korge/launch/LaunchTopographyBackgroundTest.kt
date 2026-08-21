@@ -117,11 +117,10 @@ class LaunchTopographyBackgroundTest {
     }
 
     @Test
-    fun `parallelism leaves one processor free and never exceeds sixteen`() {
+    fun `background generation uses at most four application processors`() {
         assertThat(LaunchBackgroundTilePlan.parallelism(1), equalTo(1))
-        assertThat(LaunchBackgroundTilePlan.parallelism(4), equalTo(3))
-        assertThat(LaunchBackgroundTilePlan.parallelism(17), equalTo(16))
-        assertThat(LaunchBackgroundTilePlan.parallelism(64), equalTo(16))
+        assertThat(LaunchBackgroundTilePlan.parallelism(4), equalTo(4))
+        assertThat(LaunchBackgroundTilePlan.parallelism(64), equalTo(4))
     }
 
     @Test
@@ -231,7 +230,7 @@ class LaunchTopographyBackgroundTest {
     }
 
     @Test
-    fun `reveal delays release render capacity immediately`() = runBlocking {
+    fun `tile publication does not gate subsequent preview rendering`() = runBlocking {
         val background = LaunchTopographyBackground.create(800, 160, 73L)
         val order = LaunchBackgroundTilePlan.tiles(background.textureWidth, background.textureHeight)
         val revealGate = CompletableDeferred<Unit>()
@@ -249,9 +248,7 @@ class LaunchTopographyBackgroundTest {
         val generation = async {
             generator.generate(background, onTile = {})
         }
-        withTimeout(2_000) {
-            while (rendered.get() < order.size) yield()
-        }
+        withTimeout(2_000) { while (rendered.get() < order.size) yield() }
 
         assertThat(rendered.get(), equalTo(order.size))
         revealGate.complete(Unit)
