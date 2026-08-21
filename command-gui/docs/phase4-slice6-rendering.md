@@ -2,6 +2,14 @@
 
 Keep captures and notes under the ignored `build/reports/parity/slice6/` directory. Do not commit generated evidence.
 
+## Automated packaged probe
+
+Run `./gradlew :render:portableRendererSmoke`. The task serially launches short-lived real Compose windows from the packaged executable under `SKIKO_RENDER_API=DIRECT3D` and `SKIKO_RENDER_API=SOFTWARE`. Each backend presents two frames at 1280×720, 1920×1080 and 3840×2160 on every attached monitor. Reports under `render/build/reports/parity/slice6/` record the requested backend, 512M cache default, monitor bounds/transforms and frame count.
+
+The probe is a crash/stale-process/physical-scale gate, not a substitute for visually checking map seams and layer order. Keep the two backend tasks serialized because concurrent packaged processes can race Gradle's shared Windows problems report.
+
+The 21 August 2026 closure run presented 12 frames per backend across two attached 100%-scale monitors. The deterministic 1.0/1.25/1.5 neutral layout fixtures cover scale arithmetic; repeat the visual procedure below on physical 125% and 150% displays during Phase 5 release qualification.
+
 ## Backends
 
 Build the portable application with `./gradlew :render:portableZip`. Extract it to a path containing spaces and non-ASCII characters, then launch the executable twice from PowerShell:

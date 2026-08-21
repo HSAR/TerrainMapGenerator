@@ -81,6 +81,7 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isShiftPressed
@@ -1050,7 +1051,7 @@ private fun OngoingOperationsScrollbar(
 
 private val SAVE_DATE_FORMAT = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
 private const val COMPOSE_OPERATION_MAP_ID = "compose-operation-map"
-private data class ComposeViewerEditorActions(
+internal data class ComposeViewerEditorActions(
     val displaySettings: MapViewerDisplaySettings,
     val saveState: MapViewerSaveCoordinatorState,
     val onCommand: (MapViewerCommand) -> Unit,
@@ -1061,7 +1062,7 @@ private data class ComposeViewerEditorActions(
     val onFireArcDisplayModeChanged: (OperationFireArcDisplayMode) -> Unit,
 )
 
-private val LocalViewerEditorActions = staticCompositionLocalOf<ComposeViewerEditorActions> {
+internal val LocalViewerEditorActions = staticCompositionLocalOf<ComposeViewerEditorActions> {
     error("Viewer editor actions are unavailable")
 }
 
@@ -1072,12 +1073,19 @@ private fun Modifier.trackEditableTextFocus() = composed {
     onFocusChanged { onChanged(it.isFocused) }
 }
 
-private fun ComposeOperationState.saveSnapshot() = MapViewerSaveSnapshot(
+internal fun ComposeOperationState.saveSnapshot() = MapViewerSaveSnapshot(
     revision = revision,
     document = document,
     camera = savedCamera(),
     uiState = operationUiState(),
 )
+
+internal fun dockCycleDirection(event: KeyEvent, mode: MapViewerWorkspaceMode): Int? =
+    if (event.type == KeyEventType.KeyDown && event.isCtrlPressed && event.key == Key.Tab && mode == MapViewerWorkspaceMode.DOCKED) {
+        if (event.isShiftPressed) -1 else 1
+    } else {
+        null
+    }
 
 @Composable
 private fun ViewerWorkspace(
@@ -1303,6 +1311,7 @@ private fun ViewerWorkspace(
             if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
             if (event.key in dispatchedKeysDown) return@onKeyEvent true
             dispatchedKeysDown = dispatchedKeysDown + event.key
+            val dockCycle = dockCycleDirection(event, operationState.workspaceMode)
             val handled = when {
                 event.key == Key.Escape && contextMenu != null -> {
                     dismissContextMenuAndRestoreMapFocus()
@@ -1330,17 +1339,17 @@ private fun ViewerWorkspace(
                     true
                 }
 
-                event.key == Key.Delete && !operationState.isReadOnly -> {
-                    dispatch(MapViewerCommand.DeleteObjects(operationState.selectedObjectIds))
-                    true
-                }
-
                 event.isCtrlPressed && event.key == Key.S -> {
                     dispatch(MapViewerCommand.Save)
                     true
                 }
 
                 editableTextFocused && (event.key == Key.Delete || event.isCtrlPressed && event.key in setOf(Key.A, Key.C, Key.X, Key.V, Key.Z, Key.Y)) -> false
+
+                event.key == Key.Delete && !operationState.isReadOnly -> {
+                    dispatch(MapViewerCommand.DeleteObjects(operationState.selectedObjectIds))
+                    true
+                }
 
                 event.isCtrlPressed && event.key == Key.Z && event.isShiftPressed -> {
                     dispatch(MapViewerCommand.Redo)
@@ -1357,8 +1366,8 @@ private fun ViewerWorkspace(
                     true
                 }
 
-                event.isCtrlPressed && event.key == Key.Tab && operationState.workspaceMode == WorkspaceMode.DOCKED -> {
-                    operationState = operationState.cycleDockTabs(if (event.isShiftPressed) -1 else 1)
+                dockCycle != null -> {
+                    operationState = operationState.cycleDockTabs(dockCycle)
                     true
                 }
 
@@ -1761,7 +1770,7 @@ internal fun NotesPanel(
 
 @Composable
 @OptIn(ExperimentalComposeUiApi::class)
-private fun DockedWorkspace(
+internal fun DockedWorkspace(
     state: ComposeOperationState,
     region: OperationDockRegion,
     draggedEditorId: OperationEditorId?,
@@ -1780,7 +1789,7 @@ private fun DockedWorkspace(
     val extent = if (dock.collapsed) 48.dp else previewSize.dp
     val resizeModifier = if (vertical) Modifier.width(8.dp).fillMaxHeight() else Modifier.height(8.dp).fillMaxWidth()
     @Composable fun resizeHandle() = Box(
-        resizeModifier.background(CommandColours.Dark).pointerInput(region) {
+        resizeModifier.testTag("dock-${region.name.lowercase()}-resize").background(CommandColours.Dark).pointerInput(region) {
             detectDragGestures(
                 onDragStart = { resizeStart = dock.size; resizeDistance = 0f },
                 onDragEnd = { onStateChanged(state.updateDockSize(region, previewSize)) },
@@ -1794,7 +1803,7 @@ private fun DockedWorkspace(
     )
     @Composable fun panel(modifier: Modifier) = DockedWorkspacePanel(
         dock, state, draggedEditorId, dropTarget, onDragStarted, onDropTargetChanged, onDrop, onStateChanged,
-        modifier.onPointerEvent(PointerEventType.Enter) { if (draggedEditorId != null) onDropTargetChanged(region to dock.editorIds.size) },
+        modifier.testTag("dock-${region.name.lowercase()}").onPointerEvent(PointerEventType.Enter) { if (draggedEditorId != null) onDropTargetChanged(region to dock.editorIds.size) },
     )
     if (vertical) {
         Row(Modifier.requiredWidth(extent).fillMaxHeight()) {
@@ -1812,7 +1821,7 @@ private fun DockedWorkspace(
 
 @Composable
 @OptIn(ExperimentalComposeUiApi::class)
-private fun DockedWorkspacePanel(
+internal fun DockedWorkspacePanel(
     dock: io.hsar.mapgenerator.commandgui.operation.OperationDockRegionState,
     state: ComposeOperationState,
     draggedEditorId: OperationEditorId?,
@@ -1825,7 +1834,7 @@ private fun DockedWorkspacePanel(
 ) = Column(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
     CommandButton(
         onClick = { onStateChanged(state.toggleDockCollapsed(dock.region)) },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.testTag("dock-${dock.region.name.lowercase()}-collapse").fillMaxWidth(),
     ) { Text(if (dock.collapsed) "OPEN ${dock.region.name}" else "COLLAPSE") }
     if (!dock.collapsed) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
@@ -1848,7 +1857,7 @@ private fun DockedWorkspacePanel(
 
 @Composable
 @OptIn(ExperimentalComposeUiApi::class)
-private fun DockTab(
+internal fun DockTab(
     editor: OperationEditorState,
     dock: io.hsar.mapgenerator.commandgui.operation.OperationDockRegionState,
     index: Int,
@@ -1871,6 +1880,7 @@ private fun DockTab(
             onClick = { onStateChanged(state.activateDockTab(dock.region, editor.id)) },
             active = editor.id == dock.activeEditorId,
             modifier = Modifier
+                .testTag("dock-tab-${editor.id.value}")
                 .focusRequester(focusRequester)
                 .then(if (dropTarget == Pair(dock.region, index)) Modifier.border(3.dp, CommandColours.Backing) else Modifier)
                 .onPointerEvent(PointerEventType.Enter) { if (draggedEditorId != null) onDropTargetChanged(dock.region to index) }
@@ -1884,34 +1894,47 @@ private fun DockTab(
                     }
                 },
         ) { Text(editor.title(state.visibleContent)) }
-        CommandButton(onClick = { menuOpen = true }, modifier = Modifier.width(42.dp)) { Text("⋮") }
+        CommandButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("dock-tab-overflow-${editor.id.value}").width(42.dp)) { Text("⋮") }
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-            OperationDockRegion.entries.filterNot { it == dock.region }.forEach { destination ->
-                DropdownMenuItem(
-                    text = { Text("Move to ${destination.name.lowercase().replaceFirstChar(Char::uppercase)}") },
-                    onClick = { menuOpen = false; onStateChanged(state.dockEditor(editor.id, destination)) },
-                )
-            }
-            DropdownMenuItem(
-                text = { Text("Move earlier") },
-                enabled = index > 0,
-                onClick = {
-                    menuOpen = false
-                    val ids = dock.editorIds.toMutableList().also { java.util.Collections.swap(it, index, index - 1) }
-                    onStateChanged(state.reorderDockTabs(dock.region, ids))
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("Move later") },
-                enabled = index < dock.editorIds.lastIndex,
-                onClick = {
-                    menuOpen = false
-                    val ids = dock.editorIds.toMutableList().also { java.util.Collections.swap(it, index, index + 1) }
-                    onStateChanged(state.reorderDockTabs(dock.region, ids))
-                },
-            )
+            DockTabOverflowItems(editor, dock, index, state, { menuOpen = false }, onStateChanged)
         }
     }
+}
+
+@Composable
+internal fun DockTabOverflowItems(
+    editor: OperationEditorState,
+    dock: io.hsar.mapgenerator.commandgui.operation.OperationDockRegionState,
+    index: Int,
+    state: ComposeOperationState,
+    onDismiss: () -> Unit,
+    onStateChanged: (ComposeOperationState) -> Unit,
+) {
+    OperationDockRegion.entries.filterNot { it == dock.region }.forEach { destination ->
+        DropdownMenuItem(
+            text = { Text("Move to ${destination.name.lowercase().replaceFirstChar(Char::uppercase)}") },
+            onClick = { onDismiss(); onStateChanged(state.dockEditor(editor.id, destination)) },
+            modifier = Modifier.testTag("dock-tab-move-${editor.id.value}-${destination.name.lowercase()}"),
+        )
+    }
+    DropdownMenuItem(
+        text = { Text("Move earlier") },
+        enabled = index > 0,
+        onClick = {
+            onDismiss()
+            val ids = dock.editorIds.toMutableList().also { java.util.Collections.swap(it, index, index - 1) }
+            onStateChanged(state.reorderDockTabs(dock.region, ids))
+        },
+    )
+    DropdownMenuItem(
+        text = { Text("Move later") },
+        enabled = index < dock.editorIds.lastIndex,
+        onClick = {
+            onDismiss()
+            val ids = dock.editorIds.toMutableList().also { java.util.Collections.swap(it, index, index + 1) }
+            onStateChanged(state.reorderDockTabs(dock.region, ids))
+        },
+    )
 }
 
 @Composable
@@ -2299,7 +2322,7 @@ private fun TacticalEditorContent(
 }
 
 @Composable
-private fun NoteEditorContent(
+internal fun NoteEditorContent(
     editorId: OperationEditorId,
     draft: OperationNoteDraft,
     state: ComposeOperationState,
@@ -2313,7 +2336,7 @@ private fun NoteEditorContent(
         OutlinedTextField(
             draft.title,
             { update(draft.copy(title = it)) },
-            Modifier.fillMaxWidth().trackEditableTextFocus(),
+            Modifier.testTag("note-title").fillMaxWidth().trackEditableTextFocus(),
             enabled = !state.isReadOnly,
             singleLine = true,
             label = { Text("Title") },
@@ -2365,7 +2388,7 @@ private fun NoteEditorContent(
         OutlinedTextField(
             draft.body,
             { update(draft.copy(body = it)) },
-            Modifier.fillMaxWidth().weight(1f).trackEditableTextFocus(),
+            Modifier.testTag("note-body").fillMaxWidth().weight(1f).trackEditableTextFocus(),
             enabled = !state.isReadOnly,
             minLines = 8,
             label = { Text("Body") },
@@ -2767,7 +2790,7 @@ private fun DrawingNameDialog(
         }
 }
 
-private data class ComposeMapContextMenu(
+internal data class ComposeMapContextMenu(
     val objectId: OperationObjectId,
     val objectName: String,
     val position: IntOffset,
@@ -2785,7 +2808,7 @@ private data class ComposeMenuTooltip(
 
 @Composable
 @OptIn(ExperimentalComposeUiApi::class)
-private fun ComposeMapContextMenu(
+internal fun ComposeMapContextMenu(
     menu: ComposeMapContextMenu,
     onActionSelected: (MapViewerCommandItem) -> Unit,
     onDismiss: () -> Unit,
@@ -2819,7 +2842,7 @@ private fun ComposeMapContextMenu(
     }
 
     BoxWithConstraints(
-        Modifier.fillMaxSize()
+        Modifier.testTag("viewer-context-menu").fillMaxSize()
             .focusRequester(focusRequester)
             .focusable()
             .onKeyEvent { event ->

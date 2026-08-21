@@ -2,7 +2,7 @@
 
 ## Current status
 
-The latest completed migration work is **Phase 4, Slice 6 (bounded, cancellable Compose rendering)**. Treat Phase 5 and later as planned work even where scaffolding exists.
+The latest completed migration work is **Phase 4, including its Compose acceptance closure**. Treat Phase 5 and later as planned work even where scaffolding exists.
 
 Use a strangler migration: locate tested KorGE behaviour, move reusable rules to neutral types, add renderer-independent fixtures, connect Compose through thin adapters, and remove compatibility code only after every consumer has crossed the boundary. KorGE is the compatibility backend, not the destination for new product UI.
 
@@ -76,6 +76,7 @@ Use a strangler migration: locate tested KorGE behaviour, move reusable rules to
 
 - When an operation opens with a persisted active editor, focus that editor; otherwise focus the map. Activating a dock tab or floating editor moves focus to it. Dismissing a menu or modal restores focus to its invoking control, falling back to the map when the invoker is no longer available.
 - Editable text retains clipboard, selection, undo/redo, multiline and IME ownership. Do not remount a typed editor draft merely to change validation or focus state, and do not let viewer shortcuts observe text-owned events.
+- `Phase4ClosureUiTest` exercises the production dock, tab-overflow, context-menu and note-editor composables. Keep physical dock resize, Ctrl+Tab/Ctrl+Shift+Tab focus, keyboard submenu navigation, multiline Unicode/IME commits and modern `LocalClipboard` copy/paste in that UI-level acceptance boundary.
 - All Compose modal presentation goes through one typed `ComposeModalHostState`. Requests have stable keys, duplicate queued requests collapse, loss-prevention requests may pre-empt an ordinary user modal, and otherwise the queue is FIFO. Each modal defines an explicit default and cancel action; cancellation must complete its owning workflow exactly once.
 - Slice 3 adds no confirmation to object, group, note, drawing, unit-type or graphic-type deletion. Those actions remain immediate unless a later independently approved confirmation contract says otherwise.
 - Transient feedback uses `ComposeTransientMessageHostState`: at most five active lower-left notices, ten-second display and 420 ms fade/lift, with no pointer interception. `MapViewerTransientNoticeTokens` is shared with KorGE: 16 px viewport inset, 8 px stack gap, 12×8 px content padding, 24 px regular Nord text and a borderless black background at alpha 180. Do not reintroduce severity-coloured notice panels. Save success/failure and other non-blocking feedback belong here rather than in ad hoc overlays.
@@ -113,7 +114,7 @@ Use a strangler migration: locate tested KorGE behaviour, move reusable rules to
 - Run blocking image, archive and render work through interruptible background dispatch. Pass `MapViewerCancellationSignal` through archive streaming, ledger replay, assets and thumbnails, and check it between bounded work units. Back, Cancel, replacement and composable disposal cancel the owning request.
 - `MapViewerLoadLimits` is authoritative: 512 MiB archive, 10,000 entries, 256 MiB per archive entry/encoded image, 1 GiB expanded archive, 100:1 compression ratio, 64 MiB JSON, 16,384 px maximum image axis and 100 million decoded pixels. Validate metadata before image allocation and use bounded streaming when entry size is absent or can change.
 - Preserve the current valid launch form, catalogue or editor draft after a load failure. Present typed, actionable failures inline; cancellation is not an error. Startup `--map` decoding for Compose belongs to the cancellable launch workflow, while KorGE retains its compatibility preload.
-- The portable Windows launcher enters Compose when invoked without arguments and retains explicit CLI commands and `--viewer=korge|compose`. `:render:portableZip` must include the runtime, executable, icon, fonts, project licence and third-party notices. `:render:portableSmoke` must execute create/save/reopen from extracted and save paths containing spaces and non-ASCII characters.
+- The portable Windows launcher enters Compose when invoked without arguments and retains explicit CLI commands and `--viewer=korge|compose`. `:render:portableZip` must include the runtime, executable, icon, fonts, project licence and third-party notices. `:render:portableSmoke` loads Compose from the packaged runtime, creates a dirty persisted workspace under extracted/save paths containing spaces and non-ASCII characters, proves a failed exit save keeps the viewer open, retries, closes and reopens the exact Compose workspace.
 
 ### Rendering hardening contract
 
@@ -122,6 +123,7 @@ Use a strangler migration: locate tested KorGE behaviour, move reusable rules to
 - Base-map rasters are descriptor-only 1024 px tiles with one source-pixel bleed to prevent filtered seams. Request visible tiles plus one tile of overscan, visible-first and centre-out, through two cancellable workers. Ignore results from obsolete viewports, replaced maps and disposed canvases.
 - Retain no more than 256 MiB of inactive RGBA tiles and protect the current active set only up to the 400 MiB Slice 5 decoded-map envelope. The Compose launcher defaults Skiko's GPU resource cache to 512M without overriding an explicit system property. Template textures exist only while referenced by visible paint candidates; unit uploads may be reduced to the shared 128 px display maximum.
 - Follow `docs/phase4-slice6-rendering.md` for Direct3D/software, zoom, large-map, resize and DPI verification. Generated evidence belongs under ignored build reports.
+- `:render:portableRendererSmoke` serially starts the packaged Direct3D and software renderers, presents 1280×720, 1920×1080 and 3840×2160 windows on every attached monitor, and records requested backend, cache limit, monitor transform and presented-frame count under ignored `render/build/reports/parity/slice6`. Keep the probes serialized: concurrent packaged processes race Gradle's shared problems report on Windows.
 
 ## Completed migration summary
 
@@ -132,10 +134,11 @@ Use a strangler migration: locate tested KorGE behaviour, move reusable rules to
 - **Phase 4 Slice 4:** renderer-neutral serialized save coordination, coalesced revision snapshots, capped failure recovery, unified loss-protected exit routing and staged atomic archive replacement completed.
 - **Phase 4 Slice 5:** explicit cancellable loading state, bounded image/archive decoding, stale-completion rejection, Compose loading presentation, Compose-first portable launcher and Unicode-path packaged smoke coverage completed.
 - **Phase 4 Slice 6:** conservative render visibility, lazy map tiles, bounded retained texture caches, obsolete-work cancellation and physical-pixel resize/DPI verification completed.
+- **Phase 4 acceptance closure:** production Compose UI coverage for dock movement/resize/cycling/focus, keyboard menus, multiline Unicode/IME text and clipboard ownership; packaged failed-save exit/retry/reopen; and repeatable packaged Direct3D/software multi-monitor frame probes completed.
 
 ## Remaining migration plan
 
-Phase 4 is complete only when workspace restoration is exact; menus, focus, multiline editing, clipboard and IME have Compose UI coverage; every close path is lossless under failure/concurrency; loading cancels safely; and the portable Windows image passes its smoke matrix.
+Phase 4 is complete. Its closure boundary is exact workspace restoration; production Compose UI coverage for menus, focus, multiline editing, clipboard and IME commits; lossless close routing under failure/concurrency; safe loading cancellation; and the packaged lifecycle/backend smoke tasks above. The 21 August 2026 renderer run exercised two attached monitors at 100% scaling with both backends and all three viewport sizes. Physical 125%/150% configurations remain part of the Phase 5 release matrix when such displays are available; neutral scale fixtures continue to cover 1.0/1.25/1.5 deterministically.
 
 ### Phase 5 — Prove parity and change the default
 

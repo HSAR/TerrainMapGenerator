@@ -132,3 +132,41 @@ tasks.register<Exec>("portableSmoke") {
     workingDir(executable.parentFile)
     commandLine(executable.absolutePath, "portable-smoke", "--target", smokeData.absolutePath)
 }
+
+val portableRendererReportRoot = layout.buildDirectory.dir("reports/parity/slice6")
+
+val portableRendererSmokeDirect3d by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Presents two frames through the packaged Direct3D Compose renderer."
+    dependsOn(preparePortableSmoke)
+    onlyIf { System.getProperty("os.name").startsWith("Windows", ignoreCase = true) }
+    val executable = portableSmokeRoot.get().file("TerrainMapGenerator/TerrainMapGenerator.exe").asFile
+    val report = portableRendererReportRoot.get().file("direct3d.txt").asFile
+    workingDir(executable.parentFile)
+    environment("SKIKO_RENDER_API", "DIRECT3D")
+    commandLine(executable.absolutePath, "portable-renderer-smoke", "--report", report.absolutePath)
+    outputs.file(report)
+}
+
+val portableRendererSmokeSoftware by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Presents two frames through the packaged software Compose renderer."
+    dependsOn(preparePortableSmoke)
+    onlyIf { System.getProperty("os.name").startsWith("Windows", ignoreCase = true) }
+    val executable = portableSmokeRoot.get().file("TerrainMapGenerator/TerrainMapGenerator.exe").asFile
+    val report = portableRendererReportRoot.get().file("software.txt").asFile
+    workingDir(executable.parentFile)
+    environment("SKIKO_RENDER_API", "SOFTWARE")
+    commandLine(executable.absolutePath, "portable-renderer-smoke", "--report", report.absolutePath)
+    outputs.file(report)
+}
+
+portableRendererSmokeSoftware.configure {
+    mustRunAfter(portableRendererSmokeDirect3d)
+}
+
+tasks.register("portableRendererSmoke") {
+    group = "verification"
+    description = "Runs packaged Direct3D and software renderer frame probes."
+    dependsOn(portableRendererSmokeDirect3d, portableRendererSmokeSoftware)
+}

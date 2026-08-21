@@ -11,7 +11,6 @@ import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.MapViewerFrame
 import io.hsar.mapgenerator.commandgui.MapViewerLayer
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
-import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
@@ -230,35 +229,24 @@ object PortableSmokeCommand : Command("portable-smoke") {
                 "Portable distribution omitted the third-party notices"
             }
         }
-        val repository = MapViewerSaveRepository(root.resolve("saves"))
-        val image = BufferedImage(48, 32, BufferedImage.TYPE_INT_ARGB).apply {
-            createGraphics().let { graphics ->
-                try {
-                    graphics.color = java.awt.Color(22, 48, 80)
-                    graphics.fillRect(0, 0, width, height)
-                } finally {
-                    graphics.dispose()
-                }
-            }
-        }
-        val operationId = UUID.fromString("00000000-0000-0000-0000-000000000515")
-        val archive = root.resolve("saved operations 測試").resolve("Opération smoke.zip")
-        java.nio.file.Files.createDirectories(archive.parent)
-        val created = repository.createOperation(
-            settings = MapViewerSettings(operationName = "Portable 測試"),
-            renderData = MapViewerRenderData(image),
-            operationId = operationId,
-        ).copy(sourcePath = archive)
-        val saved = repository.saveOperation(created)
-        val reopened = repository.loadOperation(requireNotNull(saved.sourcePath))
-        require(reopened.operationId == operationId) { "Reopened operation identity did not match" }
-        require(reopened.operationName == "Portable 測試") { "Reopened operation name did not match" }
-        require(reopened.renderData.baseImage.width == 48 && reopened.renderData.baseImage.height == 32) {
-            "Reopened map dimensions did not match"
-        }
-        require(reopened.timeline.entries == created.timeline.entries) { "Reopened operation timeline did not match" }
-        require(reopened.uiState == created.uiState) { "Reopened operation UI state did not match" }
-        logger.info("Portable distribution smoke test passed at $archive")
+        val smoke = Class.forName("io.hsar.mapgenerator.commandgui.compose.ComposePortableLifecycleSmoke")
+        smoke.getMethod("run", Path::class.java).invoke(null, root)
+        logger.info("Portable Compose lifecycle smoke test passed under $root")
+    }
+}
+
+@Parameters(commandDescription = "Initialises a packaged Compose renderer and records its physical scale.")
+object PortableRendererSmokeCommand : Command("portable-renderer-smoke") {
+    @Parameter(
+        names = ["--report"],
+        description = "Report file written after two Compose frames have been presented.",
+        required = true,
+    )
+    private lateinit var report: String
+
+    override fun run() {
+        val smoke = Class.forName("io.hsar.mapgenerator.commandgui.compose.ComposePortableLifecycleSmoke")
+        smoke.getMethod("runRendererProbe", Path::class.java).invoke(null, Path.of(report))
     }
 }
 
@@ -364,6 +352,7 @@ internal fun availableCommands(): List<Command> =
         ApplyGridCommand,
         ExportAppIconCommand,
         PortableSmokeCommand,
+        PortableRendererSmokeCommand,
     )
 
 private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewerRenderData {
