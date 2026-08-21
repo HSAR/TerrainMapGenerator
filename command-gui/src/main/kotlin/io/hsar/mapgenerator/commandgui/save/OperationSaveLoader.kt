@@ -4,21 +4,40 @@ import io.hsar.mapgenerator.commandgui.*
 import io.hsar.mapgenerator.commandgui.operation.*
 import io.hsar.mapgenerator.grid.CoordAxis
 import io.hsar.mapgenerator.grid.GridLayerBuilder
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import java.util.*
 import java.util.Collections.emptyList
+import java.util.concurrent.CancellationException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
-internal class OperationSaveLoader {
-    fun load(path: Path): LoadedOperation = ZipFile(path.toFile()).use { zip ->
-        val game = zip.readJson(GAME_JSON, GameSaveDto::class.java)
-        val ledger = zip.readJson(LEDGER_JSON, LedgerFileDto::class.java)
+internal class OperationSaveLoader(
+    private val limits: MapViewerLoadLimits = MapViewerLoadLimits(),
+    private val cancellation: MapViewerCancellationSignal = MapViewerCancellationSignal.NONE,
+) {
+    fun load(path: Path): LoadedOperation {
+        cancellation.ensureActive()
+        val archiveBytes = Files.size(path)
+        if (archiveBytes > limits.maximumArchiveBytes) {
+            throw MapViewerLoadException(MapViewerLoadFailure.LimitExceeded(path.fileName.toString(), archiveBytes, limits.maximumArchiveBytes))
+        }
+        return ZipFile(path.toFile()).use { zip ->
+        zip.validateArchive(limits, cancellation)
+        val game = zip.readJson(GAME_JSON, GameSaveDto::class.java, limits.maximumJsonBytes, cancellation)
+        val ledger = zip.readJson(LEDGER_JSON, LedgerFileDto::class.java, limits.maximumJsonBytes, cancellation)
         require(game.formatVersion in SUPPORTED_FORMAT_VERSIONS) { "Unsupported save format version ${game.formatVersion}" }
-        val mapAsset = zip.loadAsset(game.map.assetId)
-        val mapImage = MapViewerImageLoader.load(mapAsset.bytes, mapAsset.entry.name, trimTransparentBounds = false)
-            ?: error("Unable to decode map asset ${mapAsset.entry.name}")
+        val mapAsset = zip.loadAsset(game.map.assetId, limits, cancellation)
+        val mapImage = MapViewerImageLoader.loadChecked(
+            mapAsset.bytes,
+            mapAsset.entry.name,
+            trimTransparentBounds = false,
+            limits = limits,
+            cancellation = cancellation,
+        )
         val operationId = UUID.fromString(game.id)
         val seed = operationId.mostSignificantBits xor operationId.leastSignificantBits
         val gridConfiguration = game.map.mapId?.takeIf(String::isNotBlank)?.let { mapId ->
@@ -53,7 +72,8 @@ internal class OperationSaveLoader {
             gridColour = grid.colour,
             seed = seed,
         )
-        val additionalData = zip.getEntry(ADDITIONAL_DATA_JSON)?.let { zip.getInputStream(it).use { input -> input.readBytes() } }
+        cancellation.ensureActive()
+        val additionalData = zip.getEntry(ADDITIONAL_DATA_JSON)?.let { zip.readBytes(it, limits.maximumJsonBytes, cancellation) }
         LoadedOperation(
             operationId = operationId,
             operationName = game.name,
@@ -63,17 +83,24 @@ internal class OperationSaveLoader {
             camera = game.camera?.let { MapViewerSavedCamera(it.x, it.y, it.zoom) },
             renderData = MapViewerRenderData(mapImage, grid),
             mapAssetSource = AssetSource.fromEmbeddedBytes(mapAsset.entry.name.substringAfterLast('/'), mapAsset.bytes),
-            timeline = OperationLedgerLoader(zip).load(ledger.entries),
+            timeline = OperationLedgerLoader(zip, limits, cancellation).load(ledger.entries),
             generatedImageAssets = loadTurnThumbnails(zip, ledger.entries),
             additionalDataJson = additionalData,
         )
+        }
     }
 
     private fun loadTurnThumbnails(zip: ZipFile, entries: List<LedgerEntrySaveDto>) = entries.thumbnailIds().mapNotNull { id ->
-        runCatching {
-            val asset = zip.loadAsset(id.toString())
-            OperationGeneratedImage(id, TURN_THUMBNAIL_ROLE, MapViewerImageLoader.load(asset.bytes, asset.entry.name) ?: error("Unable to decode ${asset.entry.name}"))
-        }.onFailure { org.apache.logging.log4j.LogManager.getLogger(OperationSaveLoader::class.java).warn("Unable to load turn thumbnail asset {}", id, it) }.getOrNull()
+        cancellation.ensureActive()
+        try {
+            val asset = zip.loadAsset(id.toString(), limits, cancellation)
+            OperationGeneratedImage(id, TURN_THUMBNAIL_ROLE, MapViewerImageLoader.loadChecked(asset.bytes, asset.entry.name, limits = limits, cancellation = cancellation))
+        } catch (failure: CancellationException) {
+            throw failure
+        } catch (failure: Exception) {
+            org.apache.logging.log4j.LogManager.getLogger(OperationSaveLoader::class.java).warn("Unable to load turn thumbnail asset {}", id, failure)
+            null
+        }
     }
 
     private companion object {
@@ -85,13 +112,18 @@ internal class OperationSaveLoader {
     }
 }
 
-private class OperationLedgerLoader(private val zip: ZipFile) {
+private class OperationLedgerLoader(
+    private val zip: ZipFile,
+    private val limits: MapViewerLoadLimits,
+    private val cancellation: MapViewerCancellationSignal,
+) {
     private val assets = mutableMapOf<UUID, Pair<java.awt.image.BufferedImage, AssetSource>>()
 
     fun load(entries: List<LedgerEntrySaveDto>): OperationTimeline {
         var timeline = OperationTimeline()
         var content = OperationContent.EMPTY
         entries.forEach { dto ->
+            cancellation.ensureActive()
             val decoded = decode(dto, content)
             val directlyApplied = decoded.changeSet.applyTo(content)
             val after = directlyApplied.withGraphicSizesFromInstances()
@@ -148,6 +180,7 @@ private class OperationLedgerLoader(private val zip: ZipFile) {
         is BatchLedgerEntrySaveDto -> {
             var after = content
             val components = dto.entries.map { nested ->
+                cancellation.ensureActive()
                 decode(nested, after).changeSet.also { change ->
                     after = change.applyTo(after).withGraphicSizesFromInstances()
                 }
@@ -157,8 +190,9 @@ private class OperationLedgerLoader(private val zip: ZipFile) {
     }
 
     private fun asset(id: UUID): Pair<java.awt.image.BufferedImage, AssetSource>? = assets.getOrPut(id) {
-        val loaded = zip.loadAsset(id.toString())
-        val image = MapViewerImageLoader.load(loaded.bytes, loaded.entry.name) ?: error("Unable to load template asset ${loaded.entry.name}")
+        cancellation.ensureActive()
+        val loaded = zip.loadAsset(id.toString(), limits, cancellation)
+        val image = MapViewerImageLoader.loadChecked(loaded.bytes, loaded.entry.name, limits = limits, cancellation = cancellation)
         image to AssetSource.fromEmbeddedBytes(loaded.entry.name.substringAfterLast('/'), loaded.bytes)
     }
 
@@ -233,14 +267,84 @@ private fun List<LedgerEntrySaveDto>.thumbnailIds(): Set<UUID> = flatMap {
 
 private data class AssetBytes(val entry: ZipEntry, val bytes: ByteArray)
 
-private fun ZipFile.loadAsset(id: String): AssetBytes {
+private fun ZipFile.loadAsset(
+    id: String,
+    limits: MapViewerLoadLimits,
+    cancellation: MapViewerCancellationSignal,
+): AssetBytes {
+    cancellation.ensureActive()
     val matches = entries().asSequence().filterNot(ZipEntry::isDirectory).filter { it.name.startsWith("assets/$id.") }.toList()
     val entry = when (matches.size) {
         1 -> matches.single(); 0 -> error("Missing asset for id $id"); else -> error("Multiple assets found for id $id")
     }
-    return AssetBytes(entry, getInputStream(entry).use { it.readBytes() })
+    return AssetBytes(entry, readBytes(entry, minOf(limits.maximumArchiveEntryBytes, limits.maximumEncodedImageBytes), cancellation))
 }
 
-private fun <T> ZipFile.readJson(path: String, type: Class<T>): T =
-    getEntry(path)?.let { getInputStream(it).use { input -> OperationSaveJson.objectMapper.readValue(input, type) } }
+private fun <T> ZipFile.readJson(
+    path: String,
+    type: Class<T>,
+    maximumBytes: Long,
+    cancellation: MapViewerCancellationSignal,
+): T =
+    getEntry(path)?.let { OperationSaveJson.objectMapper.readValue(readBytes(it, maximumBytes, cancellation), type) }
         ?: error("Save does not contain $path")
+
+private fun ZipFile.validateArchive(limits: MapViewerLoadLimits, cancellation: MapViewerCancellationSignal) {
+    val files = entries().asSequence().filterNot(ZipEntry::isDirectory).toList()
+    if (files.size > limits.maximumArchiveEntries) {
+        throw MapViewerLoadException(
+            MapViewerLoadFailure.LimitExceeded("Archive entry count", files.size.toLong(), limits.maximumArchiveEntries.toLong(), "entries"),
+        )
+    }
+    listOf("game.json", "ledger.json").forEach { required ->
+        if (files.count { it.name == required } != 1) {
+            throw MapViewerLoadException(MapViewerLoadFailure.Invalid("Save must contain exactly one $required entry."))
+        }
+    }
+    var expandedBytes = 0L
+    files.forEach { entry ->
+        cancellation.ensureActive()
+        val size = entry.size
+        if (size >= 0L) {
+            if (size > limits.maximumArchiveEntryBytes) {
+                throw MapViewerLoadException(MapViewerLoadFailure.LimitExceeded(entry.name, size, limits.maximumArchiveEntryBytes))
+            }
+            expandedBytes = runCatching { Math.addExact(expandedBytes, size) }.getOrDefault(Long.MAX_VALUE)
+            if (expandedBytes > limits.maximumExpandedArchiveBytes) {
+                throw MapViewerLoadException(MapViewerLoadFailure.LimitExceeded("Expanded archive", expandedBytes, limits.maximumExpandedArchiveBytes))
+            }
+            if (entry.compressedSize > 0L && size / entry.compressedSize > limits.maximumCompressionRatio) {
+                throw MapViewerLoadException(
+                    MapViewerLoadFailure.LimitExceeded("${entry.name} compression ratio", size / entry.compressedSize, limits.maximumCompressionRatio, "to 1"),
+                )
+            }
+        }
+    }
+}
+
+private fun ZipFile.readBytes(
+    entry: ZipEntry,
+    maximumBytes: Long,
+    cancellation: MapViewerCancellationSignal,
+): ByteArray = getInputStream(entry).use { input -> input.readBounded(entry.name, maximumBytes, cancellation) }
+
+private fun InputStream.readBounded(
+    name: String,
+    maximumBytes: Long,
+    cancellation: MapViewerCancellationSignal,
+): ByteArray {
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var total = 0L
+    while (true) {
+        cancellation.ensureActive()
+        val count = read(buffer)
+        if (count < 0) break
+        total += count
+        if (total > maximumBytes) {
+            throw MapViewerLoadException(MapViewerLoadFailure.LimitExceeded(name, total, maximumBytes))
+        }
+        output.write(buffer, 0, count)
+    }
+    return output.toByteArray()
+}

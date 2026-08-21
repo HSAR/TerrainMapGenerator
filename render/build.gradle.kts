@@ -33,9 +33,9 @@ tasks.processResources {
 
 compose.desktop {
     application {
-        mainClass = "io.hsar.mapgenerator.commandline.MainKt"
+        mainClass = "io.hsar.mapgenerator.desktop.ComposeDesktopMainKt"
         nativeDistributions {
-            modules("java.desktop", "java.logging", "java.management", "jdk.accessibility")
+            modules("java.desktop", "java.logging", "java.management", "java.naming", "jdk.accessibility")
             packageName = "TerrainMapGenerator"
             packageVersion = "0.0.1"
             windows {
@@ -98,15 +98,37 @@ tasks.configureEach {
     }
 }
 
-tasks.register<Zip>("portableZip") {
+val portableZip by tasks.registering(Zip::class) {
     group = "distribution"
     description = "Builds a self-contained, extract-and-run Windows distribution."
     dependsOn("createDistributable")
     from(layout.buildDirectory.dir("compose/binaries/main/app"))
     from(rootProject.file("LICENSE")) {
         into("TerrainMapGenerator/licenses")
+        rename { "PROJECT_LICENSE.txt" }
+    }
+    from(project(":command-gui-compose").layout.projectDirectory.file("src/main/resources/licenses/THIRD_PARTY_NOTICES.txt")) {
+        into("TerrainMapGenerator/licenses")
     }
     archiveBaseName.set("terrain-map-generator-windows")
     archiveVersion.set(project.version.toString())
     destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+}
+
+val portableSmokeRoot = layout.buildDirectory.dir("portable smoke é")
+val preparePortableSmoke by tasks.registering(Sync::class) {
+    dependsOn(portableZip)
+    from(portableZip.map { archive -> zipTree(archive.archiveFile.get().asFile) })
+    into(portableSmokeRoot)
+}
+
+tasks.register<Exec>("portableSmoke") {
+    group = "verification"
+    description = "Runs create/save/close/reopen through the packaged Windows executable from Unicode paths."
+    dependsOn(preparePortableSmoke)
+    onlyIf { System.getProperty("os.name").startsWith("Windows", ignoreCase = true) }
+    val executable = portableSmokeRoot.get().file("TerrainMapGenerator/TerrainMapGenerator.exe").asFile
+    val smokeData = portableSmokeRoot.get().dir("données with spaces").asFile
+    workingDir(executable.parentFile)
+    commandLine(executable.absolutePath, "portable-smoke", "--target", smokeData.absolutePath)
 }

@@ -1,6 +1,8 @@
 package io.hsar.mapgenerator.commandgui.korge.ui
 
 import korlibs.image.color.RGBA
+import io.hsar.mapgenerator.commandgui.MapViewerLoadLimits
+import io.hsar.mapgenerator.commandgui.MapViewerImageLoader
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
@@ -12,6 +14,19 @@ import java.io.File
 import javax.imageio.ImageIO
 
 class MapViewerIconLoaderTest {
+
+    @Test
+    fun `checked image loading rejects dimensions before raster allocation`() {
+        val bytes = """
+            <svg xmlns="http://www.w3.org/2000/svg" width="101" height="10"></svg>
+        """.trimIndent().toByteArray()
+
+        val failure = org.junit.jupiter.api.assertThrows<IllegalArgumentException> {
+            MapViewerImageLoader.loadChecked(bytes, "large.svg", limits = MapViewerLoadLimits(maximumImageDimension = 100))
+        }
+
+        assertThat(failure.message.orEmpty().contains("supported limit is 100 pixels"), equalTo(true))
+    }
 
     @Test
     fun `loads svg unit icons into a bitmap`() {

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CancellationException
 import javax.imageio.ImageIO
 
 class ComposeInteractionHostsTest {
@@ -66,6 +67,15 @@ class ComposeInteractionHostsTest {
         assertThat(selected, instanceOf(ComposeFileSelection.Selected::class.java))
         assertThat(unsupported, equalTo(ComposeFileSelection.Unsupported(file, "unsupported")))
         assertThat(unreadable, equalTo(ComposeFileSelection.Unreadable(file, "cannot read")))
+    }
+
+    @Test
+    fun `selected file decoding preserves cancellation`() = runBlocking {
+        val file = tempDir.resolve("cancel.dat").also { Files.writeString(it, "value") }.toFile()
+
+        org.junit.jupiter.api.assertThrows<CancellationException> {
+            runBlocking { decodeSelectedFile(file, "unsupported") { throw CancellationException("cancelled") } }
+        }
     }
 
     @Test

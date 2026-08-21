@@ -189,6 +189,31 @@ class ComposeLaunchpadParityUiTest {
 
     @Test
     @OptIn(ExperimentalTestApi::class)
+    fun `ongoing operation load exposes cancellation`() = runComposeUiTest {
+        var cancelled = false
+        setContent {
+            NordTheme {
+                ComposeOngoingOperationsPanel(
+                    panelHeight = 520.0,
+                    operations = emptyList(),
+                    loading = false,
+                    loadingPath = "operation.zip",
+                    errorMessage = null,
+                    onBack = {},
+                    onBrowse = {},
+                    onCancelLoad = { cancelled = true },
+                    onLoad = {},
+                )
+            }
+        }
+
+        onNodeWithText("CANCEL LOADING").performClick()
+
+        assertThat(cancelled, equalTo(true))
+    }
+
+    @Test
+    @OptIn(ExperimentalTestApi::class)
     fun `temporary notice uses legacy font metrics and padding`() = runComposeUiTest {
         val state = ComposeTransientMessageHostState().apply { show("Operation saved") }
         setContent {

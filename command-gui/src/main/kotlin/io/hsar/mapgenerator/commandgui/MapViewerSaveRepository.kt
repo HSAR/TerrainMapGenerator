@@ -42,6 +42,7 @@ data class MapViewerSavedCamera(
 /** Engine-neutral catalogue and complete [OperationDocument] archive boundary. */
 class MapViewerSaveRepository(
     val savesDirectory: Path = OperationToolStorage.defaultRootDirectory().resolve("saves"),
+    private val loadLimits: MapViewerLoadLimits = MapViewerLoadLimits(),
 ) {
     fun list(): List<MapViewerSavedOperation> {
         Files.createDirectories(savesDirectory)
@@ -55,8 +56,11 @@ class MapViewerSaveRepository(
         }
     }
 
-    fun loadOperation(path: Path): OperationDocument {
-        val loaded = OperationSaveLoader().load(path)
+    fun loadOperation(
+        path: Path,
+        cancellation: MapViewerCancellationSignal = MapViewerCancellationSignal.NONE,
+    ): OperationDocument {
+        val loaded = OperationSaveLoader(loadLimits, cancellation).load(path)
         val additionalData = OperationAdditionalData.fromJson(loaded.additionalDataJson)
         return OperationDocument(
             operationId = loaded.operationId,
@@ -155,6 +159,7 @@ class MapViewerSaveRepository(
 
     private fun readSummaryOrNull(path: Path): MapViewerSavedOperation? =
         runCatching {
+            require(Files.size(path) <= loadLimits.maximumArchiveBytes) { "Archive exceeds the supported size limit" }
             ZipFile(path.toFile()).use { zip -> zip.readGame().toSummary(path, zip) }
         }.getOrNull()
 
@@ -171,6 +176,7 @@ class MapViewerSaveRepository(
 
     private fun ZipFile.readGame(): GameSaveDto =
         getEntry(GAME_JSON)
+            ?.takeIf { it.size < 0L || it.size <= loadLimits.maximumJsonBytes }
             ?.let(::getInputStream)
             ?.use { OperationSaveJson.objectMapper.readValue(it, GameSaveDto::class.java) }
             ?: error("Save does not contain $GAME_JSON")
@@ -181,7 +187,14 @@ class MapViewerSaveRepository(
             .firstOrNull {
                 it.name.substringAfterLast('/').substringBeforeLast('.', missingDelimiterValue = "") == assetId
             }
-            ?.let { entry -> getInputStream(entry).use { MapViewerImageLoader.load(it.readBytes(), entry.name) } }
+            ?.takeIf { it.size < 0L || it.size <= loadLimits.maximumEncodedImageBytes }
+            ?.let { entry ->
+                getInputStream(entry).use { input ->
+                    val bytes = input.readNBytes((loadLimits.maximumEncodedImageBytes + 1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+                    bytes.takeIf { it.size.toLong() <= loadLimits.maximumEncodedImageBytes }
+                        ?.let { MapViewerImageLoader.load(it, entry.name) }
+                }
+            }
 
     private companion object {
         const val GAME_JSON = "game.json"

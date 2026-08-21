@@ -5,12 +5,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import io.hsar.mapgenerator.commandgui.MapViewerLoadException
+import io.hsar.mapgenerator.commandgui.MapViewerLoadFailure
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runInterruptible
 import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
 import java.util.Properties
+import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicLong
 
 internal enum class ComposeModalPriority { USER, LOSS_PREVENTION }
@@ -138,11 +141,20 @@ internal suspend fun <T : Any> decodeSelectedFile(
     unsupportedMessage: String,
     decode: (File) -> T?,
 ): ComposeFileSelection<T> = try {
-    withContext(Dispatchers.IO) { decode(file) }
+    runInterruptible(Dispatchers.IO) { decode(file) }
         ?.let { ComposeFileSelection.Selected(file, it) }
         ?: ComposeFileSelection.Unsupported(file, unsupportedMessage)
+} catch (failure: CancellationException) {
+    throw failure
 } catch (failure: Exception) {
     ComposeFileSelection.Unreadable(file, failure.message ?: failure::class.simpleName.orEmpty())
+}
+
+internal fun <T> ComposeFileSelection<T>.valueOrThrow(): ComposeFileSelection.Selected<T> = when (this) {
+    ComposeFileSelection.Cancelled -> throw CancellationException("File selection was cancelled")
+    is ComposeFileSelection.Selected -> this
+    is ComposeFileSelection.Unreadable -> throw MapViewerLoadException(MapViewerLoadFailure.Unreadable(message))
+    is ComposeFileSelection.Unsupported -> throw MapViewerLoadException(MapViewerLoadFailure.Unsupported(message))
 }
 
 internal val LocalComposeFilePicker = staticCompositionLocalOf<ComposeFilePicker> {

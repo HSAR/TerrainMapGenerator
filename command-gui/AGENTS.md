@@ -2,7 +2,7 @@
 
 ## Current status
 
-The latest completed migration work is **Phase 4, Slice 4 (lossless save and exit orchestration)**. Treat Phase 4 Slice 5 and later as planned work even where scaffolding exists.
+The latest completed migration work is **Phase 4, Slice 5 (bounded cancellable loading and portable desktop distribution)**. Treat Phase 4 Slice 6 and later as planned work even where scaffolding exists.
 
 Use a strangler migration: locate tested KorGE behaviour, move reusable rules to neutral types, add renderer-independent fixtures, connect Compose through thin adapters, and remove compatibility code only after every consumer has crossed the boundary. KorGE is the compatibility backend, not the destination for new product UI.
 
@@ -16,7 +16,7 @@ Use a strangler migration: locate tested KorGE behaviour, move reusable rules to
 - `MapViewerSaveRepository.loadOperation/createOperation/saveOperation` is the archive boundary. Preserve unknown `additionalData.json` fields additively. Disabling `OLYMPIAD_DAWN_EXPERIMENTAL` hides entry points without deleting saved payloads.
 - `enabledLayerIds` remains persistence-only until a separately approved layer slice. Compose paints the supplied base map and grid directly.
 
-## Protected behaviour through Phase 4 Slice 4
+## Protected behaviour through Phase 4 Slice 5
 
 ### Map, authoring and operational rules
 
@@ -79,7 +79,7 @@ Use a strangler migration: locate tested KorGE behaviour, move reusable rules to
 - All Compose modal presentation goes through one typed `ComposeModalHostState`. Requests have stable keys, duplicate queued requests collapse, loss-prevention requests may pre-empt an ordinary user modal, and otherwise the queue is FIFO. Each modal defines an explicit default and cancel action; cancellation must complete its owning workflow exactly once.
 - Slice 3 adds no confirmation to object, group, note, drawing, unit-type or graphic-type deletion. Those actions remain immediate unless a later independently approved confirmation contract says otherwise.
 - Transient feedback uses `ComposeTransientMessageHostState`: at most five active lower-left notices, ten-second display and 420 ms fade/lift, with no pointer interception. `MapViewerTransientNoticeTokens` is shared with KorGE: 16 px viewport inset, 8 px stack gap, 12×8 px content padding, 24 px regular Nord text and a borderless black background at alpha 180. Do not reintroduce severity-coloured notice panels. Save success/failure and other non-blocking feedback belong here rather than in ad hoc overlays.
-- `ComposeFilePicker` is the sole Compose file-selection boundary. Keep its AWT `FileDialog` parented to the Compose window, suspend conflicting viewer shortcuts while it is open, and decode/read selected content off the UI thread. Treat cancel, unreadable and unsupported selections as distinct typed results. Slice 3 intentionally imposes no file-size limit; loading limits belong to Slice 5.
+- `ComposeFilePicker` is the sole Compose file-selection boundary. Keep its AWT `FileDialog` parented to the Compose window, suspend conflicting viewer shortcuts while it is open, and decode/read selected content off the UI thread. Treat cancel, unreadable and unsupported selections as distinct typed results, and never collapse cancellation into an unreadable-file failure.
 
 ### Presentation resources and parity evidence
 
@@ -107,6 +107,14 @@ Use a strangler migration: locate tested KorGE behaviour, move reusable rules to
 - Return to Launchpad, Escape Exit and native window close use the same request path. Clean exits proceed immediately; dirty and in-flight exits wait for the newest revision. The latest destination wins. Exit failure pauses retry behind the loss-prevention Retry/Cancel Exit modal; cancellation keeps the viewer dirty and resumes ordinary retry.
 - `OperationSaveWriter` stages a complete sibling archive before replacement. Prefer atomic replace; the unsupported-atomic fallback must preserve and restore the previous archive and clean temporary/backup files. Keep archive format 6, UI schema 7 and unknown additional data unchanged.
 
+### Loading and desktop distribution contract
+
+- `MapViewerAsyncWork` is the renderer-neutral state machine for idle/running/succeeded/failed/cancelled work. Request IDs are monotonic; cancelled, superseded and stale completions must not mutate current UI or open an operation. Compose owns only the coroutine job and cancellation signal through `ComposeAsyncWorkController`.
+- Run blocking image, archive and render work through interruptible background dispatch. Pass `MapViewerCancellationSignal` through archive streaming, ledger replay, assets and thumbnails, and check it between bounded work units. Back, Cancel, replacement and composable disposal cancel the owning request.
+- `MapViewerLoadLimits` is authoritative: 512 MiB archive, 10,000 entries, 256 MiB per archive entry/encoded image, 1 GiB expanded archive, 100:1 compression ratio, 64 MiB JSON, 16,384 px maximum image axis and 100 million decoded pixels. Validate metadata before image allocation and use bounded streaming when entry size is absent or can change.
+- Preserve the current valid launch form, catalogue or editor draft after a load failure. Present typed, actionable failures inline; cancellation is not an error. Startup `--map` decoding for Compose belongs to the cancellable launch workflow, while KorGE retains its compatibility preload.
+- The portable Windows launcher enters Compose when invoked without arguments and retains explicit CLI commands and `--viewer=korge|compose`. `:render:portableZip` must include the runtime, executable, icon, fonts, project licence and third-party notices. `:render:portableSmoke` must execute create/save/reopen from extracted and save paths containing spaces and non-ASCII characters.
+
 ## Completed migration summary
 
 - **Phases 1–3:** neutral document editing, transforms/selection, authoring, persistence, sensors/reports/ECM and Olympiad Dawn tactical rules moved behind renderer-independent APIs; Compose gained equivalent authoring and workflow bodies.
@@ -114,17 +122,13 @@ Use a strangler migration: locate tested KorGE behaviour, move reusable rules to
 - **Phase 4 Slice 2:** viewer floating menus, typed menu editors, schema-7 migration, unified command/context dispatch, bubble-phase shortcuts, Escape precedence, custom menu-chain geometry/timing, global destroyed-unit modes and shared fire-arc primitives completed.
 - **Phase 4 Slice 3:** shared design tokens and scale fixtures, deterministic editor/map focus, typed priority/FIFO modal and transient-message hosts, parented asynchronous file selection, launchpad About/diagnostics/licences, font fallback diagnostics and manual parity evidence completed.
 - **Phase 4 Slice 4:** renderer-neutral serialized save coordination, coalesced revision snapshots, capped failure recovery, unified loss-protected exit routing and staged atomic archive replacement completed.
+- **Phase 4 Slice 5:** explicit cancellable loading state, bounded image/archive decoding, stale-completion rejection, Compose loading presentation, Compose-first portable launcher and Unicode-path packaged smoke coverage completed.
 
 ## Remaining migration plan
 
-### Phase 4 Slice 5 — Loading, packaging and desktop polish
+### Phase 4 Slice 6 — Rendering hardening
 
 This is the immediate next slice.
-
-- Give create/open/render/decode/archive operations explicit idle/running/succeeded/failed/cancelled state. Run expensive work off the UI thread, make cancellation cooperative and ignore stale completions.
-- Define image/archive limits before allocation and present actionable failures. Build a portable Windows distribution with icons, fonts and licences, then smoke-test create/save/close/reopen from paths containing spaces and non-ASCII characters.
-
-### Phase 4 Slice 6 — Rendering hardening
 
 - Add conservative visible-tile/object culling, bounded caches and obsolete-work cancellation without changing layer order or hit testing.
 - Verify supported map dimensions, minimum/default/maximum zoom, cursor anchoring, dock/window resize and DPI/monitor transitions on hardware and software Skia paths.

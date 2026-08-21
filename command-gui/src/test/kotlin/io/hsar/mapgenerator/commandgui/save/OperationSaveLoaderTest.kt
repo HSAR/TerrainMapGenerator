@@ -1,6 +1,7 @@
 package io.hsar.mapgenerator.commandgui.save
 
 import io.hsar.mapgenerator.commandgui.MapLayer
+import io.hsar.mapgenerator.commandgui.MapViewerLoadLimits
 import io.hsar.mapgenerator.grid.EpsilonCoord
 import io.hsar.mapgenerator.grid.ReferenceSystem
 import korlibs.io.lang.toByteArray
@@ -22,6 +23,18 @@ import javax.imageio.ImageIO
 class OperationSaveLoaderTest {
     @TempDir
     lateinit var tempDir: Path
+
+    @Test
+    fun `archive size is rejected before entries are decoded`() {
+        val archive = tempDir.resolve("oversized.zip")
+        Files.write(archive, ByteArray(17))
+
+        val failure = assertThrows<IllegalArgumentException> {
+            OperationSaveLoader(MapViewerLoadLimits(maximumArchiveBytes = 16)).load(archive)
+        }
+
+        assertThat(failure.message.orEmpty(), containsString("supported limit is 16 bytes"))
+    }
 
     @Test
     fun `version two numeric grid start save format is rejected`() {

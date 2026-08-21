@@ -76,6 +76,16 @@ class MainTest {
         assertThat(inputs.mapImage?.height, equalTo(6))
     }
 
+    @Test
+    fun `compose startup defers map decoding to the launch workflow`() {
+        val imageFile = createImageFile("compose-map.png")
+
+        val inputs = initialSetupInputs(imageFile.absolutePath, emptyList(), loadImage = false)
+
+        assertThat(inputs.mapImagePath, equalTo(imageFile.absolutePath))
+        assertThat(inputs.mapImage, org.hamcrest.Matchers.nullValue())
+    }
+
     private fun testCommand(): Command =
         object : Command("test") {
             override fun run() = Unit

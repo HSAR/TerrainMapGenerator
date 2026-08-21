@@ -23,6 +23,7 @@ import java.io.StringReader
 import java.io.StringWriter
 import java.nio.charset.StandardCharsets
 import javax.imageio.ImageIO
+import javax.imageio.stream.ImageInputStream
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 import javax.xml.transform.OutputKeys
@@ -33,34 +34,124 @@ import kotlin.math.roundToInt
 
 object MapViewerImageLoader {
     fun load(file: File, trimTransparentBounds: Boolean = true): BufferedImage? =
-        when (file.extension.lowercase()) {
-            "svg" -> loadSvg(file)
-            else -> loadRaster(file)?.trimIfRequested(trimTransparentBounds)
-        }
+        runCatching { loadChecked(file, trimTransparentBounds) }.getOrNull()
 
     fun load(bytes: ByteArray, fileName: String, trimTransparentBounds: Boolean = true): BufferedImage? =
-        when (fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()) {
-            "svg" -> loadSvg(bytes)
-            else -> loadRaster(bytes)?.trimIfRequested(trimTransparentBounds)
+        runCatching { loadChecked(bytes, fileName, trimTransparentBounds) }.getOrNull()
+
+    fun loadChecked(
+        file: File,
+        trimTransparentBounds: Boolean = true,
+        limits: MapViewerLoadLimits = MapViewerLoadLimits(),
+        cancellation: MapViewerCancellationSignal = MapViewerCancellationSignal.NONE,
+    ): BufferedImage {
+        cancellation.ensureActive()
+        validateEncodedSize(file.length(), file.name, limits)
+        val isSvg = file.extension.equals("svg", ignoreCase = true)
+        val image = when {
+            isSvg -> loadSvgChecked(file.readBytes(), file.name, limits, cancellation)
+            else -> ImageIO.createImageInputStream(file)?.use { loadRasterChecked(it, file.name, limits, cancellation) }
+                ?: unsupported(file.name)
         }
-
-    private fun loadRaster(file: File): BufferedImage? {
-        val image = ImageIO.read(file) ?: return null
-        return image.toArgb()
+        cancellation.ensureActive()
+        return if (isSvg) image else image.trimIfRequested(trimTransparentBounds)
     }
 
-    private fun loadRaster(bytes: ByteArray): BufferedImage? {
-        val image = ImageIO.read(ByteArrayInputStream(bytes)) ?: return null
-        return image.toArgb()
+    fun loadChecked(
+        bytes: ByteArray,
+        fileName: String,
+        trimTransparentBounds: Boolean = true,
+        limits: MapViewerLoadLimits = MapViewerLoadLimits(),
+        cancellation: MapViewerCancellationSignal = MapViewerCancellationSignal.NONE,
+    ): BufferedImage {
+        cancellation.ensureActive()
+        validateEncodedSize(bytes.size.toLong(), fileName, limits)
+        val isSvg = fileName.substringAfterLast('.', missingDelimiterValue = "").equals("svg", ignoreCase = true)
+        val image = when {
+            isSvg -> loadSvgChecked(bytes, fileName, limits, cancellation)
+            else -> ImageIO.createImageInputStream(ByteArrayInputStream(bytes))
+                ?.use { loadRasterChecked(it, fileName, limits, cancellation) }
+                ?: unsupported(fileName)
+        }
+        cancellation.ensureActive()
+        return if (isSvg) image else image.trimIfRequested(trimTransparentBounds)
     }
 
-    private fun loadSvg(file: File): BufferedImage? = runCatching {
-        renderSvg(file.readText())
-    }.getOrNull()
+    private fun loadRasterChecked(
+        input: ImageInputStream,
+        fileName: String,
+        limits: MapViewerLoadLimits,
+        cancellation: MapViewerCancellationSignal,
+    ): BufferedImage {
+        val reader = ImageIO.getImageReaders(input).asSequence().firstOrNull() ?: unsupported(fileName)
+        return try {
+            reader.input = input
+            val width = reader.getWidth(0)
+            val height = reader.getHeight(0)
+            validateDimensions(width, height, fileName, limits)
+            cancellation.ensureActive()
+            reader.read(0)?.toArgb() ?: unsupported(fileName)
+        } finally {
+            reader.dispose()
+        }
+    }
 
-    private fun loadSvg(bytes: ByteArray): BufferedImage? = runCatching {
-        renderSvg(String(bytes, StandardCharsets.UTF_8))
-    }.getOrNull()
+    private fun loadSvgChecked(
+        bytes: ByteArray,
+        fileName: String,
+        limits: MapViewerLoadLimits,
+        cancellation: MapViewerCancellationSignal,
+    ): BufferedImage {
+        val source = String(bytes, StandardCharsets.UTF_8)
+        source.svgDimensions()?.let { (width, height) -> validateDimensions(width, height, fileName, limits) }
+        cancellation.ensureActive()
+        return runCatching { renderSvg(source) }
+            .getOrElse { failure ->
+                throw MapViewerLoadException(MapViewerLoadFailure.Unsupported("$fileName is not a supported SVG image: ${failure.message ?: "decode failed"}"))
+            }
+            .also { image -> validateDimensions(image.width, image.height, fileName, limits) }
+    }
+
+    private fun validateEncodedSize(size: Long, fileName: String, limits: MapViewerLoadLimits) {
+        if (size > limits.maximumEncodedImageBytes) {
+            throw MapViewerLoadException(
+                MapViewerLoadFailure.LimitExceeded(fileName, size, limits.maximumEncodedImageBytes),
+            )
+        }
+    }
+
+    private fun validateDimensions(width: Int, height: Int, fileName: String, limits: MapViewerLoadLimits) {
+        val dimension = maxOf(width, height).toLong()
+        if (dimension > limits.maximumImageDimension) {
+            throw MapViewerLoadException(
+                MapViewerLoadFailure.LimitExceeded("$fileName image dimension", dimension, limits.maximumImageDimension.toLong(), "pixels"),
+            )
+        }
+        val pixels = width.toLong() * height.toLong()
+        if (pixels > limits.maximumImagePixels) {
+            throw MapViewerLoadException(
+                MapViewerLoadFailure.LimitExceeded("$fileName decoded image", pixels, limits.maximumImagePixels, "pixels"),
+            )
+        }
+    }
+
+    private fun unsupported(fileName: String): Nothing =
+        throw MapViewerLoadException(MapViewerLoadFailure.Unsupported("$fileName is not a supported image."))
+
+    private fun String.svgDimensions(): Pair<Int, Int>? {
+        val width = explicitSvgDimension("width")
+        val height = explicitSvgDimension("height")
+        if (width != null && height != null) return width to height
+        val viewBox = Regex("\\bviewBox\\s*=\\s*\"([^\"]+)\"")
+            .find(this)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.trim()
+            ?.split(Regex("[\\s,]+"))
+            ?.mapNotNull(String::toDoubleOrNull)
+        return viewBox?.takeIf { it.size == 4 }
+            ?.let { it[2].roundToInt().coerceAtLeast(1) to it[3].roundToInt().coerceAtLeast(1) }
+    }
 
     private fun renderSvg(source: String): BufferedImage {
         val transcoder = BufferedImageTranscoder().apply {

@@ -121,6 +121,8 @@ import io.hsar.mapgenerator.commandgui.MapSelectionBox
 import io.hsar.mapgenerator.commandgui.MapSelectionScreenBounds
 import io.hsar.mapgenerator.commandgui.MapViewerBackend
 import io.hsar.mapgenerator.commandgui.MapViewerBackendProvider
+import io.hsar.mapgenerator.commandgui.MapViewerAsyncOperation
+import io.hsar.mapgenerator.commandgui.MapViewerLoadLimits
 import io.hsar.mapgenerator.commandgui.MapViewerCommand
 import io.hsar.mapgenerator.commandgui.MapViewerCommandContext
 import io.hsar.mapgenerator.commandgui.MapViewerCommandItem
@@ -211,8 +213,10 @@ import io.hsar.mapgenerator.commandgui.operation.turnGroups
 import io.hsar.mapgenerator.commandgui.save.MapThumbnailRenderer
 import io.hsar.mapgenerator.commandgui.toWorldPoint
 import io.hsar.mapgenerator.commandgui.viewerBackgroundBounds
+import io.hsar.mapgenerator.commandgui.readMapViewerFileBytes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
 import java.awt.Frame
@@ -291,13 +295,10 @@ private fun ComposeMapViewer(
     onExit: () -> Unit,
     onCloseRequestHandlerChanged: (() -> Unit) -> Unit,
 ) {
-    val suppliedMap = remember {
-        initialSetupInputs.mapImage
-            ?: initialSetupInputs.mapImagePath?.let { path -> runCatching { ImageIO.read(File(path)) }.getOrNull() }
-    }
+    val suppliedMap = remember { initialSetupInputs.mapImage }
     val launchState = remember {
         ComposeLaunchState(
-            initialScreen = if (suppliedMap == null) ComposeLaunchScreen.MAIN else ComposeLaunchScreen.NEW_OPERATION,
+            initialScreen = if (suppliedMap == null && initialSetupInputs.mapImagePath == null) ComposeLaunchScreen.MAIN else ComposeLaunchScreen.NEW_OPERATION,
         )
     }
     val repository = remember { MapViewerSaveRepository() }
@@ -352,13 +353,12 @@ private fun ComposeMapViewer(
 
         ComposeLaunchScreen.NEW_OPERATION -> ComposeNewOperationScreen(
             renderMap = renderMap,
+            createOperation = repository::createOperation,
             initialSettings = initialSettings,
             initialMap = suppliedMap,
             initialMapPath = initialSetupInputs.mapImagePath,
             onBack = launchState::returnToLaunchpad,
-            onLaunch = { settings, renderData ->
-                launchState.openOperation(repository.createOperation(settings, renderData ?: error("Operation map was not rendered")))
-            },
+            onLaunch = launchState::openOperation,
         )
 
         ComposeLaunchScreen.EXISTING_OPERATIONS -> ComposeExistingOperationsScreen(
@@ -503,11 +503,12 @@ internal fun ComposeMainLaunchpad(
 @Composable
 private fun ComposeNewOperationScreen(
     renderMap: (MapViewerSettings) -> MapViewerRenderData,
+    createOperation: (MapViewerSettings, MapViewerRenderData) -> OperationDocument,
     initialSettings: MapViewerSettings,
     initialMap: java.awt.image.BufferedImage?,
     initialMapPath: String?,
     onBack: () -> Unit,
-    onLaunch: (MapViewerSettings, MapViewerRenderData?) -> Unit,
+    onLaunch: (OperationDocument) -> Unit,
 ) {
     val filePicker = LocalComposeFilePicker.current
     var operationName by remember { mutableStateOf(initialSettings.operationName.orEmpty()) }
@@ -518,31 +519,29 @@ private fun ComposeNewOperationScreen(
     var startX by remember { mutableStateOf(initialSettings.gridStartX?.format().orEmpty()) }
     var startY by remember { mutableStateOf(initialSettings.gridStartY?.format().orEmpty()) }
     var unitsPerPixel by remember { mutableStateOf(initialSettings.unitsPerPixel.toString()) }
-    var loadingMap by remember { mutableStateOf(false) }
-    var launching by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val mapLoad = rememberComposeAsyncWorkController<ComposeFileSelection.Selected<java.awt.image.BufferedImage>>(scope)
+    val operationCreate = rememberComposeAsyncWorkController<OperationDocument>(scope)
+    val busy = mapLoad.running || operationCreate.running
 
     fun chooseMap() {
-        loadingMap = true
-        scope.launch {
-            when (val selected = filePicker.chooseAndDecode(
-                title = "Choose map image",
-                pattern = "*.png;*.jpg;*.jpeg",
-                unsupportedMessage = "The selected file is not a supported image.",
-                decode = ImageIO::read,
-            )) {
-                ComposeFileSelection.Cancelled -> Unit
-                is ComposeFileSelection.Selected -> {
-                    mapImage = selected.value
-                    mapName = selected.file.name
-                    errorMessage = null
-                }
-                is ComposeFileSelection.Unreadable -> errorMessage = "Could not open ${selected.file.name}: ${selected.message}"
-                is ComposeFileSelection.Unsupported -> errorMessage = selected.message
-            }
-            loadingMap = false
-        }
+        mapLoad.start(
+            operation = MapViewerAsyncOperation.DECODE_IMAGE,
+            block = { cancellation ->
+                filePicker.chooseAndDecode(
+                    title = "Choose map image",
+                    pattern = "*.png;*.jpg;*.jpeg",
+                    unsupportedMessage = "The selected file is not a supported image.",
+                    decode = { file -> MapViewerImageLoader.loadChecked(file, trimTransparentBounds = false, cancellation = cancellation) },
+                ).valueOrThrow()
+            },
+            onSuccess = { selected ->
+                mapImage = selected.value
+                mapName = selected.file.name
+                errorMessage = null
+            },
+        )
     }
 
     fun launch() {
@@ -576,13 +575,34 @@ private fun ComposeNewOperationScreen(
             width = image.width,
             height = image.height,
         )
-        launching = true
         errorMessage = null
-        scope.launch {
-            runCatching { withContext(Dispatchers.Default) { renderMap(settings) } }
-                .onSuccess { onLaunch(settings, it) }
-                .onFailure { errorMessage = "Could not prepare operation: ${it.message ?: it::class.simpleName}" }
-            launching = false
+        operationCreate.start(
+            operation = MapViewerAsyncOperation.CREATE_OPERATION,
+            block = { cancellation ->
+                cancellation.ensureActive()
+                val renderData = runInterruptible(Dispatchers.Default) { renderMap(settings) }
+                cancellation.ensureActive()
+                createOperation(settings, renderData)
+            },
+            onSuccess = onLaunch,
+        )
+    }
+
+    LaunchedEffect(initialMapPath) {
+        if (initialMap == null && initialMapPath != null) {
+            mapLoad.start(
+                operation = MapViewerAsyncOperation.DECODE_IMAGE,
+                block = { cancellation ->
+                    val file = File(initialMapPath)
+                    ComposeFileSelection.Selected(
+                        file,
+                        runInterruptible(Dispatchers.IO) {
+                            MapViewerImageLoader.loadChecked(file, trimTransparentBounds = false, cancellation = cancellation)
+                        },
+                    )
+                },
+                onSuccess = { selected -> mapImage = selected.value; mapName = selected.file.name },
+            )
         }
     }
 
@@ -593,14 +613,14 @@ private fun ComposeNewOperationScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CommandButton(
-                    onClick = onBack,
+                    onClick = { mapLoad.cancel(); operationCreate.cancel(); onBack() },
                     modifier = Modifier.width(MapViewerOngoingOperationsTokens.BACK_WIDTH.dp)
                         .height(MapViewerOngoingOperationsTokens.BACK_HEIGHT.dp),
                 ) { Text("BACK") }
                 Spacer(Modifier.width(16.dp))
                 Text("OPERATIONAL DETAILS", style = MaterialTheme.typography.headlineSmall)
                 Spacer(Modifier.weight(1f))
-                if (loadingMap || launching) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                if (busy) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
             }
             Row(
                 modifier = Modifier.fillMaxWidth().weight(1f),
@@ -623,7 +643,7 @@ private fun ComposeNewOperationScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        CommandButton(onClick = ::chooseMap, enabled = !loadingMap && !launching) {
+                        CommandButton(onClick = ::chooseMap, enabled = !busy) {
                             Text("CHOOSE MAP IMAGE")
                         }
                         Text(
@@ -636,7 +656,7 @@ private fun ComposeNewOperationScreen(
                         io.hsar.mapgenerator.grid.ReferenceSystem.entries.forEach { system ->
                             CommandButton(
                                 onClick = { referenceSystem = system },
-                                enabled = !launching,
+                                enabled = !busy,
                             ) {
                                 Text(if (system == referenceSystem) "[ ${system.name} ]" else system.name)
                             }
@@ -689,18 +709,21 @@ private fun ComposeNewOperationScreen(
                     } ?: Text("MAP PREVIEW", color = CommandColours.Backing)
                 }
             }
-            errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            (errorMessage ?: mapLoad.failure?.message ?: operationCreate.failure?.message)?.let {
+                Text(it, color = MaterialTheme.colorScheme.error)
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
             ) {
+                if (busy) CommandButton(onClick = { mapLoad.cancel(); operationCreate.cancel() }) { Text("CANCEL") }
                 CommandButton(
                     onClick = ::launch,
                     enabled = operationName.isNotBlank() && mapImage != null &&
                             unitsPerPixel.toDoubleOrNull()?.let { it > 0.0 } == true &&
-                            !loadingMap && !launching,
+                            !busy,
                 ) {
-                    Text(if (launching) "PREPARING OPERATION…" else "LAUNCH OPERATION")
+                    Text(if (operationCreate.running) "PREPARING OPERATION…" else "LAUNCH OPERATION")
                 }
             }
         }
@@ -715,55 +738,59 @@ private fun ComposeExistingOperationsScreen(
 ) {
     val filePicker = LocalComposeFilePicker.current
     var saves by remember { mutableStateOf<List<MapViewerSavedOperation>>(emptyList()) }
-    var refreshing by remember { mutableStateOf(true) }
     var loadingPath by remember { mutableStateOf<String?>(null) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val catalogueLoad = rememberComposeAsyncWorkController<List<MapViewerSavedOperation>>(scope)
+    val operationLoad = rememberComposeAsyncWorkController<OperationDocument>(scope)
+    val errorMessage = catalogueLoad.failure?.message ?: operationLoad.failure?.message
 
     fun refresh() {
-        if (refreshing && saves.isNotEmpty()) return
-        refreshing = true
-        scope.launch {
-            runCatching { withContext(Dispatchers.IO) { repository.list() } }
-                .onSuccess {
-                    saves = it
-                    errorMessage = null
-                }
-                .onFailure { errorMessage = "Could not list saves: ${it.message ?: it::class.simpleName}" }
-            refreshing = false
-        }
+        if (catalogueLoad.running) return
+        catalogueLoad.start(
+            MapViewerAsyncOperation.LIST_ARCHIVES,
+            block = { cancellation ->
+                runInterruptible(Dispatchers.IO) { cancellation.ensureActive(); repository.list() }
+            },
+            onSuccess = { saves = it },
+        )
     }
 
     fun load(path: java.nio.file.Path) {
-        if (loadingPath != null) return
+        if (operationLoad.running) return
         loadingPath = path.toString()
-        errorMessage = null
-        scope.launch {
-            runCatching { withContext(Dispatchers.IO) { repository.loadOperation(path) } }
-                .onSuccess(onMapLoaded)
-                .onFailure { errorMessage = "Could not load ${path.fileName}: ${it.message ?: it::class.simpleName}" }
-            loadingPath = null
-        }
+        operationLoad.start(
+            MapViewerAsyncOperation.OPEN_ARCHIVE,
+            block = { cancellation -> runInterruptible(Dispatchers.IO) { repository.loadOperation(path, cancellation) } },
+            onSuccess = { document -> loadingPath = null; onMapLoaded(document) },
+        )
     }
 
     fun browse() {
-        if (loadingPath != null) return
-        scope.launch {
-            when (val selected = filePicker.chooseAndDecode(
-                title = "Open operation save",
-                pattern = "*.zip",
-                unsupportedMessage = "The selected file is not a supported operation archive.",
-                decode = { file -> repository.loadOperation(file.toPath()) },
-            )) {
-                ComposeFileSelection.Cancelled -> Unit
-                is ComposeFileSelection.Selected -> onMapLoaded(selected.value)
-                is ComposeFileSelection.Unreadable -> errorMessage = "Could not load ${selected.file.name}: ${selected.message}"
-                is ComposeFileSelection.Unsupported -> errorMessage = selected.message
-            }
-        }
+        if (operationLoad.running) return
+        loadingPath = "browse"
+        operationLoad.start(
+            MapViewerAsyncOperation.OPEN_ARCHIVE,
+            block = { cancellation ->
+                filePicker.chooseAndDecode(
+                    title = "Open operation save",
+                    pattern = "*.zip",
+                    unsupportedMessage = "The selected file is not a supported operation archive.",
+                    decode = { file -> repository.loadOperation(file.toPath(), cancellation) },
+                ).valueOrThrow().value
+            },
+            onSuccess = { document -> loadingPath = null; onMapLoaded(document) },
+        )
+    }
+
+    fun cancelLoad() {
+        operationLoad.cancel()
+        loadingPath = null
     }
 
     LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(operationLoad.work.state) {
+        if (!operationLoad.running) loadingPath = null
+    }
 
     CommandLaunchScreen(title = "Ongoing Operations") {
         BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -771,11 +798,12 @@ private fun ComposeExistingOperationsScreen(
                 panelHeight = (maxHeight.value * MapViewerOngoingOperationsTokens.PANEL_HEIGHT_FRACTION)
                     .roundToInt().toDouble().coerceAtLeast(MapViewerOngoingOperationsTokens.PANEL_MIN_HEIGHT),
                 operations = saves,
-                loading = refreshing,
+                loading = catalogueLoad.running,
                 loadingPath = loadingPath,
                 errorMessage = errorMessage,
-                onBack = onBack,
+                onBack = { catalogueLoad.cancel(); cancelLoad(); onBack() },
                 onBrowse = ::browse,
+                onCancelLoad = ::cancelLoad,
                 onLoad = ::load,
             )
         }
@@ -791,6 +819,7 @@ internal fun ComposeOngoingOperationsPanel(
     errorMessage: String?,
     onBack: () -> Unit,
     onBrowse: () -> Unit,
+    onCancelLoad: () -> Unit = {},
     onLoad: (java.nio.file.Path) -> Unit,
 ) {
     val listState = rememberLazyListState()
@@ -890,8 +919,7 @@ internal fun ComposeOngoingOperationsPanel(
                     .height(listHeight.dp),
             )
             CommandButton(
-                onClick = onBrowse,
-                enabled = loadingPath == null,
+                onClick = if (loadingPath == null) onBrowse else onCancelLoad,
                 modifier = Modifier
                     .testTag("ongoing-operations-browse")
                     .offset(
@@ -902,7 +930,7 @@ internal fun ComposeOngoingOperationsPanel(
                     )
                     .width(MapViewerOngoingOperationsTokens.BROWSE_WIDTH.dp)
                     .height(MapViewerLaunchpadTokens.BUTTON_HEIGHT.dp),
-            ) { Text("BROWSE FOR SAVE FILE") }
+            ) { Text(if (loadingPath == null) "BROWSE FOR SAVE FILE" else "CANCEL LOADING") }
         }
     }
 }
@@ -2450,7 +2478,7 @@ private fun UnitTemplateEditorContent(
 ) {
     val filePicker = LocalComposeFilePicker.current
     val scope = rememberCoroutineScope()
-    var imageError by remember(editor.id) { mutableStateOf<String?>(null) }
+    val imageLoad = rememberComposeAsyncWorkController<ComposeFileSelection.Selected<OperationImageDraft>>(scope)
     val existing = (editor.target as? OperationEditorTarget.UnitTemplate)?.templateId?.let(state.document.content::unitTemplate)
     val decoded = remember(draft.replacementImage) {
         draft.replacementImage?.let { runCatching { MapViewerImageLoader.load(it.bytes(), it.originalFilename) }.getOrNull() }
@@ -2460,31 +2488,30 @@ private fun UnitTemplateEditorContent(
         state.updateEditorDraft(editor.id, OperationEditorDraft.UnitTemplate(value)),
     )
     fun browse() {
-        scope.launch {
-            when (val selected = filePicker.chooseAndDecode(
-                title = "Choose unit image",
-                pattern = "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg",
-                unsupportedMessage = "Unsupported image",
-                decode = { file ->
-                    val imageDraft = OperationImageDraft.fromBytes(file.name, file.readBytes())
-                    imageDraft.takeIf { MapViewerImageLoader.load(it.bytes(), it.originalFilename) != null }
-                },
-            )) {
-                ComposeFileSelection.Cancelled -> Unit
-                is ComposeFileSelection.Selected -> { imageError = null; update(draft.copy(replacementImage = selected.value)) }
-                is ComposeFileSelection.Unreadable -> imageError = selected.message.ifBlank { "Could not load the selected image" }
-                is ComposeFileSelection.Unsupported -> imageError = selected.message
-            }
-        }
+        imageLoad.start(
+            MapViewerAsyncOperation.DECODE_IMAGE,
+            block = { cancellation ->
+                filePicker.chooseAndDecode(
+                    title = "Choose unit image",
+                    pattern = "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg",
+                    unsupportedMessage = "Unsupported image",
+                    decode = { file ->
+                        MapViewerImageLoader.loadChecked(file, limits = MapViewerLoadLimits(), cancellation = cancellation)
+                        OperationImageDraft.fromBytes(file.name, readMapViewerFileBytes(file, MapViewerLoadLimits().maximumEncodedImageBytes, cancellation))
+                    },
+                ).valueOrThrow()
+            },
+            onSuccess = { selected -> update(draft.copy(replacementImage = selected.value)) },
+        )
     }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             val preview = decoded ?: existing?.image
             preview?.let { androidx.compose.foundation.Image(it.toComposeImageBitmap(), null, Modifier.fillMaxWidth().height(130.dp), contentScale = ContentScale.Fit) }
-            CommandButton(onClick = ::browse, enabled = !state.isReadOnly, modifier = Modifier.fillMaxWidth()) {
-                Text(if (preview == null) "CHOOSE IMAGE" else "REPLACE IMAGE")
+            CommandButton(onClick = if (imageLoad.running) imageLoad::cancel else ::browse, enabled = !state.isReadOnly, modifier = Modifier.fillMaxWidth()) {
+                Text(if (imageLoad.running) "CANCEL LOADING" else if (preview == null) "CHOOSE IMAGE" else "REPLACE IMAGE")
             }
-            (imageError ?: validation.errors["image"])?.let { Text(it, color = Color(0xFFDF4A4A)) }
+            (imageLoad.failure?.message ?: validation.errors["image"])?.let { Text(it, color = Color(0xFFDF4A4A)) }
             OutlinedTextField(draft.name, { update(draft.copy(name = it)) }, Modifier.fillMaxWidth().trackEditableTextFocus(), enabled = !state.isReadOnly, isError = "name" in validation.errors, singleLine = true, label = { Text("Name") })
             Text("Affiliation", color = CommandColours.Backing)
             AffiliationButtons(draft.affiliation, !state.isReadOnly) { update(draft.copy(affiliation = it)) }
@@ -2551,26 +2578,27 @@ private fun GraphicTemplateEditorContent(
 ) {
     val filePicker = LocalComposeFilePicker.current
     val scope = rememberCoroutineScope()
-    var imageError by remember(editor.id) { mutableStateOf<String?>(null) }
+    val imageLoad = rememberComposeAsyncWorkController<ComposeFileSelection.Selected<Pair<OperationImageDraft, java.awt.image.BufferedImage>>>(scope)
     val existing = (editor.target as? OperationEditorTarget.GraphicTemplate)?.templateId?.let(state.document.content::graphicTemplate)
     val decoded = remember(draft.replacementImage) { draft.replacementImage?.let { runCatching { MapViewerImageLoader.load(it.bytes(), it.originalFilename) }.getOrNull() } }
     val validation = state.validationFor(editor)
     fun update(value: OperationGraphicTemplateDraft) = onStateChanged(state.updateEditorDraft(editor.id, OperationEditorDraft.GraphicTemplate(value)))
     fun browse() {
-        scope.launch {
-            when (val selected = filePicker.chooseAndDecode(
-                title = "Choose graphic image",
-                pattern = "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg",
-                unsupportedMessage = "Unsupported image",
-                decode = { file ->
-                    val imageDraft = OperationImageDraft.fromBytes(file.name, file.readBytes())
-                    MapViewerImageLoader.load(imageDraft.bytes(), imageDraft.originalFilename)?.let { image -> imageDraft to image }
-                },
-            )) {
-                ComposeFileSelection.Cancelled -> Unit
-                is ComposeFileSelection.Selected -> {
+        imageLoad.start(
+            MapViewerAsyncOperation.DECODE_IMAGE,
+            block = { cancellation ->
+                filePicker.chooseAndDecode(
+                    title = "Choose graphic image",
+                    pattern = "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg",
+                    unsupportedMessage = "Unsupported image",
+                    decode = { file ->
+                        val image = MapViewerImageLoader.loadChecked(file, limits = MapViewerLoadLimits(), cancellation = cancellation)
+                        OperationImageDraft.fromBytes(file.name, readMapViewerFileBytes(file, MapViewerLoadLimits().maximumEncodedImageBytes, cancellation)) to image
+                    },
+                ).valueOrThrow()
+            },
+            onSuccess = { selected ->
                 val (imageDraft, image) = selected.value
-                imageError = null
                 val height = draft.heightPercent.takeIf(String::isNotBlank)
                     ?: OperationGraphicAuthoring.defaultHeightPercent(
                         image, state.document.renderData.baseImage.width, state.document.renderData.baseImage.height,
@@ -2581,18 +2609,17 @@ private fun GraphicTemplateEditorContent(
                     replacementImage = imageDraft,
                     heightPercent = height,
                 ))
-                }
-                is ComposeFileSelection.Unreadable -> imageError = selected.message.ifBlank { "Could not load the selected image" }
-                is ComposeFileSelection.Unsupported -> imageError = selected.message
-            }
-        }
+            },
+        )
     }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             val preview = decoded ?: existing?.image
             preview?.let { androidx.compose.foundation.Image(it.toComposeImageBitmap(), null, Modifier.fillMaxWidth().height(130.dp), contentScale = ContentScale.Fit) }
-            CommandButton(::browse, enabled = !state.isReadOnly, modifier = Modifier.fillMaxWidth()) { Text(if (preview == null) "CHOOSE IMAGE" else "REPLACE IMAGE") }
-            (imageError ?: validation.errors["image"])?.let { Text(it, color = Color(0xFFDF4A4A)) }
+            CommandButton(if (imageLoad.running) imageLoad::cancel else ::browse, enabled = !state.isReadOnly, modifier = Modifier.fillMaxWidth()) {
+                Text(if (imageLoad.running) "CANCEL LOADING" else if (preview == null) "CHOOSE IMAGE" else "REPLACE IMAGE")
+            }
+            (imageLoad.failure?.message ?: validation.errors["image"])?.let { Text(it, color = Color(0xFFDF4A4A)) }
             OutlinedTextField(draft.name, { update(draft.copy(name = it)) }, Modifier.fillMaxWidth().trackEditableTextFocus(), enabled = !state.isReadOnly, isError = "name" in validation.errors, singleLine = true, label = { Text("Name") })
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(draft.widthPercent, { update(draft.copy(widthPercent = it)) }, Modifier.weight(1f).trackEditableTextFocus(), enabled = !state.isReadOnly, isError = "width" in validation.errors, singleLine = true, label = { Text("Map width %") })

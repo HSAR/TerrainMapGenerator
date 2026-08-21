@@ -11,6 +11,7 @@ import io.hsar.mapgenerator.commandgui.MapViewerFeatureFlag
 import io.hsar.mapgenerator.commandgui.MapViewerFrame
 import io.hsar.mapgenerator.commandgui.MapViewerLayer
 import io.hsar.mapgenerator.commandgui.MapViewerRenderData
+import io.hsar.mapgenerator.commandgui.MapViewerSaveRepository
 import io.hsar.mapgenerator.commandgui.MapViewerSettings
 import io.hsar.mapgenerator.commandgui.MapViewerSetupInputs
 import io.hsar.mapgenerator.commandgui.StaticImageLayer
@@ -61,13 +62,14 @@ object LaunchGuiCommand : Command("show-gui") {
     override fun run() {
         val staticLayers = loadStaticImageLayers(staticImagePaths)
         featureFlags.startupLogMessage()?.let(logger::info)
+        val selectedBackend = MapViewerBackend.fromCliName(viewer)
 
         MapViewerFrame(
             renderMap = ::renderViewerImage,
             initialSettings = viewerSettings(staticLayers),
-            initialSetupInputs = initialSetupInputs(mapPath, staticImagePaths),
+            initialSetupInputs = initialSetupInputs(mapPath, staticImagePaths, loadImage = selectedBackend != MapViewerBackend.COMPOSE),
             featureFlags = featureFlags.toSet(),
-            backend = MapViewerBackend.fromCliName(viewer),
+            backend = selectedBackend,
         ).showWindow()
     }
 
@@ -198,6 +200,68 @@ object ExportAppIconCommand : Command("export-app-icon") {
     }
 }
 
+@Parameters(commandDescription = "Runs the packaged operation archive smoke test.")
+object PortableSmokeCommand : Command("portable-smoke") {
+    @Parameter(
+        names = ["--target"],
+        description = "Directory in which to create and reopen the smoke-test archive.",
+        required = true,
+    )
+    private lateinit var target: String
+
+    override fun run() {
+        val root = Path.of(target).toAbsolutePath().normalize()
+        java.nio.file.Files.createDirectories(root)
+        listOf(
+            "licenses/PROJECT_LICENSE.txt",
+            "licenses/THIRD_PARTY_NOTICES.txt",
+            "composeResources/io.hsar.mapgenerator.command_gui_compose.generated.resources/font/tv_nord_ef_regular_con.ttf",
+            "composeResources/io.hsar.mapgenerator.command_gui_compose.generated.resources/font/tv_nord_ef_bold_con.ttf",
+        ).forEach { resource ->
+            requireNotNull(javaClass.classLoader.getResourceAsStream(resource)).use { stream ->
+                require(stream.read() >= 0) { "Packaged resource was empty: $resource" }
+            }
+        }
+        System.getProperty("jpackage.app-path")?.let(Path::of)?.parent?.resolve("licenses")?.let { licenses ->
+            require(java.nio.file.Files.isRegularFile(licenses.resolve("PROJECT_LICENSE.txt"))) {
+                "Portable distribution omitted the project licence"
+            }
+            require(java.nio.file.Files.isRegularFile(licenses.resolve("THIRD_PARTY_NOTICES.txt"))) {
+                "Portable distribution omitted the third-party notices"
+            }
+        }
+        val repository = MapViewerSaveRepository(root.resolve("saves"))
+        val image = BufferedImage(48, 32, BufferedImage.TYPE_INT_ARGB).apply {
+            createGraphics().let { graphics ->
+                try {
+                    graphics.color = java.awt.Color(22, 48, 80)
+                    graphics.fillRect(0, 0, width, height)
+                } finally {
+                    graphics.dispose()
+                }
+            }
+        }
+        val operationId = UUID.fromString("00000000-0000-0000-0000-000000000515")
+        val archive = root.resolve("saved operations 測試").resolve("Opération smoke.zip")
+        java.nio.file.Files.createDirectories(archive.parent)
+        val created = repository.createOperation(
+            settings = MapViewerSettings(operationName = "Portable 測試"),
+            renderData = MapViewerRenderData(image),
+            operationId = operationId,
+        ).copy(sourcePath = archive)
+        val saved = repository.saveOperation(created)
+        val reopened = repository.loadOperation(requireNotNull(saved.sourcePath))
+        require(reopened.operationId == operationId) { "Reopened operation identity did not match" }
+        require(reopened.operationName == "Portable 測試") { "Reopened operation name did not match" }
+        require(reopened.renderData.baseImage.width == 48 && reopened.renderData.baseImage.height == 32) {
+            "Reopened map dimensions did not match"
+        }
+        require(reopened.timeline.entries == created.timeline.entries) { "Reopened operation timeline did not match" }
+        require(reopened.uiState == created.uiState) { "Reopened operation UI state did not match" }
+        logger.info("Portable distribution smoke test passed at $archive")
+    }
+}
+
 abstract class Command(val name: String) : Runnable {
 
     @Parameter(
@@ -299,6 +363,7 @@ internal fun availableCommands(): List<Command> =
         SaveImageCommand,
         ApplyGridCommand,
         ExportAppIconCommand,
+        PortableSmokeCommand,
     )
 
 private fun renderViewerImage(settings: MapViewerSettings, seed: Long): MapViewerRenderData {
@@ -612,11 +677,15 @@ private fun outputLayerName(layer: MapViewerLayer): String =
 internal fun initialSetupInputs(
     mapPath: String?,
     legacyImagePaths: List<String>,
+    loadImage: Boolean = true,
 ): MapViewerSetupInputs {
     val path = mapPath ?: legacyImagePaths.firstOrNull() ?: return MapViewerSetupInputs()
     val absolutePath = Path.of(path).toAbsolutePath().normalize()
-    val image = ImageIO.read(absolutePath.toFile())
-        ?: error("Could not read image from $absolutePath")
+    val image = if (loadImage) {
+        io.hsar.mapgenerator.commandgui.MapViewerImageLoader.loadChecked(absolutePath.toFile(), trimTransparentBounds = false)
+    } else {
+        null
+    }
 
     return MapViewerSetupInputs(
         mapImagePath = absolutePath.toString(),
